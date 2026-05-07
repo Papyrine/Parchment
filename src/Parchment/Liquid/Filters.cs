@@ -64,7 +64,9 @@ static class Filters
             yield break;
         }
 
-        if (input.ToObjectValue() is IEnumerable<object?> objects)
+        var value = input.ToObjectValue();
+
+        if (value is IEnumerable<object?> objects)
         {
             foreach (var item in objects)
             {
@@ -74,7 +76,7 @@ static class Filters
             yield break;
         }
 
-        if (input.ToObjectValue() is IEnumerable raw and not string)
+        if (value is IEnumerable raw and not string)
         {
             foreach (var item in raw)
             {

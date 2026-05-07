@@ -1,7 +1,7 @@
 class HtmlInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, HtmlInline>
 {
-    static readonly Dictionary<string, Action<RunProperties>> Formatters = new(StringComparer.OrdinalIgnoreCase)
+    static readonly Dictionary<string, Action<RunProperties>> formatters = new(StringComparer.OrdinalIgnoreCase)
     {
         ["em"] = props => props.Append(new Italic()),
         ["i"] = props => props.Append(new Italic()),
@@ -31,7 +31,7 @@ class HtmlInlineRenderer :
                 return;
             }
 
-            if (Formatters.TryGetValue(name, out var apply))
+            if (formatters.TryGetValue(name, out var apply))
             {
                 if (isSelfClosing)
                 {
@@ -65,7 +65,9 @@ class HtmlInlineRenderer :
         isClosing = false;
         isSelfClosing = false;
 
-        if (raw.Length < 3 || raw[0] != '<' || raw[^1] != '>')
+        if (raw.Length < 3 ||
+            raw[0] != '<' ||
+            raw[^1] != '>')
         {
             return false;
         }
@@ -85,7 +87,8 @@ class HtmlInlineRenderer :
         }
 
         var end = 0;
-        while (end < inner.Length && (char.IsLetterOrDigit(inner[end]) || inner[end] == '-'))
+        while (end < inner.Length &&
+               (char.IsLetterOrDigit(inner[end]) || inner[end] == '-'))
         {
             end++;
         }
@@ -95,7 +98,9 @@ class HtmlInlineRenderer :
             return false;
         }
 
-        if (end < inner.Length && inner[end] != ' ' && inner[end] != '\t')
+        if (end < inner.Length &&
+            inner[end] != ' ' &&
+            inner[end] != '\t')
         {
             return false;
         }

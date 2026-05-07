@@ -9,7 +9,11 @@ static class ExcelsiorTableBridge
 
     static readonly MethodInfo genericBuildTable = typeof(ExcelsiorTableBridge)
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .Single(_ => _ is {Name: nameof(BuildTable), IsGenericMethodDefinition: true});
+        .Single(_ => _ is
+        {
+            Name: nameof(BuildTable),
+            IsGenericMethodDefinition: true
+        });
 
     public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart)
     {
@@ -18,7 +22,7 @@ static class ExcelsiorTableBridge
     }
 
     public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart) =>
-        new WordTableBuilder<TElement>(data, null).Build(mainPart);
+        new WordTableBuilder<TElement>(data).Build(mainPart);
 
     static BuilderInvoker CreateInvoker(Type elementType)
     {

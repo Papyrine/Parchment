@@ -6,19 +6,19 @@
 /// </summary>
 sealed class FormatMap
 {
-    readonly Dictionary<string, FormatEntry> entries;
+    readonly Dictionary<string, FormatKind> entries;
 
-    FormatMap(Dictionary<string, FormatEntry> entries) =>
+    FormatMap(Dictionary<string, FormatKind> entries) =>
         this.entries = entries;
 
     public bool IsEmpty => entries.Count == 0;
 
-    public bool TryGet(string dottedPath, [NotNullWhen(true)] out FormatEntry? entry) =>
-        entries.TryGetValue(dottedPath, out entry);
+    public bool TryGet(string dottedPath, out FormatKind kind) =>
+        entries.TryGetValue(dottedPath, out kind);
 
     public static FormatMap Build(Type modelType, string templateName)
     {
-        var entries = new Dictionary<string, FormatEntry>(StringComparer.OrdinalIgnoreCase);
+        var entries = new Dictionary<string, FormatKind>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<Type> { modelType };
         WalkType(modelType, [], entries, visited, templateName);
         return new(entries);
@@ -27,7 +27,7 @@ sealed class FormatMap
     static void WalkType(
         Type type,
         List<string> pathSegments,
-        Dictionary<string, FormatEntry> entries,
+        Dictionary<string, FormatKind> entries,
         HashSet<Type> visited,
         string templateName)
     {
@@ -52,7 +52,7 @@ sealed class FormatMap
                 }
 
                 var dottedPath = string.Join('.', nextSegments);
-                entries[dottedPath] = new(format.Value);
+                entries[dottedPath] = format.Value;
                 continue;
             }
 

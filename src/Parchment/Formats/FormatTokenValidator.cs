@@ -33,12 +33,12 @@ static class FormatTokenValidator
                     continue;
                 }
 
-                if (!formats.TryGet(token.References[0].Dotted, out var entry))
+                if (!formats.TryGet(token.References[0].Dotted, out var kind))
                 {
                     continue;
                 }
 
-                RequirePlainIdentifier(token, entry.Kind, templateName, partUri);
+                RequirePlainIdentifier(token, kind, templateName, partUri);
             }
         }
     }

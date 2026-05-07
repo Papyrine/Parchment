@@ -10,7 +10,10 @@ class ParagraphBlockRenderer :
         {
             properties = new()
             {
-                ParagraphStyleId = new() { Val = cls }
+                ParagraphStyleId = new()
+                {
+                    Val = cls
+                }
             };
         }
 

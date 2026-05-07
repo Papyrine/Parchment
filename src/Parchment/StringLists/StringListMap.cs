@@ -7,19 +7,19 @@
 /// </summary>
 sealed class StringListMap
 {
-    readonly Dictionary<string, StringListEntry> entries;
+    readonly Dictionary<string, Func<object, object?>> entries;
 
-    StringListMap(Dictionary<string, StringListEntry> entries) =>
+    StringListMap(Dictionary<string, Func<object, object?>> entries) =>
         this.entries = entries;
 
     public bool IsEmpty => entries.Count == 0;
 
-    public bool TryGet(string dottedPath, [NotNullWhen(true)] out StringListEntry? entry) =>
-        entries.TryGetValue(dottedPath, out entry);
+    public bool TryGet(string dottedPath, [NotNullWhen(true)] out Func<object, object?>? getter) =>
+        entries.TryGetValue(dottedPath, out getter);
 
     public static StringListMap Build(Type modelType)
     {
-        var entries = new Dictionary<string, StringListEntry>(StringComparer.OrdinalIgnoreCase);
+        var entries = new Dictionary<string, Func<object, object?>>(StringComparer.OrdinalIgnoreCase);
         var visited = new HashSet<Type> { modelType };
         WalkType(modelType, [], static root => root, entries, visited);
         return new(entries);
@@ -29,7 +29,7 @@ sealed class StringListMap
         Type type,
         List<string> pathSegments,
         Func<object, object?> getter,
-        Dictionary<string, StringListEntry> entries,
+        Dictionary<string, Func<object, object?>> entries,
         HashSet<Type> visited)
     {
         foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -53,7 +53,7 @@ sealed class StringListMap
             if (IsEnumerableOfString(underlying))
             {
                 var dottedPath = string.Join('.', nextSegments);
-                entries[dottedPath] = new(nextGetter);
+                entries[dottedPath] = nextGetter;
                 // Don't descend into a string-list leaf.
                 continue;
             }
@@ -83,7 +83,12 @@ sealed class StringListMap
         root =>
         {
             var parent = upstream(root);
-            return parent == null ? null : property.GetValue(parent);
+            if (parent == null)
+            {
+                return null;
+            }
+
+            return property.GetValue(parent);
         };
 
     static bool ShouldDescend(Type type)

@@ -24,7 +24,7 @@ static class ScopeTreeBuilder
             extra.Block?.Source);
     }
 
-    static IReadOnlyList<RangeNode> BuildBlock(
+    static List<RangeNode> BuildBlock(
         Queue<ParagraphClassification> queue,
         BlockTagKind? closer,
         string templateName,

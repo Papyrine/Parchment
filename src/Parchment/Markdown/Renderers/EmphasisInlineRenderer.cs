@@ -6,9 +6,10 @@ class EmphasisInlineRenderer :
         var before = renderer.Top.CurrentRuns.Count;
         renderer.WriteChildren(inline);
 
-        for (var i = before; i < renderer.Top.CurrentRuns.Count; i++)
+        var top = renderer.Top;
+        for (var i = before; i < top.CurrentRuns.Count; i++)
         {
-            if (renderer.Top.CurrentRuns[i] is Run run)
+            if (top.CurrentRuns[i] is Run run)
             {
                 ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
             }

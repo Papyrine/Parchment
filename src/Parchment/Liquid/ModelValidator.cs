@@ -50,13 +50,15 @@ static class ModelValidator
 
         foreach (var i in enumerableType.GetInterfaces())
         {
-            if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            if (i.IsGenericType &&
+                i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
                 return i.GetGenericArguments()[0];
             }
         }
 
-        if (enumerableType.IsGenericType && enumerableType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        if (enumerableType.IsGenericType &&
+            enumerableType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
             return enumerableType.GetGenericArguments()[0];
         }

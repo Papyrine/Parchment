@@ -318,7 +318,7 @@ class ScopeTreeRunner(
             site.Source,
             inner: exception);
 
-    TokenValue? TryResolveExcelsiorTable(DocxTokenSite site)
+    OpenXmlToken? TryResolveExcelsiorTable(DocxTokenSite site)
     {
         if (excelsiorTables.IsEmpty ||
             site.References.Count == 0)
@@ -343,7 +343,7 @@ class ScopeTreeRunner(
             return OpenXmlToken.Empty;
         }
 
-        return new OpenXmlToken(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart)]);
+        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart)]);
     }
 
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
@@ -355,7 +355,7 @@ class ScopeTreeRunner(
         }
 
         var reference = site.References[0];
-        if (!stringLists.TryGet(reference.Dotted, out var entry))
+        if (!stringLists.TryGet(reference.Dotted, out var getter))
         {
             return null;
         }
@@ -384,7 +384,7 @@ class ScopeTreeRunner(
             return null;
         }
 
-        var data = entry.Getter(rootModel);
+        var data = getter(rootModel);
         if (data is not IEnumerable<string> items)
         {
             return OpenXmlToken.Empty;
@@ -403,7 +403,7 @@ class ScopeTreeRunner(
         }
 
         var reference = site.References[0];
-        if (!formats.TryGet(reference.Dotted, out var entry))
+        if (!formats.TryGet(reference.Dotted, out var kind))
         {
             return null;
         }
@@ -426,7 +426,7 @@ class ScopeTreeRunner(
         }
 
         var text = walker as string ?? string.Empty;
-        return entry.Kind switch
+        return kind switch
         {
             FormatKind.Html => new HtmlToken(text),
             FormatKind.Markdown => new MarkdownToken(text),
