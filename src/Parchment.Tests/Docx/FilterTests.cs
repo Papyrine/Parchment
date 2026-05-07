@@ -113,4 +113,109 @@ public class FilterTests
             .ToList();
         await Assert.That(listParagraphs).IsEmpty();
     }
+
+    [Test]
+    public async Task BulletListFilter_DefaultsToListParagraph_WhenHostHasNoPStyle()
+    {
+        // Baseline: a host paragraph without an explicit pStyle gets the historical
+        // "ListParagraph" default for produced bullet paragraphs.
+        using var template = DocxTemplateBuilder.Build("{{ Items | bullet_list }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>("bullet-default", template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            "bullet-default",
+            new Doc
+            {
+                Body = "",
+                Items = ["a", "b"]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var styles = BulletParagraphStyles(doc);
+        await Assert.That(styles).IsEquivalentTo(["ListParagraph", "ListParagraph"]);
+    }
+
+    [Test]
+    public async Task BulletListFilter_InheritsHostPStyle()
+    {
+        // When the host paragraph carries a pStyle (e.g. a table cell using "TBLText"), the
+        // produced bullet paragraphs should adopt that style so they pick up the surrounding
+        // font instead of falling back to "ListParagraph" / Normal. The bullet glyph + indent
+        // come from the abstractNum level, so dropping "ListParagraph" is safe.
+        using var template = BuildTemplateWithStyledHost(
+            "{{ Items | bullet_list }}",
+            hostStyle: "TBLText");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>("bullet-inherit", template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            "bullet-inherit",
+            new Doc
+            {
+                Body = "",
+                Items = ["a", "b"]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var styles = BulletParagraphStyles(doc);
+        await Assert.That(styles).IsEquivalentTo(["TBLText", "TBLText"]);
+    }
+
+    [Test]
+    public async Task NumberedListFilter_InheritsHostPStyle()
+    {
+        // Numbered lists go through the same code path as bullet lists, so the inheritance
+        // behavior is identical. Cover it explicitly to lock the contract for both.
+        using var template = BuildTemplateWithStyledHost(
+            "{{ Items | numbered_list }}",
+            hostStyle: "TBLText");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>("numbered-inherit", template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            "numbered-inherit",
+            new Doc
+            {
+                Body = "",
+                Items = ["a", "b"]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var styles = BulletParagraphStyles(doc);
+        await Assert.That(styles).IsEquivalentTo(["TBLText", "TBLText"]);
+    }
+
+    static List<string> BulletParagraphStyles(WordprocessingDocument doc) =>
+        doc.MainDocumentPart!.Document!.Body!.Descendants<Paragraph>()
+            .Where(_ => _.ParagraphProperties?.NumberingProperties != null)
+            .Select(_ => _.ParagraphProperties?.ParagraphStyleId?.Val?.Value ?? "")
+            .ToList();
+
+    static MemoryStream BuildTemplateWithStyledHost(string tokenText, string hostStyle)
+    {
+        var template = DocxTemplateBuilder.Build(tokenText);
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>()
+                .First(_ => _.InnerText.Contains("{{"));
+            paragraph.ParagraphProperties ??= new();
+            paragraph.ParagraphProperties.PrependChild(
+                new ParagraphStyleId
+                {
+                    Val = hostStyle
+                });
+        }
+        template.Position = 0;
+        return template;
+    }
 }

@@ -118,7 +118,7 @@ class ScopeTreeRunner(
             {
                 // Clear the token text, then hand the paragraph to the caller for in-place mutation.
                 Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value);
+                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
                 mutate.Apply(host, ctx);
                 cachedText = null;
                 continue;
@@ -130,7 +130,7 @@ class ScopeTreeRunner(
 
         if (soloStructuralTokens is { Count: > 0 })
         {
-            (structuralReplacements ??= []).Add(new(host, BuildStructuralReplacements(soloStructuralTokens)));
+            (structuralReplacements ??= []).Add(new(host, BuildStructuralReplacements(host, soloStructuralTokens)));
         }
     }
 
@@ -142,7 +142,7 @@ class ScopeTreeRunner(
     /// </summary>
     void ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
-        var produced = RenderTokenValue(value);
+        var produced = RenderTokenValue(value, host);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
@@ -178,18 +178,18 @@ class ScopeTreeRunner(
         splitQueued = true;
     }
 
-    List<OpenXmlElement> BuildStructuralReplacements(IReadOnlyList<(DocxTokenSite site, object value)> tokens)
+    List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
     {
         var result = new List<OpenXmlElement>();
         foreach (var (_, value) in tokens)
         {
-            result.AddRange(RenderTokenValue(value));
+            result.AddRange(RenderTokenValue(value, host));
         }
 
         return result;
     }
 
-    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value) =>
+    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host) =>
         value switch
         {
             MarkdownToken md => MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, headingOffset: 0),
@@ -199,7 +199,7 @@ class ScopeTreeRunner(
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession())),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             OpenXmlToken raw => raw
-                .Render(new OpenXmlContextImpl(mainPart, numberingState, styles.Value))
+                .Render(new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host))
                 .ToList(),
             _ => []
         };

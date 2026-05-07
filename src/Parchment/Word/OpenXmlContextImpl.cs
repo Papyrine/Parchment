@@ -1,11 +1,13 @@
 class OpenXmlContextImpl(
     MainDocumentPart mainPart,
     WordNumberingState numbering,
-    StyleSet styles) :
+    StyleSet styles,
+    Paragraph? hostParagraph = null) :
     IOpenXmlContext
 {
     public MainDocumentPart MainPart { get; } = mainPart;
     public int CurrentHeadingLevel { get; set; }
+    public Paragraph? HostParagraph { get; } = hostParagraph;
 
     public string AddImagePart(byte[] bytes, string contentType)
     {
