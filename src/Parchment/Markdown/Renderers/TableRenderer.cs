@@ -98,6 +98,15 @@ class TableRenderer :
 
     static TableCell BuildCell(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.Tables.TableCell cell, bool isHeader)
     {
+        // Fast path: data-table cells are overwhelmingly a single ParagraphBlock containing one
+        // LiteralInline (plain text). Skip the PushContainer / Render / PopContainer dance and
+        // synthesize the OpenXml subtree directly. Falls through to the general path for any
+        // structural variant — emphasis, links, multiple paragraphs, embedded HTML, etc.
+        if (TryBuildPlainCell(cell, isHeader) is { } fast)
+        {
+            return fast;
+        }
+
         var tableCell = new TableCell();
         renderer.PushContainer();
         foreach (var child in cell)
@@ -126,17 +135,7 @@ class TableRenderer :
         {
             if (block is Paragraph p && isHeader)
             {
-                p.ParagraphProperties ??= new();
-                p.ParagraphProperties.Append(
-                    new Justification
-                    {
-                        Val = JustificationValues.Center
-                    });
-                foreach (var run in p.Elements<Run>())
-                {
-                    run.RunProperties ??= new();
-                    run.RunProperties.Append(new Bold());
-                }
+                ApplyHeaderFormatting(p);
             }
 
             tableCell.Append(block);
@@ -144,5 +143,66 @@ class TableRenderer :
 
         renderer.ReleaseContainer(state);
         return tableCell;
+    }
+
+    static TableCell? TryBuildPlainCell(Markdig.Extensions.Tables.TableCell cell, bool isHeader)
+    {
+        if (cell.Count != 1 ||
+            cell[0] is not ParagraphBlock paragraphBlock)
+        {
+            return null;
+        }
+
+        var inline = paragraphBlock.Inline;
+        if (inline?.FirstChild is not LiteralInline literal ||
+            literal.NextSibling != null)
+        {
+            return null;
+        }
+
+        var paragraph = new Paragraph();
+        var text = literal.Content.ToString();
+        if (text.Length > 0)
+        {
+            var run = new Run(
+                new Text(XmlCharSanitizer.Strip(text))
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                });
+            if (isHeader)
+            {
+                run.RunProperties = new();
+                run.RunProperties.Append(new Bold());
+            }
+
+            paragraph.Append(run);
+        }
+
+        if (isHeader)
+        {
+            paragraph.ParagraphProperties = new();
+            paragraph.ParagraphProperties.Append(
+                new Justification
+                {
+                    Val = JustificationValues.Center
+                });
+        }
+
+        return new TableCell(paragraph);
+    }
+
+    static void ApplyHeaderFormatting(Paragraph p)
+    {
+        p.ParagraphProperties ??= new();
+        p.ParagraphProperties.Append(
+            new Justification
+            {
+                Val = JustificationValues.Center
+            });
+        foreach (var run in p.Elements<Run>())
+        {
+            run.RunProperties ??= new();
+            run.RunProperties.Append(new Bold());
+        }
     }
 }
