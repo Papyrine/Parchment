@@ -14,7 +14,7 @@ static class XmlCharSanitizer
     // 0xFFFE/0xFFFF. Anything outside this set is unconditionally valid for XML 1.0,
     // so a single vectorized IndexOfAny short-circuits the dominant case (substituted
     // values like numbers, names, dates, plain-text — none contain these chars).
-    static readonly SearchValues<char> NeedsInspection = SearchValues.Create(BuildNeedsInspection());
+    static SearchValues<char> needsInspection = SearchValues.Create(BuildNeedsInspection());
 
     static char[] BuildNeedsInspection()
     {
@@ -50,18 +50,27 @@ static class XmlCharSanitizer
 
         // Fast path: vectorized scan. If no char in the string falls in the inspection set,
         // the value is guaranteed XML-valid and is returned as-is — no allocation.
-        if (value.AsSpan().IndexOfAny(NeedsInspection) < 0)
+        var firstSuspect = value.AsSpan().IndexOfAny(needsInspection);
+        if (firstSuspect < 0)
         {
             return value;
         }
 
-        return StripSlow(value);
+        // Hand the slow path the offset of the first suspect char — every char before it is
+        // already known to be valid (not in the inspection set), so the per-char walk skips
+        // the all-valid prefix entirely.
+        return StripSlow(value, firstSuspect);
     }
 
-    static string StripSlow(string value)
+    static string StripSlow(string value, int startAt)
     {
+        // builder stays null when no actually-invalid char is encountered. Reachable not only
+        // for invalid input but also when the fast-path's IndexOfAny matched a surrogate that
+        // turns out to be part of a valid high+low pair — pair detection requires the per-char
+        // walk below, so we can't gate that case in the fast path. The trailing `?? value`
+        // short-circuits the all-valid case without allocating a StringBuilder.
         StringBuilder? builder = null;
-        var i = 0;
+        var i = startAt;
         while (i < value.Length)
         {
             var c = value[i];

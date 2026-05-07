@@ -99,9 +99,13 @@ public class XmlCharSanitizerTests
     public async Task ValidSurrogatePair_Preserved()
     {
         // U+1F600 (😀) encodes as high D83D + low DE00 — a valid pair.
+        // Surrogates are in the inspection set, so the fast-path's IndexOfAny matches and
+        // hands off to slow path. Slow path must walk the pair, find it valid, and return
+        // the original string instance (no allocation) — same-instance assertion guards
+        // against a regression where the builder gets eagerly allocated on slow-path entry.
         var input = "smile 😀 here";
         var result = XmlCharSanitizer.Strip(input);
-        await Assert.That(result).IsEqualTo(input);
+        await Assert.That(ReferenceEquals(input, result)).IsTrue();
     }
 
     [Test]
