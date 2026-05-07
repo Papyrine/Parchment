@@ -3,6 +3,7 @@ class OpenXmlMarkdownRenderer :
 {
     readonly Stack<ContainerState> stack = new();
     readonly Stack<ContainerState> pool = new();
+    readonly List<(string TagName, Action<RunProperties> Apply)> activeInlineHtml = new();
 
     public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
     {
@@ -92,8 +93,34 @@ class OpenXmlMarkdownRenderer :
         top.CurrentRuns.Clear();
     }
 
-    internal void AddRun(OpenXmlElement run) =>
+    internal void AddRun(OpenXmlElement run)
+    {
+        if (run is Run typed && activeInlineHtml.Count > 0)
+        {
+            typed.RunProperties ??= new();
+            foreach (var (_, apply) in activeInlineHtml)
+            {
+                apply(typed.RunProperties);
+            }
+        }
+
         stack.Peek().CurrentRuns.Add(run);
+    }
+
+    internal void PushInlineHtmlFormat(string tagName, Action<RunProperties> apply) =>
+        activeInlineHtml.Add((tagName, apply));
+
+    internal void PopInlineHtmlFormat(string tagName)
+    {
+        for (var i = activeInlineHtml.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(activeInlineHtml[i].TagName, tagName, StringComparison.OrdinalIgnoreCase))
+            {
+                activeInlineHtml.RemoveAt(i);
+                return;
+            }
+        }
+    }
 
     internal void AddBlock(OpenXmlElement block)
     {

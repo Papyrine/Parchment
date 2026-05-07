@@ -1,0 +1,6 @@
+﻿Title: Report
+Heading
+Some bold markdown with an inline HTML tag.
+This is an HTML block nested inside markdown.
+Back to markdown after the HTML block.
+End.

@@ -34,6 +34,20 @@ public class ScenarioTemplateAuthor
         return File.WriteAllBytesAsync(ScenarioPath("markdown-property"), bytes);
     }
 
+    [Test, Explicit]
+    public Task WriteMarkdownWithHtmlInput()
+    {
+        var bytes = DocxTemplateBuilder.Build(
+            """
+            Title: {{ Title }}
+
+            {{ Body }}
+
+            End.
+            """).ToArray();
+        return File.WriteAllBytesAsync(ScenarioPath("markdown-with-html"), bytes);
+    }
+
     static string ScenarioPath(string name) =>
         Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(SourcePath())!,
