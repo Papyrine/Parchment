@@ -1324,6 +1324,19 @@ Previously emitted when an `[Html]` / `[Markdown]` token shared its paragraph wi
 **Docx only.** Formatted rendering is selected by the property attribute rather than via Fluid, so filter chains are not applied. Use plain member access (`{{ Body }}` or `{{ Customer.Bio }}`). The `[Html]` / `[Markdown]` attributes are ignored in the markdown flow — markdown templates have no concept of structural property substitution.
 
 
+### `PARCH011` — enclosing type of `[ParchmentTemplate]` target must be partial
+
+The decorated class is nested inside another type that is not declared `partial`. The generator emits the registration helper as `partial class { ... }` and every enclosing type in the chain must be partial too, otherwise the C# compiler rejects the declaration as conflicting with the user's existing one (CS0260). Make every enclosing type partial:
+
+```csharp
+public partial class Outer  // <-- partial
+{
+    [ParchmentTemplate("template.docx", typeof(Letter))]
+    public partial class CustomerLetter;
+}
+```
+
+
 ## Benchmarks
 
 ``` ini

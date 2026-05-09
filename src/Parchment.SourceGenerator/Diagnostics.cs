@@ -77,4 +77,12 @@ static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor EnclosingTypeNotPartial = new(
+        id: "PARCH011",
+        title: "Enclosing type of [ParchmentTemplate] target must be partial",
+        messageFormat: "Template '{0}' is nested inside '{1}' which is not declared partial; the source generator emits the registration helper as a partial declaration and every enclosing type on the chain must be partial too",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
 }

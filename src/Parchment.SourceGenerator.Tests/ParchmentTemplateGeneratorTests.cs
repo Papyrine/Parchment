@@ -517,6 +517,133 @@ public class ParchmentTemplateGeneratorTests
     }
 
     [Test]
+    public Task NestedClass_Valid()
+    {
+        // The decorated class sits inside a partial enclosing class. Generated source must wrap
+        // the registration helper in `partial class Outer { partial class Letter { ... } }`.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public class Customer
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class LetterModel
+            {
+                public Customer Customer { get; set; } = new();
+            }
+
+            public partial class Outer
+            {
+                [ParchmentTemplate("template.docx", typeof(LetterModel))]
+                public partial class CustomerLetter;
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "Hello {{ Customer.Name }}!");
+        return Verify(result);
+    }
+
+    [Test]
+    public Task NestedClass_DoubleNested_Valid()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public class Customer
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class LetterModel
+            {
+                public Customer Customer { get; set; } = new();
+            }
+
+            public partial class Outer
+            {
+                public partial class Inner
+                {
+                    [ParchmentTemplate("template.docx", typeof(LetterModel))]
+                    public partial class CustomerLetter;
+                }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "Hello {{ Customer.Name }}!");
+        return Verify(result);
+    }
+
+    [Test]
+    public async Task NestedClass_EnclosingNotPartial_Diagnostic()
+    {
+        // Outer is not partial. Should emit PARCH011 and skip generation entirely.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public class Customer
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class LetterModel
+            {
+                public Customer Customer { get; set; } = new();
+            }
+
+            public class Outer
+            {
+                [ParchmentTemplate("template.docx", typeof(LetterModel))]
+                public partial class CustomerLetter;
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "Hello {{ Customer.Name }}!");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Count(_ => _.Id == "PARCH011")).IsEqualTo(1);
+        await Assert.That(diagnostics.Single(_ => _.Id == "PARCH011").GetMessage()).Contains("Outer");
+        // Registration must NOT be emitted — the user would otherwise see a misleading CS0260
+        // about "Missing partial modifier" with no link back to the SG's expectation.
+        await Assert.That(result.GeneratedTrees.Length).IsEqualTo(0);
+    }
+
+    [Test]
+    public Task NestedRecord_Valid()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public class Customer
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class LetterModel
+            {
+                public Customer Customer { get; set; } = new();
+            }
+
+            public partial record OuterRecord
+            {
+                [ParchmentTemplate("template.docx", typeof(LetterModel))]
+                public partial class CustomerLetter;
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "Hello {{ Customer.Name }}!");
+        return Verify(result);
+    }
+
+    [Test]
     public Task MixedInlineBlockTag()
     {
         var source =
