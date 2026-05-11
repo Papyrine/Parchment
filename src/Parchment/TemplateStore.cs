@@ -293,6 +293,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             throw new ParchmentRenderException(name, "Template is not registered");
         }
 
+        if (model == null)
+        {
+            throw new ParchmentRenderException(
+                name,
+                $"Model is null. Template is registered for {template.ModelType.Name}; pass a non-null instance.");
+        }
+
         if (!template.ModelType.IsInstanceOfType(model))
         {
             throw new ParchmentRenderException(

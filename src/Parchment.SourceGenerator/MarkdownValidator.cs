@@ -175,17 +175,20 @@ static class MarkdownValidator
             return null;
         }
 
+        // Use the shared extractor so indexer-with-string-literal (`Customer['Lines']`) resolves
+        // the same as dotted access (`Customer.Lines`). Without this, a loop source written with
+        // bracket notation would fail to resolve its element type and the body walk would bind
+        // the loop variable to the root model, producing false PARCH001s on every body access.
         var segments = new List<string>(member.Segments.Count);
         foreach (var segment in member.Segments)
         {
-            if (segment is IdentifierSegment identifier)
-            {
-                segments.Add(identifier.Identifier);
-            }
-            else
+            var name = SegmentNames.TryGetStaticName(segment);
+            if (name == null)
             {
                 return null;
             }
+
+            segments.Add(name);
         }
 
         return segments.Count == 0 ? null : segments;

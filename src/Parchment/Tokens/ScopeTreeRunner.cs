@@ -462,41 +462,56 @@ class ScopeTreeRunner(
 
         foreach (var item in items)
         {
-            context.SetValue(loop.LoopVariable, item);
-            cloneAnchors.Clear();
-
-            // Clone each body element directly into the scratch parent. Original elements stay
-            // attached to the live document (removed below after the loop completes) and we
-            // never mutate them, so cloning from them is equivalent to cloning from a detached
-            // template. Attaching to scratch is required because nested ProcessLoopAsync /
-            // ProcessIfAsync / ApplyStructural rely on Parent and sibling traversal — on
-            // detached clones those return null and inner scope tags silently no-op.
-            foreach (var element in bodyElements)
+            // Each iteration gets its own non-bubbling child scope so the loop variable binding
+            // is confined to the iteration. Without this, context.SetValue lands in the root
+            // scope and the binding leaks past `{% endfor %}` — shadowing model properties of
+            // the same name and (in nested-same-name loops) overwriting the outer's binding.
+            // Parchment block tags are limited to for/if/elsif/else/endif (no `{% assign %}`),
+            // so the non-bubbling EnterChildScope is preferred over EnterForLoopScope which
+            // exists to let assigns inside a loop persist after it.
+            context.EnterChildScope();
+            try
             {
-                var clone = element.CloneNode(true);
-                scratch.AppendChild(clone);
-                CollectAnchors(clone, cloneAnchors);
+                context.SetValue(loop.LoopVariable, item);
+                cloneAnchors.Clear();
+
+                // Clone each body element directly into the scratch parent. Original elements stay
+                // attached to the live document (removed below after the loop completes) and we
+                // never mutate them, so cloning from them is equivalent to cloning from a detached
+                // template. Attaching to scratch is required because nested ProcessLoopAsync /
+                // ProcessIfAsync / ApplyStructural rely on Parent and sibling traversal — on
+                // detached clones those return null and inner scope tags silently no-op.
+                foreach (var element in bodyElements)
+                {
+                    var clone = element.CloneNode(true);
+                    scratch.AppendChild(clone);
+                    CollectAnchors(clone, cloneAnchors);
+                }
+
+                // Reuse the original scope tree directly. cloneAnchors is keyed on the same anchor
+                // names the registration-time tree references, so no per-iteration tree rebuild
+                // (Remap) is needed. Multiple iterations leave duplicate-named bookmarks in the
+                // live docx — that's fine because StripAll runs before Save and removes them all.
+                await clonedRunner.RunAsync(loop.Body);
+                clonedRunner.ApplyStructural();
+
+                // Snapshot scratch's children before mutating, so remove+insert doesn't break
+                // the live ChildElements enumeration.
+                pendingMoves.Clear();
+                foreach (var element in scratch.ChildElements)
+                {
+                    pendingMoves.Add(element);
+                }
+
+                foreach (var produced in pendingMoves)
+                {
+                    produced.Remove();
+                    insertAnchor = parent.InsertAfter(produced, insertAnchor);
+                }
             }
-
-            // Reuse the original scope tree directly. cloneAnchors is keyed on the same anchor
-            // names the registration-time tree references, so no per-iteration tree rebuild
-            // (Remap) is needed. Multiple iterations leave duplicate-named bookmarks in the
-            // live docx — that's fine because StripAll runs before Save and removes them all.
-            await clonedRunner.RunAsync(loop.Body);
-            clonedRunner.ApplyStructural();
-
-            // Snapshot scratch's children before mutating, so remove+insert doesn't break
-            // the live ChildElements enumeration.
-            pendingMoves.Clear();
-            foreach (var element in scratch.ChildElements)
+            finally
             {
-                pendingMoves.Add(element);
-            }
-
-            foreach (var produced in pendingMoves)
-            {
-                produced.Remove();
-                insertAnchor = parent.InsertAfter(produced, insertAnchor);
+                context.ReleaseScope();
             }
         }
 

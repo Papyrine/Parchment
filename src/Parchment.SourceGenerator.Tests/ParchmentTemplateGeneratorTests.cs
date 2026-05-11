@@ -96,6 +96,50 @@ public class ParchmentTemplateGeneratorTests
     }
 
     [Test]
+    public async Task ForLoop_NestedShadowedVariable_OuterRestoredAfterInner()
+    {
+        // Outer loop binds `line` to OuterLine. Inner loop shadows with same name `line` bound to
+        // InnerLine. After the inner `{% endfor %}`, the outer's `{{ line.OuterDescription }}` must
+        // still resolve against OuterLine. Bug was: ForClose did `scope.Remove("line")` which
+        // wiped the outer's binding instead of restoring it.
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class OuterLine
+            {
+                public string OuterDescription { get; set; } = "";
+                public List<InnerLine> Inners { get; set; } = new();
+            }
+
+            public class InnerLine
+            {
+                public string InnerDescription { get; set; } = "";
+            }
+
+            [ParchmentModel("template.docx")]
+            public partial class Doc
+            {
+                public List<OuterLine> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for line in Lines %}",
+            "outer={{ line.OuterDescription }}",
+            "{% for line in line.Inners %}",
+            "inner={{ line.InnerDescription }}",
+            "{% endfor %}",
+            "after-inner={{ line.OuterDescription }}",
+            "{% endfor %}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
     public Task ForLoop_SourceNotEnumerable()
     {
         var result = GeneratorDriver.Run(

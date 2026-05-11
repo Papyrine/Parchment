@@ -170,6 +170,48 @@ public class MarkdownValidatorTests
     }
 
     [Test]
+    public async Task LoopSource_IndexerWithStringLiteral_ResolvesElementType()
+    {
+        // `Customer['Lines']` is Fluid-equivalent to `Customer.Lines`. The loop body's `line.Quantity`
+        // must validate against Line (the element type), not against the root Invoice — otherwise
+        // every body access produces a false PARCH001.
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+                public int Quantity { get; set; }
+            }
+
+            public class Owner
+            {
+                public List<Line> Lines { get; set; } = new();
+            }
+
+            [ParchmentModel("template.md")]
+            public partial class Invoice
+            {
+                public Owner Customer { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.RunMarkdown(
+            source,
+            """
+            {% for line in Customer['Lines'] %}
+              {{ line.Quantity }}
+              {{ line.Description }}
+            {% endfor %}
+            """);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
     public async Task BadLoopSourceCascadeIsBounded()
     {
         // The loop source `Customer` resolves but isn't enumerable → PARCH002. The body's

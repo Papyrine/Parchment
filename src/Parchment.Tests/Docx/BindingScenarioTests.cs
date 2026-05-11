@@ -119,4 +119,85 @@ public class BindingScenarioTests
             output);
         await Verify(output, "docx");
     }
+
+    // -- #4 null model ------------------------------------------------------
+
+    public class TitledModel
+    {
+        public required string Title { get; init; }
+    }
+
+    [Test]
+    public async Task NullModel_ThrowsClean_NotNullReferenceException()
+    {
+        // Render(null) must surface a clean ParchmentRenderException naming the template, not a
+        // raw NullReferenceException from string-interpolating model.GetType().Name into the
+        // type-mismatch message.
+        using var template = DocxTemplateBuilder.Build("{{ Title }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<TitledModel>("null-model", template);
+
+        using var output = new MemoryStream();
+        var exception = await Assert.That(
+                () => store.Render("null-model", null!, output))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("null");
+    }
+
+    // -- #5 IDictionary<K, V> member access through KeyValuePair -----------
+
+    public class DictionaryHost
+    {
+        public required IReadOnlyDictionary<string, ProductInfo> Products { get; init; }
+    }
+
+    public class ProductInfo
+    {
+        public required string Sku { get; init; }
+        public required string Description { get; init; }
+    }
+
+    [Test]
+    public async Task DictionaryProperty_IteratedAsKvp_ResolvesValueMembers()
+    {
+        // Iterating an IDictionary<string, ProductInfo> in liquid yields key/value pairs where
+        // `kv[0]` is the key and `kv[1]` is the value (Shopify-style; Fluid mirrors it). For
+        // `kv[1].Sku` to render, ProductInfo's members must be registered with Fluid's strategy.
+        // SharedFluid.Unwrap used to return the FIRST generic argument of any generic IEnumerable
+        // (so `Dictionary<string, ProductInfo>` resolved to `string`), dropping ProductInfo from
+        // the type-graph walk and silently rendering Sku empty.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for kv in Products %}
+
+            {{ kv[1].Sku }}={{ kv[1].Description }}
+
+            {% endfor %}
+            """);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<DictionaryHost>("dict-host", template);
+
+        using var output = new MemoryStream();
+        await store.Render(
+            "dict-host",
+            new DictionaryHost
+            {
+                Products = new Dictionary<string, ProductInfo>
+                {
+                    ["a"] = new() { Sku = "S1", Description = "Widget" },
+                    ["b"] = new() { Sku = "S2", Description = "Gadget" }
+                }
+            },
+            output);
+        output.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(output, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0)
+            .ToList();
+
+        await Assert.That(paragraphs).Contains("S1=Widget");
+        await Assert.That(paragraphs).Contains("S2=Gadget");
+    }
 }

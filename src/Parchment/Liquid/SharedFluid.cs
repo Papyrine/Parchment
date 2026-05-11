@@ -119,26 +119,27 @@ static class SharedFluid
             return type.GetElementType() ?? type;
         }
 
-        if (type.IsGenericType)
+        if (type.IsGenericType &&
+            type.GetGenericTypeDefinition() == typeof(Nullable<>))
         {
-            var definition = type.GetGenericTypeDefinition();
-            if (definition == typeof(Nullable<>))
-            {
-                return type.GetGenericArguments()[0];
-            }
-
-            if (typeof(IEnumerable).IsAssignableFrom(type))
-            {
-                return type.GetGenericArguments()[0];
-            }
+            return type.GetGenericArguments()[0];
         }
 
+        // Find the IEnumerable<T> interface and use its T. For Dictionary<K, V> this resolves to
+        // KeyValuePair<K, V> — taking GetGenericArguments()[0] on the type itself would have
+        // returned K instead, silently dropping V's members from the type-graph walk.
         foreach (var i in type.GetInterfaces())
         {
             if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
                 return i.GetGenericArguments()[0];
             }
+        }
+
+        if (type.IsGenericType &&
+            type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        {
+            return type.GetGenericArguments()[0];
         }
 
         return type;
@@ -162,6 +163,15 @@ static class SharedFluid
         if (type.IsEnum)
         {
             return false;
+        }
+
+        // KeyValuePair<K, V> is in the System namespace but it's the iteration element for every
+        // IDictionary<K, V> reached from the model. Registering it lets `{{ kv.Key }}` and
+        // `{{ kv.Value }}` resolve, and the property-type recursion then visits V (and K) so
+        // user-type values are reachable.
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            return true;
         }
 
         if (type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)

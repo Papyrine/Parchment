@@ -364,7 +364,10 @@ public sealed class ParchmentTemplateGenerator :
         Location location)
     {
         var scope = new Dictionary<string, string>(StringComparer.Ordinal);
-        var loopStack = new Stack<string>();
+        // Stack entries carry the prior binding (if any) so nested loops with the same variable
+        // name can restore the outer binding on ForClose instead of removing the entry outright.
+        // Mirrors the save/restore pattern in MarkdownValidator.WalkFor.
+        var loopStack = new Stack<(string Name, string? PriorBinding)>();
 
         foreach (var token in tokens)
         {
@@ -419,8 +422,9 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
+                    var hadPriorBinding = scope.TryGetValue(token.LoopVariable, out var priorBinding);
                     scope[token.LoopVariable] = elementFqn;
-                    loopStack.Push(token.LoopVariable);
+                    loopStack.Push((token.LoopVariable, hadPriorBinding ? priorBinding : null));
                     break;
 
                 case TokenKind.ForClose:
@@ -436,7 +440,15 @@ public sealed class ParchmentTemplateGenerator :
 
                     if (loopStack.Count > 0)
                     {
-                        scope.Remove(loopStack.Pop());
+                        var (name, prior) = loopStack.Pop();
+                        if (prior == null)
+                        {
+                            scope.Remove(name);
+                        }
+                        else
+                        {
+                            scope[name] = prior;
+                        }
                     }
 
                     break;

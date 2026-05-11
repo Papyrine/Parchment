@@ -182,6 +182,8 @@ sealed class FormatMap
             type == typeof(decimal) ||
             type == typeof(DateTime) ||
             type == typeof(DateTimeOffset) ||
+            type == typeof(Date) ||
+            type == typeof(Time) ||
             type == typeof(TimeSpan) ||
             type == typeof(Guid) ||
             type == typeof(Uri))
