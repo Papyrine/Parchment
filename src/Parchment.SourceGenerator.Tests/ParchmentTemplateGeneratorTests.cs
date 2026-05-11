@@ -578,6 +578,64 @@ public class ParchmentTemplateGeneratorTests
     }
 
     [Test]
+    public async Task MultiTarget_SameSimpleName()
+    {
+        // Two `[ParchmentModel]` targets share the simple name `Info` but live inside different
+        // enclosing classes. The SG must build distinct hint names from each target's enclosing
+        // chain — otherwise `context.AddSource` throws "The hintName 'Info_ParchmentModel.g.cs'
+        // must be unique within a generator" and the whole generator output is discarded.
+        // Encountered when migrating MinistersManager, whose seven binding records are all
+        // `XxxGenerator.Info`.
+        var source =
+            """
+            using Parchment;
+
+            public class Customer
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public static partial class FirstGenerator
+            {
+                [ParchmentModel("first.docx")]
+                public partial record Info
+                {
+                    public Customer Customer { get; set; } = new();
+                }
+            }
+
+            public static partial class SecondGenerator
+            {
+                [ParchmentModel("second.docx")]
+                public partial record Info
+                {
+                    public Customer Customer { get; set; } = new();
+                }
+            }
+            """;
+
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            ("first.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            ("second.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
+
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+
+        // No CS8785 "generator failed" diagnostic should land in the result's overall diagnostics
+        // collection (that's where AddSource hint-name collisions surface).
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics).IsEmpty();
+        // Both targets must produce a source file.
+        await Assert.That(result.GeneratedTrees.Length).IsEqualTo(2);
+        var hintNames = result.GeneratedTrees
+            .Select(_ => Path.GetFileName(_.FilePath))
+            .OrderBy(_ => _)
+            .ToList();
+        await Assert.That(hintNames[0]).IsEqualTo("FirstGenerator_Info_ParchmentModel.g.cs");
+        await Assert.That(hintNames[1]).IsEqualTo("SecondGenerator_Info_ParchmentModel.g.cs");
+    }
+
+    [Test]
     public async Task RecordTarget_Valid()
     {
         // The decorated type is a record. The generator must emit `partial record` to match

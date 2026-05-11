@@ -330,11 +330,24 @@ public sealed class ParchmentTemplateGenerator :
 
     static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source)
     {
-        var hintPrefix = target.DeclaringNamespace is null
-            ? target.DeclaringName
-            : $"{target.DeclaringNamespace}.{target.DeclaringName}";
+        // The hint name must be unique across all targets in the compilation. Simple name alone
+        // collides when two models share `DeclaringName` (e.g. `Outer1.Info` and `Outer2.Info`),
+        // so include the namespace AND every enclosing-type name as part of the prefix.
+        var builder = new StringBuilder();
+        if (target.DeclaringNamespace != null)
+        {
+            builder.Append(target.DeclaringNamespace).Append('_');
+        }
+
+        foreach (var enclosing in target.EnclosingTypes)
+        {
+            builder.Append(enclosing.Name).Append('_');
+        }
+
+        builder.Append(target.DeclaringName);
+        var hintPrefix = builder.ToString().Replace('.', '_');
         context.AddSource(
-            $"{hintPrefix.Replace('.', '_')}_ParchmentModel.g.cs",
+            $"{hintPrefix}_ParchmentModel.g.cs",
             SourceText.From(source, Encoding.UTF8));
     }
 
