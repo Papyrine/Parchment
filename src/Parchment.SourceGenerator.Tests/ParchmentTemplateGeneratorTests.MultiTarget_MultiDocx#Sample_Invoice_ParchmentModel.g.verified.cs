@@ -4,12 +4,12 @@
 namespace Sample;
 partial class Invoice
 {
-    public static string TemplatePath => "invoice.docx";
-    public static string TemplateName => "Invoice";
+  public static string TemplatePath => "invoice.docx";
+  public static string TemplateName => "Invoice";
 
-    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
-    {
-        var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-        store.RegisterDocxTemplate<global::Sample.Invoice>(TemplateName, path);
-    }
+  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  {
+    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+    store.RegisterDocxTemplate<global::Sample.Invoice>(TemplateName, path);
+  }
 }

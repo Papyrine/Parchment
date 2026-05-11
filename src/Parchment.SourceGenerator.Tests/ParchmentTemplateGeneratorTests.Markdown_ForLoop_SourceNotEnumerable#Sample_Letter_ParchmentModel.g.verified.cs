@@ -4,13 +4,13 @@
 namespace Sample;
 partial class Letter
 {
-    public static string TemplatePath => "template.md";
-    public static string TemplateName => "Letter";
+  public static string TemplatePath => "template.md";
+  public static string TemplateName => "Letter";
 
-    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
-    {
-        var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-        var markdown = global::System.IO.File.ReadAllText(path);
-        store.RegisterMarkdownTemplate<global::Sample.Letter>(TemplateName, markdown, styleSource);
-    }
+  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
+  {
+    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+    var markdown = global::System.IO.File.ReadAllText(path);
+    store.RegisterMarkdownTemplate<global::Sample.Letter>(TemplateName, markdown, styleSource);
+  }
 }

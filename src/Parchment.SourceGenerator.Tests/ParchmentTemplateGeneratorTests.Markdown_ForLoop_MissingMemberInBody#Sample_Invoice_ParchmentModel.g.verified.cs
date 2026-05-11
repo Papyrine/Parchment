@@ -4,13 +4,13 @@
 namespace Sample;
 partial class Invoice
 {
-    public static string TemplatePath => "template.md";
-    public static string TemplateName => "Invoice";
+  public static string TemplatePath => "template.md";
+  public static string TemplateName => "Invoice";
 
-    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
-    {
-        var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-        var markdown = global::System.IO.File.ReadAllText(path);
-        store.RegisterMarkdownTemplate<global::Sample.Invoice>(TemplateName, markdown, styleSource);
-    }
+  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
+  {
+    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+    var markdown = global::System.IO.File.ReadAllText(path);
+    store.RegisterMarkdownTemplate<global::Sample.Invoice>(TemplateName, markdown, styleSource);
+  }
 }

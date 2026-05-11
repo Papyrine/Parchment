@@ -4,15 +4,15 @@
 namespace Sample;
 partial record OuterRecord
 {
-    partial class LetterModel
-    {
-        public static string TemplatePath => "template.docx";
-        public static string TemplateName => "LetterModel";
+  partial class LetterModel
+  {
+    public static string TemplatePath => "template.docx";
+    public static string TemplateName => "LetterModel";
 
-        public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
-        {
-            var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-            store.RegisterDocxTemplate<global::Sample.OuterRecord.LetterModel>(TemplateName, path);
-        }
+    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+    {
+      var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+      store.RegisterDocxTemplate<global::Sample.OuterRecord.LetterModel>(TemplateName, path);
     }
+  }
 }

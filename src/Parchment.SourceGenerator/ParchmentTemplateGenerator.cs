@@ -516,20 +516,26 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         var member = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
-        if (member is null or { IsHtml: false, IsMarkdown: false })
+        if (member is null or
+            {
+                IsHtml: false,
+                IsMarkdown: false
+            })
         {
             return;
         }
 
-        if (!token.IsPlainIdentifier)
+        if (token.IsPlainIdentifier)
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.FormatTokenNotPlainIdentifier,
-                    location,
-                    target.TemplatePath,
-                    token.Source));
+            return;
         }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FormatTokenNotPlainIdentifier,
+                location,
+                target.TemplatePath,
+                token.Source));
     }
 
     static void ValidateReferences(
@@ -569,8 +575,8 @@ public sealed class ParchmentTemplateGenerator :
 
               public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
               {
-                  var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-                  store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, path);
+                var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+                store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, path);
               }
               """;
 
@@ -587,9 +593,9 @@ public sealed class ParchmentTemplateGenerator :
 
               public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
               {
-                  var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-                  var markdown = global::System.IO.File.ReadAllText(path);
-                  store.RegisterMarkdownTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, markdown, styleSource);
+                var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+                var markdown = global::System.IO.File.ReadAllText(path);
+                store.RegisterMarkdownTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, markdown, styleSource);
               }
               """;
 
@@ -616,13 +622,13 @@ public sealed class ParchmentTemplateGenerator :
         var depth = 0;
         foreach (var enclosing in target.EnclosingTypes)
         {
-            builder.Append(Indent(depth)).AppendLine($"partial {enclosing.Kind} {enclosing.Name}");
-            builder.Append(Indent(depth)).AppendLine("{");
+            builder.Indent(depth).AppendLine($"partial {enclosing.Kind} {enclosing.Name}");
+            builder.Indent(depth).AppendLine("{");
             depth++;
         }
 
-        builder.Append(Indent(depth)).AppendLine($"partial class {target.DeclaringName}");
-        builder.Append(Indent(depth)).AppendLine("{");
+        builder.Indent(depth).AppendLine($"partial class {target.DeclaringName}");
+        builder.Indent(depth).AppendLine("{");
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.TrimEnd('\r');
@@ -632,21 +638,19 @@ public sealed class ParchmentTemplateGenerator :
             }
             else
             {
-                builder.Append(Indent(depth + 1)).AppendLine(trimmed);
+                builder.Indent(depth + 1).AppendLine(trimmed);
             }
         }
 
-        builder.Append(Indent(depth)).AppendLine("}");
+        builder.Indent(depth).AppendLine("}");
 
         for (var i = depth - 1; i >= 0; i--)
         {
-            builder.Append(Indent(i)).AppendLine("}");
+            builder.Indent(i).AppendLine("}");
         }
 
         return builder.ToString();
     }
-
-    static string Indent(int depth) => new(' ', depth * 4);
 
     public static class Stages
     {

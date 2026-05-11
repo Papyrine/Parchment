@@ -4,12 +4,12 @@
 namespace Sample;
 partial class Letter
 {
-    public static string TemplatePath => "template.docx";
-    public static string TemplateName => "Letter";
+  public static string TemplatePath => "template.docx";
+  public static string TemplateName => "Letter";
 
-    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
-    {
-        var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-        store.RegisterDocxTemplate<global::Sample.Letter>(TemplateName, path);
-    }
+  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  {
+    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+    store.RegisterDocxTemplate<global::Sample.Letter>(TemplateName, path);
+  }
 }
