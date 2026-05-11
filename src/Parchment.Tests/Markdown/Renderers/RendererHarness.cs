@@ -1,5 +1,3 @@
-using Markdig.Syntax;
-
 static class RendererHarness
 {
     public static OpenXmlMarkdownRenderer BuildRenderer(int headingOffset = 0)
@@ -16,10 +14,12 @@ static class RendererHarness
     public static MarkdownDocument Parse(string markdown) =>
         Markdig.Markdown.Parse(markdown, MarkdigPipeline.Pipeline);
 
-    public static T FirstBlock<T>(string markdown) where T : Block =>
+    public static T FirstBlock<T>(string markdown)
+        where T : Block =>
         Parse(markdown).Descendants<T>().First();
 
-    public static T FirstInline<T>(string markdown) where T : Markdig.Syntax.Inlines.Inline
+    public static T FirstInline<T>(string markdown)
+        where T : Inline
     {
         var paragraph = FirstBlock<ParagraphBlock>(markdown);
         var child = paragraph.Inline!.FirstChild;

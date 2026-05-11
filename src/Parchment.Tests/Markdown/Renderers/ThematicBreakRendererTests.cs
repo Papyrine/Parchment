@@ -1,5 +1,3 @@
-using Markdig.Syntax;
-
 public class ThematicBreakRendererTests
 {
     [Test]

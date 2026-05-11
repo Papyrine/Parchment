@@ -1,5 +1,3 @@
-using Markdig.Syntax.Inlines;
-
 public class LinkInlineRendererTests
 {
     [Test]

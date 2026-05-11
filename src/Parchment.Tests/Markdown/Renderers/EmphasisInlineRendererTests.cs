@@ -1,6 +1,3 @@
-using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
-
 public class EmphasisInlineRendererTests
 {
     [Test]

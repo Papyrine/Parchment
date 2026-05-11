@@ -1,5 +1,3 @@
-using Markdig.Extensions.SmartyPants;
-
 public class SmartyPantInlineRendererTests
 {
     [Test]

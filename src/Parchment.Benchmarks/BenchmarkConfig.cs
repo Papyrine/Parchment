@@ -1,8 +1,3 @@
-using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Diagnosers;
-using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Toolchains.InProcess.Emit;
-
 class BenchmarkConfig : ManualConfig
 {
     public BenchmarkConfig() =>
