@@ -51,15 +51,41 @@ public class RegistrationBenchmarks
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new(new Body(
-                new Paragraph(new Run(new Text("Invoice {{ Number }}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("Customer: {{ Customer.Name }}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("Total: {{ Total }} {{ Currency }}") { Space = SpaceProcessingModeValues.Preserve }))));
+            mainPart.Document = new(
+                new Body(
+                    new Paragraph(
+                        new Run(
+                            new Text("Invoice {{ Number }}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            })),
+                    new Paragraph(
+                        new Run(
+                            new Text("Customer: {{ Customer.Name }}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            })),
+                    new Paragraph(
+                        new Run(
+                            new Text("Total: {{ Total }} {{ Currency }}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            }))));
 
             var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
             var styles = new Styles();
-            styles.Append(new Style { Type = StyleValues.Paragraph, StyleId = "Normal", Default = true }
-                .AppendChild(new StyleName { Val = "Normal" }).Parent!);
+            styles.Append(
+                new Style
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "Normal",
+                        Default = true
+                    }
+                    .AppendChild(
+                        new StyleName
+                        {
+                            Val = "Normal"
+                        }).Parent!);
             stylesPart.Styles = styles;
         }
 
