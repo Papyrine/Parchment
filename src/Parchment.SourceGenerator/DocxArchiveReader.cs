@@ -5,6 +5,7 @@ static class DocxArchiveReader
     public static List<string> ReadParagraphTexts(string filePath)
     {
         var result = new List<string>();
+        var builder = new StringBuilder();
         using var archive = ZipFile.OpenRead(filePath);
         foreach (var entry in archive.Entries)
         {
@@ -18,7 +19,7 @@ static class DocxArchiveReader
 
             foreach (var paragraph in doc.Descendants(w + "p"))
             {
-                var builder = new StringBuilder();
+                builder.Clear();
                 foreach (var t in paragraph.Descendants(w + "t"))
                 {
                     builder.Append(t.Value);
