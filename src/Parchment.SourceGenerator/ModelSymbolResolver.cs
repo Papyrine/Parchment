@@ -41,7 +41,8 @@ static class ModelSymbolResolver
 
         foreach (var i in type.AllInterfaces)
         {
-            if (i.IsGenericType && i.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>")
+            if (i.IsGenericType &&
+                i.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>")
             {
                 return i.TypeArguments[0];
             }

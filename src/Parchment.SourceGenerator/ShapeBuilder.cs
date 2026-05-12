@@ -64,7 +64,8 @@ static class ShapeBuilder
 
                     var isExcelsior = HasExcelsiorTableAttribute(member, excelsiorTableType);
                     var (isHtml, isMarkdown) = DetectFormat(member);
-                    var isStringList = !isExcelsior && IsEnumerableOfString(memberType);
+                    var isStringList = !isExcelsior &&
+                                       IsEnumerableOfString(memberType);
                     members.Add(new(memberName, Fqn(memberType), isExcelsior, isHtml, isMarkdown, isStringList, isStatic));
                     Enqueue(memberType, visited, queue);
                 }

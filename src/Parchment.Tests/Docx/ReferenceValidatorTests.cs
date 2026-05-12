@@ -212,7 +212,10 @@ public class ReferenceValidatorTests
         store.RegisterDocxTemplate<ShadowingReport>("shadow", template);
 
         using var output = new MemoryStream();
-        await store.Render("shadow", new ShadowingReport { Title = "derived" }, output);
+        await store.Render(
+            "shadow",
+            new ShadowingReport { Title = "derived" },
+            output);
         await Verify(output, "docx");
     }
 

@@ -29,7 +29,8 @@ static class BlockTagParser
         }
 
         var tagLength = 0;
-        while (tagLength < inner.Length && IsWord(inner[tagLength]))
+        while (tagLength < inner.Length &&
+               IsWord(inner[tagLength]))
         {
             tagLength++;
         }

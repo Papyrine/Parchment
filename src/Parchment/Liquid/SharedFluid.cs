@@ -1,5 +1,3 @@
-namespace Parchment;
-
 /// <summary>
 /// Static singletons for Fluid. Fluid's parser, options, and filters are thread-safe and expensive
 /// to construct; one instance per process is the documented recommendation.
@@ -14,9 +12,13 @@ static class SharedFluid
 
     static readonly MethodInfo registerGenericMethod = typeof(MemberAccessStrategyExtensions)
         .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .First(_ => _ is { Name: "Register", IsGenericMethodDefinition: true }
-                    && _.GetGenericArguments().Length == 1
-                    && _.GetParameters().Length == 1);
+        .First(_ => _ is
+                    {
+                        Name: "Register",
+                        IsGenericMethodDefinition: true
+                    } &&
+                    _.GetGenericArguments().Length == 1 &&
+                    _.GetParameters().Length == 1);
 
     static TemplateOptions BuildOptions()
     {
@@ -26,6 +28,14 @@ static class SharedFluid
             MaxRecursion = 100
         };
         Filters.Register(options.Filters);
+        // Route enum substitutions through Excelsior so inline `{{ Model.Status }}` tokens
+        // render with the same humanization (Display attribute / source-gen switch /
+        // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
+        // StringValue short-circuits Fluid's default type dispatch (which would have called
+        // Enum.ToString() and emitted the raw symbol name).
+        options.ValueConverters.Add(static value => value is Enum e
+            ? new Fluid.Values.StringValue(EnumRender.Render(e))
+            : null);
         return options;
     }
 
@@ -33,7 +43,7 @@ static class SharedFluid
         RegisterTypeGraph(modelType);
 
     /// <summary>
-    /// Source-generator entry point (invoked via <see cref="Generated.GeneratedRegistration"/>).
+    /// Source-generator entry point (invoked via `Generated.GeneratedRegistration`).
     /// Registers pre-built accessors for a single type and marks it as visited so the reflection
     /// walk in <see cref="RegisterTypeGraph"/> short-circuits when the same type is later
     /// encountered through <see cref="RegisterModel"/>.
@@ -130,7 +140,8 @@ static class SharedFluid
         // returned K instead, silently dropping V's members from the type-graph walk.
         foreach (var i in type.GetInterfaces())
         {
-            if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            if (i.IsGenericType &&
+                i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
                 return i.GetGenericArguments()[0];
             }
@@ -169,7 +180,8 @@ static class SharedFluid
         // IDictionary<K, V> reached from the model. Registering it lets `{{ kv.Key }}` and
         // `{{ kv.Value }}` resolve, and the property-type recursion then visits V (and K) so
         // user-type values are reachable.
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        if (type.IsGenericType &&
+            type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
         {
             return true;
         }
@@ -179,6 +191,12 @@ static class SharedFluid
             return false;
         }
 
-        return type.IsClass || type is { IsValueType: true, IsPrimitive: false, IsEnum: false };
+        return type.IsClass ||
+               type is
+               {
+                   IsValueType: true,
+                   IsPrimitive: false,
+                   IsEnum: false
+               };
     }
 }

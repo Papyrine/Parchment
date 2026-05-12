@@ -38,7 +38,8 @@ readonly struct EquatableArray<T>(ImmutableArray<T> array) :
     }
 
     public override bool Equals(object? obj) =>
-        obj is EquatableArray<T> other && Equals(other);
+        obj is EquatableArray<T> other &&
+        Equals(other);
 
     public override int GetHashCode()
     {

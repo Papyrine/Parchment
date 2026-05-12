@@ -170,7 +170,13 @@ public class MarkdownFlowTests
         store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("image", new ImageModel {Caption = "With image"}, stream);
+        await store.Render(
+            "image",
+            new ImageModel
+            {
+                Caption = "With image"
+            },
+            stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -198,7 +204,13 @@ public class MarkdownFlowTests
             store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
 
             using var stream = new MemoryStream();
-            await store.Render("image", new ImageModel {Caption = "With image"}, stream);
+            await store.Render(
+                "image",
+                new ImageModel
+                {
+                    Caption = "With image"
+                },
+                stream);
             stream.Position = 0;
 
             using var doc = WordprocessingDocument.Open(stream, false);
@@ -229,7 +241,13 @@ public class MarkdownFlowTests
             store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
 
             using var stream = new MemoryStream();
-            await store.Render("image", new ImageModel {Caption = "With image"}, stream);
+            await store.Render(
+                "image",
+                new ImageModel
+                {
+                    Caption = "With image"
+                },
+                stream);
             stream.Position = 0;
 
             using var doc = WordprocessingDocument.Open(stream, false);

@@ -91,7 +91,13 @@ public class BindingScenarioTests
         store.RegisterDocxTemplate<StaticHostModel>("statics", template);
 
         using var output = new MemoryStream();
-        await store.Render("statics", new StaticHostModel { Name = "Q1" }, output);
+        await store.Render(
+            "statics",
+            new StaticHostModel
+            {
+                Name = "Q1"
+            },
+            output);
         await Verify(output, "docx");
     }
 
