@@ -50,23 +50,18 @@ sealed class StringListMap
         Dictionary<string, Func<object, object?>> entries,
         HashSet<Type> visited)
     {
-        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var (name, memberType, memberGetter, hasExcelsior) in ExcelsiorTableMap.EnumerateMembers(type))
         {
-            if (!property.CanRead)
-            {
-                continue;
-            }
-
-            // [ExcelsiorTable] keeps full ownership of the property — don't shadow it with the
+            // [ExcelsiorTable] keeps full ownership of the member — don't shadow it with the
             // string-list path even if the element type happens to be string.
-            if (property.GetCustomAttribute<ExcelsiorTableAttribute>() != null)
+            if (hasExcelsior)
             {
                 continue;
             }
 
-            var nextSegments = new List<string>(pathSegments) { property.Name };
-            var nextGetter = ChainGetter(getter, property);
-            var underlying = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var nextSegments = new List<string>(pathSegments) { name };
+            var nextGetter = ChainGetter(getter, memberGetter);
+            var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
 
             if (IsEnumerableOfString(underlying))
             {
@@ -76,7 +71,7 @@ sealed class StringListMap
                 continue;
             }
 
-            // Descend into POCO properties. Skip leaves and other collection types (loops handle
+            // Descend into POCO members. Skip leaves and other collection types (loops handle
             // those). Track visited types per branch so self-referential models don't recurse
             // forever; the same type can still appear at multiple unrelated paths.
             if (!ShouldDescend(underlying))
@@ -97,7 +92,7 @@ sealed class StringListMap
     static bool IsEnumerableOfString(Type type) =>
         typeof(IEnumerable<string>).IsAssignableFrom(type);
 
-    static Func<object, object?> ChainGetter(Func<object, object?> upstream, PropertyInfo property) =>
+    static Func<object, object?> ChainGetter(Func<object, object?> upstream, Func<object, object?> memberGetter) =>
         root =>
         {
             var parent = upstream(root);
@@ -106,7 +101,7 @@ sealed class StringListMap
                 return null;
             }
 
-            return property.GetValue(parent);
+            return memberGetter(parent);
         };
 
     static bool ShouldDescend(Type type)

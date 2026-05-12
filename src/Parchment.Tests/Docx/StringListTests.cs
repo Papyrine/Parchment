@@ -69,6 +69,32 @@ public class StringListTests
         public required IReadOnlyList<string> Tags { get; init; }
     }
 
+    public class PersonWithTagsField
+    {
+        public required string Name { get; init; }
+        public IReadOnlyList<string> Tags = [];
+    }
+
+    [Test]
+    public async Task FieldStringListRendersAsBulletList()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ Tags }}");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<PersonWithTagsField>("person-field-tags", template);
+
+        var model = new PersonWithTagsField
+        {
+            Name = "Ada",
+            Tags = ["a", "b"]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("person-field-tags", model, stream);
+        stream.Position = 0;
+        await Verify(stream, "docx");
+    }
+
     [Test, Explicit]
     public async Task GenerateScenarioInputDocx()
     {

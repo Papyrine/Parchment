@@ -49,24 +49,19 @@ sealed class ExcelsiorTableMap
         HashSet<Type> visited,
         string templateName)
     {
-        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var (name, memberType, memberGetter, hasExcelsior) in EnumerateMembers(type))
         {
-            if (!property.CanRead)
-            {
-                continue;
-            }
+            var nextSegments = new List<string>(pathSegments) { name };
+            var nextGetter = ChainGetter(getter, memberGetter);
 
-            var nextSegments = new List<string>(pathSegments) { property.Name };
-            var nextGetter = ChainGetter(getter, property);
-
-            if (property.GetCustomAttribute<ExcelsiorTableAttribute>() != null)
+            if (hasExcelsior)
             {
-                var elementType = ModelValidator.TryResolveElementType(property.PropertyType);
+                var elementType = ModelValidator.TryResolveElementType(memberType);
                 if (elementType == null || elementType == typeof(char))
                 {
                     throw new ParchmentRegistrationException(
                         templateName,
-                        $"[ExcelsiorTable] property '{type.Name}.{property.Name}' must be an IEnumerable<T> (excluding string).");
+                        $"[ExcelsiorTable] member '{type.Name}.{name}' must be an IEnumerable<T> (excluding string).");
                 }
 
                 var dottedPath = string.Join('.', nextSegments);
@@ -75,11 +70,11 @@ sealed class ExcelsiorTableMap
                 continue;
             }
 
-            // Descend into POCO properties looking for nested [ExcelsiorTable] members. Skip leaves
+            // Descend into POCO members looking for nested [ExcelsiorTable] members. Skip leaves
             // (primitives, strings, dates, etc.) and collection types (loops handle those). Track
             // visited types per branch so self-referential models don't recurse forever; the same
             // type can still appear at multiple unrelated paths.
-            var underlying = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
             if (!ShouldDescend(underlying))
             {
                 continue;
@@ -95,11 +90,37 @@ sealed class ExcelsiorTableMap
         }
     }
 
-    static Func<object, object?> ChainGetter(Func<object, object?> upstream, PropertyInfo property) =>
+    internal static IEnumerable<(string Name, Type Type, Func<object, object?> Getter, bool HasExcelsiorTable)> EnumerateMembers(Type type)
+    {
+        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!property.CanRead)
+            {
+                continue;
+            }
+
+            yield return (
+                property.Name,
+                property.PropertyType,
+                property.GetValue,
+                property.GetCustomAttribute<ExcelsiorTableAttribute>() != null);
+        }
+
+        foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        {
+            yield return (
+                field.Name,
+                field.FieldType,
+                field.GetValue,
+                field.GetCustomAttribute<ExcelsiorTableAttribute>() != null);
+        }
+    }
+
+    static Func<object, object?> ChainGetter(Func<object, object?> upstream, Func<object, object?> memberGetter) =>
         root =>
         {
             var parent = upstream(root);
-            return parent == null ? null : property.GetValue(parent);
+            return parent == null ? null : memberGetter(parent);
         };
 
     static bool ShouldDescend(Type type)

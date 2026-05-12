@@ -775,7 +775,7 @@ var model = new Person
 using var stream = new MemoryStream();
 await store.Render("string-list-scenario", model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L97-L113' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L123-L139' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:

@@ -56,6 +56,55 @@ public class ExcelsiorTableTests
         public required string City { get; init; }
     }
 
+    public class QuoteWithFieldLines
+    {
+        public required string Reference { get; init; }
+
+        [ExcelsiorTable]
+        public IReadOnlyList<QuoteLine> Lines = [];
+    }
+
+    [Test]
+    public async Task FieldMarkedExcelsiorTableRendersAsTable()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            Quote {{ Reference }}
+
+            {{ Lines }}
+
+            End.
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<QuoteWithFieldLines>("field-quote", template);
+
+        var model = new QuoteWithFieldLines
+        {
+            Reference = "Q-FIELD-0001",
+            Lines =
+            [
+                new()
+                {
+                    Description = "Strategy workshop",
+                    Quantity = 2,
+                    UnitPrice = 4500m
+                },
+                new()
+                {
+                    Description = "Implementation support",
+                    Quantity = 8,
+                    UnitPrice = 1750m
+                }
+            ]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("field-quote", model, stream);
+        stream.Position = 0;
+        await Verify(stream, "docx");
+    }
+
     [Test]
     public async Task NestedPathRendersAsExcelsiorTable()
     {
