@@ -1,0 +1,8 @@
+﻿{
+  Text:
+Quote Q-FIELD-0001
+End.
+Item	Qty	Unit Price
+Strategy workshop	2	$4,500
+Implementation support	8	$1,750
+}
