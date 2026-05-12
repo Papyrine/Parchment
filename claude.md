@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repo.
+Guidance for Claude Code. User-facing feature docs, PARCH diagnostic codes, the `[ParchmentModel]` placement rationale, model binding limitations, and the determinism guarantee live in `readme.md` — link there rather than restating.
 
 ## Build and test
 
@@ -28,7 +28,7 @@ CI: `src/appveyor.yml`. Build first installs every TTF/OTF in `src/Fonts/` into 
 
 ## Architecture
 
-Parchment combines a .NET data model with one of two template formats and produces a `.docx`. The two flows share token scanning, the Fluid singletons, the markdown renderer, and the snapshot pipeline, but execute very differently.
+Parchment combines a .NET data model with one of two template formats and produces a `.docx`. User-facing overview of the two modes is in `readme.md` → "Two modes". The two flows share token scanning, the Fluid singletons, the markdown renderer, and the snapshot pipeline, but execute very differently.
 
 ### Flow A — Docx template (`RegisterDocxTemplate<T>` / `Render`)
 
@@ -36,7 +36,7 @@ Template is a real `.docx` containing liquid tokens scattered across paragraphs.
 
 1. **Token scanner** (`Tokens/TokenScanner.cs`, `Word/ParagraphText.cs`) — walks paragraphs in `MainDocumentPart`, every `HeaderPart`, `FooterPart`, `FootnotesPart`, `EndnotesPart`. For each paragraph builds flat `InnerText` + a `RunMap` (offset → `<w:t>` element), regex-scans for `{{ ... }}` and `{% ... %}`, classifies as `Static` / `Substitution` / `Block`.
 2. **Anchor bookmarks** (`Word/Anchors.cs`) — every token-bearing paragraph gets an invisible `<w:bookmarkStart w:name="parchment-anchor-{guid}"/>` at scan time. These survive byte-stream cloning so render-time can look up host paragraphs by name. Stripped before save.
-3. **Scope tree** (`Tokens/RangeNode.cs`, `ScopeTreeBuilder.cs`) — recursive walk groups block-tag paragraphs with their bodies into `LoopNode` / `IfNode` / `IfBranch`, with non-block paragraphs as `SubstitutionNode` / `StaticNode` leaves. Block tags MUST sit alone in their paragraph; mixed inline text + block tag is rejected at registration.
+3. **Scope tree** (`Tokens/RangeNode.cs`, `ScopeTreeBuilder.cs`) — recursive walk groups block-tag paragraphs with their bodies into `LoopNode` / `IfNode` / `IfBranch`, with non-block paragraphs as `SubstitutionNode` / `StaticNode` leaves. Block tags MUST sit alone in their paragraph; mixed inline text + block tag is rejected at registration (PARCH005 in SG docx flow).
 4. **Reference validator** (`TemplateStore.cs::ReferenceValidator`) — walks scope tree, runs `ModelValidator` against `TModel` via reflection. Loop variables introduce scoped bindings (`item: ElementType`) into a `Dictionary<string, Type>` that nested loops/conditionals inherit. Throws `ParchmentRegistrationException` on first missing member.
 5. **Render** (`Tokens/ScopeTreeRunner.cs`, `RegisteredDocxTemplate.cs`) — clones canonical bytes, builds anchor → paragraph map, walks the cached scope tree:
    - **Substitutions**: get parsed `FluidTemplate`, pull `OutputStatement.Expression`, call `Expression.EvaluateAsync(context)`. If result's `ToObjectValue()` is a `TokenValue`, queue structural replacement; else apply in-paragraph text substitution. In-paragraph substitutions applied **in reverse offset order** so earlier offsets stay valid.
@@ -86,28 +86,30 @@ Filters (`Liquid/Filters.cs`): `markdown`, `escape_xml`, `bullet_list`, `numbere
 
 ### Source generator (`src/Parchment.SourceGenerator/`)
 
-`netstandard2.0;net10.0`, packaged inside `Parchment.nupkg` under `analyzers/dotnet/roslyn5.0/cs` and `analyzers/dotnet/roslyn5.3/cs`. `IIncrementalGenerator` + `ForAttributeWithMetadataName("Parchment.ParchmentModelAttribute")`. Same attribute supports **both** docx and markdown — SG branches on extension (`.docx` → docx flow, `.md` → markdown flow). The attribute target IS the binding model (no separate marker class — see "Design decisions" below). Pipeline collects `targets`, `docs`, `markdowns` in three parallel `AdditionalTextsProvider` stages (each cached separately for incrementality), `Combine`s them, dispatches per target.
+User-facing overview, attribute placement, and PARCH001–PARCH011 are in `readme.md` → "Source generator (recommended)". The notes below cover implementation details Claude needs for navigation.
+
+`netstandard2.0;net10.0`, packaged inside `Parchment.nupkg` under `analyzers/dotnet/roslyn5.0/cs` and `analyzers/dotnet/roslyn5.3/cs`. `IIncrementalGenerator` + `ForAttributeWithMetadataName("Parchment.ParchmentModelAttribute")`. Same attribute supports **both** docx and markdown — SG branches on extension (`.docx` → docx flow, `.md` → markdown flow). Pipeline collects `targets`, `docs`, `markdowns` in three parallel `AdditionalTextsProvider` stages (each cached separately for incrementality), `Combine`s them, dispatches per target.
 
 **Docx flow** (mirrors runtime Flow A):
 
 1. Resolves `path` against `<AdditionalFiles>`.
 2. Reads docx via `AdditionalText.Path` + `ZipFile.OpenRead` (binary AdditionalFiles pattern — `GetText()` returns null for binary, and `File.ReadAllBytes` is banned by RS1035).
 3. Walks `word/document.xml`, `word/header*.xml`, `word/footer*.xml`, `word/footnotes.xml`, `word/endnotes.xml` via `XDocument`.
-4. Tokenizes paragraph `InnerText` into `{{ ... }}` / `{% ... %}` sites, hands each to `Fluid.FluidParser` and walks the AST with `IdentifierVisitor : Fluid.Ast.AstVisitor` to collect member-access paths. Fluid.Core and full transitive closure (Parlot, Microsoft.Extensions.FileProviders.Abstractions, TimeZoneConverter, plus System.Text.Json + Microsoft.Bcl.HashCode on netstandard2.0) merged into `Parchment.SourceGenerator.dll` at build via `PackageShader.MsBuild` (marked `Shade="true"`), so analyzer ships as a single self-contained DLL. SG keeps a parallel `TokenScanner.cs` rather than sharing source — runtime types are internal and depend on `DocumentFormat.OpenXml`, which doesn't work in a netstandard2.0 analyzer.
+4. Tokenizes paragraph `InnerText` into `{{ ... }}` / `{% ... %}` sites, hands each to `Fluid.FluidParser` and walks the AST with `IdentifierVisitor : Fluid.Ast.AstVisitor` to collect member-access paths. Fluid.Core + transitive closure (Parlot, Microsoft.Extensions.FileProviders.Abstractions, TimeZoneConverter, plus System.Text.Json + Microsoft.Bcl.HashCode on netstandard2.0) merged into `Parchment.SourceGenerator.dll` at build via `PackageShader.MsBuild` (`Shade="true"`), so analyzer ships as a single self-contained DLL. SG keeps a parallel `TokenScanner.cs` rather than sharing source — runtime types are internal and depend on `DocumentFormat.OpenXml`, which doesn't work in a netstandard2.0 analyzer.
 5. Validates against model's `ITypeSymbol` (Roslyn semantic model, not reflection).
 6. Emits diagnostics `PARCH001`–`PARCH008`, `PARCH010`, `PARCH011`. Generates `RegisterWith(TemplateStore store, string? basePath = null)` calling `store.RegisterDocxTemplate<TModel>(name, path)`. Nested-class targets are wrapped in matching `partial {kind} {name}` declarations for every link in the enclosing-type chain — `BuildPartialSource` walks `target.EnclosingTypes` (outermost first). PARCH011 fires when any enclosing type isn't `partial`, and the helper is *not* emitted in that case (otherwise CS0260 with no link back to the SG).
-7. **Emits pre-compiled accessors** via `AccessorEmission.Emit(target.Shape, rootFqn)`: a `static readonly KeyValuePair<string, IMemberAccessor>[]` block per non-empty type (one `DelegateAccessor` per member) plus `static readonly ExcelsiorTableMapEntry[]` / `FormatMapEntry[]` / `StringListMapEntry[]` arrays for the per-template maps. `RegisterWith` calls `Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors` / `RegisterExcelsiorTable` / `RegisterFormat` / `RegisterStringList` for each before delegating to `store.RegisterDocxTemplate<TModel>`. The runtime maps (`SharedFluid.registeredTypes`, `ExcelsiorTableMap.precompiledCache`, etc.) see every type already populated and short-circuit reflection. Getters for nested dotted paths are emitted as `o => ((Root)o).First?.Second?.Third` — first segment uses `.` (root is non-null per Render contract), subsequent segments use `?.` to match the runtime ChainGetter's null-short-circuit semantics. Non-nullable value-type *intermediates* would break the chain — accepted limitation since binding-model intermediates are virtually always reference types.
+7. **Emits pre-compiled accessors** via `AccessorEmission.Emit(target.Shape, rootFqn)` — see "Design decisions → Source generator emits pre-compiled accessors" below for the four-dataset pipeline.
 
 **Markdown flow** (mirrors runtime Flow B):
 
 1. Resolves `path` against `<AdditionalFiles>`.
 2. Reads via `AdditionalText.GetText(cancel)` into an equatable `MarkdownData` record. `File.ReadAllText` is **not** used — RS1035 bans it; canonical Roslyn path lets the SDK reuse cached `SourceText`. Test harness's `PathAdditionalText.GetText` returns real `SourceText` for `.md` (and `null` for `.docx`).
 3. Hands the **whole file** to `FluidParser.TryParse` (one call, not per-token) — markdown templates have no paragraph boundaries. Parse failure → `PARCH006` with Fluid error.
-4. `MarkdownValidator.Validate` walks the AST with loop-scope tracking: descends into `ForStatement` (binding `Identifier` → element FQN via `ShapeResolver.GetElementType`), `IfStatement` (incl. `ElseIfs`/`Else`), `OutputStatement`, `for-else`. Each `MemberExpression` is collected via private `ExpressionPathCollector : AstVisitor` and resolved against `target.Shape` honouring scope. When loop source doesn't resolve to enumerable, loop var is bound to root type for body walk — minimises cascade noise on top of upstream `PARCH001`/`PARCH002`.
-5. Emits **only** `PARCH001` (MissingMember) and `PARCH002` (LoopSourceNotEnumerable). `PARCH005` (mixed inline block tag) deliberately not emitted — Fluid parses whole markdown as one template; `Hello {% if x %}World{% endif %}` is legal at runtime. `PARCH007`/`PARCH008` (Excelsior) and `PARCH010` (`[Html]`/`[Markdown]`) are docx-only — `RegisterMarkdownTemplate` doesn't build `ExcelsiorTableMap`/`FormatMap`.
-6. Generates `RegisterWith(TemplateStore store, string? basePath = null, Stream? styleSource = null)` reading the file at runtime via `File.ReadAllText` and calling `store.RegisterMarkdownTemplate<TModel>(name, markdown, styleSource)`. Same `AccessorEmission` pass as docx — the markdown registration helper also pre-compiles every Fluid accessor + map entry, even though markdown templates don't currently use `[ExcelsiorTable]` / `[Html]` / `[Markdown]` dispatch (those are docx-only). Symmetric emission keeps the SG output predictable regardless of which template shape is being registered.
+4. `MarkdownValidator.Validate` walks the AST with loop-scope tracking: descends into `ForStatement` (binding `Identifier` → element FQN via `ShapeResolver.GetElementType`), `IfStatement` (incl. `ElseIfs`/`Else`), `OutputStatement`, `for-else`. Each `MemberExpression` is collected via private `ExpressionPathCollector : AstVisitor` and resolved against `target.Shape` honouring scope. When loop source doesn't resolve to enumerable, loop var is bound to root type for body walk — cascade-noise suppression.
+5. Emits **only** `PARCH001` and `PARCH002`. `PARCH005` deliberately not emitted — Fluid parses whole markdown as one template; `Hello {% if x %}World{% endif %}` is legal at runtime. `PARCH007`/`PARCH008` (Excelsior) and `PARCH010` (`[Html]`/`[Markdown]`) are docx-only — `RegisterMarkdownTemplate` doesn't build `ExcelsiorTableMap`/`FormatMap`.
+6. Generates `RegisterWith(TemplateStore store, string? basePath = null, Stream? styleSource = null)` reading the file at runtime via `File.ReadAllText` and calling `store.RegisterMarkdownTemplate<TModel>(name, markdown, styleSource)`. Same `AccessorEmission` pass as docx — symmetric emission keeps SG output predictable regardless of template shape.
 
-**Lockstep with runtime markdown flow**: runtime's `RegisterMarkdownTemplate` validates references via heuristic that skips loop variables by string-matching against source text. SG validates the *same* references via proper AST walk with explicit scope — strictly more accurate. So SG sometimes catches loop-shadowing bugs the runtime misses — when tightening runtime's loop-variable detection, also revisit `MarkdownValidator`.
+**Lockstep with runtime markdown flow**: runtime's `RegisterMarkdownTemplate` validates references via heuristic that skips loop variables by string-matching against source text. SG validates the *same* references via proper AST walk with explicit scope — strictly more accurate. SG sometimes catches loop-shadowing bugs the runtime misses — when tightening runtime's loop-variable detection, also revisit `MarkdownValidator`.
 
 The generator deliberately **does not** embed docx/markdown bytes — generates a runtime helper that reads from disk. Users deploy templates alongside their app.
 
@@ -169,7 +171,7 @@ Loop-scoped tokens fall through — `FormatMap` is keyed on dotted paths from ro
 
 ### String-list dispatch (auto bullet for `IEnumerable<string>`)
 
-Mirrors Excelsior's "Enumerable string properties": a substitution token whose dotted path resolves to `IEnumerable<string>` (incl. `string[]`, `List<string>`, `IReadOnlyList<string>`, etc.) auto-renders as a Word bullet list — same output as `{{ Tags | bullet_list }}`. **No attribute required**; detection is type-driven. No SG counterpart, no diagnostics — opportunistic, not validated.
+A substitution token whose dotted path resolves to `IEnumerable<string>` (incl. `string[]`, `List<string>`, `IReadOnlyList<string>`, etc.) auto-renders as a Word bullet list — same output as `{{ Tags | bullet_list }}`. **No attribute required**; detection is type-driven. No SG counterpart, no diagnostics — opportunistic, not validated.
 
 **Runtime path** (`src/Parchment/StringLists/`):
 
@@ -182,7 +184,7 @@ Mirrors Excelsior's "Enumerable string properties": a substitution token whose d
 4. When gates pass: calls `entry.Getter(rootModel)`, materializes with `.ToList()` (so deferred render delegate doesn't re-enumerate), returns `TokenValueHelpers.BulletList(items)` — same primitive the `bullet_list` filter uses (`TokenValue.OpenXmlToken` wrapping `IOpenXmlContext.CreateBulletNumbering()` + `ListParagraph` paragraphs).
 5. `ScopeTreeRunner` takes `StringListMap` as ctor dep, propagates to cloned runners.
 
-**Why opportunistic, not strict**: there's an existing `bullet_list` filter producing the same output. Pre-feature, users wrote `{{ Tags | bullet_list }}` against `IEnumerable<string>` properties — strict validator would have broken that (see `TokenOverrideTests.BulletListFilter` against `Invoice.Tags`). Fall-through design keeps the new feature purely additive: `{{ Tags }}` solo → auto bullet, `{{ Tags | numbered_list }}` → user-driven, `{{ Tags }}` mixed inline → Fluid stringification (unchanged).
+**Why opportunistic, not strict**: the existing `bullet_list` filter produces the same output, and pre-feature users wrote `{{ Tags | bullet_list }}` against `IEnumerable<string>` properties — strict validation would have broken `TokenOverrideTests.BulletListFilter`. Fall-through keeps the feature purely additive.
 
 Loop-scoped tokens fall through — same root-only key limitation as `ExcelsiorTableMap`/`FormatMap`. Inside `{% for c in Customers %}{{ c.Tags }}{% endfor %}` use the explicit `bullet_list` filter.
 
@@ -190,7 +192,7 @@ Tests: `StringListTests` (Parchment.Tests/Docx). Scenario: `src/Parchment.Tests/
 
 ### Determinism guarantee
 
-Same template + same model → byte-identical output. Avoid `w:rsid` randomness, never set `PackageProperties.Created`, no timestamps. `DeterminismTests.cs` renders a sample twice and asserts byte equality. Users hash outputs for caching/dedup — don't break this.
+See `readme.md` → "Determinism". Implementation discipline: avoid `w:rsid` randomness, never set `PackageProperties.Created`, no timestamps. `DeterminismTests.cs` renders a sample twice and asserts byte equality — don't break it.
 
 ### Scenario directories (`src/Parchment.Tests/Scenarios/`)
 
@@ -204,8 +206,7 @@ src/Parchment.Tests/Scenarios/
     ├── input.png                     # "before" render (generated)
     ├── output.verified.docx          # Verify snapshot
     ├── output#page01.verified.png    # "after" render (Verify.OpenXml + Morph)
-    ├── output#00.verified.txt        # Verify text extraction
-    └── output#01.verified.txt
+    └── output#00.verified.txt        # Verify text extraction
 ```
 
 **Test wiring** (see `ExcelsiorTableTests.Render`):
@@ -217,14 +218,7 @@ src/Parchment.Tests/Scenarios/
    static string ScenarioPath(string name) =>
        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(SourcePath()) ?? "", "..", "Scenarios", name));
    ```
-3. Directs Verify into the scenario dir with a custom prefix:
-   ```csharp
-   var settings = new VerifySettings();
-   settings.UseDirectory(ScenarioPath("excelsior-table"));
-   settings.UseFileName("output");
-   await Verify(stream, "docx", settings);
-   ```
-   `UseFileName("output")` → `output.verified.docx` rather than `ClassName.MethodName.*`.
+3. Directs Verify into the scenario dir with a custom prefix: `settings.UseDirectory(ScenarioPath("excelsior-table"))` + `settings.UseFileName("output")` → `output.verified.docx` rather than `ClassName.MethodName.*`.
 
 **Regenerating `input.png`**: `ScenarioInputRenderer.cs` is `[Test, Explicit]` — excluded from default runs. It globs `Scenarios/**/input.docx`, renders each via Morph/SkiaSharp, writes the first page next to the source. Invoke on demand:
 
@@ -233,7 +227,7 @@ dotnet run --project src/Parchment.Tests --configuration Release -- \
     --treenode-filter "/*/*/ScenarioInputRenderer/RenderAllInputDocxesToPng"
 ```
 
-`input.png` is *committed* alongside `input.docx` — the explicit test regenerates it; the committed file is what the readme references.
+`input.png` is *committed* alongside `input.docx`.
 
 **Adding a scenario**: mkdir under `Scenarios/`, drop `input.docx` (binary already in `.gitattributes`), write a feature test that calls `UseDirectory(ScenarioPath("<name>")) + UseFileName("output")`, run `ScenarioInputRenderer` once for `input.png`, reference both PNGs from `readme.md` (note `#` → `%23` URL escape).
 
@@ -241,115 +235,72 @@ dotnet run --project src/Parchment.Tests --configuration Release -- \
 
 ### Source generator emits pre-compiled accessors; runtime reflection is a fallback
 
-The SG path is the **primary** registration path; the runtime reflection walks in `SharedFluid.RegisterTypeGraph`, `ExcelsiorTableMap.WalkType`, `FormatMap.WalkType`, and `StringListMap.WalkType` are kept only as a fallback for callers that can't use the SG. The pattern mirrors `System.Text.Json`'s source generator (`JsonSerializerContext` mode), EF Core's compiled models, and the regex source generator — modern .NET libraries that care about trimming / NativeAOT / cold-start expose a SG that emits the metadata reflection would otherwise compute at runtime, and the runtime checks an SG-populated cache before falling back.
+User-facing summary in `readme.md` → "Source generator (recommended)". The SG path is the **primary** registration path; the runtime reflection walks in `SharedFluid.RegisterTypeGraph`, `ExcelsiorTableMap.WalkType`, `FormatMap.WalkType`, and `StringListMap.WalkType` are kept only as a fallback for callers that can't use the SG. Pattern mirrors `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
 
-**The pipeline.** `AccessorEmission.Emit(target.Shape, rootFqn)` walks `ModelShape` and produces four parallel datasets:
+**Pipeline.** `AccessorEmission.Emit(target.Shape, rootFqn)` walks `ModelShape` and produces four parallel datasets:
 
-1. **Fluid accessors**: one `KeyValuePair<string, IMemberAccessor>[]` per non-empty type in the shape (one `DelegateAccessor` per public property / field), registered via `GeneratedRegistration.RegisterFluidAccessors(typeof(T), arr)`. Lands in `SharedFluid.registeredTypes` + `Options.MemberAccessStrategy.Register(type, accessors)`, so the reflection walk in `RegisterTypeGraph` short-circuits at every node.
-2. **Excelsior-table entries**: dotted-path walk from the root collecting `[ExcelsiorTable]` members. Each entry is `(DottedPath, ElementType, Func<object, object?> Getter)`. Registered via `GeneratedRegistration.RegisterExcelsiorTable(typeof(TRoot), arr)` → populates `ExcelsiorTableMap.precompiledCache`.
-3. **Format entries**: same walk pattern for `[Html]` / `[Markdown]` / `[StringSyntax]` string properties. Each entry is `(DottedPath, FormatMapKind, Getter)`. Both the registration walk AND the render-time `ScopeTreeRunner.TryResolveFormatted` use the emitted getter — render-time `walker.GetType().GetProperty(...)` reflection per segment is gone on the SG path.
-4. **String-list entries**: dotted-path walk for `IEnumerable<string>` members that aren't already owned by `[ExcelsiorTable]`. Each entry is `(DottedPath, Getter)`. Populates `StringListMap.precompiledCache`.
+1. **Fluid accessors**: `KeyValuePair<string, IMemberAccessor>[]` per non-empty type (one `DelegateAccessor` per public property/field), registered via `GeneratedRegistration.RegisterFluidAccessors(typeof(T), arr)` → `SharedFluid.registeredTypes` + `Options.MemberAccessStrategy.Register`.
+2. **Excelsior-table entries**: dotted-path walk collecting `[ExcelsiorTable]` members as `(DottedPath, ElementType, Getter)`. Registered via `RegisterExcelsiorTable` → `ExcelsiorTableMap.precompiledCache`.
+3. **Format entries**: same walk for `[Html]` / `[Markdown]` / `[StringSyntax]` strings as `(DottedPath, FormatMapKind, Getter)`. Registration walk AND render-time `ScopeTreeRunner.TryResolveFormatted` use the emitted getter — no per-segment reflection on SG path.
+4. **String-list entries**: dotted-path walk for `IEnumerable<string>` members not already owned by `[ExcelsiorTable]`. Populates `StringListMap.precompiledCache`.
 
-All four runtime maps have `static readonly ConcurrentDictionary<Type, X> precompiledCache` checked at the top of `Build(modelType, ...)`. A cache hit returns the SG-built map and skips the reflection walk entirely. A miss falls through to the existing reflection path (the runtime API contract is unchanged for non-SG callers).
+All four runtime maps have `static readonly ConcurrentDictionary<Type, X> precompiledCache` checked at the top of `Build(modelType, ...)`. Cache hit returns the SG-built map and skips the reflection walk entirely; miss falls through to reflection (runtime API contract unchanged).
 
-**Public API surface.** SG-emitted code calls into the `Parchment.Generated` namespace:
+**Public API surface.** SG-emitted code calls into `Parchment.Generated`:
+- `GeneratedRegistration` — static class with one `Register*` method per dataset.
+- `ExcelsiorTableMapEntry`, `FormatMapEntry`, `StringListMapEntry` — public data carrier records.
+- `FormatMapKind` — public enum (replaces internal `FormatKind`).
 
-- `Parchment.Generated.GeneratedRegistration` — static class with one `Register*` method per dataset.
-- `Parchment.Generated.ExcelsiorTableMapEntry`, `FormatMapEntry`, `StringListMapEntry` — public data carrier records.
-- `Parchment.Generated.FormatMapKind` — public enum (replaces the internal `FormatKind` that previously lived in `Formats/FormatMap.cs`; the internal duplicate was deleted).
+These must stay public — SG runs against user assemblies, signed assembly + arbitrary user PKs means `[InternalsVisibleTo]` won't help. The maps themselves (`SharedFluid`, `ExcelsiorTableMap`, etc.) stay internal.
 
-These types must stay public — the SG runs against user assemblies referencing Parchment via NuGet, so `[InternalsVisibleTo]` won't help (signed assembly + arbitrary user PKs). The rest of the runtime (`SharedFluid`, the maps themselves, `RegisterTypeGraph`, etc.) stays internal.
+**Path-getter emission.** Cast-and-null-chain lambdas: `o => ((global::NS.Root)o).First?.Second?.Third`. Root cast unconditional (`Render` rejects null models); subsequent segments use `?.` to match runtime `ChainGetter` null-short-circuit. Non-nullable value-type intermediates would fail to compile — accepted, since binding-model intermediates are virtually always reference types.
 
-**Path-getter emission.** Cast-and-null-chain lambdas: `o => ((global::NS.Root)o).First?.Second?.Third`. The cast on the root is unconditional (`Render` rejects null models). Subsequent segments use `?.` to match the runtime `ChainGetter`'s "null at any level → null result" semantics. Limitation: non-nullable value-type intermediates would fail to compile (`Customer?.Origin` is fine if `Origin` is `Point?`, fails if `Origin` is `Point`). Binding-model intermediates are virtually always reference types in practice, so accepted as a known limitation rather than handled with a manual cascade.
-
-**Why `RegisterPrecompiled` on each map is `internal` (not `public`) but `GeneratedRegistration` is `public`.** The runtime maps are implementation details; the data carrier records + entry point in `Parchment.Generated` are the public surface. This lets the SG cross the assembly boundary without exposing `ExcelsiorTableMap` / `FormatMap` / `StringListMap` / `SharedFluid` themselves (which expose `Fluid.IMemberAccessor`, `IFluidParser`, and other Fluid-coupled types that should not appear in the public API).
-
-**Lockstep concerns.** The SG-side `AccessorEmission.WalkForMaps` and the runtime-side `WalkType` implementations of each map must produce equivalent results — different mechanisms (SG: Roslyn symbols + flag flags baked into `MemberEntry` at extract time; runtime: reflection at registration). Equivalent results means: same dotted-path key set, same element types, same kinds. When tightening one walker, revisit the other. Tests in `Parchment.Tests` exercise the runtime path; SG snapshots in `Parchment.SourceGenerator.Tests` lock in the emitted shape; `IntegrationTests` compile + run the SG output against the packed nupkg.
+**Lockstep.** `AccessorEmission.WalkForMaps` (SG, Roslyn symbols + flags baked into `MemberEntry`) and runtime `WalkType` implementations must produce equivalent results: same dotted-path key set, element types, kinds. When tightening one, revisit the other. Tests: `Parchment.Tests` (runtime), `Parchment.SourceGenerator.Tests` (SG snapshots), `IntegrationTests` (SG output against packed nupkg).
 
 ### `[ParchmentModel]` lives on the binding model, not on an intermediary "template" class
 
-The source-generator attribute is `Parchment.ParchmentModelAttribute` and is applied **directly to the model class being bound** (the type Parchment renders against). There is **no separate marker / "template" class**, and the attribute does not take a `typeof(TModel)` argument — the attribute target *is* the model.
+Full rationale and alternatives in `readme.md` → "Source generator (recommended)". Implementation-relevant points:
 
-```csharp
-[ParchmentModel("Templates/report.md")]
-public partial class Report
-{
-    public string Title { get; set; }
-
-    [Markdown]
-    public string Body { get; set; }
-
-    // Helper that adapts a complex graph into a binding-friendly primitive.
-    public string FormattedTotal => Total.ToString("C", Culture);
-}
-```
-
-The SG emits `TemplatePath`, `TemplateName`, and `RegisterWith(TemplateStore store, ...)` into the model partial — the same shape previously emitted onto the marker class.
-
-**Rationale.** Models almost always need code on them anyway:
-
-- `[Html]` / `[Markdown]` annotations on string properties (structural replacement dispatch).
-- `[ExcelsiorTable]` on collection properties.
-- Helper / computed properties that pre-shape values into binding-friendly form (currency formatting, joined name strings, derived flags).
-- Conversions of complex CLR types into the primitives liquid/Fluid can render directly.
-
-Because the model is already a place where the author writes Parchment-aware code, the `partial` requirement and the dependency on Parchment.dll are **already paid**. Adding a separate marker class would force a second declaration site for zero gain — it would not eliminate either tax, and it would add a "where does this live?" decision per template.
-
-**Consequences accepted by this decision:**
-
-- The model **must be `partial`** (the SG generates `RegisterWith` onto it). Models that come from EF/JSON/codegen and resist `partial` are not supported via the SG path — those consumers fall back to the runtime `TemplateStore.RegisterDocxTemplate<T>(name, path)` / `RegisterMarkdownTemplate<T>(name, markdown)` API.
-- The model **references `Parchment`** (for the attribute). For most projects this matches reality — the model is already coupled to rendering through `[Html]` / `[Markdown]` / `[ExcelsiorTable]`. Projects wanting a pure POCO model use the runtime API.
-- **One template per model via the SG attribute** is the canonical case. Multi-template-per-model scenarios are served by the runtime API, not by stacking attributes — the SG emits exactly one `RegisterWith` per model with no name disambiguation needed.
-- The attribute name is `ParchmentModelAttribute`, **not** `ParchmentTemplateAttribute`, to reflect that the decorated type is the model being bound, not a stand-in for the template.
-
-**Alternatives considered and rejected:**
-
-- *Attribute on a separate marker `partial class FooTemplate`* — original design. Rejected: extra declaration with no body, doesn't relieve the `partial` or dependency cost (those move to the model the moment any `[Html]` / `[Markdown]` / helper-property is needed), and forces the user to invent a naming convention for the marker.
-- *Assembly-level `[assembly: ParchmentModel(...)]`* — rejected for now: keeps the model POCO, but pushes binding declarations away from the model they describe and forces a separate "registry" namespace per assembly. Discoverability suffers, and the POCO benefit evaporates as soon as the model needs `[Html]` / `[Markdown]`.
-- *Supporting multiple placement modes simultaneously* — rejected: triples the SG's attribute-target validation, diagnostic-location, and incremental-pipeline surface for a marginal ergonomics win. One canonical path keeps the SG, the diagnostics, and the docs coherent.
-
-**Implications for future work:**
-
-- Diagnostics referencing "the decorated class" target the model itself. `PARCH011` (enclosing-type must be `partial`) still applies when the model is a nested type.
-- The runtime `TemplateStore.RegisterDocxTemplate<T>` / `RegisterMarkdownTemplate<T>` API stays — it is the supported escape hatch for POCO models, multi-template-per-model, or dynamically resolved templates. Do not deprecate it in favor of the SG-only path.
-- When touching the SG (`ParchmentTemplateGenerator.cs`), the attribute predicate, target shape, generated partial wrapping (`BuildPartialSource`), and any new diagnostics should all treat the attribute target as the model type. There is no second symbol to thread through.
+- The attribute target IS the model; no separate marker class, no `typeof(TModel)` argument.
+- Model must be `partial` (SG emits `RegisterWith` onto it). PARCH011 fires when nested inside a non-partial enclosing type.
+- `[AttributeUsage(AttributeTargets.Class)]` blocks interface targets (CS0592). Runtime interface guard: `GuardBindingModel<TModel>` in `TemplateStore.cs`.
+- One template per model via the attribute is canonical. Multi-template / POCO / dynamic-path scenarios use the runtime `TemplateStore.RegisterDocxTemplate<T>` / `RegisterMarkdownTemplate<T>` overloads — keep them as the supported escape hatch.
+- When touching `ParchmentTemplateGenerator.cs`, the attribute predicate, target shape, `BuildPartialSource` wrapping, and any new diagnostics all treat the attribute target as the model type. No second symbol to thread through.
 
 ## Non-obvious gotchas
 
 - **Tokens straddling run boundaries**: Word splits text into multiple `<w:r>` when formatting changes, proofing markers fire, or smart-quote autocorrect runs. `{{ customer.name }}` can land across N runs. Scanner uses `paragraph.InnerText` + `RunMap` (offset → `<w:t>`) so substitutions land correctly. Formatting of the **first run** containing the opening `{{` wins for the entire substitution.
 
-- **PascalCase tokens**: Liquid in Parchment uses PascalCase (`{{ Customer.Name }}`). Fluid's default member access compares case-insensitively. No snake-case → PascalCase translation; an earlier attempt to wire `MemberNameStrategies.SnakeCase` was abandoned because that API doesn't exist in Fluid 2.15.
+- **PascalCase tokens**: Parchment liquid uses PascalCase (`{{ Customer.Name }}`); Fluid's default member access is case-insensitive. No snake-case translation — an earlier `MemberNameStrategies.SnakeCase` attempt was abandoned (API doesn't exist in Fluid 2.15).
 
-- **Method-call syntax (`{{ Customer.FullName() }}`) fails at registration, not silently at render**: Fluid's parser rejects function-call syntax by default (`AllowFunctions` is off and stays off — Parchment's binding model is data, not behaviour). `FluidParser.TryParse` returns false with `"Functions are not allowed. To enable the feature use the 'AllowFunctions' option. at (col:line)"`. The docx flow (`TokenScanner.ParseSubstitution`) and markdown flow (`TemplateStore.RegisterMarkdownTemplate`) both surface this as `ParchmentRegistrationException` with the Fluid message embedded; SG markdown surfaces it as `PARCH006` and SG docx as a parse diagnostic from its parallel `TokenScanner`. The failure is loud at registration time — `{{ X.Y() }}` never reaches `ModelValidator` or render. Workaround: expose a computed property (`public string FullName => $"{First} {Last}";`) and write `{{ Customer.FullName }}`.
+- **Method-call syntax (`{{ Customer.FullName() }}`) fails at registration, not silently at render**: Fluid's `AllowFunctions` stays off — Parchment's binding model is data, not behaviour. `FluidParser.TryParse` returns false; runtime surfaces `ParchmentRegistrationException`, SG surfaces `PARCH006` (markdown) / parse diagnostic (docx). Workaround: expose a computed property.
 
-- **Indexer syntax with a string literal (`{{ Customer['FullName'] }}`) is validated the same as dotted access**: Fluid treats `Customer['FullName']` and `Customer.FullName` as the same member resolution at render time. The three path collectors (`Liquid/IdentifierVisitor.cs`, `Parchment.SourceGenerator/IdentifierVisitor.cs`, `MarkdownValidator.ExpressionPathCollector`) all extract the literal string from an `IndexerSegment { Expression: LiteralExpression { Value.Type: FluidValues.String } }` and treat it as if it were an `IdentifierSegment` — so `Customer['NoSuchMember']` fails registration / fires PARCH001 the same as `Customer.NoSuchMember`. Non-literal indexers (numeric, variable, expression — e.g. `Customer[0]`, `Customer[varName]`) still terminate the path walk: those are dictionary/array access at runtime and cannot be validated statically, and Fluid handles them natively. The shared extractor lives at `Liquid/IdentifierVisitor.TryGetStaticName` (runtime) and `Parchment.SourceGenerator/SegmentNames.TryGetStaticName` (SG, used by both `IdentifierVisitor` and `ExpressionPathCollector`); when tightening one, mirror the other. Side effect: Excelsior / Format / StringList dispatch now also accepts indexer notation because they key on `site.References[0].Dotted` — `{{ Customer['Lines'] }}` dispatches identically to `{{ Customer.Lines }}`. Tests: `ReferenceValidatorTests.Indexer*` (runtime), `ParchmentTemplateGeneratorTests.*IndexerStringLiteral*` (SG).
+- **Indexer syntax with a string literal (`{{ Customer['FullName'] }}`) is validated the same as dotted access**: Fluid treats both as the same member resolution at render time. The three path collectors (`Liquid/IdentifierVisitor.cs`, `Parchment.SourceGenerator/IdentifierVisitor.cs`, `MarkdownValidator.ExpressionPathCollector`) extract the literal from `IndexerSegment { Expression: LiteralExpression { Value.Type: FluidValues.String } }` and treat it as `IdentifierSegment`. Non-literal indexers (numeric, variable, expression) still terminate the path walk — those are dictionary/array access at runtime, not statically validatable. Shared extractor: `Liquid/IdentifierVisitor.TryGetStaticName` (runtime) and `Parchment.SourceGenerator/SegmentNames.TryGetStaticName` (SG); mirror when tightening. Side effect: Excelsior / Format / StringList dispatch also accepts indexer notation. Tests: `ReferenceValidatorTests.Indexer*`, `ParchmentTemplateGeneratorTests.*IndexerStringLiteral*`.
 
-- **`ScopeTreeRunner.ProcessLoopAsync` attaches each iteration's clones to a scratch `Body` before running the nested scope tree**. Without this, nested `{% for %}`/`{% if %}` silently no-op: `open.Parent` and `NextSibling()` return null on a detached clone, so `CaptureBetween(open, close)` captures nothing, `open.Remove()` does nothing, and the inner block-tag paragraph text lands as literal `{% for ... %}`. Reverting to `parent.InsertAfter(clone, insertAnchor)` for each clone *before* the nested run breaks nested loops in a way only `LoopTests.NestedLoop` catches.
+- **`ScopeTreeRunner.ProcessLoopAsync` attaches each iteration's clones to a scratch `Body` before running the nested scope tree**. Without this, nested `{% for %}`/`{% if %}` silently no-op: `open.Parent` returns null on a detached clone, `CaptureBetween` captures nothing, the inner block-tag text lands as literal `{% for ... %}`. Reverting to `parent.InsertAfter(clone, insertAnchor)` *before* the nested run breaks nested loops in a way only `LoopTests.NestedLoop` catches.
 
 - **`OpenXmlMarkdownRenderer` is not thread-safe** — one instance per render. The `Stack<ContainerState>` and `ObjectRenderers` are mutable. The `RegisteredTemplate` (cached canonical bytes + scope tree) IS immutable — concurrent renders work, each gets its own renderer.
 
-- **`appveyor.yml` font validation** — every TTF/OTF in `src/Fonts/` is loaded through `System.Drawing.Text.PrivateFontCollection` BEFORE being copied to `%WINDIR%\Fonts`, catching Git CRLF corruption upfront. When adding a font, mark it binary in `.gitattributes` (`*.ttf binary`, `*.otf binary` — already present).
+- **`appveyor.yml` font validation** — every TTF/OTF in `src/Fonts/` is loaded through `PrivateFontCollection` BEFORE copy to `%WINDIR%\Fonts`, catching Git CRLF corruption upfront. When adding a font, mark it binary in `.gitattributes` (already present for `*.ttf`, `*.otf`).
 
-- **`ParchmentModel` is a separate project** (not `Model`) to avoid name clashes with common test fixture names in IDE autocomplete.
+- **`ParchmentModel` is a separate project** (not `Model`) to avoid clashes with common test fixture names in IDE autocomplete.
 
-- **Excelsior dispatch bypasses Fluid, deliberately**: `ExcelsiorTableBridge` walks the CLR model directly via cached `Func<object, object?>` getter chains, NOT via `Expression.EvaluateAsync`. Routing through Fluid *looks* tempting (would "enable filters") but Fluid's `ArrayValue.ToObjectValue()` returns `FluidValue[]`, erasing the `IEnumerable<T>` type that `new WordTableBuilder<T>(data)` needs. This is why `ScopeTreeRunner` takes `rootModel` as a separate ctor param instead of pulling the model from `TemplateContext` — context's collections have already been wrapped. "Simplifying" by removing the `rootModel` param breaks Excelsior on the first filtered or loop-nested token.
+- **Excelsior dispatch bypasses Fluid, deliberately**: `ExcelsiorTableBridge` walks the CLR model directly via cached `Func<object, object?>` getter chains. Routing through Fluid would erase `IEnumerable<T>` (`ArrayValue.ToObjectValue()` returns `FluidValue[]`) — `new WordTableBuilder<T>(data)` needs the typed enumerable. This is why `ScopeTreeRunner` takes `rootModel` as a separate ctor param. Removing it breaks Excelsior on the first filtered or loop-nested token.
 
-- **Per-branch visited set in `ExcelsiorTableMap.WalkType`**: cycle prevention uses a `HashSet<Type>` mutated with `visited.Add` on descend and `visited.Remove` on return. Same type can appear at multiple unrelated paths (e.g. `Order.Buyer.Addresses` + `Order.Seller.Addresses`), but a self-reference (`Node.Next` → `Node`) is pruned. Converting to a global visited set that never removes silently drops the second sibling branch — tests may pass if only one branch is exercised, but registration starts missing `[ExcelsiorTable]` properties in reachable-twice models.
+- **Per-branch visited set in `ExcelsiorTableMap.WalkType`**: cycle prevention uses `HashSet<Type>` with `Add` on descend / `Remove` on return. Same type at unrelated paths (e.g. `Order.Buyer.Addresses` + `Order.Seller.Addresses`) still visits both; a self-reference (`Node.Next` → `Node`) is pruned. A global no-removal visited set silently drops the second sibling branch.
 
-- **SG `[ExcelsiorTable]` detection matches by FQN string** (`"global::Parchment.ExcelsiorTableAttribute"` in `ShapeBuilder.HasExcelsiorTableAttribute`). SG can't `typeof()` it (doesn't reference Parchment.dll). Renaming/moving the attribute silently breaks `PARCH007`/`PARCH008` until the literal is updated — no compile-time safety net.
+- **SG `[ExcelsiorTable]` detection matches by FQN string** (`"global::Parchment.ExcelsiorTableAttribute"` in `ShapeBuilder.HasExcelsiorTableAttribute`) — SG can't `typeof()` it. Renaming/moving the attribute silently breaks `PARCH007`/`PARCH008` until the literal is updated.
 
-- **Excelsior runtime and SG validators must stay in lockstep**: `ExcelsiorTokenValidator` (runtime) and `ValidateExcelsiorToken` + `ShapeResolver.IsExcelsiorTableMember` (SG) enforce same two rules — solo-in-paragraph and plain-member-access. Runtime checks Fluid AST directly; SG piggybacks on `Token.IsPlainIdentifier` set by `TokenScanner.IsPlainMemberAccess`. Tighten or loosen both in the same PR. Tests: `ExcelsiorTableTests` (runtime), `ExcelsiorToken_*` (SG).
+- **Excelsior runtime and SG validators must stay in lockstep**: `ExcelsiorTokenValidator` (runtime) and `ValidateExcelsiorToken` + `ShapeResolver.IsExcelsiorTableMember` (SG) enforce the same two rules — solo-in-paragraph and plain-member-access. Runtime checks Fluid AST directly; SG piggybacks on `Token.IsPlainIdentifier` from `TokenScanner.IsPlainMemberAccess`. Tighten both in the same PR.
 
 - **`MemberEntry.IsExcelsiorTable` must stay primitive** — it's a `bool` on a `sealed record` flowing through the incremental generator pipeline; equality is structural. Adding a `bool` was safe; adding `List<T>`, an `ISymbol` reference, or any mutable field defeats cacheability and forces ShapeBuilder to re-run on every compilation.
 
 - **Package dep direction is Parchment → Excelsior, hard**. The `[ExcelsiorTable]` attribute deliberately lives in Parchment, not Excelsior. Moving it to Excelsior would invert the dep: every Excel-only Excelsior consumer would pull Parchment, and every Parchment user would have to reference an attribute-only stub package. Don't.
 
-- **SG markdown reads via `AdditionalText.GetText`, not `File.ReadAllText`**: RS1035 bans `File.*` in analyzers. `ParchmentTemplateGenerator.ReadMarkdown` calls `text.GetText(cancel)` and treats null as a read error. Test harness's `PathAdditionalText.GetText` returns real `SourceText` for `.md`/`.markdown` but `null` for `.docx` (read via `ZipFile.OpenRead(text.Path)` in the docx branch). If a future test driver returns `null` for everything, markdown SG surfaces `PARCH006` "AdditionalText returned no SourceText" — failure mode is loud, not silent.
+- **SG markdown reads via `AdditionalText.GetText`, not `File.ReadAllText`**: RS1035 bans `File.*` in analyzers. `ParchmentTemplateGenerator.ReadMarkdown` calls `text.GetText(cancel)` and treats null as a read error. Test harness's `PathAdditionalText.GetText` returns `SourceText` for `.md`/`.markdown` but `null` for `.docx` (docx branch uses `ZipFile.OpenRead(text.Path)`). Failure mode is `PARCH006` "AdditionalText returned no SourceText" — loud, not silent.
 
-- **Public fields are bindable at every depth, and the runtime registration walks them explicitly**: `SharedFluid.RegisterTypeGraph` registers properties via Fluid's `MemberAccessStrategyExtensions.Register<T>(strategy)` (properties only), THEN enumerates `GetFields(BindingFlags.Public | BindingFlags.Instance)` and registers each as a `DelegateAccessor` (`Fluid.Accessors.DelegateAccessor`) keyed on field name via `Options.MemberAccessStrategy.Register(Type, IEnumerable<KeyValuePair<string, IMemberAccessor>>)`. Both properties' types AND fields' types are recursed for descent. Without the field-walk pass, top-level field access would still work (because `TemplateContext(model, ..., allowModelMembers: true)` reflects on the root instance directly) but nested-via-field access (`{{ Outer.FieldOnInner }}`) would silently render empty — the inner type wouldn't be registered and Fluid would return nothing. SG-side `ShapeBuilder.TryGetMemberType` already accepts both `IPropertySymbol` and `IFieldSymbol`, and `ModelValidator.ResolveMember` already falls back to `GetField`, so the only place fields were under-supported was the Fluid registration step. If a future Fluid upgrade changes `Register<T>()` to include fields, the explicit pass becomes redundant but harmless — it's the safer side of the cache.
+- **Public fields are bindable at every depth, and the runtime registration walks them explicitly**: `SharedFluid.RegisterTypeGraph` registers properties via Fluid's `MemberAccessStrategyExtensions.Register<T>(strategy)` (properties only), THEN enumerates `GetFields(BindingFlags.Public | BindingFlags.Instance)` and registers each as a `DelegateAccessor`. Both properties' AND fields' types are recursed. Without the field-walk pass, top-level field access still works (`TemplateContext(model, ..., allowModelMembers: true)` reflects on the root instance) but nested-via-field access (`{{ Outer.FieldOnInner }}`) renders empty. SG-side `ShapeBuilder.TryGetMemberType` and `ModelValidator.ResolveMember` already handled fields — the Fluid registration step was the only gap.
 
-- **Interfaces are not bindable as `TModel`**: `TemplateStore.RegisterDocxTemplate<IFoo>` / `RegisterMarkdownTemplate<IFoo>` is blocked at registration by `GuardBindingModel<TModel>` (`TemplateStore.cs`), throwing `ParchmentRegistrationException` with a message that names the interface and points at concrete types. Root cause: `typeof(IFoo).GetProperties(BindingFlags.Public | BindingFlags.Instance)` returns only members declared directly on `IFoo`, missing inherited base-interface members — every reflection walker (`SharedFluid`, `ExcelsiorTableMap`, `FormatMap`, `StringListMap`, `ModelValidator`) would silently miss them without an explicit `GetInterfaces()` walk. The SG path is blocked one level up by `[AttributeUsage(AttributeTargets.Class)]` on `ParchmentModelAttribute`, producing CS0592 if applied to an interface. **Abstract classes are supported** — `GetProperties` on an abstract class walks the base chain normally, and `Render`'s `IsInstanceOfType` check accepts any concrete subclass instance, so abstract-as-polymorphic-binding-surface is a legitimate pattern. C# constraints can't express "concrete reference type" (`where T : class` permits interfaces because they're reference types; `where T : class, new()` blocks interfaces but also blocks records with primary constructors), so the runtime guard is the chosen mechanism. Tests pinning this live in `InterfaceModelTests`.
+- **Model binding limitations** — see `readme.md` → "Model binding limitations" for the user-facing list (interfaces as `TModel`, interface default impls, C# 14 extension properties, explicit interface implementations all unsupported). Implementation: runtime interface block is `GuardBindingModel<TModel>` in `TemplateStore.cs` (abstract classes supported; tests in `InterfaceModelTests`). SG block is `[AttributeUsage(AttributeTargets.Class)]` on `ParchmentModelAttribute` (CS0592). For the other three, reflection walkers and `ShapeBuilder.BuildEntry` deliberately don't walk `GetInterfaces()` / `current.Interfaces` and never visit extension containers. Inheritance from a base **class** IS supported (`ReferenceValidatorTests.InheritedMember_*`, `ParchmentTemplateGeneratorTests.InheritedMember_Validates`).
 
-- **Default implementations on interfaces, C# 14 extension properties, and explicit interface implementations are not bindable** — all three for the same root reason: they don't surface as public instance properties of the target type. An interface-default property (`interface IDoc { string Header => $"=== {Title} ==="; }`) is only callable through the interface type; `typeof(Foo).GetProperties(...)` on a class implementing `IDoc` returns nothing for `Header` unless the class re-declares it. An extension property (`extension(Customer) { public string FullName => ...; }`) compiles to a static method on the extension container, not an instance property of `Customer`. An explicit interface implementation (`string IFoo.Title { get; }`) compiles as a private member named `IFoo.Title` reachable only via the interface — `BindingFlags.Public` skips it, and the `.`-in-name isn't a valid liquid identifier anyway. Every reflection walker (`SharedFluid.RegisterTypeGraph`, `ExcelsiorTableMap`, `FormatMap`, `StringListMap`, `ModelValidator`) misses all three; SG-side `ITypeSymbol.GetMembers()` returns members declared on the type symbol only, and `ShapeBuilder.BuildEntry` walks `current.BaseType` but not `current.Interfaces` and never visits extension containers. Result: tokens fail validation with PARCH001 (SG) or `ParchmentRegistrationException` (runtime). Workaround: declare a regular public instance property on the model class (for explicit impls, a one-line delegating wrapper: `public string Title => ((IFoo)this).Title;`). Inheritance from a base **class** is supported and tested (`ReferenceValidatorTests.InheritedMember_RegistersAndRenders`, `ShadowedMember_DerivedWins`, `ParchmentTemplateGeneratorTests.InheritedMember_Validates`). Supporting interface-default properties would require walking `GetInterfaces()` in every reflection walker + `current.Interfaces` in `ShapeBuilder`, with dedup rules for diamond cases. Extension properties would additionally require scanning the compilation for extension containers and a Fluid resolver fallback for runtime member-access misses. Explicit interface implementations are a deliberate non-goal beyond cost: the feature exists specifically to *hide* a member from the public surface, so binding to it contradicts intent — and there's no clean liquid identifier without inventing a renaming convention. None are on the roadmap — the model is already where helper/computed properties live by design.
-
-- **`MarkdownValidator` binds the loop variable to the root type when source is unresolved**: in `WalkFor`, a loop whose `Source` resolves to nothing (PARCH001) or to a non-enumerable (PARCH002) still binds `Identifier` → `target.Shape.RootTypeFullyQualifiedName` for the body walk. Intentional cascade-suppression: stops every body access (`{{ line.Description }}` etc.) from also tripping PARCH001. Skipping body walk on bad sources would stop validating refs in nested constructs entirely; binding to a sentinel "unknown" would generate false positives. Current behaviour is wrong but optimal — keep it.
+- **`MarkdownValidator` binds the loop variable to the root type when source is unresolved**: in `WalkFor`, a loop whose `Source` fails (PARCH001/002) still binds `Identifier` → `target.Shape.RootTypeFullyQualifiedName` for the body walk. Intentional cascade-suppression — stops every body access (`{{ line.Description }}` etc.) from also tripping PARCH001. Skipping the body walk would stop validating nested constructs; binding to a sentinel would generate false positives. Wrong-but-optimal — keep it.
