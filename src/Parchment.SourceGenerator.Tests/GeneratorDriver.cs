@@ -73,6 +73,9 @@ static class GeneratorDriver
 
     public static byte[] BuildDocxBytes(params string[] paragraphs) => BuildDocx(paragraphs);
 
+    public static byte[] BuildDocxBytesWithoutPrivacyFlag(params string[] paragraphs) =>
+        BuildDocx(paragraphs, removePersonalInformation: false);
+
     public static AdditionalText RewriteDocx(string path, params string[] paragraphs)
     {
         File.WriteAllBytes(path, BuildDocx(paragraphs));
@@ -111,7 +114,7 @@ static class GeneratorDriver
         return path;
     }
 
-    static byte[] BuildDocx(string[] paragraphs)
+    static byte[] BuildDocx(string[] paragraphs, bool removePersonalInformation = true)
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -127,6 +130,14 @@ static class GeneratorDriver
                         {
                             Space = SpaceProcessingModeValues.Preserve
                         })));
+            }
+
+            if (removePersonalInformation)
+            {
+                var settingsPart = mainPart.AddNewPart<DocumentSettingsPart>();
+                settingsPart.Settings = new Settings(
+                    new RemovePersonalInformation(),
+                    new RemoveDateAndTime());
             }
         }
 

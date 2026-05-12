@@ -85,4 +85,11 @@ static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor MissingRemovePersonalInformation = new(
+        id: "PARCH012",
+        title: "Template missing 'Remove personal information on save' setting",
+        messageFormat: "Template '{0}' does not have the Word 'Remove personal information from file properties on save' setting enabled. Enable it via File → Options → Trust Center → Trust Center Settings → Privacy Options.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }

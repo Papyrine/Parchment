@@ -592,7 +592,7 @@ var model = new Quote
 using var stream = new MemoryStream();
 await store.Render("excelsior-quote", model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L150-L186' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L199-L235' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -1351,6 +1351,11 @@ public partial class Outer  // <-- partial
     }
 }
 ```
+
+
+### `PARCH012` — template missing 'Remove personal information on save' setting
+
+**Docx only. Warning, not error.** The template's `word/settings.xml` does not include the `<w:removePersonalInformation/>` element, which corresponds to Word's "Remove personal information from file properties on save" privacy option. Renders inherit the template's `settings.xml`, so any author / lastModifiedBy / revision metadata on the template propagates to every generated docx. To silence the warning, open the template in Word, go to File → Options → Trust Center → Trust Center Settings → Privacy Options, tick "Remove personal information from file properties on save", and re-save.
 
 
 ## Model binding limitations

@@ -2,20 +2,30 @@ static class DocxArchiveReader
 {
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-    public static List<string> ReadParagraphTexts(string filePath)
+    public static DocxReadResult Read(string filePath)
     {
-        var result = new List<string>();
+        var paragraphs = new List<string>();
+        var hasRemovePersonalInformation = false;
         var builder = new StringBuilder();
         using var archive = ZipFile.OpenRead(filePath);
         foreach (var entry in archive.Entries)
         {
+            if (IsSettingsPart(entry.FullName))
+            {
+                using var stream = entry.Open();
+                var settings = XDocument.Load(stream);
+                hasRemovePersonalInformation = settings.Root != null &&
+                    settings.Root.Element(w + "removePersonalInformation") != null;
+                continue;
+            }
+
             if (!LooksLikeWordPart(entry.FullName))
             {
                 continue;
             }
 
-            using var stream = entry.Open();
-            var doc = XDocument.Load(stream);
+            using var partStream = entry.Open();
+            var doc = XDocument.Load(partStream);
 
             foreach (var paragraph in doc.Descendants(w + "p"))
             {
@@ -27,12 +37,12 @@ static class DocxArchiveReader
 
                 if (builder.Length > 0)
                 {
-                    result.Add(builder.ToString());
+                    paragraphs.Add(builder.ToString());
                 }
             }
         }
 
-        return result;
+        return new(paragraphs, hasRemovePersonalInformation);
     }
 
     static bool LooksLikeWordPart(string path) =>
@@ -41,4 +51,9 @@ static class DocxArchiveReader
         path.StartsWith("word/footer", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("word/footnotes.xml", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("word/endnotes.xml", StringComparison.OrdinalIgnoreCase);
+
+    static bool IsSettingsPart(string path) =>
+        path.Equals("word/settings.xml", StringComparison.OrdinalIgnoreCase);
 }
+
+readonly record struct DocxReadResult(List<string> Paragraphs, bool HasRemovePersonalInformation);

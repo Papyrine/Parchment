@@ -168,12 +168,16 @@ public sealed class ParchmentTemplateGenerator :
     {
         try
         {
-            var paragraphs = DocxArchiveReader.ReadParagraphTexts(text.Path);
-            return new(text.Path, new(paragraphs.ToImmutableArray()), null);
+            var result = DocxArchiveReader.Read(text.Path);
+            return new(
+                text.Path,
+                new(result.Paragraphs.ToImmutableArray()),
+                result.HasRemovePersonalInformation,
+                null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, false, exception.Message);
         }
     }
 
@@ -268,6 +272,15 @@ public sealed class ParchmentTemplateGenerator :
                     target.TemplatePath,
                     matched.ReadError));
             return;
+        }
+
+        if (!matched.HasRemovePersonalInformation)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.MissingRemovePersonalInformation,
+                    location,
+                    target.TemplatePath));
         }
 
         var tokens = TokenScanner.Scan(matched.Paragraphs);

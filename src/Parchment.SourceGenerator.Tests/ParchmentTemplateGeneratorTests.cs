@@ -258,6 +258,55 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH006");
     }
 
+    [Test]
+    public async Task RemovePersonalInformation_Missing_EmitsWarning()
+    {
+        // PARCH012 fires when the template's word/settings.xml lacks the
+        // <w:removePersonalInformation/> element, which corresponds to Word's "Remove personal
+        // information from file properties on save" privacy option.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel("template.docx")]
+            public partial class Empty;
+            """;
+
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            ("template.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
+
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH012")).IsTrue();
+        await Assert.That(diagnostics.Single(_ => _.Id == "PARCH012").Severity).IsEqualTo(DiagnosticSeverity.Warning);
+    }
+
+    [Test]
+    public async Task RemovePersonalInformation_Present_NoWarning()
+    {
+        // Sanity check that BuildDocxBytes (which sets the flag) doesn't trip PARCH012.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel("template.docx")]
+            public partial class Empty;
+            """;
+
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            ("template.docx", GeneratorDriver.BuildDocxBytes("hello")));
+
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH012")).IsFalse();
+    }
+
     const string excelsiorModel =
         """
         using System.Collections.Generic;

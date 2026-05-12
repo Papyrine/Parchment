@@ -86,7 +86,7 @@ Filters (`Liquid/Filters.cs`): `markdown`, `escape_xml`, `bullet_list`, `numbere
 
 ### Source generator (`src/Parchment.SourceGenerator/`)
 
-User-facing overview, attribute placement, and PARCH001–PARCH011 are in `readme.md` → "Source generator (recommended)". The notes below cover implementation details needed for navigating the SG code.
+User-facing overview, attribute placement, and PARCH001–PARCH012 are in `readme.md` → "Source generator (recommended)". The notes below cover implementation details needed for navigating the SG code.
 
 `netstandard2.0;net10.0`, packaged inside `Parchment.nupkg` under `analyzers/dotnet/roslyn5.0/cs` and `analyzers/dotnet/roslyn5.3/cs`. `IIncrementalGenerator` + `ForAttributeWithMetadataName("Parchment.ParchmentModelAttribute")`. Same attribute supports **both** docx and markdown — SG branches on extension (`.docx` → docx flow, `.md` → markdown flow). Pipeline collects `targets`, `docs`, `markdowns` in three parallel `AdditionalTextsProvider` stages (each cached separately for incrementality), `Combine`s them, dispatches per target.
 
@@ -94,10 +94,10 @@ User-facing overview, attribute placement, and PARCH001–PARCH011 are in `readm
 
 1. Resolves `path` against `<AdditionalFiles>`.
 2. Reads docx via `AdditionalText.Path` + `ZipFile.OpenRead` (binary AdditionalFiles pattern — `GetText()` returns null for binary, and `File.ReadAllBytes` is banned by RS1035).
-3. Walks `word/document.xml`, `word/header*.xml`, `word/footer*.xml`, `word/footnotes.xml`, `word/endnotes.xml` via `XDocument`.
+3. Walks `word/document.xml`, `word/header*.xml`, `word/footer*.xml`, `word/footnotes.xml`, `word/endnotes.xml` via `XDocument`. Also probes `word/settings.xml` for `<w:removePersonalInformation/>` — absence emits `PARCH012` (warning). The runtime clones the template's `settings.xml` into the output, so the warning surfaces a PII-leak path at compile time.
 4. Tokenizes paragraph `InnerText` into `{{ ... }}` / `{% ... %}` sites, hands each to `Fluid.FluidParser` and walks the AST with `IdentifierVisitor : Fluid.Ast.AstVisitor` to collect member-access paths. Fluid.Core + transitive closure (Parlot, Microsoft.Extensions.FileProviders.Abstractions, TimeZoneConverter, plus System.Text.Json + Microsoft.Bcl.HashCode on netstandard2.0) merged into `Parchment.SourceGenerator.dll` at build via `PackageShader.MsBuild` (`Shade="true"`), so analyzer ships as a single self-contained DLL. SG keeps a parallel `TokenScanner.cs` rather than sharing source — runtime types are internal and depend on `DocumentFormat.OpenXml`, which doesn't work in a netstandard2.0 analyzer.
 5. Validates against model's `ITypeSymbol` (Roslyn semantic model, not reflection).
-6. Emits diagnostics `PARCH001`–`PARCH008`, `PARCH010`, `PARCH011`. Generates `RegisterWith(TemplateStore store, string? basePath = null)` calling `store.RegisterDocxTemplate<TModel>(name, path)`. Nested-class targets are wrapped in matching `partial {kind} {name}` declarations for every link in the enclosing-type chain — `BuildPartialSource` walks `target.EnclosingTypes` (outermost first). PARCH011 fires when any enclosing type isn't `partial`, and the helper is *not* emitted in that case (otherwise CS0260 with no link back to the SG).
+6. Emits diagnostics `PARCH001`–`PARCH008`, `PARCH010`–`PARCH012`. Generates `RegisterWith(TemplateStore store, string? basePath = null)` calling `store.RegisterDocxTemplate<TModel>(name, path)`. Nested-class targets are wrapped in matching `partial {kind} {name}` declarations for every link in the enclosing-type chain — `BuildPartialSource` walks `target.EnclosingTypes` (outermost first). PARCH011 fires when any enclosing type isn't `partial`, and the helper is *not* emitted in that case (otherwise CS0260 with no link back to the SG).
 7. **Emits pre-compiled accessors** via `AccessorEmission.Emit(target.Shape, rootFqn)` — see "Design decisions → Source generator emits pre-compiled accessors" below for the four-dataset pipeline.
 
 **Markdown flow** (mirrors runtime Flow B):
