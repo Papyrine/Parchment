@@ -60,8 +60,11 @@ static class AccessorEmission
         // walkers, so self-referential models terminate.
         WalkForMaps(
             rootFqn,
-            new List<string>(),
-            new HashSet<string>(StringComparer.Ordinal) { rootFqn },
+            [],
+            new(StringComparer.Ordinal)
+            {
+                rootFqn
+            },
             typesByFqn,
             excelsiorEntries,
             formatEntries,

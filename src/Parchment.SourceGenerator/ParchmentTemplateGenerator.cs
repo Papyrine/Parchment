@@ -599,7 +599,7 @@ public sealed class ParchmentTemplateGenerator :
 
     static string GenerateDocxRegistration(TargetInfo target)
     {
-        var templatePath = Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
+        var templatePath = SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
         var accessors = AccessorEmission.Emit(target.Shape, target.ModelFullyQualifiedName);
         // Each accessor section is emitted on its own physical lines so BuildPartialSource's
         // line-by-line outer indent pass adds the right depth prefix to every line. The blocks
@@ -623,7 +623,7 @@ public sealed class ParchmentTemplateGenerator :
 
     static string GenerateMarkdownRegistration(TargetInfo target)
     {
-        var templatePath = Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
+        var templatePath = SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
         var accessors = AccessorEmission.Emit(target.Shape, target.ModelFullyQualifiedName);
         var fieldsBlock = accessors == null ? "" : accessors.FieldsBlock + "\n\n";
         var registrationsBlock = accessors == null ? "" : accessors.RegistrationsBlock + "\n";
