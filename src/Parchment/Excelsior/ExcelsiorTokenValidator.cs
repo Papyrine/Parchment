@@ -66,7 +66,9 @@ static class ExcelsiorTokenValidator
         string templateName,
         string partUri)
     {
-        if (siblingTokenCount == 1 && token.Offset == 0 && token.Length == paragraphText.Length)
+        if (siblingTokenCount == 1 &&
+            token.Offset == 0 &&
+            token.Length == paragraphText.Length)
         {
             return;
         }

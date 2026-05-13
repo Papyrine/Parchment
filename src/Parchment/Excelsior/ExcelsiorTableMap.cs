@@ -5,9 +5,9 @@
 /// </summary>
 sealed class ExcelsiorTableMap
 {
-    static readonly ConcurrentDictionary<Type, ExcelsiorTableMap> precompiledCache = new();
+    static ConcurrentDictionary<Type, ExcelsiorTableMap> precompiledCache = new();
 
-    readonly Dictionary<string, ExcelsiorTableEntry> entries;
+    Dictionary<string, ExcelsiorTableEntry> entries;
 
     ExcelsiorTableMap(Dictionary<string, ExcelsiorTableEntry> entries) =>
         this.entries = entries;
@@ -25,7 +25,10 @@ sealed class ExcelsiorTableMap
         }
 
         var entries = new Dictionary<string, ExcelsiorTableEntry>(StringComparer.OrdinalIgnoreCase);
-        var visited = new HashSet<Type> { modelType };
+        var visited = new HashSet<Type>
+        {
+            modelType
+        };
         WalkType(modelType, [], static root => root, entries, visited, templateName);
         return new(entries);
     }
@@ -51,13 +54,17 @@ sealed class ExcelsiorTableMap
     {
         foreach (var (name, memberType, memberGetter, hasExcelsior) in EnumerateMembers(type))
         {
-            var nextSegments = new List<string>(pathSegments) { name };
+            var nextSegments = new List<string>(pathSegments)
+            {
+                name
+            };
             var nextGetter = ChainGetter(getter, memberGetter);
 
             if (hasExcelsior)
             {
                 var elementType = ModelValidator.TryResolveElementType(memberType);
-                if (elementType == null || elementType == typeof(char))
+                if (elementType == null ||
+                    elementType == typeof(char))
                 {
                     throw new ParchmentRegistrationException(
                         templateName,

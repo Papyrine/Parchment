@@ -6,9 +6,9 @@
 /// </summary>
 sealed class FormatMap
 {
-    static readonly ConcurrentDictionary<Type, FormatMap> precompiledCache = new();
+    static ConcurrentDictionary<Type, FormatMap> precompiledCache = new();
 
-    readonly Dictionary<string, FormatEntry> entries;
+    Dictionary<string, FormatEntry> entries;
 
     FormatMap(Dictionary<string, FormatEntry> entries) =>
         this.entries = entries;
@@ -26,7 +26,10 @@ sealed class FormatMap
         }
 
         var entries = new Dictionary<string, FormatEntry>(StringComparer.OrdinalIgnoreCase);
-        var visited = new HashSet<Type> { modelType };
+        var visited = new HashSet<Type>
+        {
+            modelType
+        };
         WalkType(modelType, [], static root => root, entries, visited, templateName);
         return new(entries);
     }
@@ -52,23 +55,26 @@ sealed class FormatMap
     {
         foreach (var (name, memberType, memberGetter, member) in EnumerateMembers(type))
         {
-            var nextSegments = new List<string>(pathSegments) { name };
+            var nextSegments = new List<string>(pathSegments)
+            {
+                name
+            };
             var nextGetter = ChainGetter(getter, memberGetter);
 
             var format = DetectFormat(member, templateName, type);
             if (format != null)
             {
                 var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
-                if (underlying != typeof(string))
+                if (underlying == typeof(string))
                 {
-                    throw new ParchmentRegistrationException(
-                        templateName,
-                        $"[{format}] member '{type.Name}.{name}' must be a string.");
+                    var dottedPath = string.Join('.', nextSegments);
+                    entries[dottedPath] = new(format.Value, nextGetter);
+                    continue;
                 }
 
-                var dottedPath = string.Join('.', nextSegments);
-                entries[dottedPath] = new(format.Value, nextGetter);
-                continue;
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[{format}] member '{type.Name}.{name}' must be a string.");
             }
 
             var memberUnderlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
@@ -153,19 +159,22 @@ sealed class FormatMap
                 $"Member '{owner.Name}.{member.Name}': mismatched format — [Html] contradicts [StringSyntax(\"markdown\")].");
         }
 
-        if (hasMarkdownAttribute && syntax == "html")
+        if (hasMarkdownAttribute &&
+            syntax == "html")
         {
             throw new ParchmentRegistrationException(
                 templateName,
                 $"Member '{owner.Name}.{member.Name}': mismatched format — [Markdown] contradicts [StringSyntax(\"html\")].");
         }
 
-        if (hasHtmlAttribute || syntax == "html")
+        if (hasHtmlAttribute ||
+            syntax == "html")
         {
             return FormatMapKind.Html;
         }
 
-        if (hasMarkdownAttribute || syntax == "markdown")
+        if (hasMarkdownAttribute ||
+            syntax == "markdown")
         {
             return FormatMapKind.Markdown;
         }
