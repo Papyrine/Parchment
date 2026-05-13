@@ -53,7 +53,16 @@ class IdentifierVisitor :
         segment switch
         {
             IdentifierSegment id => id.Identifier,
-            IndexerSegment { Expression: LiteralExpression { Value: { Type: FluidValues.String } value } } => value.ToStringValue(),
+            IndexerSegment
+            {
+                Expression: LiteralExpression
+                {
+                    Value:
+                    {
+                        Type: FluidValues.String
+                    } value
+                }
+            } => value.ToStringValue(),
             _ => null
         };
 }

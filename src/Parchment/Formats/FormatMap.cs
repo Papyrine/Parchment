@@ -182,24 +182,8 @@ sealed class FormatMap
         return null;
     }
 
-    static string? ReadStringSyntax(MemberInfo member)
-    {
-        foreach (var attribute in member.GetCustomAttributes(true))
-        {
-            if (attribute.GetType().FullName != "System.Diagnostics.CodeAnalysis.StringSyntaxAttribute")
-            {
-                continue;
-            }
-
-            var syntaxProperty = attribute.GetType().GetProperty("Syntax");
-            if (syntaxProperty?.GetValue(attribute) is string value)
-            {
-                return value.ToLowerInvariant();
-            }
-        }
-
-        return null;
-    }
+    static string? ReadStringSyntax(MemberInfo member) =>
+        member.GetCustomAttribute<StringSyntaxAttribute>(true)?.Syntax.ToLowerInvariant();
 
     static bool ShouldDescend(Type type)
     {

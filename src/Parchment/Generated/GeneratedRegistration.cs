@@ -34,15 +34,3 @@ public static class GeneratedRegistration
         IEnumerable<StringListMapEntry> entries) =>
         StringListMap.RegisterPrecompiled(modelType, entries);
 }
-
-public sealed record ExcelsiorTableMapEntry(string DottedPath, Type ElementType, Func<object, object?> Getter);
-
-public sealed record FormatMapEntry(string DottedPath, FormatMapKind Format, Func<object, object?> Getter);
-
-public sealed record StringListMapEntry(string DottedPath, Func<object, object?> Getter);
-
-public enum FormatMapKind
-{
-    Html,
-    Markdown
-}
