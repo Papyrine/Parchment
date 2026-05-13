@@ -1,3 +1,5 @@
+using StringValue = Fluid.Values.StringValue;
+
 /// <summary>
 /// Static singletons for Fluid. Fluid's parser, options, and filters are thread-safe and expensive
 /// to construct; one instance per process is the documented recommendation.
@@ -33,9 +35,16 @@ static class SharedFluid
         // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
         // StringValue short-circuits Fluid's default type dispatch (which would have called
         // Enum.ToString() and emitted the raw symbol name).
-        options.ValueConverters.Add(static value => value is Enum e
-            ? new Fluid.Values.StringValue(EnumRender.Render(e))
-            : null);
+        options.ValueConverters.Add(static value =>
+        {
+            if (value is Enum e)
+            {
+                return new StringValue(EnumRender.Render(e));
+            }
+
+            return null;
+        });
+
         return options;
     }
 
@@ -62,7 +71,8 @@ static class SharedFluid
 
     static void RegisterTypeGraph(Type? type)
     {
-        if (type == null || !ShouldRegister(type))
+        if (type == null ||
+            !ShouldRegister(type))
         {
             return;
         }

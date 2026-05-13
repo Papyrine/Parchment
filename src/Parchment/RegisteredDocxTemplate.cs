@@ -59,7 +59,19 @@ class RegisteredDocxTemplate(
         }
 
         var map = Anchors.BuildMap(root);
-        var runner = new ScopeTreeRunner(Name, part.PartUri, map, context, mainPart, model, excelsiorTables, formats, stringLists, numberingState, styles, imagePolicies);
+        var runner = new ScopeTreeRunner(
+            Name,
+            part.PartUri,
+            map,
+            context,
+            mainPart,
+            model,
+            excelsiorTables,
+            formats,
+            stringLists,
+            numberingState,
+            styles,
+            imagePolicies);
         await runner.RunAsync(part.Nodes);
         runner.ApplyStructural();
     }

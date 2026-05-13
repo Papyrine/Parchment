@@ -107,5 +107,4 @@ static class ModelValidator
     static bool MatchesRootIdentifier(Type modelType, string name) =>
         string.Equals(name, modelType.Name, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "model", StringComparison.OrdinalIgnoreCase);
-
 }

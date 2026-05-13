@@ -7,9 +7,9 @@
 /// </summary>
 sealed class StringListMap
 {
-    static readonly ConcurrentDictionary<Type, StringListMap> precompiledCache = new();
+    static ConcurrentDictionary<Type, StringListMap> precompiledCache = new();
 
-    readonly Dictionary<string, Func<object, object?>> entries;
+    Dictionary<string, Func<object, object?>> entries;
 
     StringListMap(Dictionary<string, Func<object, object?>> entries) =>
         this.entries = entries;

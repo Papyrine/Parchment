@@ -214,7 +214,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             }
 
             index += brace;
-            if (index + 1 >= span.Length || span[index + 1] != '%')
+            if (index + 1 >= span.Length ||
+                span[index + 1] != '%')
             {
                 index++;
                 continue;

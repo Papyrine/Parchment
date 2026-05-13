@@ -9,37 +9,38 @@ class ListBlockRenderer :
 
         foreach (var item in listBlock)
         {
-            if (item is ListItemBlock itemBlock)
+            if (item is not ListItemBlock itemBlock)
             {
-                foreach (var child in itemBlock)
+                continue;
+            }
+
+            foreach (var child in itemBlock)
+            {
+                if (child is not LeafBlock leaf)
                 {
-                    if (child is LeafBlock leaf)
-                    {
-                        var properties = new ParagraphProperties
-                        {
-                            ParagraphStyleId = new()
-                            {
-                                Val = "ListParagraph"
-                            },
-                            NumberingProperties = new(
-                                new NumberingLevelReference
-                                {
-                                    Val = 0
-                                },
-                                new NumberingId
-                                {
-                                    Val = numId
-                                }),
-                            ContextualSpacing = new()
-                        };
-                        renderer.WriteLeafInline(leaf);
-                        renderer.FlushParagraph(properties);
-                    }
-                    else
-                    {
-                        renderer.Render(child);
-                    }
+                    renderer.Render(child);
+                    continue;
                 }
+
+                var properties = new ParagraphProperties
+                {
+                    ParagraphStyleId = new()
+                    {
+                        Val = "ListParagraph"
+                    },
+                    NumberingProperties = new(
+                        new NumberingLevelReference
+                        {
+                            Val = 0
+                        },
+                        new NumberingId
+                        {
+                            Val = numId
+                        }),
+                    ContextualSpacing = new()
+                };
+                renderer.WriteLeafInline(leaf);
+                renderer.FlushParagraph(properties);
             }
         }
     }

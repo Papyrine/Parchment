@@ -1,17 +1,19 @@
+using Markdig.Extensions.SmartyPants;
+
 class SmartyPantInlineRenderer :
-    MarkdownObjectRenderer<OpenXmlMarkdownRenderer, Markdig.Extensions.SmartyPants.SmartyPant>
+    MarkdownObjectRenderer<OpenXmlMarkdownRenderer, SmartyPant>
 {
-    protected override void Write(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.SmartyPants.SmartyPant inline)
+    protected override void Write(OpenXmlMarkdownRenderer renderer, SmartyPant inline)
     {
         var glyph = inline.Type switch
         {
-            Markdig.Extensions.SmartyPants.SmartyPantType.LeftQuote => "\u2018",
-            Markdig.Extensions.SmartyPants.SmartyPantType.RightQuote => "\u2019",
-            Markdig.Extensions.SmartyPants.SmartyPantType.LeftDoubleQuote => "\u201C",
-            Markdig.Extensions.SmartyPants.SmartyPantType.RightDoubleQuote => "\u201D",
-            Markdig.Extensions.SmartyPants.SmartyPantType.Dash2 => "\u2013",
-            Markdig.Extensions.SmartyPants.SmartyPantType.Dash3 => "\u2014",
-            Markdig.Extensions.SmartyPants.SmartyPantType.Ellipsis => "\u2026",
+            SmartyPantType.LeftQuote => "\u2018",
+            SmartyPantType.RightQuote => "\u2019",
+            SmartyPantType.LeftDoubleQuote => "\u201C",
+            SmartyPantType.RightDoubleQuote => "\u201D",
+            SmartyPantType.Dash2 => "\u2013",
+            SmartyPantType.Dash3 => "\u2014",
+            SmartyPantType.Ellipsis => "\u2026",
             _ => string.Empty
         };
 
