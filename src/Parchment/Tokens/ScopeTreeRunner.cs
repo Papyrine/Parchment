@@ -234,20 +234,19 @@ class ScopeTreeRunner(
             // Expression directly (filter chain included). This lets us see whether the value is a
             // TokenValue (markdown / openxml hatch) before falling back to string rendering, without
             // round-tripping through the Render() pipeline twice.
+            //
+            // DocxTokenSite.Template is only ever constructed from a `{{ ... }}` substitution body
+            // by TokenScanner.ParseSubstitution — FluidParser emits that as exactly one
+            // OutputStatement. Block tags go down a separate path and never reach here.
             var statements = ((Fluid.Parser.FluidTemplate)site.Template).Statements;
-            if (statements.Count > 0 &&
-                statements[0] is OutputStatement output)
+            var output = (OutputStatement)statements[0];
+            var pending = output.Expression.EvaluateAsync(context);
+            if (pending.IsCompletedSuccessfully)
             {
-                var pending = output.Expression.EvaluateAsync(context);
-                if (pending.IsCompletedSuccessfully)
-                {
-                    return new(InterpretFluidValue(pending.Result));
-                }
-
-                return AwaitFluidValue(pending, host, site);
+                return new(InterpretFluidValue(pending.Result));
             }
 
-            return RenderFullTemplateAsync(site, host);
+            return AwaitFluidValue(pending, host, site);
         }
         catch (ParchmentException)
         {
@@ -280,24 +279,6 @@ class ScopeTreeRunner(
         try
         {
             return InterpretFluidValue(await pending);
-        }
-        catch (ParchmentException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            throw WrapException(exception, host, site);
-        }
-    }
-
-    async ValueTask<object> RenderFullTemplateAsync(DocxTokenSite site, Paragraph host)
-    {
-        try
-        {
-            await using var writer = new StringWriter();
-            await site.Template.RenderAsync(writer, NullEncoder.Default, context);
-            return writer.ToString();
         }
         catch (ParchmentException)
         {
