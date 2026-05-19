@@ -58,6 +58,50 @@ public class CodeBlockRendererTests
     }
 
     [Test]
+    public async Task FencedCodeBlockWithLanguageProducesCodeStyledParagraphs()
+    {
+        const string md =
+            """
+            ```csharp
+            var x = 1;
+            var y = 2;
+            ```
+            """;
+
+        var block = RendererHarness.FirstBlock<CodeBlock>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(block);
+
+        var paragraphs = renderer.Drain().Cast<Paragraph>().ToList();
+        await Assert.That(paragraphs.Count).IsEqualTo(2);
+        foreach (var p in paragraphs)
+        {
+            await Assert.That(p.ParagraphProperties!.ParagraphStyleId!.Val?.Value).IsEqualTo("Code");
+        }
+
+        var texts = paragraphs.Select(p => p.GetFirstChild<Run>()!.GetFirstChild<Text>()!.Text).ToList();
+        await Assert.That(texts).IsEquivalentTo(["var x = 1;", "var y = 2;"]);
+    }
+
+    [Test]
+    public async Task EmptyFencedCodeBlockProducesNoParagraphs()
+    {
+        const string md =
+            """
+            ```
+            ```
+            """;
+
+        var block = RendererHarness.FirstBlock<CodeBlock>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(block);
+
+        await Assert.That(renderer.Drain().Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task CodeBlockNestedInListItemIsIndented()
     {
         const string md =

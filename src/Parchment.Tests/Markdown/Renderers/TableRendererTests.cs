@@ -404,6 +404,108 @@ public class TableRendererTests
         }
     }
 
+    [Test]
+    public async Task PipeTableEmptyCellEmitsCellWithEmptyParagraph()
+    {
+        const string md =
+            """
+            | A | B |
+            |---|---|
+            |   | 2 |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var bodyRow = table.Elements<TableRow>().ElementAt(1);
+        var cells = bodyRow.Elements<TableCell>().ToList();
+        await Assert.That(cells.Count).IsEqualTo(2);
+
+        var emptyParagraph = cells[0].GetFirstChild<Paragraph>()!;
+        await Assert.That(emptyParagraph.Elements<Run>().Any()).IsFalse();
+
+        var populatedRun = cells[1].GetFirstChild<Paragraph>()!.GetFirstChild<Run>()!;
+        await Assert.That(populatedRun.GetFirstChild<Text>()!.Text).IsEqualTo("2");
+    }
+
+    [Test]
+    public async Task PipeTableBodyCellWithEmphasisCarriesItalicRunProperty()
+    {
+        const string md =
+            """
+            | A | B |
+            |---|---|
+            | *italic* | plain |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var bodyRow = table.Elements<TableRow>().ElementAt(1);
+        var italicCell = bodyRow.Elements<TableCell>().First();
+        var run = italicCell.GetFirstChild<Paragraph>()!.GetFirstChild<Run>()!;
+        await Assert.That(run.RunProperties!.GetFirstChild<Italic>()).IsNotNull();
+        await Assert.That(run.GetFirstChild<Text>()!.Text).IsEqualTo("italic");
+    }
+
+    [Test]
+    public async Task PipeTableHeaderCellWithLinkRendersBoldedHyperlink()
+    {
+        const string md =
+            """
+            | [click](https://example.com) | B |
+            |---|---|
+            | 1 | 2 |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var headerRow = table.Elements<TableRow>().First();
+        var headerParagraph = headerRow.Elements<TableCell>().First().GetFirstChild<Paragraph>()!;
+        var hyperlink = headerParagraph.GetFirstChild<Hyperlink>()!;
+        await Assert.That(string.IsNullOrEmpty(hyperlink.Id?.Value)).IsFalse();
+
+        var run = hyperlink.GetFirstChild<Run>()!;
+        await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
+        await Assert.That(run.RunProperties.GetFirstChild<Bold>()).IsNotNull();
+    }
+
+    [Test]
+    public async Task PipeTableBodyCellWithLinkRendersHyperlink()
+    {
+        const string md =
+            """
+            | A | B |
+            |---|---|
+            | [click](https://example.com) | 2 |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var bodyRow = table.Elements<TableRow>().ElementAt(1);
+        var paragraph = bodyRow.Elements<TableCell>().First().GetFirstChild<Paragraph>()!;
+        var hyperlink = paragraph.GetFirstChild<Hyperlink>()!;
+        await Assert.That(string.IsNullOrEmpty(hyperlink.Id?.Value)).IsFalse();
+
+        var run = hyperlink.GetFirstChild<Run>()!;
+        await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
+        await Assert.That(run.GetFirstChild<Text>()!.Text).IsEqualTo("click");
+    }
+
     static async Task VerifyDocument(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();

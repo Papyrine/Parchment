@@ -4,7 +4,13 @@ class CodeBlockRenderer :
     protected override void Write(OpenXmlMarkdownRenderer renderer, CodeBlock block)
     {
         var indent = renderer.CurrentIndent;
-        foreach (var line in block.Lines.Lines.Take(block.Lines.Count))
+        var count = block.Lines.Count;
+        if (count == 0)
+        {
+            return;
+        }
+
+        foreach (var line in block.Lines.Lines.Take(count))
         {
             var properties = new ParagraphProperties(
                 new ParagraphStyleId

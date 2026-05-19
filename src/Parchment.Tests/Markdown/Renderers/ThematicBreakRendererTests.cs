@@ -20,6 +20,36 @@ public class ThematicBreakRendererTests
     }
 
     [Test]
+    public async Task AsteriskVariantEmitsParagraphWithBottomBorder()
+    {
+        var block = RendererHarness.FirstBlock<ThematicBreakBlock>("***");
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(block);
+
+        var paragraph = (Paragraph)renderer.Drain().Single();
+        var border = paragraph.ParagraphProperties!
+            .GetFirstChild<ParagraphBorders>()!
+            .GetFirstChild<BottomBorder>()!;
+        await Assert.That(border.Val?.Value).IsEqualTo(BorderValues.Single);
+    }
+
+    [Test]
+    public async Task UnderscoreVariantEmitsParagraphWithBottomBorder()
+    {
+        var block = RendererHarness.FirstBlock<ThematicBreakBlock>("___");
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(block);
+
+        var paragraph = (Paragraph)renderer.Drain().Single();
+        var border = paragraph.ParagraphProperties!
+            .GetFirstChild<ParagraphBorders>()!
+            .GetFirstChild<BottomBorder>()!;
+        await Assert.That(border.Val?.Value).IsEqualTo(BorderValues.Single);
+    }
+
+    [Test]
     public async Task ThematicBreakNestedInBlockQuoteIsIndented()
     {
         const string md = "> ---";

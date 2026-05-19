@@ -329,7 +329,7 @@ class TableRenderer :
             return;
         }
 
-        foreach (var run in paragraph.Elements<Run>())
+        foreach (var run in paragraph.Descendants<Run>())
         {
             run.RunProperties ??= new();
             run.RunProperties.Append(new Bold());
