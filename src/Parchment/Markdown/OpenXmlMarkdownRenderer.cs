@@ -43,6 +43,12 @@ class OpenXmlMarkdownRenderer :
     public WordNumberingState Numbering { get; }
     public ImagePolicies ImagePolicies { get; }
 
+    // Tables flagged here had pipes aligned in the source across header, separator and body
+    // rows — that pattern signals the user padded for readability, not custom widths, so the
+    // table renderer skips emitting explicit column widths derived from dash counts. Populated
+    // by MarkdownRendering before the renderer walks the AST.
+    public HashSet<Markdig.Extensions.Tables.Table> SkipColumnWidths { get; } = [];
+
     internal ContainerState Top => stack.Peek();
 
     public override object Render(MarkdownObject markdownObject)

@@ -925,6 +925,51 @@ Header cells are bold and centered. Rendered output:
 
 ![Pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableEmitsTableWithGridRowsAndHeaderFormatting%23page01.verified.png)
 
+Column alignment markers in the header separator row (`:---`, `:---:`, `---:`) are honored for both header and body cells:
+
+```markdown
+| Left | Center | Right | Default |
+|:-----|:------:|------:|---------|
+| a    | b      | c     | d       |
+| e    | f      | g     | h       |
+```
+
+Columns with no alignment marker fall back to the defaults (header centered, body left). Rendered output:
+
+![Aligned pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableHonorsColumnAlignment.verified.png)
+
+The number of dashes in each separator cell determines the column's relative width. The table uses fixed layout and each `gridCol` / cell gets an explicit width proportional to its dash count:
+
+```markdown
+| Name | Description           | Count |
+|------|--------------------|------|
+| A    | Short                 | 1     |
+| BB   | A longer description  | 22    |
+```
+
+Dash counts 6 / 20 / 6 yield widths in the same ratio (18.75% / 62.5% / 18.75%). Rendered output:
+
+![Pipe table column widths](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableHonorsColumnWidthsFromDashCounts.verified.png)
+
+Behaviour notes:
+
+- If the `|` characters in the header, separator, and body rows all line up at the same column positions, dash counts are treated as readability padding and ignored — the table sizes naturally. Custom widths are inferred only when the separator dashes intentionally break that alignment. The two snippets below illustrate the distinction:
+
+  ```markdown
+  | Left | Center | Right | Default |    ← pipes align across all rows ⇒ uniform widths
+  |:-----|:------:|------:|---------|
+  | a    | b      | c     | d       |
+  ```
+
+  ```markdown
+  | Name | Description           | Count |    ← separator pipes shift ⇒ widths apply
+  |------|--------------------|------|
+  | A    | Short                 | 1     |
+  ```
+
+- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted — Word's default auto-distribution produces the same layout, so the docx stays minimal.
+- Tables nested in blockquotes or list items are auto-sized to fit their indented container, so the explicit dxa column widths are skipped regardless of dash counts.
+
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
 
 Grid tables use `+---+` borders and `+===+` to separate the header row:

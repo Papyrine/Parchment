@@ -197,6 +197,213 @@ public class TableRendererTests
         await VerifyDocument(md);
     }
 
+    [Test]
+    public async Task PipeTableHonorsColumnAlignment()
+    {
+        const string md =
+            """
+            | Left | Center | Right | Default |
+            | :- | :-: | -: | -|
+            | a    | b      | c     | d       |
+            | e    | f      | g     | h       |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var rows = table.Elements<TableRow>().ToList();
+
+        JustificationValues?[] expectedHeader =
+        [
+            JustificationValues.Left,
+            JustificationValues.Center,
+            JustificationValues.Right,
+            JustificationValues.Center
+        ];
+        JustificationValues?[] expectedBody =
+        [
+            JustificationValues.Left,
+            JustificationValues.Center,
+            JustificationValues.Right,
+            null
+        ];
+
+        await AssertRowJustifications(rows[0], expectedHeader);
+        await AssertRowJustifications(rows[1], expectedBody);
+        await AssertRowJustifications(rows[2], expectedBody);
+
+        await VerifyDocument(md);
+    }
+
+    static async Task AssertRowJustifications(TableRow row, JustificationValues?[] expected)
+    {
+        var cells = row.Elements<TableCell>().ToList();
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var paragraph = cells[i].GetFirstChild<Paragraph>()!;
+            var actual = paragraph.ParagraphProperties?.GetFirstChild<Justification>()?.Val?.Value;
+            if (expected[i] is { } value)
+            {
+                await Assert.That(actual).IsEqualTo(value);
+            }
+            else
+            {
+                await Assert.That(actual).IsNull();
+            }
+        }
+    }
+
+    [Test]
+    public async Task PipeTableWithAlignedPipesSkipsExplicitWidthsViaPipeline()
+    {
+        // Separator has uneven dash counts (5/6/6/9) because of alignment colons, but the pipes
+        // in the header, separator and body all land at the same columns — readability padding.
+        // Going through MarkdownRendering exercises the source-aware alignment heuristic.
+        const string md =
+            """
+            | Left | Center | Right | Default |
+            |:-----|:------:|------:|---------|
+            | a    | b      | c     | d       |
+            | e    | f      | g     | h       |
+            """;
+
+        var elements = RendererHarness.RenderMarkdown(md);
+        var table = elements.OfType<Table>().Single();
+
+        var properties = table.GetFirstChild<TableProperties>()!;
+        await Assert.That(properties.GetFirstChild<TableLayout>()).IsNull();
+        foreach (var col in table.GetFirstChild<TableGrid>()!.Elements<GridColumn>())
+        {
+            await Assert.That(col.Width).IsNull();
+        }
+    }
+
+    [Test]
+    public async Task PipeTableWithMisalignedSeparatorEmitsWidthsViaPipeline()
+    {
+        // Body rows match the header pipes, but the separator deliberately uses 6/20/6 dashes —
+        // the pipe-alignment heuristic only suppresses widths when the separator aligns too, so
+        // the inferred column widths still drive the rendered layout.
+        const string md =
+            """
+            | Name | Description           | Count |
+            |------|--------------------|------|
+            | A    | Short                 | 1     |
+            | BB   | A longer description  | 22    |
+            """;
+
+        var elements = RendererHarness.RenderMarkdown(md);
+        var table = elements.OfType<Table>().Single();
+
+        var properties = table.GetFirstChild<TableProperties>()!;
+        await Assert.That(properties.GetFirstChild<TableLayout>()?.Type?.Value)
+            .IsEqualTo(TableLayoutValues.Fixed);
+        var gridCols = table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().ToList();
+        await Assert.That(gridCols[0].Width?.Value).IsEqualTo("1688");
+        await Assert.That(gridCols[1].Width?.Value).IsEqualTo("5625");
+        await Assert.That(gridCols[2].Width?.Value).IsEqualTo("1688");
+    }
+
+    [Test]
+    public async Task PipeTableHonorsColumnWidthsFromDashCounts()
+    {
+        // Separator dash counts 6 / 20 / 6 → widths 18.75% / 62.5% / 18.75%.
+        // At a 9000 dxa budget that maps to 1688 / 5625 / 1688.
+        const string md =
+            """
+            | Name | Description           | Count |
+            |------|--------------------|------|
+            | A    | Short                 | 1     |
+            | BB   | A longer description  | 22    |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+
+        var properties = table.GetFirstChild<TableProperties>()!;
+        await Assert.That(properties.GetFirstChild<TableLayout>()?.Type?.Value)
+            .IsEqualTo(TableLayoutValues.Fixed);
+
+        var gridCols = table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().ToList();
+        await Assert.That(gridCols.Count).IsEqualTo(3);
+        await Assert.That(gridCols[0].Width?.Value).IsEqualTo("1688");
+        await Assert.That(gridCols[1].Width?.Value).IsEqualTo("5625");
+        await Assert.That(gridCols[2].Width?.Value).IsEqualTo("1688");
+
+        var firstBodyRow = table.Elements<TableRow>().ElementAt(1);
+        var cells = firstBodyRow.Elements<TableCell>().ToList();
+        for (var i = 0; i < cells.Count; i++)
+        {
+            var cellWidth = cells[i].TableCellProperties?.GetFirstChild<TableCellWidth>();
+            await Assert.That(cellWidth?.Width?.Value).IsEqualTo(gridCols[i].Width?.Value);
+            await Assert.That(cellWidth?.Type?.Value).IsEqualTo(TableWidthUnitValues.Dxa);
+        }
+
+        await VerifyDocument(md);
+    }
+
+    [Test]
+    public async Task PipeTableWithUniformSeparatorSkipsExplicitWidths()
+    {
+        const string md =
+            """
+            | A | B | C |
+            |---|---|---|
+            | 1 | 2 | 3 |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var properties = table.GetFirstChild<TableProperties>()!;
+        await Assert.That(properties.GetFirstChild<TableLayout>()).IsNull();
+
+        var gridCols = table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().ToList();
+        await Assert.That(gridCols.Count).IsEqualTo(3);
+        foreach (var col in gridCols)
+        {
+            await Assert.That(col.Width).IsNull();
+        }
+    }
+
+    [Test]
+    public async Task IndentedTableSkipsExplicitColumnWidths()
+    {
+        // Uneven dashes would normally inflate the inner Description column. Inside a blockquote
+        // the table is auto-sized and explicit dxa widths would override the indent, so the
+        // renderer skips the width emission for indented tables.
+        const string md =
+            """
+            > | Name | Description           |
+            > |------|--------------------|
+            > | A    | Short                 |
+            """;
+
+        var quote = RendererHarness.FirstBlock<QuoteBlock>(md);
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(quote);
+
+        var table = renderer.Drain().OfType<Table>().Single();
+        var properties = table.GetFirstChild<TableProperties>()!;
+        await Assert.That(properties.GetFirstChild<TableLayout>()).IsNull();
+
+        var gridCols = table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().ToList();
+        foreach (var col in gridCols)
+        {
+            await Assert.That(col.Width).IsNull();
+        }
+    }
+
     static async Task VerifyDocument(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();
