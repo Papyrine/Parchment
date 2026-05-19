@@ -45,7 +45,7 @@ public class TableRendererTests
     }
 
     [Test]
-    public async Task PipeTableSetsFullWidthOnTableProperties()
+    public Task PipeTableSetsFullWidthOnTableProperties()
     {
         const string md =
             """
@@ -60,7 +60,7 @@ public class TableRendererTests
         renderer.Render(tableBlock);
 
         var table = (Table) renderer.Drain().Single();
-        await AssertFullWidth(table);
+        return AssertFullWidth(table);
     }
 
     [Test]
