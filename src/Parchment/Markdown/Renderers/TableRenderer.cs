@@ -7,11 +7,12 @@ class TableRenderer :
         table.Append(BuildTableProperties(renderer.CurrentIndent));
         table.Append(BuildTableGrid(tableBlock));
 
+        var columns = tableBlock.ColumnDefinitions;
         foreach (var child in tableBlock)
         {
             if (child is Markdig.Extensions.Tables.TableRow row)
             {
-                table.Append(BuildRow(renderer, row));
+                table.Append(BuildRow(renderer, row, columns));
             }
         }
 
@@ -107,24 +108,35 @@ class TableRenderer :
         return grid;
     }
 
-    static TableRow BuildRow(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.Tables.TableRow row)
+    static TableRow BuildRow(
+        OpenXmlMarkdownRenderer renderer,
+        Markdig.Extensions.Tables.TableRow row,
+        IList<Markdig.Extensions.Tables.TableColumnDefinition> columns)
     {
         var tableRow = new TableRow();
+        var index = 0;
         foreach (var cell in row.OfType<Markdig.Extensions.Tables.TableCell>())
         {
-            tableRow.Append(BuildCell(renderer, cell, row.IsHeader));
+            var columnIndex = cell.ColumnIndex >= 0 ? cell.ColumnIndex : index;
+            var alignment = columnIndex < columns.Count ? columns[columnIndex].Alignment : null;
+            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment));
+            index += cell.ColumnSpan > 0 ? cell.ColumnSpan : 1;
         }
 
         return tableRow;
     }
 
-    static TableCell BuildCell(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.Tables.TableCell cell, bool isHeader)
+    static TableCell BuildCell(
+        OpenXmlMarkdownRenderer renderer,
+        Markdig.Extensions.Tables.TableCell cell,
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment)
     {
         // Fast path: data-table cells are overwhelmingly a single ParagraphBlock containing one
         // LiteralInline (plain text). Skip the PushContainer / Render / PopContainer dance and
         // synthesize the OpenXml subtree directly. Falls through to the general path for any
         // structural variant — emphasis, links, multiple paragraphs, embedded HTML, etc.
-        if (TryBuildPlainCell(cell, isHeader) is { } fast)
+        if (TryBuildPlainCell(cell, isHeader, alignment) is { } fast)
         {
             return fast;
         }
@@ -155,9 +167,9 @@ class TableRenderer :
 
         foreach (var block in state.Blocks)
         {
-            if (block is Paragraph p && isHeader)
+            if (block is Paragraph p)
             {
-                ApplyHeaderFormatting(p);
+                ApplyCellFormatting(p, isHeader, alignment);
             }
 
             tableCell.Append(block);
@@ -167,7 +179,10 @@ class TableRenderer :
         return tableCell;
     }
 
-    static TableCell? TryBuildPlainCell(Markdig.Extensions.Tables.TableCell cell, bool isHeader)
+    static TableCell? TryBuildPlainCell(
+        Markdig.Extensions.Tables.TableCell cell,
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment)
     {
         if (cell is not [ParagraphBlock paragraphBlock])
         {
@@ -198,31 +213,48 @@ class TableRenderer :
             paragraph.Append(run);
         }
 
-        if (isHeader)
+        var justification = ResolveJustification(isHeader, alignment);
+        if (justification is not null)
         {
             paragraph.ParagraphProperties = new();
-            paragraph.ParagraphProperties.Append(
-                new Justification
-                {
-                    Val = JustificationValues.Center
-                });
+            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
         }
 
         return new(paragraph);
     }
 
-    static void ApplyHeaderFormatting(Paragraph paragraph)
+    static void ApplyCellFormatting(
+        Paragraph paragraph,
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment)
     {
-        paragraph.ParagraphProperties ??= new();
-        paragraph.ParagraphProperties.Append(
-            new Justification
-            {
-                Val = JustificationValues.Center
-            });
+        var justification = ResolveJustification(isHeader, alignment);
+        if (justification is not null)
+        {
+            paragraph.ParagraphProperties ??= new();
+            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
+        }
+
+        if (!isHeader)
+        {
+            return;
+        }
+
         foreach (var run in paragraph.Elements<Run>())
         {
             run.RunProperties ??= new();
             run.RunProperties.Append(new Bold());
         }
     }
+
+    static JustificationValues? ResolveJustification(
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment) =>
+        alignment switch
+        {
+            Markdig.Extensions.Tables.TableColumnAlign.Left => JustificationValues.Left,
+            Markdig.Extensions.Tables.TableColumnAlign.Center => JustificationValues.Center,
+            Markdig.Extensions.Tables.TableColumnAlign.Right => JustificationValues.Right,
+            _ => isHeader ? JustificationValues.Center : null
+        };
 }

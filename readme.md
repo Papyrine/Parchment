@@ -925,6 +925,19 @@ Header cells are bold and centered. Rendered output:
 
 ![Pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableEmitsTableWithGridRowsAndHeaderFormatting%23page01.verified.png)
 
+Column alignment markers in the header separator row (`:---`, `:---:`, `---:`) are honored for both header and body cells:
+
+```markdown
+| Left | Center | Right | Default |
+|:-----|:------:|------:|---------|
+| a    | b      | c     | d       |
+| e    | f      | g     | h       |
+```
+
+Columns with no alignment marker fall back to the defaults (header centered, body left). Rendered output:
+
+![Aligned pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableHonorsColumnAlignment.verified.png)
+
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
 
 Grid tables use `+---+` borders and `+===+` to separate the header row:

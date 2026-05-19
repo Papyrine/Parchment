@@ -197,6 +197,65 @@ public class TableRendererTests
         await VerifyDocument(md);
     }
 
+    [Test]
+    public async Task PipeTableHonorsColumnAlignment()
+    {
+        const string md =
+            """
+            | Left | Center | Right | Default |
+            |:-----|:------:|------:|---------|
+            | a    | b      | c     | d       |
+            | e    | f      | g     | h       |
+            """;
+
+        var tableBlock = RendererHarness.FirstBlock<MarkdigTable>(md);
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(tableBlock);
+
+        var table = (Table) renderer.Drain().Single();
+        var rows = table.Elements<TableRow>().ToList();
+
+        JustificationValues?[] expectedHeader =
+        [
+            JustificationValues.Left,
+            JustificationValues.Center,
+            JustificationValues.Right,
+            JustificationValues.Center
+        ];
+        JustificationValues?[] expectedBody =
+        [
+            JustificationValues.Left,
+            JustificationValues.Center,
+            JustificationValues.Right,
+            null
+        ];
+
+        await AssertRowJustifications(rows[0], expectedHeader);
+        await AssertRowJustifications(rows[1], expectedBody);
+        await AssertRowJustifications(rows[2], expectedBody);
+
+        await VerifyDocument(md);
+    }
+
+    static async Task AssertRowJustifications(TableRow row, JustificationValues?[] expected)
+    {
+        var cells = row.Elements<TableCell>().ToList();
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var paragraph = cells[i].GetFirstChild<Paragraph>()!;
+            var actual = paragraph.ParagraphProperties?.GetFirstChild<Justification>()?.Val?.Value;
+            if (expected[i] is { } value)
+            {
+                await Assert.That(actual).IsEqualTo(value);
+            }
+            else
+            {
+                await Assert.That(actual).IsNull();
+            }
+        }
+    }
+
     static async Task VerifyDocument(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();
