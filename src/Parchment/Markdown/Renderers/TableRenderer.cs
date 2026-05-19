@@ -1,25 +1,66 @@
 class TableRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, Markdig.Extensions.Tables.Table>
 {
+    // Approximate page-content width budget in dxa (twentieths of a point). When
+    // ColumnDefinitions carry width percentages, per-column dxa values are computed
+    // proportionally from this budget. For Pct-width tables (the non-indented case)
+    // Word treats these as ratios; for indented tables they are absolute.
+    const int GridWidthBudgetDxa = 9000;
+
     protected override void Write(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.Tables.Table tableBlock)
     {
-        var table = new Table();
-        table.Append(BuildTableProperties(renderer.CurrentIndent));
-        table.Append(BuildTableGrid(tableBlock));
-
         var columns = tableBlock.ColumnDefinitions;
+        // Indented tables use Auto width and size to content; absolute dxa column widths would
+        // override that and stretch the table to the full budget. Keep the column-width feature
+        // gated to full-width (non-indented) tables.
+        var columnWidths = renderer.CurrentIndent > 0 ? null : ComputeColumnWidths(columns);
+
+        var table = new Table();
+        table.Append(BuildTableProperties(renderer.CurrentIndent, columnWidths is not null));
+        table.Append(BuildTableGrid(tableBlock, columnWidths));
+
         foreach (var child in tableBlock)
         {
             if (child is Markdig.Extensions.Tables.TableRow row)
             {
-                table.Append(BuildRow(renderer, row, columns));
+                table.Append(BuildRow(renderer, row, columns, columnWidths));
             }
         }
 
         renderer.AddBlock(table);
     }
 
-    static TableProperties BuildTableProperties(int indent)
+    static int[]? ComputeColumnWidths(IList<Markdig.Extensions.Tables.TableColumnDefinition> columns)
+    {
+        if (columns.Count == 0)
+        {
+            return null;
+        }
+
+        float totalPct = 0;
+        foreach (var column in columns)
+        {
+            totalPct += column.Width;
+        }
+
+        if (totalPct <= 0)
+        {
+            return null;
+        }
+
+        var widths = new int[columns.Count];
+        for (var i = 0; i < columns.Count; i++)
+        {
+            var pct = columns[i].Width;
+            widths[i] = pct > 0
+                ? Math.Max(1, (int) Math.Round(GridWidthBudgetDxa * pct / totalPct))
+                : 0;
+        }
+
+        return widths;
+    }
+
+    static TableProperties BuildTableProperties(int indent, bool hasColumnWidths)
     {
         var width = indent > 0
             ? new TableWidth { Type = TableWidthUnitValues.Auto }
@@ -33,6 +74,11 @@ class TableRenderer :
                     Width = indent,
                     Type = TableWidthUnitValues.Dxa
                 });
+        }
+
+        if (hasColumnWidths)
+        {
+            properties.Append(new TableLayout { Type = TableLayoutValues.Fixed });
         }
 
         properties.Append(BuildBorders());
@@ -96,13 +142,19 @@ class TableRenderer :
                 Type = TableWidthUnitValues.Dxa
             });
 
-    static TableGrid BuildTableGrid(Markdig.Extensions.Tables.Table table)
+    static TableGrid BuildTableGrid(Markdig.Extensions.Tables.Table table, int[]? columnWidths)
     {
         var grid = new TableGrid();
         var columns = table.ColumnDefinitions.Count;
         for (var i = 0; i < columns; i++)
         {
-            grid.Append(new GridColumn());
+            var gridColumn = new GridColumn();
+            if (columnWidths is not null && columnWidths[i] > 0)
+            {
+                gridColumn.Width = columnWidths[i].ToString(CultureInfo.InvariantCulture);
+            }
+
+            grid.Append(gridColumn);
         }
 
         return grid;
@@ -111,7 +163,8 @@ class TableRenderer :
     static TableRow BuildRow(
         OpenXmlMarkdownRenderer renderer,
         Markdig.Extensions.Tables.TableRow row,
-        IList<Markdig.Extensions.Tables.TableColumnDefinition> columns)
+        IList<Markdig.Extensions.Tables.TableColumnDefinition> columns,
+        int[]? columnWidths)
     {
         var tableRow = new TableRow();
         var index = 0;
@@ -119,7 +172,10 @@ class TableRenderer :
         {
             var columnIndex = cell.ColumnIndex >= 0 ? cell.ColumnIndex : index;
             var alignment = columnIndex < columns.Count ? columns[columnIndex].Alignment : null;
-            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment));
+            var width = columnWidths is not null && columnIndex < columnWidths.Length
+                ? columnWidths[columnIndex]
+                : 0;
+            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment, width));
             index += cell.ColumnSpan > 0 ? cell.ColumnSpan : 1;
         }
 
@@ -130,18 +186,20 @@ class TableRenderer :
         OpenXmlMarkdownRenderer renderer,
         Markdig.Extensions.Tables.TableCell cell,
         bool isHeader,
-        Markdig.Extensions.Tables.TableColumnAlign? alignment)
+        Markdig.Extensions.Tables.TableColumnAlign? alignment,
+        int widthDxa)
     {
         // Fast path: data-table cells are overwhelmingly a single ParagraphBlock containing one
         // LiteralInline (plain text). Skip the PushContainer / Render / PopContainer dance and
         // synthesize the OpenXml subtree directly. Falls through to the general path for any
         // structural variant — emphasis, links, multiple paragraphs, embedded HTML, etc.
-        if (TryBuildPlainCell(cell, isHeader, alignment) is { } fast)
+        if (TryBuildPlainCell(cell, isHeader, alignment, widthDxa) is { } fast)
         {
             return fast;
         }
 
         var tableCell = new TableCell();
+        ApplyCellWidth(tableCell, widthDxa);
         renderer.PushContainer();
         foreach (var child in cell)
         {
@@ -182,7 +240,8 @@ class TableRenderer :
     static TableCell? TryBuildPlainCell(
         Markdig.Extensions.Tables.TableCell cell,
         bool isHeader,
-        Markdig.Extensions.Tables.TableColumnAlign? alignment)
+        Markdig.Extensions.Tables.TableColumnAlign? alignment,
+        int widthDxa)
     {
         if (cell is not [ParagraphBlock paragraphBlock])
         {
@@ -220,7 +279,24 @@ class TableRenderer :
             paragraph.ParagraphProperties.Append(new Justification { Val = justification });
         }
 
-        return new(paragraph);
+        var tableCell = new TableCell(paragraph);
+        ApplyCellWidth(tableCell, widthDxa);
+        return tableCell;
+    }
+
+    static void ApplyCellWidth(TableCell tableCell, int widthDxa)
+    {
+        if (widthDxa <= 0)
+        {
+            return;
+        }
+
+        tableCell.TableCellProperties = new(
+            new TableCellWidth
+            {
+                Type = TableWidthUnitValues.Dxa,
+                Width = widthDxa.ToString(CultureInfo.InvariantCulture)
+            });
     }
 
     static void ApplyCellFormatting(
