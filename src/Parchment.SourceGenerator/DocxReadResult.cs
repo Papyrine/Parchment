@@ -1,0 +1,1 @@
+﻿readonly record struct DocxReadResult(List<string> Paragraphs, bool HasRemovePersonalInformation);

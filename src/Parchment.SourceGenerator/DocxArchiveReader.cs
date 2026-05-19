@@ -54,5 +54,3 @@ static class DocxArchiveReader
     static bool IsSettingsPart(string path) =>
         path.Equals("word/settings.xml", StringComparison.OrdinalIgnoreCase);
 }
-
-readonly record struct DocxReadResult(List<string> Paragraphs, bool HasRemovePersonalInformation);

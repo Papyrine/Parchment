@@ -614,11 +614,11 @@ public sealed class ParchmentTemplateGenerator :
     {
         var templatePath = SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
         var accessors = AccessorEmission.Emit(target.Shape, target.ModelFullyQualifiedName);
+        var fieldsBlock = accessors == null ? "" : accessors.FieldsBlock + "\n\n";
+        var registrationsBlock = accessors == null ? "" : accessors.RegistrationsBlock + "\n";
         // Each accessor section is emitted on its own physical lines so BuildPartialSource's
         // line-by-line outer indent pass adds the right depth prefix to every line. The blocks
         // already carry inner indentation; outer pass tops them up by depth+1.
-        var fieldsBlock = accessors == null ? "" : accessors.FieldsBlock + "\n\n";
-        var registrationsBlock = accessors == null ? "" : accessors.RegistrationsBlock + "\n";
         var body =
             $$"""
               public static string TemplatePath => {{templatePath}};
