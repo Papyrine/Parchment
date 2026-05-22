@@ -2,7 +2,7 @@
 <Project>
   <PropertyGroup>
     <NoWarn>CS1591;NU1608;NU1109;NU1901;PolyfillTargetsForNuget</NoWarn>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <LangVersion>14.0</LangVersion>
     <AssemblyVersion>1.0.0</AssemblyVersion>
     <Description>Parchment is a Word document generation library that combines docx templates or markdown with a .NET data model via liquid templating.</Description>
