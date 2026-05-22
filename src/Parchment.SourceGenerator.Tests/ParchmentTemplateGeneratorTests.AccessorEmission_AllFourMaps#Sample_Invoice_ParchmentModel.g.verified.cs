@@ -27,7 +27,7 @@ partial class Invoice
   };
   static readonly global::Parchment.Generated.ExcelsiorTableMapEntry[] _ExcelsiorTables =
   {
-    new("Lines", typeof(global::Sample.Line), o => ((global::Sample.Invoice)o).Lines),
+    new("Lines", typeof(global::Sample.Line), o => ((global::Sample.Invoice)o).Lines, null, null),
   };
   static readonly global::Parchment.Generated.FormatMapEntry[] _Formats =
   {

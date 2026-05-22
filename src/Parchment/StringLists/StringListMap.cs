@@ -50,11 +50,11 @@ sealed class StringListMap
         Dictionary<string, Func<object, object?>> entries,
         HashSet<Type> visited)
     {
-        foreach (var (name, memberType, memberGetter, hasExcelsior) in ExcelsiorTableMap.EnumerateMembers(type))
+        foreach (var (name, memberType, memberGetter, excelsior) in ExcelsiorTableMap.EnumerateMembers(type))
         {
             // [ExcelsiorTable] keeps full ownership of the member — don't shadow it with the
             // string-list path even if the element type happens to be string.
-            if (hasExcelsior)
+            if (excelsior != null)
             {
                 continue;
             }

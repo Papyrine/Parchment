@@ -105,6 +105,107 @@ public class ExcelsiorTableTests
         await Verify(stream, "docx");
     }
 
+    #region ExcelsiorTableParagraphStyles
+
+    public class StyledQuote
+    {
+        [ExcelsiorTable(HeadingParagraphStyle = "TBLHeading", BodyParagraphStyle = "TBLText")]
+        public required IReadOnlyList<QuoteLine> Lines;
+    }
+
+    #endregion
+
+    [Test]
+    public async Task ExcelsiorTableAppliesNamedParagraphStyles()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ Lines }}");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<StyledQuote>("styled-quote", template);
+
+        var model = new StyledQuote
+        {
+            Lines =
+            [
+                new()
+                {
+                    Description = "Strategy workshop",
+                    Quantity = 2,
+                    UnitPrice = 4500m
+                }
+            ]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("styled-quote", model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var table = doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Single();
+        var rows = table.Elements<TableRow>().ToList();
+
+        var headerStyle = rows[0].GetFirstChild<TableCell>()!.GetFirstChild<Paragraph>()!
+            .ParagraphProperties!.ParagraphStyleId!.Val!.Value;
+        await Assert.That(headerStyle).IsEqualTo("TBLHeading");
+
+        var bodyStyle = rows[1].GetFirstChild<TableCell>()!.GetFirstChild<Paragraph>()!
+            .ParagraphProperties!.ParagraphStyleId!.Val!.Value;
+        await Assert.That(bodyStyle).IsEqualTo("TBLText");
+    }
+
+    #region ExcelsiorTableViaOpenXmlToken
+
+    public class GroupedReport
+    {
+        public required IReadOnlyList<QuoteLine> Lines;
+
+        // [ExcelsiorTable] can't render a loop-scoped or fully-styled table, so build it directly
+        // with Excelsior's WordTableBuilder and return it from an OpenXmlToken. The token's
+        // {{ LinesTable }} substitution must sit alone in its paragraph (structural replacement).
+        public TokenValue LinesTable =>
+            new OpenXmlToken(context =>
+            [
+                new WordTableBuilder<QuoteLine>(Lines)
+                    .HeadingParagraphStyle("TBLHeading")
+                    .BodyParagraphStyle("TBLText")
+                    .Build(context.MainPart)
+            ]);
+    }
+
+    #endregion
+
+    [Test]
+    public async Task OpenXmlTokenWordTableBuilderBridge()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ LinesTable }}");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<GroupedReport>("grouped-report", template);
+
+        var model = new GroupedReport
+        {
+            Lines =
+            [
+                new()
+                {
+                    Description = "Strategy workshop",
+                    Quantity = 2,
+                    UnitPrice = 4500m
+                }
+            ]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("grouped-report", model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var table = doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Single();
+        var bodyStyle = table.Elements<TableRow>().Skip(1).First().GetFirstChild<TableCell>()!
+            .GetFirstChild<Paragraph>()!.ParagraphProperties!.ParagraphStyleId!.Val!.Value;
+        await Assert.That(bodyStyle).IsEqualTo("TBLText");
+    }
+
     [Test]
     public async Task NestedPathRendersAsExcelsiorTable()
     {

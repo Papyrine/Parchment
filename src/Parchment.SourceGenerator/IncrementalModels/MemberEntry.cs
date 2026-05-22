@@ -5,4 +5,6 @@ sealed record MemberEntry(
     bool IsHtml = false,
     bool IsMarkdown = false,
     bool IsStringList = false,
-    bool IsStatic = false);
+    bool IsStatic = false,
+    string? ExcelsiorHeadingParagraphStyle = null,
+    string? ExcelsiorBodyParagraphStyle = null);

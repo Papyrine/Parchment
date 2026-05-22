@@ -62,11 +62,11 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = HasExcelsiorTableAttribute(member, excelsiorTableType);
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle);
                     var (isHtml, isMarkdown) = DetectFormat(member);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
-                    members.Add(new(memberName, Fqn(memberType), isExcelsior, isHtml, isMarkdown, isStringList, isStatic));
+                    members.Add(new(memberName, Fqn(memberType), isExcelsior, isHtml, isMarkdown, isStringList, isStatic, excelsiorHeadingStyle, excelsiorBodyStyle));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -130,8 +130,10 @@ static class ShapeBuilder
         return element is {SpecialType: SpecialType.System_String};
     }
 
-    static bool HasExcelsiorTableAttribute(ISymbol member, INamedTypeSymbol? excelsiorTableType)
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle)
     {
+        headingParagraphStyle = null;
+        bodyParagraphStyle = null;
         if (excelsiorTableType is null)
         {
             return false;
@@ -139,10 +141,31 @@ static class ShapeBuilder
 
         foreach (var attribute in member.GetAttributes())
         {
-            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, excelsiorTableType))
+            if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, excelsiorTableType))
             {
-                return true;
+                continue;
             }
+
+            foreach (var named in attribute.NamedArguments)
+            {
+                if (named.Value.Value is not string value)
+                {
+                    continue;
+                }
+
+                // String literals (not nameof) — the SG can't reference Parchment.dll, so it has no
+                // typed handle on ExcelsiorTableAttribute (matched by FQN string elsewhere too).
+                if (named.Key == "HeadingParagraphStyle")
+                {
+                    headingParagraphStyle = value;
+                }
+                else if (named.Key == "BodyParagraphStyle")
+                {
+                    bodyParagraphStyle = value;
+                }
+            }
+
+            return true;
         }
 
         return false;

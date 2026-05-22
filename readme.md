@@ -592,7 +592,7 @@ var model = new Quote
 using var stream = new MemoryStream();
 await store.Render("excelsior-quote", model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L199-L235' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L300-L336' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -605,6 +605,54 @@ Rules:
 - The substitution must be a plain member-access expression — filters (`{{ Lines | reverse }}`) and arithmetic are rejected because the Excelsior path walks the model object directly and bypasses Fluid evaluation. Diagnostic `PARCH008` covers this at compile time.
 - Nested paths like `{{ Customer.Lines }}` work — the registration walks the model type recursively at build time, so `[ExcelsiorTable]` can sit on any reachable collection property.
 - Currency and date formatting in the rendered table honor `Excelsior.ValueRenderer.Culture` (defaults to `CultureInfo.CurrentCulture`). Set it once in a module initializer to override the default locale.
+- Loop-scoped tokens are **not** rendered as tables — the map is keyed on dotted paths from the root model, so `{{ dept.Lines }}` inside `{% for dept in Departments %}` falls through to plain Fluid output. For a per-group table inside a loop (or any table needing styling beyond the options below), build it directly with `OpenXmlToken` + Excelsior's `WordTableBuilder` — see [Loop-scoped or fully-custom tables](#loop-scoped-or-fully-custom-tables) below.
+
+#### Branding the table from template styles
+
+By default the rendered table uses Excelsior's default cell formatting, which falls back to the host document's `Normal` paragraph style. To drive the cell font, size, and spacing from named paragraph styles defined in the template, set `HeadingParagraphStyle` / `BodyParagraphStyle` on the attribute:
+
+<!-- snippet: ExcelsiorTableParagraphStyles -->
+<a id='snippet-ExcelsiorTableParagraphStyles'></a>
+```cs
+public class StyledQuote
+{
+    [ExcelsiorTable(HeadingParagraphStyle = "TBLHeading", BodyParagraphStyle = "TBLText")]
+    public required IReadOnlyList<QuoteLine> Lines;
+}
+```
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L108-L116' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableParagraphStyles' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+The style ids must exist in the template's styles part. Unlike inline run formatting, a paragraph style reaches **every** cell paragraph — including `IsHtml` and link cells — so the look is consistent across all content. (These map straight onto Excelsior's `WordTableBuilder.HeadingParagraphStyle`/`BodyParagraphStyle`.)
+
+#### Loop-scoped or fully-custom tables
+
+`[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. The same applies when a table needs styling or grouping beyond what the attribute exposes. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/SimonCropp/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
+
+<!-- snippet: ExcelsiorTableViaOpenXmlToken -->
+<a id='snippet-ExcelsiorTableViaOpenXmlToken'></a>
+```cs
+public class GroupedReport
+{
+    public required IReadOnlyList<QuoteLine> Lines;
+
+    // [ExcelsiorTable] can't render a loop-scoped or fully-styled table, so build it directly
+    // with Excelsior's WordTableBuilder and return it from an OpenXmlToken. The token's
+    // {{ LinesTable }} substitution must sit alone in its paragraph (structural replacement).
+    public TokenValue LinesTable =>
+        new OpenXmlToken(context =>
+        [
+            new WordTableBuilder<QuoteLine>(Lines)
+                .HeadingParagraphStyle("TBLHeading")
+                .BodyParagraphStyle("TBLText")
+                .Build(context.MainPart)
+        ]);
+}
+```
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L156-L175' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableViaOpenXmlToken' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+Reference the property with a solo `{{ LinesTable }}` token (it must sit alone in its paragraph — the same structural-replacement rule as any `OpenXmlToken`). The full `WordTableBuilder` surface is available — `headingStyle`/`bodyStyle` callbacks, per-column `CellStyle`, and the `HeadingParagraphStyle`/`BodyParagraphStyle` shown above. Because the property is evaluated per render, the same pattern inside a `{% for %}` loop produces one table per iteration.
 
 
 ### Html and Markdown properties
