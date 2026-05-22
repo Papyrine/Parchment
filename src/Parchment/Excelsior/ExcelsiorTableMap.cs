@@ -38,7 +38,7 @@ sealed class ExcelsiorTableMap
         var dict = new Dictionary<string, ExcelsiorTableEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
-            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter);
+            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter, entry.HeadingParagraphStyle, entry.BodyParagraphStyle);
         }
 
         precompiledCache[modelType] = new(dict);
@@ -52,7 +52,7 @@ sealed class ExcelsiorTableMap
         HashSet<Type> visited,
         string templateName)
     {
-        foreach (var (name, memberType, memberGetter, hasExcelsior) in EnumerateMembers(type))
+        foreach (var (name, memberType, memberGetter, excelsior) in EnumerateMembers(type))
         {
             var nextSegments = new List<string>(pathSegments)
             {
@@ -60,7 +60,7 @@ sealed class ExcelsiorTableMap
             };
             var nextGetter = ChainGetter(getter, memberGetter);
 
-            if (hasExcelsior)
+            if (excelsior != null)
             {
                 var elementType = ModelValidator.TryResolveElementType(memberType);
                 if (elementType == null ||
@@ -72,7 +72,7 @@ sealed class ExcelsiorTableMap
                 }
 
                 var dottedPath = string.Join('.', nextSegments);
-                entries[dottedPath] = new(elementType, nextGetter);
+                entries[dottedPath] = new(elementType, nextGetter, excelsior.HeadingParagraphStyle, excelsior.BodyParagraphStyle);
                 // Don't descend into the element type — collection items become Excelsior columns.
                 continue;
             }
@@ -97,7 +97,7 @@ sealed class ExcelsiorTableMap
         }
     }
 
-    internal static IEnumerable<(string Name, Type Type, Func<object, object?> Getter, bool HasExcelsiorTable)> EnumerateMembers(Type type)
+    internal static IEnumerable<(string Name, Type Type, Func<object, object?> Getter, ExcelsiorTableAttribute? ExcelsiorTable)> EnumerateMembers(Type type)
     {
         foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -110,7 +110,7 @@ sealed class ExcelsiorTableMap
                 property.Name,
                 property.PropertyType,
                 property.GetValue,
-                property.GetCustomAttribute<ExcelsiorTableAttribute>() != null);
+                property.GetCustomAttribute<ExcelsiorTableAttribute>());
         }
 
         foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
@@ -119,7 +119,7 @@ sealed class ExcelsiorTableMap
                 field.Name,
                 field.FieldType,
                 field.GetValue,
-                field.GetCustomAttribute<ExcelsiorTableAttribute>() != null);
+                field.GetCustomAttribute<ExcelsiorTableAttribute>());
         }
     }
 

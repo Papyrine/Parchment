@@ -39,7 +39,7 @@ static class AccessorEmission
         }
 
         var fluidBlocks = new List<(string FieldName, TypeEntry Type)>();
-        var excelsiorEntries = new List<(List<string> Path, string ElementFqn)>();
+        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
 
@@ -97,7 +97,7 @@ static class AccessorEmission
         List<string> path,
         HashSet<string> visited,
         Dictionary<string, TypeEntry> typesByFqn,
-        List<(List<string>, string)> excelsior,
+        List<(List<string>, string, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists)
     {
@@ -128,7 +128,7 @@ static class AccessorEmission
                 if (typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
                     memberType.ElementTypeFullyQualifiedName != null)
                 {
-                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName));
+                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle));
                 }
 
                 continue;
@@ -216,7 +216,7 @@ static class AccessorEmission
         StringBuilder fields,
         StringBuilder registrations,
         string rootFqn,
-        List<(List<string> Path, string ElementFqn)> entries)
+        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)> entries)
     {
         if (entries.Count == 0)
         {
@@ -229,7 +229,7 @@ static class AccessorEmission
             {
 
             """);
-        foreach (var (path, elementFqn) in entries)
+        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle) in entries)
         {
             fields.Append("  new(\"");
             fields.AppendJoin('.', path);
@@ -237,6 +237,10 @@ static class AccessorEmission
             fields.Append(elementFqn);
             fields.Append("), ");
             EmitGetter(fields, rootFqn, path);
+            fields.Append(", ");
+            fields.Append(ToStringLiteral(headingParagraphStyle));
+            fields.Append(", ");
+            fields.Append(ToStringLiteral(bodyParagraphStyle));
             fields.AppendLine("),");
         }
 
@@ -248,6 +252,9 @@ static class AccessorEmission
 
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof({rootFqn}), _ExcelsiorTables);");
     }
+
+    static string ToStringLiteral(string? value) =>
+        value == null ? "null" : SymbolDisplay.FormatLiteral(value, quote: true);
 
     static void EmitFormatBlock(
         StringBuilder fields,

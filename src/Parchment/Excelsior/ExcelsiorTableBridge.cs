@@ -15,20 +15,34 @@ static class ExcelsiorTableBridge
             IsGenericMethodDefinition: true
         });
 
-    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart)
+    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
-        return invoker(data, mainPart);
+        return invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle);
     }
 
-    public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart) =>
-        new WordTableBuilder<TElement>(data).Build(mainPart);
+    public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
+    {
+        var builder = new WordTableBuilder<TElement>(data);
+        if (headingParagraphStyle != null)
+        {
+            builder.HeadingParagraphStyle(headingParagraphStyle);
+        }
+
+        if (bodyParagraphStyle != null)
+        {
+            builder.BodyParagraphStyle(bodyParagraphStyle);
+        }
+
+        return builder.Build(mainPart);
+    }
 
     static BuilderInvoker CreateInvoker(Type elementType)
     {
         var method = genericBuildTable.MakeGenericMethod(elementType);
-        return (data, mainPart) => (Table) method.Invoke(null, [data, mainPart])!;
+        return (data, mainPart, headingParagraphStyle, bodyParagraphStyle) =>
+            (Table) method.Invoke(null, [data, mainPart, headingParagraphStyle, bodyParagraphStyle])!;
     }
 
-    delegate Table BuilderInvoker(object data, MainDocumentPart mainPart);
+    delegate Table BuilderInvoker(object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle);
 }

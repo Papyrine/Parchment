@@ -324,7 +324,7 @@ class ScopeTreeRunner(
             return OpenXmlToken.Empty;
         }
 
-        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart)]);
+        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, entry.HeadingParagraphStyle, entry.BodyParagraphStyle)]);
     }
 
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
