@@ -24,7 +24,7 @@
     <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
     <PackageVersion Include="TUnit" Version="1.46.0" />
-    <PackageVersion Include="Verify" Version="31.18.0" />
+    <PackageVersion Include="Verify" Version="31.19.0" />
     <PackageVersion Include="Verify.TUnit" Version="31.18.0" />
     <PackageVersion Include="Verify.DiffPlex" Version="3.2.0" />
     <PackageVersion Include="Verify.OpenXml" Version="1.14.0" />
