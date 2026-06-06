@@ -1,6 +1,5 @@
 ﻿{
   Properties: {
-    LastModifiedBy: Simon Cropp,
     Revision: 3
   },
   Fonts: [

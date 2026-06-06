@@ -17,7 +17,7 @@ public class ScenarioInputRenderer
         await Assert.That(inputs.Length).IsGreaterThan(0);
 
         var converter = new SkiaDocumentConverter();
-        var options = new ConversionOptions();
+        var options = new ImageExportOptions();
 
         foreach (var docxPath in inputs)
         {

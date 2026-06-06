@@ -13,7 +13,7 @@
     <PackageReference Include="Verify" />
     <PackageReference Include="Verify.DiffPlex" />
     <PackageReference Include="Verify.OpenXml" />
-    <PackageReference Include="Morph.OpenXml.Skia" />
+    <PackageReference Include="Morph.Skia" />
     <PackageReference Include="Argon" />
     <PackageReference Include="DiffEngine" />
     <PackageReference Include="EmptyFiles" />
