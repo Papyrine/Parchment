@@ -45,7 +45,7 @@ build_script:
         New-ItemProperty -Path $regKey -Name "$fontName ($fontType)" -Value $file.Name -PropertyType String -Force | Out-Null
     }
 - appveyor DownloadFile https://dot.net/v1/dotnet-install.ps1
-- pwsh: ./dotnet-install.ps1 -JSonFile src/global.json -Architecture x64 -InstallDir 'C:\Program Files\dotnet'
+- pwsh: ./dotnet-install.ps1 -JSonFile global.json -Architecture x64 -InstallDir 'C:\Program Files\dotnet'
 - dotnet build src --configuration Release
 - dotnet build IntegrationTests --configuration Release
 - dotnet run --project src/Parchment.Tests --configuration Release --no-build
