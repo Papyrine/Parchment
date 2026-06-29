@@ -3,7 +3,7 @@
 [![Build status](https://img.shields.io/appveyor/build/SimonCropp/Parchment)](https://ci.appveyor.com/project/SimonCropp/Parchment)
 [![NuGet Status](https://img.shields.io/nuget/v/Parchment.svg?label=Parchment)](https://www.nuget.org/packages/Parchment/)
 
-Parchment is a Word (.docx) document generation library with two complementary rendering modes. It combines a .NET data model with either a docx template (token replacement, loops, conditionals) or a markdown template (full content rendering), both driven by [liquid](https://shopify.github.io/liquid/) via [Fluid](https://github.com/sebastienros/fluid). Markdown is parsed with [Markdig](https://github.com/xoofx/markdig); HTML chunks are converted via [OpenXmlHtml](https://github.com/SimonCropp/OpenXmlHtml).
+Parchment is a Word (.docx) document generation library with two complementary rendering modes. It combines a .NET data model with either a docx template (token replacement, loops, conditionals) or a markdown template (full content rendering), both driven by [liquid](https://shopify.github.io/liquid/) via [Fluid](https://github.com/sebastienros/fluid). Markdown is parsed with [Markdig](https://github.com/xoofx/markdig); HTML chunks are converted via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml).
 
 **See [Milestones](../../milestones?state=closed) for release notes.**
 
@@ -120,7 +120,7 @@ Declare a model property as `TokenValue` and return one of:
 
 - A plain `string` (or any value Fluid stringifies) — plain text substitution. This is the default when the property is typed as `string` directly; assigning a string to a `TokenValue` property goes through the same path via the implicit conversion.
 - `new MarkdownToken(string)` — the value is rendered as markdown via Markdig and spliced into the host paragraph.
-- `new HtmlToken(string)` — the value is converted from HTML (via [OpenXmlHtml](https://github.com/SimonCropp/OpenXmlHtml)) and spliced into the host paragraph.
+- `new HtmlToken(string)` — the value is converted from HTML (via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml)) and spliced into the host paragraph.
 - `new OpenXmlToken(Func<IOpenXmlContext, IEnumerable<OpenXmlElement>>)` — the callback emits raw OpenXML elements. Useful for rich tables, generated charts, custom-styled lists.
 - `new MutateToken(Action<Paragraph, IOpenXmlContext>)` — the callback receives the host paragraph and mutates it in place. The token text is cleared before the callback runs. Useful for adding runs with custom formatting, injecting bookmarks, or tweaking paragraph properties while preserving the original paragraph.
 
@@ -526,7 +526,7 @@ await store.Render(
 
 ### Excelsior tables
 
-Mark any collection property on the model with `[ExcelsiorTable]` and the matching `{{ ... }}` substitution is rendered as a fully-formatted Word table by [Excelsior](https://github.com/SimonCropp/Excelsior) at render time. Headings, column ordering, formatting, null display, and custom render callbacks all come from Excelsior's `[Column]` attribute on the element type — the same configuration surface used for spreadsheets.
+Mark any collection property on the model with `[ExcelsiorTable]` and the matching `{{ ... }}` substitution is rendered as a fully-formatted Word table by [Excelsior](https://github.com/Papyrine/Excelsior) at render time. Headings, column ordering, formatting, null display, and custom render callbacks all come from Excelsior's `[Column]` attribute on the element type — the same configuration surface used for spreadsheets.
 
 Mark the collection on the model:
 
@@ -634,7 +634,7 @@ The style ids must exist in the template's styles part. Unlike inline run format
 
 #### Loop-scoped or fully-custom tables
 
-`[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. The same applies when a table needs styling or grouping beyond what the attribute exposes. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/SimonCropp/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
+`[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. The same applies when a table needs styling or grouping beyond what the attribute exposes. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
 
 <!-- snippet: ExcelsiorTableViaOpenXmlToken -->
 <a id='snippet-ExcelsiorTableViaOpenXmlToken'></a>
@@ -791,7 +791,7 @@ Two non-solo block-shaped tokens in the same paragraph are rejected at render ti
 
 ### Enumerable string properties
 
-Any property assignable to `IEnumerable<string>` (`string[]`, `List<string>`, `IReadOnlyList<string>`, etc.) is auto-rendered as a Word native bullet list when referenced as a solo `{{ Property }}` substitution. **No attribute is required** — detection is purely type-driven, mirroring [Excelsior's Enumerable string properties](https://github.com/SimonCropp/Excelsior#enumerable-string-properties) feature.
+Any property assignable to `IEnumerable<string>` (`string[]`, `List<string>`, `IReadOnlyList<string>`, etc.) is auto-rendered as a Word native bullet list when referenced as a solo `{{ Property }}` substitution. **No attribute is required** — detection is purely type-driven, mirroring [Excelsior's Enumerable string properties](https://github.com/Papyrine/Excelsior#enumerable-string-properties) feature.
 
 Mark the property:
 
@@ -1107,7 +1107,7 @@ HTML comment blocks (`<!-- ... -->`) are dropped during rendering rather than pa
 Body text follows the heading.
 ```
 
-Only standalone comment *blocks* are removed; inline HTML, scripts, styles, and any other HTML constructs render normally via [OpenXmlHtml](https://github.com/SimonCropp/OpenXmlHtml).
+Only standalone comment *blocks* are removed; inline HTML, scripts, styles, and any other HTML constructs render normally via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml).
 
 
 ## Images
@@ -1122,7 +1122,7 @@ Pictures placed directly in the `.docx` template (Word's Insert &rarr; Picture, 
 
 ### `<img>` inside HTML and markdown `![alt](url)`
 
-`<img>` tags (in an `[Html]` property, an HTML block inside a markdown template, or inline HTML inside a `[Markdown]` property) and markdown `![alt](url)` syntax both delegate to [OpenXmlHtml](https://github.com/SimonCropp/OpenXmlHtml)'s `ImageResolver`. The same resolution table applies to both:
+`<img>` tags (in an `[Html]` property, an HTML block inside a markdown template, or inline HTML inside a `[Markdown]` property) and markdown `![alt](url)` syntax both delegate to [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml)'s `ImageResolver`. The same resolution table applies to both:
 
 | `src` / `url` value | Result |
 | --- | --- |
@@ -1142,7 +1142,7 @@ var store = new TemplateStore
 };
 ```
 
-The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/SimonCropp/OpenXmlHtml#image-policy) for the full surface.
+The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
 
 Determinism holds as long as the bytes at the resolved source don't change between renders. Enabling `WebImages` couples render output to network state — if reproducibility matters, materialize web URLs into the model (or use `ImagePolicy.Deny()` for `WebImages`) before rendering.
 
