@@ -4,6 +4,136 @@ using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 
 public class EditableFieldTests
 {
+    static string ScenarioPath(string scenarioName) =>
+        Path.Combine(
+            ProjectFiles.ProjectDirectory,
+            "Scenarios",
+            scenarioName);
+
+    #region EditableFieldsModel
+    public class OrderForm
+    {
+        public required string Number;
+
+        [EditableField]
+        public required string PurchaseOrder { get; set; }
+
+        [EditableField]
+        public bool Approved { get; set; }
+
+        [EditableField]
+        public OrderStatus Status { get; set; }
+
+        [EditableField(MultiLine = true)]
+        public string? Notes { get; set; }
+    }
+
+    public enum OrderStatus
+    {
+        Draft,
+        Submitted,
+        Accepted
+    }
+    #endregion
+
+    [Test]
+    public async Task Scenario()
+    {
+        #region EditableFieldsUsage
+        var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<OrderForm>("order-form", templatePath);
+
+        var model = new OrderForm
+        {
+            Number = "ORD-2026-042",
+            PurchaseOrder = "PO-77041",
+            Approved = true,
+            Status = OrderStatus.Submitted,
+            Notes = null
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("order-form", model, stream);
+        #endregion
+
+        var settings = new VerifySettings();
+        settings.UseDirectory(ScenarioPath("editable-fields"));
+        settings.UseFileName("output");
+
+        stream.Position = 0;
+        await Verify(stream, "docx", settings);
+    }
+
+    [Test]
+    public async Task ScenarioRoundTrip()
+    {
+        var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<OrderForm>("order-form-roundtrip", templatePath);
+
+        var model = new OrderForm
+        {
+            Number = "ORD-2026-042",
+            PurchaseOrder = "PO-77041",
+            Approved = false,
+            Status = OrderStatus.Draft,
+            Notes = null
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render("order-form-roundtrip", model, stream);
+        stream.Position = 0;
+
+        // Simulate the user filling in the form in Word.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            SetSdtText(FindSdt(body, "PurchaseOrder"), "PO-91000");
+            SetSdtChecked(FindSdt(body, "Approved"), true);
+            SetSdtText(FindSdt(body, "Status"), "Accepted");
+            SetSdtText(FindSdt(body, "Notes"), "Ship to the loading dock.");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+
+        #region EditableFieldsExtract
+        var result = ParchmentExtractor.Extract<OrderForm>(stream);
+
+        result.ApplyTo(model);
+        #endregion
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(model.PurchaseOrder).IsEqualTo("PO-91000");
+        await Assert.That(model.Approved).IsTrue();
+        await Assert.That(model.Status).IsEqualTo(OrderStatus.Accepted);
+        await Assert.That(model.Notes).IsEqualTo("Ship to the loading dock.");
+    }
+
+    static void SetSdtText(SdtRun sdt, string text)
+    {
+        sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+        var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+        content.RemoveAllChildren();
+        content.AppendChild(
+            new Run(
+                new Text(text)
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                }));
+    }
+
+    static void SetSdtChecked(SdtRun sdt, bool value)
+    {
+        sdt.SdtProperties!
+            .GetFirstChild<W14.SdtContentCheckBox>()!
+            .GetFirstChild<W14.Checked>()!
+            .Val = value ? W14.OnOffValues.One : W14.OnOffValues.Zero;
+        sdt.Descendants<Text>().First().Text = value ? "☒" : "☐";
+    }
+
     public enum QuoteStatus
     {
         Draft,
