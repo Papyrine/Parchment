@@ -142,7 +142,7 @@ sealed class EditableMap
                 $"[EditableField] member '{owner.Name}.{member.Name}' is bool? — a checkbox cannot represent null. Use a non-nullable bool.");
         }
 
-        var setter = BuildSetter(owner, member, templateName);
+        var setter = BuildSetter(owner, member, parentGetter, templateName);
         var isNullable = underlying != null || IsNullableReference(member, nullability);
 
         return new(
@@ -186,8 +186,11 @@ sealed class EditableMap
         }
     }
 
-    static Action<object, object?> BuildSetter(Type owner, MemberInfo member, string templateName)
+    static Action<object, object?> BuildSetter(Type owner, MemberInfo member, Func<object, object?> parentGetter, string templateName)
     {
+        // The setter receives the ROOT model; the member lives on the object at the end of the
+        // parent path. Callers (ExtractResult.ApplyTo) validate reachability via CanReach before
+        // invoking, so the parent is non-null here.
         if (member is PropertyInfo property)
         {
             var set = property.SetMethod;
@@ -198,7 +201,7 @@ sealed class EditableMap
                     $"[EditableField] member '{owner.Name}.{member.Name}' has no public non-init setter. Extraction writes values back onto the model, so the member must be settable.");
             }
 
-            return property.SetValue;
+            return (root, value) => property.SetValue(parentGetter(root), value);
         }
 
         var field = (FieldInfo)member;
@@ -209,7 +212,7 @@ sealed class EditableMap
                 $"[EditableField] member '{owner.Name}.{member.Name}' is a readonly field. Extraction writes values back onto the model, so the member must be settable.");
         }
 
-        return field.SetValue;
+        return (root, value) => field.SetValue(parentGetter(root), value);
     }
 
     static bool IsInitOnly(MethodInfo setMethod) =>
