@@ -22,7 +22,7 @@ dotnet run --project IntegrationTests/IntegrationTests --configuration Release
 dotnet run --project src/Parchment.Tests --configuration Release -- --filter "FullyQualifiedName~Substitution"
 ```
 
-Snapshots: **Verify.TUnit + Verify.OpenXml + Morph.OpenXml.Skia**. Failed test writes `*.received.*`; accept by renaming to `*.verified.*`. PNG page renders fire on `net10.0` automatically when `Morph.OpenXml.Skia` is referenced.
+Snapshots: **Verify.TUnit + Verify.OpenXml + Morph.Skia**. Failed test writes `*.received.*`; accept by renaming to `*.verified.*`. PNG page renders fire on `net10.0` automatically when `Morph.Skia` is referenced.
 
 CI: `src/appveyor.yml`. Build first installs every TTF/OTF in `src/Fonts/` into the Windows fonts dir, validating each via `System.Drawing.Text.PrivateFontCollection` so a CRLF-mangled font fails the build instead of producing "font not found" at test time.
 
