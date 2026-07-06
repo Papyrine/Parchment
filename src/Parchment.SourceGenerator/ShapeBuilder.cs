@@ -10,10 +10,11 @@
 static class ShapeBuilder
 {
     public const string ExcelsiorTableAttributeFullName = "Parchment.ExcelsiorTableAttribute";
+    public const string EditableFieldAttributeFullName = "Parchment.EditableFieldAttribute";
 
     static readonly SymbolDisplayFormat format = SymbolDisplayFormat.FullyQualifiedFormat;
 
-    public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, Cancel cancel)
+    public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Cancel cancel)
     {
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -24,13 +25,13 @@ static class ShapeBuilder
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, visited, queue));
+            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue));
         }
 
         return new(Fqn(root), new(entries.ToImmutable()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, HashSet<string> visited, Queue<ITypeSymbol> queue)
+    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
     {
         string? elementFqn = null;
         if (type.SpecialType != SpecialType.System_String)
@@ -66,7 +67,23 @@ static class ShapeBuilder
                     var (isHtml, isMarkdown) = DetectFormat(member);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
-                    members.Add(new(memberName, Fqn(memberType), isExcelsior, isHtml, isMarkdown, isStringList, isStatic, excelsiorHeadingStyle, excelsiorBodyStyle));
+                    var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
+                    members.Add(new(
+                        memberName,
+                        Fqn(memberType),
+                        isExcelsior,
+                        isHtml,
+                        isMarkdown,
+                        isStringList,
+                        isStatic,
+                        excelsiorHeadingStyle,
+                        excelsiorBodyStyle,
+                        isEditable,
+                        isEditable ? MapEditableKind(memberType) : null,
+                        isEditable && IsNullableMember(memberType),
+                        isEditable && HasUsableSetter(member),
+                        editableMultiLine,
+                        editableDateFormat));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -170,6 +187,103 @@ static class ShapeBuilder
 
         return false;
     }
+
+    static bool TryGetEditableField(ISymbol member, INamedTypeSymbol? editableFieldType, out bool multiLine, out string? dateFormat)
+    {
+        multiLine = false;
+        dateFormat = null;
+        if (editableFieldType is null)
+        {
+            return false;
+        }
+
+        foreach (var attribute in member.GetAttributes())
+        {
+            if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, editableFieldType))
+            {
+                continue;
+            }
+
+            foreach (var named in attribute.NamedArguments)
+            {
+                if (named.Key == "MultiLine" &&
+                    named.Value.Value is bool multi)
+                {
+                    multiLine = multi;
+                }
+                else if (named.Key == "DateFormat" &&
+                         named.Value.Value is string dateFormatValue)
+                {
+                    dateFormat = dateFormatValue;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The runtime lockstep is <c>EditableMap.MapKind</c> + the bool? guard: null means
+    /// PARCH013 (unsupported type — including <c>bool?</c>, which a checkbox cannot represent).
+    /// </summary>
+    static EditableFieldKind? MapEditableKind(ITypeSymbol type)
+    {
+        var isNullableValue = false;
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+        {
+            isNullableValue = true;
+            type = nullable.TypeArguments[0];
+        }
+
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_String:
+                return EditableFieldKind.Text;
+            case SpecialType.System_Boolean:
+                return isNullableValue ? null : EditableFieldKind.Checkbox;
+            case SpecialType.System_DateTime:
+                return EditableFieldKind.Date;
+            case SpecialType.System_Byte:
+            case SpecialType.System_SByte:
+            case SpecialType.System_Int16:
+            case SpecialType.System_UInt16:
+            case SpecialType.System_Int32:
+            case SpecialType.System_UInt32:
+            case SpecialType.System_Int64:
+            case SpecialType.System_UInt64:
+            case SpecialType.System_Single:
+            case SpecialType.System_Double:
+            case SpecialType.System_Decimal:
+                return EditableFieldKind.Number;
+        }
+
+        if (type.TypeKind == TypeKind.Enum)
+        {
+            return EditableFieldKind.DropDown;
+        }
+
+        var fqn = Fqn(type);
+        if (fqn is "global::System.DateOnly" or "global::System.DateTimeOffset")
+        {
+            return EditableFieldKind.Date;
+        }
+
+        return null;
+    }
+
+    static bool IsNullableMember(ITypeSymbol type) =>
+        type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } ||
+        type.NullableAnnotation == NullableAnnotation.Annotated;
+
+    static bool HasUsableSetter(ISymbol member) =>
+        member switch
+        {
+            IPropertySymbol { SetMethod: { IsInitOnly: false, DeclaredAccessibility: Accessibility.Public } } => true,
+            IFieldSymbol { IsReadOnly: false, IsConst: false } => true,
+            _ => false
+        };
 
     static bool TryGetMemberType(ISymbol member, out ITypeSymbol type, out string name, out bool isStatic)
     {

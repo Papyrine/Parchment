@@ -5,6 +5,7 @@ static class DocxArchiveReader
     public static DocxReadResult Read(string filePath)
     {
         var paragraphs = new List<string>();
+        var bodyParagraphs = new List<string>();
         var hasRemovePersonalInformation = false;
         var builder = new StringBuilder();
         using var archive = ZipFile.OpenRead(filePath);
@@ -23,6 +24,10 @@ static class DocxArchiveReader
                 continue;
             }
 
+            // Zip entry order is not guaranteed body-first, so track the body part explicitly —
+            // editable-field validation is body-scoped.
+            var isBody = IsBodyPart(entry.FullName);
+
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
 
@@ -36,13 +41,21 @@ static class DocxArchiveReader
 
                 if (builder.Length > 0)
                 {
-                    paragraphs.Add(builder.ToString());
+                    var text = builder.ToString();
+                    paragraphs.Add(text);
+                    if (isBody)
+                    {
+                        bodyParagraphs.Add(text);
+                    }
                 }
             }
         }
 
-        return new(paragraphs, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, hasRemovePersonalInformation);
     }
+
+    static bool IsBodyPart(string path) =>
+        path.StartsWith("word/document.xml", StringComparison.OrdinalIgnoreCase);
 
     static bool LooksLikeWordPart(string path) =>
         path.StartsWith("word/document.xml", StringComparison.OrdinalIgnoreCase) ||

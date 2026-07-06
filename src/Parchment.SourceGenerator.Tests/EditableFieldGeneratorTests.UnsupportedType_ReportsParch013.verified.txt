@@ -1,0 +1,17 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: : (5,1)-(5,32),
+      Message: Model 'Order' member 'Sample.Order.Items' is [EditableField] but its type 'System.Collections.Generic.List<string>' is not supported. Supported: string, bool, Date, DateTime, DateTimeOffset, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).,
+      Severity: Error,
+      Descriptor: {
+        Id: PARCH013,
+        Title: [EditableField] member has an unsupported type,
+        MessageFormat: Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, Date, DateTime, DateTimeOffset, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).,
+        Category: Parchment,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}
