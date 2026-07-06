@@ -20,14 +20,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     ImagePolicies Policies => new(LocalImages, WebImages);
 
-    public void RegisterDocxTemplate<TModel>(string name, string path)
+    public void RegisterDocxTemplate<TModel>(string name, string path, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         using var file = File.OpenRead(path);
-        RegisterDocxTemplate<TModel>(name, file);
+        RegisterDocxTemplate<TModel>(name, file, protection);
     }
 
-    public void RegisterDocxTemplate<TModel>(string name, Stream template)
+    public void RegisterDocxTemplate<TModel>(string name, Stream template, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -37,11 +37,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var excelsiorMap = ExcelsiorTableMap.Build(typeof(TModel), name);
         var formatMap = FormatMap.Build(typeof(TModel), name);
         var stringListMap = StringListMap.Build(typeof(TModel));
+        var editableMap = EditableMap.Build(typeof(TModel), name);
 
         using var stream = DocxCloner.ToWritableStream(template);
         IReadOnlyList<PartScopeTree> parts;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
+            var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
                 var classifications = TokenScanner.Scan(root, name, uri);
@@ -55,6 +57,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 validator.ValidateTree(tree);
                 ExcelsiorTokenValidator.Validate(classifications, excelsiorMap, name, uri);
                 FormatTokenValidator.Validate(classifications, formatMap, name, uri);
+                EditableTokenValidator.Validate(classifications, editableMap, excelsiorMap, formatMap, name, uri, isBody: uri == bodyUri);
+            }
+
+            if (!editableMap.IsEmpty &&
+                protection == ProtectionMode.WhenEditable)
+            {
+                SettingsProtection.Apply(doc.MainDocumentPart!);
             }
 
             doc.Save();
@@ -63,7 +72,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, typeof(TModel), canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, Policies);
+        var registered = new RegisteredDocxTemplate(name, typeof(TModel), canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies);
         templates[name] = registered;
         logger.LogInformation("Registered docx template {Name} for {ModelType}", name, typeof(TModel).Name);
     }

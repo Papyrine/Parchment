@@ -1,0 +1,6 @@
+﻿Order ORD-100
+PO: 
+Approved: 
+Status: 
+Discount: 
+Notes:

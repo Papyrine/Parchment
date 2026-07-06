@@ -6,6 +6,7 @@ class RegisteredDocxTemplate(
     ExcelsiorTableMap excelsiorTables,
     FormatMap formats,
     StringListMap stringLists,
+    EditableMap editables,
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
 {
@@ -19,6 +20,7 @@ class RegisteredDocxTemplate(
         {
             var mainPart = doc.MainDocumentPart!;
             var numberingState = new WordNumberingState(mainPart);
+            var editableState = new EditableState();
             // Cache the StyleSet per render — Excelsior / Format / OpenXml / Mutate tokens all
             // need it, but it changes only across registrations, not within a render.
             var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
@@ -26,7 +28,7 @@ class RegisteredDocxTemplate(
             foreach (var part in parts)
             {
                 cancel.ThrowIfCancellationRequested();
-                await RenderPartAsync(doc, mainPart, part, context, model, numberingState, styles);
+                await RenderPartAsync(doc, mainPart, part, context, model, numberingState, editableState, styles);
             }
 
             foreach (var (_, root) in DocxCloner.EnumerateParts(doc))
@@ -41,7 +43,7 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(WordprocessingDocument doc, MainDocumentPart mainPart, PartScopeTree part, TemplateContext context, object model, WordNumberingState numberingState, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(WordprocessingDocument doc, MainDocumentPart mainPart, PartScopeTree part, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, Lazy<StyleSet> styles)
     {
         OpenXmlCompositeElement? root = null;
         foreach (var (uri, candidate) in DocxCloner.EnumerateParts(doc))
@@ -58,6 +60,12 @@ class RegisteredDocxTemplate(
             return;
         }
 
+        // Editable fields dispatch only in the document body. Word does not reliably honor
+        // editable-range exceptions in headers/footers/notes, so the same token there renders
+        // as plain read-only text — deliberate (e.g. an editable PO number in the body can be
+        // mirrored read-only in the footer).
+        var isBody = part.PartUri == mainPart.Uri.ToString();
+
         var map = Anchors.BuildMap(root);
         var runner = new ScopeTreeRunner(
             Name,
@@ -69,6 +77,8 @@ class RegisteredDocxTemplate(
             excelsiorTables,
             formats,
             stringLists,
+            isBody ? editables : EditableMap.Empty,
+            editableState,
             numberingState,
             styles,
             imagePolicies);
