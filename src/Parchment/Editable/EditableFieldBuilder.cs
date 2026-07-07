@@ -81,6 +81,8 @@ static class EditableFieldBuilder
             EditableFieldKind.Number => BuildNumber(value, sitePr, culture),
             EditableFieldKind.Checkbox => BuildCheckbox(value, sitePr),
             EditableFieldKind.Date => BuildDate(entry, value, sitePr, culture),
+            EditableFieldKind.DateTimeOffset => BuildTextValue(FormatDateTimeOffset(entry, value, culture), sitePr),
+            EditableFieldKind.Time => BuildTextValue(FormatTime(entry, value, culture), sitePr),
             EditableFieldKind.DropDown => BuildDropDown(entry, value, sitePr),
             _ => throw new InvalidOperationException($"Unknown editable kind {entry.Kind}")
         };
@@ -165,14 +167,42 @@ static class EditableFieldBuilder
             return (kind, PlaceholderRun(sitePr), true);
         }
 
+        // Only DateOnly and DateTime reach here (see BuildKind). DateTime's time-of-day is
+        // preserved in w:fullDate even though the default format shows date only.
         var dateTime = value switch
         {
             Date date => date.ToDateTime(Time.MinValue),
-            DateTimeOffset offset => offset.DateTime,
             _ => (DateTime)value
         };
         kind.FullDate = dateTime;
         return (kind, TextRun(dateTime.ToString(format, culture), sitePr, multiLine: false), false);
+    }
+
+    // Round-trippable ISO 8601 defaults for the text-backed temporal kinds. DateTimeOffset keeps
+    // its offset (zzz); both are re-parsed verbatim by EditableFieldReader. Seconds precision by
+    // default — a caller needing sub-seconds sets DateFormat (e.g. "o").
+    const string dateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
+    const string timeFormat = "HH:mm:ss";
+
+    static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture) =>
+        value is DateTimeOffset offset
+            ? offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture)
+            : null;
+
+    static string? FormatTime(EditableEntry entry, object? value, CultureInfo culture) =>
+        value is Time time
+            ? time.ToString(entry.DateFormat ?? timeFormat, culture)
+            : null;
+
+    static (OpenXmlElement, Run, bool) BuildTextValue(string? text, RunProperties? sitePr)
+    {
+        var kind = new SdtContentText();
+        if (string.IsNullOrEmpty(text))
+        {
+            return (kind, PlaceholderRun(sitePr), true);
+        }
+
+        return (kind, TextRun(text, sitePr, multiLine: false), false);
     }
 
     static (OpenXmlElement, Run, bool) BuildDropDown(EditableEntry entry, object? value, RunProperties? sitePr)

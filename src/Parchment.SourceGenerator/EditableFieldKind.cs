@@ -8,5 +8,7 @@ enum EditableFieldKind
     Number,
     Checkbox,
     Date,
+    DateTimeOffset,
+    Time,
     DropDown
 }

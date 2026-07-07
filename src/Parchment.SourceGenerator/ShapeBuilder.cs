@@ -264,13 +264,17 @@ static class ShapeBuilder
             return EditableFieldKind.DropDown;
         }
 
+        // DateOnly + DateTime -> native date picker (canonical w:fullDate). DateTimeOffset and
+        // TimeOnly -> round-trippable plain text (w:fullDate has no offset; no time-only picker).
+        // Lockstep with runtime EditableMap.MapKind.
         var fqn = Fqn(type);
-        if (fqn is "global::System.DateOnly" or "global::System.DateTimeOffset")
+        return fqn switch
         {
-            return EditableFieldKind.Date;
-        }
-
-        return null;
+            "global::System.DateOnly" => EditableFieldKind.Date,
+            "global::System.DateTimeOffset" => EditableFieldKind.DateTimeOffset,
+            "global::System.TimeOnly" => EditableFieldKind.Time,
+            _ => null
+        };
     }
 
     static bool IsNullableMember(ITypeSymbol type) =>

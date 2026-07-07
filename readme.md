@@ -935,15 +935,22 @@ result.ApplyTo(model);
 
 ### Control kinds
 
-| Member type | Control | Canonical round-trip value |
+| Member type | Control | Round-trip value |
 | --- | --- | --- |
 | `string` | plain text (`MultiLine = true` allows line breaks) | the text |
 | `bool` | checkbox | `w14:checked` — no text parsing |
-| `Date` / `DateTime` / `DateTimeOffset` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | `w:fullDate`, maintained by Word's picker |
+| `DateOnly` / `DateTime` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | canonical `w:fullDate`, maintained by Word's picker |
+| `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
+| `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
 | enums | dropdown, one item per member | `w:listItem` value |
 | numeric types | plain text | text parsed with the extraction culture |
 
 Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder and extract as `Empty`. Members must have a public non-init setter so extraction can write back.
+
+**Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
+
+- A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
+- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
 
 ### Protection is cooperative, not security
 
@@ -1592,7 +1599,7 @@ public partial class Outer  // <-- partial
 
 ### `PARCH013` — `[EditableField]` member has an unsupported type
 
-**Docx only.** Supported types: `string`, `bool`, `Date`, `DateTime`, `DateTimeOffset`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
+**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
 
 ```csharp
 public partial class Order

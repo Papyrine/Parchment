@@ -245,11 +245,77 @@ public class ExtractTests
         var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(foreign);
 
         await Assert.That(result.AllExtracted).IsFalse();
-        await Assert.That(result.Fields.Count).IsEqualTo(7);
+        await Assert.That(result.Fields.Count).IsEqualTo(10);
         foreach (var field in result.Fields)
         {
             await Assert.That(field.State).IsEqualTo(FieldState.Missing);
         }
+    }
+
+    [Test]
+    public async Task TemporalTypesRoundTrip()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        await Assert.That(result.AllExtracted).IsTrue();
+
+        // DateOnly — canonical w:fullDate at midnight.
+        await Assert.That(Field(result, "Delivery").Value).IsEqualTo(new Date(2026, 7, 6));
+
+        // DateTime — time-of-day preserved through w:fullDate; Kind normalizes to Unspecified.
+        await Assert.That(Field(result, "DispatchedAt").Value).IsEqualTo(new DateTime(2026, 7, 6, 14, 30, 0));
+
+        // DateTimeOffset — the +10:00 offset survives (parsed from the ISO run text, not a
+        // zeroed fullDate). This is the case the old code corrupted to +00:00.
+        var signed = (DateTimeOffset)Field(result, "SignedAt").Value!;
+        await Assert.That(signed).IsEqualTo(new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
+        await Assert.That(signed.Offset).IsEqualTo(TimeSpan.FromHours(10));
+
+        // TimeOnly — round-trips via plain text.
+        await Assert.That(Field(result, "PickupTime").Value).IsEqualTo(new Time(16, 45, 0));
+
+        var target = new EditableFieldTests.EditableOrder
+        {
+            Number = "x",
+            Tags = [],
+            IncludeNotes = false,
+            PurchaseOrder = ""
+        };
+        result.ApplyTo(target);
+
+        await Assert.That(target.DispatchedAt).IsEqualTo(new DateTime(2026, 7, 6, 14, 30, 0));
+        await Assert.That(target.SignedAt).IsEqualTo(new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
+        await Assert.That(target.PickupTime).IsEqualTo(new Time(16, 45, 0));
+    }
+
+    [Test]
+    public async Task EditedDateTimeOffsetPreservesNewOffset()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        // User types a different instant with a different offset into the plain-text control.
+        Edit(stream, body => EditSdtText(body, "SignedAt", "2026-12-01T23:15:00-05:00"));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var signed = (DateTimeOffset)Field(result, "SignedAt").Value!;
+
+        await Assert.That(signed).IsEqualTo(new DateTimeOffset(2026, 12, 1, 23, 15, 0, TimeSpan.FromHours(-5)));
+    }
+
+    [Test]
+    public async Task UnparseableTimeReportsParseFailed()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(stream, body => EditSdtText(body, "PickupTime", "half four"));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var pickup = Field(result, "PickupTime");
+
+        await Assert.That(pickup.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(pickup.RawText).IsEqualTo("half four");
+        await Assert.That(result.AllExtracted).IsFalse();
     }
 
     static async Task<MemoryStream> RenderOrder(
@@ -265,6 +331,12 @@ public class ExtractTests
             {{ Approved }}
 
             {{ Delivery }}
+
+            {{ DispatchedAt }}
+
+            {{ SignedAt }}
+
+            {{ PickupTime }}
 
             {{ Status }}
 

@@ -34,6 +34,12 @@ public class EditableFieldGeneratorTests
             public DateTime Delivery { get; set; }
 
             [EditableField]
+            public DateTimeOffset SignedAt { get; set; }
+
+            [EditableField]
+            public TimeOnly PickupTime { get; set; }
+
+            [EditableField]
             public Status Status { get; set; }
 
             [EditableField]
@@ -57,6 +63,8 @@ public class EditableFieldGeneratorTests
             "{{ PurchaseOrder }}",
             "{{ Approved }}",
             "{{ Delivery }}",
+            "{{ SignedAt }}",
+            "{{ PickupTime }}",
             "{{ Status }}",
             "{{ Discount }}",
             "{{ Instructions }}",

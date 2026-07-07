@@ -131,7 +131,7 @@ sealed class EditableMap
         {
             throw new ParchmentRegistrationException(
                 templateName,
-                $"[EditableField] member '{owner.Name}.{member.Name}' has unsupported type '{memberType.Name}'. Supported: string, bool, Date, DateTime, DateTimeOffset, enums, and numeric types (nullable variants except bool?).");
+                $"[EditableField] member '{owner.Name}.{member.Name}' has unsupported type '{memberType.Name}'. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool?).");
         }
 
         if (kind == EditableFieldKind.Checkbox &&
@@ -243,11 +243,24 @@ sealed class EditableMap
             return EditableFieldKind.Checkbox;
         }
 
+        // DateOnly (aliased Date) and DateTime map to the native date picker, which stores a
+        // canonical w:fullDate. DateTimeOffset and TimeOnly cannot: w:fullDate is a bare DateTime
+        // with no offset, and Word has no time-only picker — so those render as round-trippable
+        // plain text instead (see EditableFieldBuilder / EditableFieldReader).
         if (type == typeof(Date) ||
-            type == typeof(DateTime) ||
-            type == typeof(DateTimeOffset))
+            type == typeof(DateTime))
         {
             return EditableFieldKind.Date;
+        }
+
+        if (type == typeof(DateTimeOffset))
+        {
+            return EditableFieldKind.DateTimeOffset;
+        }
+
+        if (type == typeof(Time))
+        {
+            return EditableFieldKind.Time;
         }
 
         if (type.IsEnum)

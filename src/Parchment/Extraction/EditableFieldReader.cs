@@ -3,9 +3,10 @@ using W14 = DocumentFormat.OpenXml.Office2010.Word;
 /// <summary>
 /// Reads one editable content control back into a typed value. Checkbox / date / dropdown
 /// controls carry canonical values in their <c>sdtPr</c> (<c>w14:checked</c>, <c>w:fullDate</c>,
-/// <c>w:listItem/@w:value</c>), so those never depend on parsing display text; only free-text
-/// numerics (and the date fallback when <c>w:fullDate</c> is absent) parse with the caller's
-/// culture — which must match the render culture.
+/// <c>w:listItem/@w:value</c>), so those never depend on parsing display text. Numerics, and the
+/// text-backed temporal kinds (<c>DateTimeOffset</c>, <c>TimeOnly</c>, which have no canonical
+/// control slot), parse the run text with the caller's culture — which must match the render
+/// culture.
 /// </summary>
 static class EditableFieldReader
 {
@@ -34,6 +35,16 @@ static class EditableFieldReader
                 new(entry.DottedPath, FieldState.Empty, null, raw),
             EditableFieldKind.Date =>
                 ReadDate(sdt, entry, raw, culture),
+
+            EditableFieldKind.DateTimeOffset when isPlaceholder || raw.Length == 0 =>
+                new(entry.DottedPath, FieldState.Empty, null, raw),
+            EditableFieldKind.DateTimeOffset =>
+                ReadDateTimeOffset(entry, raw, culture),
+
+            EditableFieldKind.Time when isPlaceholder || raw.Length == 0 =>
+                new(entry.DottedPath, FieldState.Empty, null, raw),
+            EditableFieldKind.Time =>
+                ReadTime(entry, raw, culture),
 
             EditableFieldKind.DropDown when isPlaceholder || raw.Length == 0 =>
                 new(entry.DottedPath, FieldState.Empty, null, raw),
@@ -144,21 +155,41 @@ static class EditableFieldReader
             }
         }
 
-        object value;
-        if (entry.ClrType == typeof(Date))
-        {
-            value = Date.FromDateTime(dateTime);
-        }
-        else if (entry.ClrType == typeof(DateTimeOffset))
-        {
-            value = new DateTimeOffset(DateTime.SpecifyKind(dateTime, DateTimeKind.Unspecified), TimeSpan.Zero);
-        }
-        else
-        {
-            value = dateTime;
-        }
+        // Only DateOnly and DateTime map to the Date kind. DateTime comes back with Kind
+        // Unspecified (w:fullDate carries no zone) — documented; callers needing a specific Kind
+        // re-stamp it.
+        object value = entry.ClrType == typeof(Date)
+            ? Date.FromDateTime(dateTime)
+            : dateTime;
 
         return new(entry.DottedPath, FieldState.Extracted, value, raw);
+    }
+
+    static ExtractedField ReadDateTimeOffset(EditableEntry entry, string raw, CultureInfo culture)
+    {
+        // The run text is the source of truth (w:fullDate cannot hold an offset). Parsing the
+        // offset-bearing ISO text preserves the original offset — DateTimeOffset.TryParse keeps
+        // whatever offset the string carries.
+        DateTimeOffset value;
+        var parsed = entry.DateFormat is { } format
+            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
+            : DateTimeOffset.TryParse(raw, culture, DateTimeStyles.None, out value);
+
+        return parsed
+            ? new(entry.DottedPath, FieldState.Extracted, value, raw)
+            : new(entry.DottedPath, FieldState.ParseFailed, null, raw);
+    }
+
+    static ExtractedField ReadTime(EditableEntry entry, string raw, CultureInfo culture)
+    {
+        Time value;
+        var parsed = entry.DateFormat is { } format
+            ? Time.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
+            : Time.TryParse(raw, culture, DateTimeStyles.None, out value);
+
+        return parsed
+            ? new(entry.DottedPath, FieldState.Extracted, value, raw)
+            : new(entry.DottedPath, FieldState.ParseFailed, null, raw);
     }
 
     static ExtractedField ReadDropDown(SdtElement sdt, EditableEntry entry, string raw)

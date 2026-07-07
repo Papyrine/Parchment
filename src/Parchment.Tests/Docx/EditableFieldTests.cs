@@ -156,6 +156,15 @@ public class EditableFieldTests
         [EditableField]
         public Date Delivery { get; set; }
 
+        [EditableField(DateFormat = "yyyy-MM-dd HH:mm")]
+        public DateTime DispatchedAt { get; set; }
+
+        [EditableField]
+        public DateTimeOffset SignedAt { get; set; }
+
+        [EditableField]
+        public Time PickupTime { get; set; }
+
         [EditableField]
         public QuoteStatus Status { get; set; }
 
@@ -178,6 +187,9 @@ public class EditableFieldTests
             PurchaseOrder = "PO-2026-17",
             Approved = true,
             Delivery = new(2026, 7, 6),
+            DispatchedAt = new(2026, 7, 6, 14, 30, 0),
+            SignedAt = new(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)),
+            PickupTime = new(16, 45, 0),
             Status = QuoteStatus.Submitted,
             Discount = 10m,
             Notes = null,
@@ -281,6 +293,44 @@ public class EditableFieldTests
         await Assert.That(text!.MultiLine!.Value).IsTrue();
         await Assert.That(instructions.Descendants<Break>().Count()).IsEqualTo(1);
         await Assert.That(instructions.InnerText).IsEqualTo("Line oneLine two");
+    }
+
+    [Test]
+    public async Task TemporalKindsRenderWithCorrectControls()
+    {
+        using var stream = await Render(
+            """
+            {{ DispatchedAt }}
+
+            {{ SignedAt }}
+
+            {{ PickupTime }}
+            """,
+            NewOrder());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        // DateTime keeps the native date picker; its time-of-day survives in w:fullDate even
+        // though the (custom) format also shows it in the visible text.
+        var dispatched = FindSdt(body, "DispatchedAt");
+        var date = dispatched.SdtProperties!.GetFirstChild<SdtContentDate>();
+        await Assert.That(date).IsNotNull();
+        await Assert.That(date!.FullDate!.Value).IsEqualTo(new DateTime(2026, 7, 6, 14, 30, 0));
+        await Assert.That(dispatched.InnerText).IsEqualTo("2026-07-06 14:30");
+
+        // DateTimeOffset has no offset-aware picker and w:fullDate can't hold an offset, so it
+        // renders as plain text carrying a round-trippable ISO value (offset included).
+        var signed = FindSdt(body, "SignedAt");
+        await Assert.That(signed.SdtProperties!.GetFirstChild<SdtContentText>()).IsNotNull();
+        await Assert.That(signed.SdtProperties.GetFirstChild<SdtContentDate>()).IsNull();
+        await Assert.That(signed.InnerText).IsEqualTo("2026-07-06T09:00:00+10:00");
+
+        // TimeOnly has no picker either — plain text.
+        var pickup = FindSdt(body, "PickupTime");
+        await Assert.That(pickup.SdtProperties!.GetFirstChild<SdtContentText>()).IsNotNull();
+        await Assert.That(pickup.SdtProperties.GetFirstChild<SdtContentDate>()).IsNull();
+        await Assert.That(pickup.InnerText).IsEqualTo("16:45:00");
     }
 
     [Test]
