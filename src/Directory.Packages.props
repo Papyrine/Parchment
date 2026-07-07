@@ -27,18 +27,18 @@
     <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageVersion Include="TUnit" Version="1.58.0" />
-    <PackageVersion Include="Verify" Version="31.20.0" />
-    <PackageVersion Include="Verify.TUnit" Version="31.20.0" />
+    <PackageVersion Include="Verify" Version="31.21.0" />
+    <PackageVersion Include="Verify.TUnit" Version="31.21.0" />
     <PackageVersion Include="Verify.DiffPlex" Version="3.3.0" />
     <PackageVersion Include="Verify.OpenXml" Version="1.21.0" />
-    <PackageVersion Include="Morph.Skia" Version="1.1.1" />
+    <PackageVersion Include="Morph.Skia" Version="1.1.3" />
     <PackageVersion Include="Verify.SourceGenerators" Version="2.5.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.6.0" />
-    <PackageVersion Include="MarkdownSnippets.MsBuild" Version="28.3.1" />
-    <PackageVersion Include="Argon" Version="0.34.0" />
-    <PackageVersion Include="DiffEngine" Version="19.2.0" />
-    <PackageVersion Include="EmptyFiles" Version="8.18.1" />
+    <PackageVersion Include="MarkdownSnippets.MsBuild" Version="28.4.0" />
+    <PackageVersion Include="Argon" Version="0.35.0" />
+    <PackageVersion Include="DiffEngine" Version="19.3.1" />
+    <PackageVersion Include="EmptyFiles" Version="8.18.2" />
     <PackageVersion Include="SimpleInfoName" Version="3.2.0" />
     <PackageVersion Include="NaughtyStrings" Version="3.0.0" />
   </ItemGroup>
