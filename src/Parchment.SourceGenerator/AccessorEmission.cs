@@ -402,84 +402,84 @@ static class AccessorEmission
     // (nullability travels separately as IsNullable). Char compare instead of EndsWith: the
     // char overload doesn't exist on netstandard2.0.
     static string StripNullableSuffix(string fqn) =>
-        fqn.Length > 0 && fqn[fqn.Length - 1] == '?' ? fqn.Substring(0, fqn.Length - 1) : fqn;
+        fqn.Length > 0 && fqn[^1] == '?' ? fqn[..^1] : fqn;
 
     /// <summary>
     /// Setter shape mirrors runtime <c>EditableMap.BuildSetter</c>: walk to the PARENT object
     /// (null-conditional per hop), assign on it — never on the root. Callers validate
     /// reachability first, so a null parent is a silent no-op rather than a throw.
     /// </summary>
-    static void EmitSetter(StringBuilder sb, string rootFqn, List<string> path, MemberEntry member)
+    static void EmitSetter(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member)
     {
         var castFqn = member.TypeFullyQualifiedName;
         if (member.EditableIsNullable &&
-            castFqn[castFqn.Length - 1] != '?')
+            castFqn[^1] != '?')
         {
             castFqn += "?";
         }
 
         var cast = member.EditableIsNullable ? $"({castFqn})v" : $"({castFqn})v!";
 
-        sb.Append("(o, v) => { ");
+        builder.Append("(o, v) => { ");
         if (path.Count == 1)
         {
-            sb.Append("((");
-            sb.Append(rootFqn);
-            sb.Append(")o).");
-            sb.Append(path[0]);
-            sb.Append(" = ");
-            sb.Append(cast);
-            sb.Append("; }");
+            builder.Append("((");
+            builder.Append(rootFqn);
+            builder.Append(")o).");
+            builder.Append(path[0]);
+            builder.Append(" = ");
+            builder.Append(cast);
+            builder.Append("; }");
             return;
         }
 
-        sb.Append("var p = ((");
-        sb.Append(rootFqn);
-        sb.Append(")o)");
-        AppendParentPath(sb, path);
-        sb.Append("; if (p != null) { p.");
-        sb.Append(path[path.Count - 1]);
-        sb.Append(" = ");
-        sb.Append(cast);
-        sb.Append("; } }");
+        builder.Append("var p = ((");
+        builder.Append(rootFqn);
+        builder.Append(")o)");
+        AppendParentPath(builder, path);
+        builder.Append("; if (p != null) { p.");
+        builder.Append(path[^1]);
+        builder.Append(" = ");
+        builder.Append(cast);
+        builder.Append("; } }");
     }
 
-    static void EmitCanReach(StringBuilder sb, string rootFqn, List<string> path)
+    static void EmitCanReach(StringBuilder builder, string rootFqn, List<string> path)
     {
         if (path.Count == 1)
         {
-            sb.Append("static o => true");
+            builder.Append("static o => true");
             return;
         }
 
-        sb.Append("o => ((");
-        sb.Append(rootFqn);
-        sb.Append(")o)");
-        AppendParentPath(sb, path);
-        sb.Append(" != null");
+        builder.Append("o => ((");
+        builder.Append(rootFqn);
+        builder.Append(")o)");
+        AppendParentPath(builder, path);
+        builder.Append(" != null");
     }
 
-    static void AppendParentPath(StringBuilder sb, List<string> path)
+    static void AppendParentPath(StringBuilder builder, List<string> path)
     {
         for (var i = 0; i < path.Count - 1; i++)
         {
-            sb.Append(i == 0 ? "." : "?.");
-            sb.Append(path[i]);
+            builder.Append(i == 0 ? "." : "?.");
+            builder.Append(path[i]);
         }
     }
 
-    static void EmitGetter(StringBuilder sb, string rootFqn, List<string> path)
+    static void EmitGetter(StringBuilder builder, string rootFqn, List<string> path)
     {
-        sb.Append("o => ((");
-        sb.Append(rootFqn);
-        sb.Append(")o)");
+        builder.Append("o => ((");
+        builder.Append(rootFqn);
+        builder.Append(")o)");
         for (var i = 0; i < path.Count; i++)
         {
             // First segment uses `.` (after the cast the root reference is non-null when invoked
             // through TemplateStore.Render, which never passes null). Subsequent segments use `?.`
             // so a null intermediate short-circuits — matching the runtime ChainGetter semantics.
-            sb.Append(i == 0 ? "." : "?.");
-            sb.Append(path[i]);
+            builder.Append(i == 0 ? "." : "?.");
+            builder.Append(path[i]);
         }
     }
 

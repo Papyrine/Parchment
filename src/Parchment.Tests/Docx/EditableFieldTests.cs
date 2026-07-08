@@ -269,7 +269,7 @@ public class EditableFieldTests
         var delivery = FindSdt(body, "Delivery");
         var date = delivery.SdtProperties!.GetFirstChild<SdtContentDate>();
         await Assert.That(date).IsNotNull();
-        await Assert.That(date!.FullDate!.Value).IsEqualTo(new DateTime(2026, 7, 6));
+        await Assert.That(date!.FullDate!.Value).IsEqualTo(new(2026, 7, 6));
         await Assert.That(date.GetFirstChild<DateFormat>()!.Val!.Value).IsEqualTo("yyyy-MM-dd");
         await Assert.That(delivery.InnerText).IsEqualTo("2026-07-06");
 
@@ -315,7 +315,7 @@ public class EditableFieldTests
         var dispatched = FindSdt(body, "DispatchedAt");
         var date = dispatched.SdtProperties!.GetFirstChild<SdtContentDate>();
         await Assert.That(date).IsNotNull();
-        await Assert.That(date!.FullDate!.Value).IsEqualTo(new DateTime(2026, 7, 6, 14, 30, 0));
+        await Assert.That(date!.FullDate!.Value).IsEqualTo(new(2026, 7, 6, 14, 30, 0));
         await Assert.That(dispatched.InnerText).IsEqualTo("2026-07-06 14:30");
 
         // DateTimeOffset has no offset-aware picker and w:fullDate can't hold an offset, so it

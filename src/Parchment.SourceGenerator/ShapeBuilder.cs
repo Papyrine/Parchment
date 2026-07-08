@@ -206,13 +206,11 @@ static class ShapeBuilder
 
             foreach (var named in attribute.NamedArguments)
             {
-                if (named.Key == "MultiLine" &&
-                    named.Value.Value is bool multi)
+                if (named is { Key: "MultiLine", Value.Value: bool multi })
                 {
                     multiLine = multi;
                 }
-                else if (named.Key == "DateFormat" &&
-                         named.Value.Value is string dateFormatValue)
+                else if (named is { Key: "DateFormat", Value.Value: string dateFormatValue })
                 {
                     dateFormat = dateFormatValue;
                 }

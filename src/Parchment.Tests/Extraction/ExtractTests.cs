@@ -34,7 +34,7 @@ public class ExtractTests
 
         await Assert.That(target.PurchaseOrder).IsEqualTo("PO-2026-17");
         await Assert.That(target.Approved).IsTrue();
-        await Assert.That(target.Delivery).IsEqualTo(new Date(2026, 7, 6));
+        await Assert.That(target.Delivery).IsEqualTo(new(2026, 7, 6));
         await Assert.That(target.Status).IsEqualTo(EditableFieldTests.QuoteStatus.Submitted);
         await Assert.That(target.Discount).IsEqualTo(10m);
         await Assert.That(target.Notes).IsNull();
@@ -66,7 +66,7 @@ public class ExtractTests
 
         await Assert.That(target.PurchaseOrder).IsEqualTo("PO-EDITED");
         await Assert.That(target.Approved).IsFalse();
-        await Assert.That(target.Delivery).IsEqualTo(new Date(2026, 8, 1));
+        await Assert.That(target.Delivery).IsEqualTo(new(2026, 8, 1));
         await Assert.That(target.Status).IsEqualTo(EditableFieldTests.QuoteStatus.Accepted);
         await Assert.That(target.Discount).IsEqualTo(12.5m);
         await Assert.That(target.Notes).IsEqualTo("call before delivery");
@@ -269,7 +269,7 @@ public class ExtractTests
         // DateTimeOffset — the +10:00 offset survives (parsed from the ISO run text, not a
         // zeroed fullDate). This is the case the old code corrupted to +00:00.
         var signed = (DateTimeOffset)Field(result, "SignedAt").Value!;
-        await Assert.That(signed).IsEqualTo(new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
+        await Assert.That(signed).IsEqualTo(new(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
         await Assert.That(signed.Offset).IsEqualTo(TimeSpan.FromHours(10));
 
         // TimeOnly — round-trips via plain text.
@@ -284,9 +284,9 @@ public class ExtractTests
         };
         result.ApplyTo(target);
 
-        await Assert.That(target.DispatchedAt).IsEqualTo(new DateTime(2026, 7, 6, 14, 30, 0));
-        await Assert.That(target.SignedAt).IsEqualTo(new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
-        await Assert.That(target.PickupTime).IsEqualTo(new Time(16, 45, 0));
+        await Assert.That(target.DispatchedAt).IsEqualTo(new(2026, 7, 6, 14, 30, 0));
+        await Assert.That(target.SignedAt).IsEqualTo(new(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10)));
+        await Assert.That(target.PickupTime).IsEqualTo(new(16, 45, 0));
     }
 
     [Test]
@@ -300,7 +300,7 @@ public class ExtractTests
         var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
         var signed = (DateTimeOffset)Field(result, "SignedAt").Value!;
 
-        await Assert.That(signed).IsEqualTo(new DateTimeOffset(2026, 12, 1, 23, 15, 0, TimeSpan.FromHours(-5)));
+        await Assert.That(signed).IsEqualTo(new(2026, 12, 1, 23, 15, 0, TimeSpan.FromHours(-5)));
     }
 
     [Test]

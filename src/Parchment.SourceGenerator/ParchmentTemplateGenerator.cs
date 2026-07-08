@@ -100,7 +100,7 @@ public sealed class ParchmentTemplateGenerator :
         // (e.g. `XxxGenerator.Info` patterns) disambiguate from sibling `Info` types.
         var displayName = enclosingResult.Chain.Count == 0
             ? typeSymbol.Name
-            : string.Join(".", enclosingResult.Chain.Select(_ => _.Name)) + "." + typeSymbol.Name;
+            : string.Join('.', enclosingResult.Chain.Select(_ => _.Name)) + '.' + typeSymbol.Name;
 
         var excelsiorTableType = context.SemanticModel.Compilation
             .GetTypeByMetadataName(ShapeBuilder.ExcelsiorTableAttributeFullName);
@@ -113,8 +113,7 @@ public sealed class ParchmentTemplateGenerator :
         {
             // The named argument arrives as the enum's underlying int — the SG cannot reference
             // Parchment.dll's ProtectionMode type.
-            if (named.Key == "Protection" &&
-                named.Value.Value is int protectionValue)
+            if (named is { Key: "Protection", Value.Value: int protectionValue })
             {
                 protection = (ProtectionMode)protectionValue;
             }
@@ -169,14 +168,14 @@ public sealed class ParchmentTemplateGenerator :
         return false;
     }
 
-    static string GetTypeKindKeyword(INamedTypeSymbol typeSymbol)
+    static string GetTypeKindKeyword(INamedTypeSymbol type)
     {
-        if (typeSymbol.IsRecord)
+        if (type.IsRecord)
         {
-            return typeSymbol.TypeKind == TypeKind.Struct ? "record struct" : "record";
+            return type.TypeKind == TypeKind.Struct ? "record struct" : "record";
         }
 
-        return typeSymbol.TypeKind == TypeKind.Struct ? "struct" : "class";
+        return type.TypeKind == TypeKind.Struct ? "struct" : "class";
     }
 
     static DocxData ReadDocx(AdditionalText text)
@@ -391,8 +390,15 @@ public sealed class ParchmentTemplateGenerator :
         }
     }
 
-    static string Display(string fqn) =>
-        fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn["global::".Length..] : fqn;
+    static string Display(string fqn)
+    {
+        if (fqn.StartsWith("global::", StringComparison.Ordinal))
+        {
+            return fqn["global::".Length..];
+        }
+
+        return fqn;
+    }
 
     /// <summary>
     /// Body-scoped editable-token rules. This pass tracks loop scope silently (no diagnostics —
@@ -416,15 +422,14 @@ public sealed class ParchmentTemplateGenerator :
                 case TokenKind.ForOpen:
                     string? bound = null;
                     string? prior = null;
-                    if (token.LoopVariable != null &&
-                        token.References.Count > 0)
+                    if (token is { LoopVariable: not null, References.Count: > 0 })
                     {
                         var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
                         var elementFqn = sourceFqn == null ? null : ShapeResolver.GetElementType(target.Shape, sourceFqn);
                         if (elementFqn != null)
                         {
                             bound = token.LoopVariable;
-                            prior = scope.TryGetValue(bound, out var existing) ? existing : null;
+                            prior = scope.GetValueOrDefault(bound);
                             scope[bound] = elementFqn;
                         }
                     }
@@ -484,7 +489,7 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (!seen.Add(string.Join(".", token.References[0])))
+                    if (!seen.Add(string.Join('.', token.References[0])))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(

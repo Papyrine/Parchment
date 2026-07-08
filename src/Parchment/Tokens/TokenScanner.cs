@@ -54,7 +54,7 @@ static class TokenScanner
                 templateName,
                 "A paragraph contains more than one block tag. Place each block tag in its own paragraph.",
                 partUri,
-                string.Join(" ", blocks.Select(x => x.Source)));
+                string.Join(' ', blocks.Select(x => x.Source)));
         }
 
         if (blocks.Count == 1)

@@ -94,7 +94,7 @@ public class ConditionalTests
             After
             """);
 
-        var texts = await RenderToTexts<FlagModel>(
+        var texts = await RenderToTexts(
             template,
             new FlagModel
             {
@@ -122,7 +122,7 @@ public class ConditionalTests
             {% endif %}
             """);
 
-        var texts = await RenderToTexts<FlagModel>(
+        var texts = await RenderToTexts(
             template,
             new FlagModel
             {
@@ -156,7 +156,7 @@ public class ConditionalTests
 
         using (var template = DocxTemplateBuilder.Build(content))
         {
-            var texts = await RenderToTexts<FlagModel>(
+            var texts = await RenderToTexts(
                 template,
                 new FlagModel
                 {
@@ -168,7 +168,7 @@ public class ConditionalTests
 
         using (var template = DocxTemplateBuilder.Build(content))
         {
-            var texts = await RenderToTexts<FlagModel>(
+            var texts = await RenderToTexts(
                 template,
                 new FlagModel
                 {
@@ -199,7 +199,7 @@ public class ConditionalTests
             {% endif %}
             """);
 
-        var texts = await RenderToTexts<TwoFlagModel>(
+        var texts = await RenderToTexts(
             template,
             new TwoFlagModel
             {
@@ -232,7 +232,7 @@ public class ConditionalTests
 
         using (var template = DocxTemplateBuilder.Build(content))
         {
-            var texts = await RenderToTexts<TwoFlagModel>(
+            var texts = await RenderToTexts(
                 template,
                 new TwoFlagModel
                 {
@@ -245,7 +245,7 @@ public class ConditionalTests
 
         using (var template = DocxTemplateBuilder.Build(content))
         {
-            var texts = await RenderToTexts<TwoFlagModel>(
+            var texts = await RenderToTexts(
                 template,
                 new TwoFlagModel
                 {
@@ -273,7 +273,7 @@ public class ConditionalTests
             After
             """);
 
-        var texts = await RenderToTexts<FlagModel>(
+        var texts = await RenderToTexts(
             template,
             new FlagModel
             {

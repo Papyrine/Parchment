@@ -170,26 +170,30 @@ static class EditableFieldReader
         // The run text is the source of truth (w:fullDate cannot hold an offset). Parsing the
         // offset-bearing ISO text preserves the original offset — DateTimeOffset.TryParse keeps
         // whatever offset the string carries.
-        DateTimeOffset value;
         var parsed = entry.DateFormat is { } format
-            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
+            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out var value)
             : DateTimeOffset.TryParse(raw, culture, DateTimeStyles.None, out value);
 
-        return parsed
-            ? new(entry.DottedPath, FieldState.Extracted, value, raw)
-            : new(entry.DottedPath, FieldState.ParseFailed, null, raw);
+        if (parsed)
+        {
+            return new(entry.DottedPath, FieldState.Extracted, value, raw);
+        }
+
+        return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
     }
 
     static ExtractedField ReadTime(EditableEntry entry, string raw, CultureInfo culture)
     {
-        Time value;
         var parsed = entry.DateFormat is { } format
-            ? Time.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
+            ? Time.TryParseExact(raw, format, culture, DateTimeStyles.None, out var value)
             : Time.TryParse(raw, culture, DateTimeStyles.None, out value);
 
-        return parsed
-            ? new(entry.DottedPath, FieldState.Extracted, value, raw)
-            : new(entry.DottedPath, FieldState.ParseFailed, null, raw);
+        if (parsed)
+        {
+            return new(entry.DottedPath, FieldState.Extracted, value, raw);
+        }
+
+        return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
     }
 
     static ExtractedField ReadDropDown(SdtElement sdt, EditableEntry entry, string raw)
@@ -204,7 +208,7 @@ static class EditableFieldReader
                         raw;
 
         if (Enum.TryParse(entry.ClrType, candidate, ignoreCase: true, out var parsed) &&
-            Enum.IsDefined(entry.ClrType, parsed!))
+            Enum.IsDefined(entry.ClrType, parsed))
         {
             return new(entry.DottedPath, FieldState.Extracted, parsed, raw);
         }

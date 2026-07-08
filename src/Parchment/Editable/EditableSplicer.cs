@@ -83,7 +83,7 @@ static class EditableSplicer
                 // split the run so the boundary is at paragraph level.
                 if (HasContentBefore(run, text))
                 {
-                    SplitRunBefore(host, run, text);
+                    SplitRunBefore(run, text);
                     return TopLevel(host, run);
                 }
 
@@ -106,7 +106,7 @@ static class EditableSplicer
             }
 
             run.InsertAfter(tail, text);
-            SplitRunBefore(host, run, tail);
+            SplitRunBefore(run, tail);
             return TopLevel(host, run);
         }
 
@@ -140,7 +140,7 @@ static class EditableSplicer
     /// paragraph level, which is fine: token scanning never produces tokens straddling such
     /// containers and the host paragraphs Parchment mutates keep runs as direct children.
     /// </summary>
-    static void SplitRunBefore(Paragraph host, Run run, OpenXmlElement from)
+    static void SplitRunBefore(Run run, OpenXmlElement from)
     {
         var second = new Run();
         if (run.RunProperties != null)

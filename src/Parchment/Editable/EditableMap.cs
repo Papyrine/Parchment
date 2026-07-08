@@ -218,7 +218,7 @@ sealed class EditableMap
     static bool IsInitOnly(MethodInfo setMethod) =>
         setMethod.ReturnParameter
             .GetRequiredCustomModifiers()
-            .Contains(typeof(System.Runtime.CompilerServices.IsExternalInit));
+            .Contains(typeof(IsExternalInit));
 
     static bool IsNullableReference(MemberInfo member, NullabilityInfoContext nullability)
     {
