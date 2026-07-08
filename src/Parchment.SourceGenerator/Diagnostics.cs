@@ -92,4 +92,52 @@ static class Diagnostics
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableUnsupportedType = new(
+        id: "PARCH013",
+        title: "[EditableField] member has an unsupported type",
+        messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableNoSetter = new(
+        id: "PARCH014",
+        title: "[EditableField] member has no usable setter",
+        messageFormat: "Model '{0}' member '{1}' is [EditableField] but has no public non-init setter; extraction writes values back onto the model, so the member must be settable",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableConflictingAttribute = new(
+        id: "PARCH015",
+        title: "[EditableField] combined with a conflicting attribute",
+        messageFormat: "Model '{0}' member '{1}' combines [EditableField] with [ExcelsiorTable] / [Html] / [Markdown] / [StringSyntax]; an editable field is plain typed content, not rendered markup",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableTokenNotPlainIdentifier = new(
+        id: "PARCH016",
+        title: "[EditableField] token must be a plain member-access expression",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member with filters or a non-plain expression; the editable render path is selected by attribute so filters would not be applied",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableTokenDuplicated = new(
+        id: "PARCH017",
+        title: "[EditableField] member referenced more than once in the document body",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body; the dotted path is the content control's tag and must be unique for extraction",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor EditableTokenInLoop = new(
+        id: "PARCH018",
+        title: "[EditableField] token inside a loop renders read-only",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member inside a '{{% for %}}' body; loop iterations would produce duplicate control tags, so the token renders as plain read-only text instead of an editable field",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }

@@ -12,6 +12,8 @@ class ScopeTreeRunner(
     ExcelsiorTableMap excelsiorTables,
     FormatMap formats,
     StringListMap stringLists,
+    EditableMap editables,
+    EditableState editableState,
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies)
@@ -94,13 +96,39 @@ class ScopeTreeRunner(
         List<(DocxTokenSite site, object value)>? soloStructuralTokens = null;
         var splitQueued = false;
         var tokenCount = node.Tokens.Count;
+        var hasEditableSibling = HasEditableToken(node);
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
             var token = node.Tokens[i];
             var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
+            if (evaluated is EditableToken editable)
+            {
+                EditableSplicer.Insert(
+                    host,
+                    token.Offset,
+                    token.Length,
+                    sitePr => EditableFieldBuilder.Build(editable.Entry, editable.Value, sitePr, editableState, context.CultureInfo));
+                cachedText = null;
+                continue;
+            }
+
             if (evaluated is MarkdownToken or HtmlToken or OpenXmlToken)
             {
+                if (hasEditableSibling)
+                {
+                    // Structural splice/split clones paragraph halves, which would corrupt the
+                    // editable field's perm-range markers. Statically-known cases are rejected
+                    // at registration; this guards TokenValue-typed properties that only turn
+                    // out structural at render time.
+                    throw new ParchmentRenderException(
+                        templateName,
+                        $"Token '{token.Source}' produced structural content in a paragraph that also contains an editable field. Move one of them to its own paragraph.",
+                        partUri,
+                        Snippet(host, token),
+                        token.Source);
+                }
+
                 if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
                 {
                     // Whole host paragraph is the token — queue for replacement after every
@@ -223,6 +251,11 @@ class ScopeTreeRunner(
             if (TryResolveFormatted(site) is { } formatted)
             {
                 return new(formatted);
+            }
+
+            if (TryResolveEditable(site) is { } editable)
+            {
+                return new(editable);
             }
 
             if (TryResolveStringList(site, host, siblingCount) is { } stringList)
@@ -376,6 +409,43 @@ class ScopeTreeRunner(
         return TokenValueHelpers.BulletList(items.ToList());
     }
 
+    EditableToken? TryResolveEditable(DocxTokenSite site)
+    {
+        if (editables.IsEmpty ||
+            site.References.Count == 0)
+        {
+            return null;
+        }
+
+        if (!editables.TryGet(site.References[0].Dotted, out var entry))
+        {
+            return null;
+        }
+
+        return new(entry, entry.Getter(rootModel));
+    }
+
+    bool HasEditableToken(SubstitutionNode node)
+    {
+        if (editables.IsEmpty ||
+            node.Tokens.Count < 2)
+        {
+            // A solo structural token never conflicts with an editable sibling.
+            return false;
+        }
+
+        foreach (var token in node.Tokens)
+        {
+            if (token.References.Count > 0 &&
+                editables.TryGet(token.References[0].Dotted, out _))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     TokenValue? TryResolveFormatted(DocxTokenSite site)
     {
         if (formats.IsEmpty || site.References.Count == 0)
@@ -427,6 +497,9 @@ class ScopeTreeRunner(
         // by reference and re-populated per iteration, so the runner sees the fresh per-iteration
         // anchor map without needing to be re-allocated. ApplyStructural clears the runner's
         // structuralReplacements list at the end of each iteration.
+        // Loop bodies deliberately get an empty editable map: a root-pathed editable token
+        // inside {% for %} would stamp one content control per iteration, producing duplicate
+        // tags that break extraction. Loop-body editable tokens render as plain read-only text.
         var clonedRunner = new ScopeTreeRunner(
             templateName,
             partUri,
@@ -437,6 +510,8 @@ class ScopeTreeRunner(
             excelsiorTables,
             formats,
             stringLists,
+            EditableMap.Empty,
+            editableState,
             numberingState,
             styles,
             imagePolicies);
@@ -576,66 +651,75 @@ class ScopeTreeRunner(
             return;
         }
 
-        var parent = open.Parent;
-        if (parent == null)
+        if (open.Parent == null)
         {
             return;
         }
 
         IReadOnlyList<RangeNode>? chosen = null;
-        foreach (var branch in ifNode.Branches)
+        var chosenIndex = -1;
+        for (var i = 0; i < ifNode.Branches.Count; i++)
         {
-            if (!await EvaluateConditionAsync(branch.Condition))
+            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition))
             {
                 continue;
             }
 
-            chosen = branch.Body;
+            chosen = ifNode.Branches[i].Body;
+            chosenIndex = i;
             break;
         }
 
+        // Fall back to the else branch when it exists. Signalled by the tag anchor, not
+        // ElseBody.Count — a static-only else branch has an empty body (static paragraphs carry
+        // no tree nodes) but still owns a physical range that must render.
         if (chosen == null &&
-            ifNode.ElseBody.Count > 0)
+            ifNode.ElseAnchorName != null)
         {
             chosen = ifNode.ElseBody;
         }
 
-        // Collect all branch paragraphs between open and close — everything that should be removed
-        var allBranchParagraphs = CaptureBetween(open, close);
+        // Everything physically between {% if %} and {% endif %}: branch tag paragraphs, token
+        // paragraphs, static paragraphs, tables.
+        var allBranchElements = CaptureBetween(open, close);
 
         if (chosen == null)
         {
-            foreach (var element in allBranchParagraphs)
+            foreach (var element in allBranchElements)
             {
                 element.Remove();
             }
+
+            open.Remove();
+            close.Remove();
+            return;
         }
-        else
+
+        // The chosen branch's content is kept positionally — everything strictly between the
+        // branch's tag paragraph and the next boundary tag ({% elsif %} / {% else %} /
+        // {% endif %}). An anchor-derived keep-set would drop static paragraphs and tables:
+        // neither carries an anchor or a scope-tree node.
+        var (start, end) = ChosenBranchBoundaries(ifNode, chosenIndex, open, close);
+        var keepElements = CaptureBetween(start, end);
+
+        // Process the chosen branch in place (no cloning — branch elements are used once).
+        // Anchors are collected across nested content too, so tokens inside tables resolve.
+        var branchAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
+        foreach (var element in keepElements)
         {
-            // Process chosen branch in place (no cloning — branch paragraphs are used once)
-            var branchAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
-            foreach (var p in allBranchParagraphs.OfType<Paragraph>())
-            {
-                var start = p.Elements<BookmarkStart>()
-                    .FirstOrDefault(_ => _.Name?.Value?.StartsWith(Anchors.Prefix, StringComparison.Ordinal) == true);
-                if (start?.Name?.Value != null)
-                {
-                    branchAnchors[start.Name.Value] = p;
-                }
-            }
+            CollectAnchors(element, branchAnchors);
+        }
 
-            var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, numberingState, styles, imagePolicies);
-            await innerRunner.RunAsync(chosen);
-            innerRunner.ApplyStructural();
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, numberingState, styles, imagePolicies);
+        await innerRunner.RunAsync(chosen);
+        innerRunner.ApplyStructural();
 
-            // Only keep paragraphs that belong to the chosen branch; remove others
-            var keep = new HashSet<OpenXmlElement>(CollectBranchParagraphs(chosen, branchAnchors));
-            foreach (var element in allBranchParagraphs)
+        var keep = new HashSet<OpenXmlElement>(keepElements);
+        foreach (var element in allBranchElements)
+        {
+            if (!keep.Contains(element))
             {
-                if (!keep.Contains(element))
-                {
-                    element.Remove();
-                }
+                element.Remove();
             }
         }
 
@@ -643,64 +727,34 @@ class ScopeTreeRunner(
         close.Remove();
     }
 
-    static IEnumerable<OpenXmlElement> CollectBranchParagraphs(
-        IReadOnlyList<RangeNode> nodes,
-        Dictionary<string, Paragraph> anchors)
+    /// <summary>
+    /// The paragraphs bounding the chosen branch's physical content: its own tag paragraph and
+    /// the next branch boundary (the following <c>{% elsif %}</c>, the <c>{% else %}</c>, or
+    /// <c>{% endif %}</c>). <paramref name="chosenIndex"/> of -1 means the else branch.
+    /// </summary>
+    (Paragraph Start, Paragraph End) ChosenBranchBoundaries(IfNode ifNode, int chosenIndex, Paragraph open, Paragraph close)
     {
-        foreach (var node in nodes)
+        if (chosenIndex < 0)
         {
-            switch (node)
-            {
-                case SubstitutionNode s when anchors.TryGetValue(s.AnchorName, out var p):
-                    yield return p;
-                    break;
-                case StaticNode s when anchors.TryGetValue(s.AnchorName, out var p):
-                    yield return p;
-                    break;
-                case LoopNode l:
-                    if (anchors.TryGetValue(l.OpenAnchorName, out var lo))
-                    {
-                        yield return lo;
-                    }
-
-                    foreach (var child in CollectBranchParagraphs(l.Body, anchors))
-                    {
-                        yield return child;
-                    }
-
-                    if (anchors.TryGetValue(l.CloseAnchorName, out var lc))
-                    {
-                        yield return lc;
-                    }
-
-                    break;
-                case IfNode ifn:
-                    if (anchors.TryGetValue(ifn.OpenAnchorName, out var io))
-                    {
-                        yield return io;
-                    }
-
-                    foreach (var branch in ifn.Branches)
-                    {
-                        foreach (var child in CollectBranchParagraphs(branch.Body, anchors))
-                        {
-                            yield return child;
-                        }
-                    }
-
-                    foreach (var child in CollectBranchParagraphs(ifn.ElseBody, anchors))
-                    {
-                        yield return child;
-                    }
-
-                    if (anchors.TryGetValue(ifn.CloseAnchorName, out var ic))
-                    {
-                        yield return ic;
-                    }
-
-                    break;
-            }
+            var elseStart = anchorMap.GetValueOrDefault(ifNode.ElseAnchorName!, open);
+            return (elseStart, close);
         }
+
+        var start = anchorMap.GetValueOrDefault(ifNode.Branches[chosenIndex].TagAnchorName, open);
+
+        if (chosenIndex + 1 < ifNode.Branches.Count &&
+            anchorMap.TryGetValue(ifNode.Branches[chosenIndex + 1].TagAnchorName, out var nextBranchTag))
+        {
+            return (start, nextBranchTag);
+        }
+
+        if (ifNode.ElseAnchorName != null &&
+            anchorMap.TryGetValue(ifNode.ElseAnchorName, out var elseTag))
+        {
+            return (start, elseTag);
+        }
+
+        return (start, close);
     }
 
     async Task<bool> EvaluateConditionAsync(Expression condition) =>

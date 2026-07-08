@@ -7,4 +7,10 @@ sealed record MemberEntry(
     bool IsStringList = false,
     bool IsStatic = false,
     string? ExcelsiorHeadingParagraphStyle = null,
-    string? ExcelsiorBodyParagraphStyle = null);
+    string? ExcelsiorBodyParagraphStyle = null,
+    bool IsEditable = false,
+    EditableFieldKind? EditableKind = null,
+    bool EditableIsNullable = false,
+    bool HasUsableSetter = false,
+    bool EditableMultiLine = false,
+    string? EditableDateFormat = null);

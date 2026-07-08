@@ -846,6 +846,145 @@ Behavior:
 - Numbered output: opt out of the auto path with `{{ Tags | numbered_list }}`.
 
 
+## Editable fields (two-way binding)
+
+Mark model members with `[EditableField]` and the rendered docx becomes a fillable, locked form:
+
+- Each marked member renders as a Word **content control** (`w:sdt`) tagged with the member's dotted model path and typed per the member — plain text, checkbox, date picker, or dropdown.
+- The rest of the document is locked: `w:documentProtection w:edit="readOnly"` is written into the output's settings, with an editable-range exception (`w:permStart`/`w:permEnd`, everyone) punched around each control. Users can fill the fields but not edit anything else; the controls themselves are locked against deletion (`w:lock="sdtLocked"`).
+- `ParchmentExtractor` reads the values back out of the returned document and applies them onto a model instance — two-way binding for the editable subset. The document is a lossy projection of the model (loops expanded, formatting applied), so it is the *editable subset* that round-trips, merged onto a caller-supplied model.
+
+Model:
+
+<!-- snippet: EditableFieldsModel -->
+<a id='snippet-EditableFieldsModel'></a>
+```cs
+public class OrderForm
+{
+    public required string Number;
+
+    [EditableField]
+    public required string PurchaseOrder { get; set; }
+
+    [EditableField]
+    public bool Approved { get; set; }
+
+    [EditableField]
+    public OrderStatus Status { get; set; }
+
+    [EditableField(MultiLine = true)]
+    public string? Notes { get; set; }
+}
+
+public enum OrderStatus
+{
+    Draft,
+    Submitted,
+    Accepted
+}
+```
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L13-L37' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+The template ([input.docx](/src/Parchment.Tests/Scenarios/editable-fields/input.docx)):
+
+![Template before render](/src/Parchment.Tests/Scenarios/editable-fields/input.png)
+
+Register and render normally:
+
+<!-- snippet: EditableFieldsUsage -->
+<a id='snippet-EditableFieldsUsage'></a>
+```cs
+var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
+
+var store = new TemplateStore();
+store.RegisterDocxTemplate<OrderForm>("order-form", templatePath);
+
+var model = new OrderForm
+{
+    Number = "ORD-2026-042",
+    PurchaseOrder = "PO-77041",
+    Approved = true,
+    Status = OrderStatus.Submitted,
+    Notes = null
+};
+
+using var stream = new MemoryStream();
+await store.Render("order-form", model, stream);
+```
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L42-L59' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsUsage' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+The rendered output — editable fields as content controls, everything else read-only:
+
+![Rendered output](/src/Parchment.Tests/Scenarios/editable-fields/output.verified.png)
+
+After the user fills in the form in Word, extract the edited values back onto a model:
+
+<!-- snippet: EditableFieldsExtract -->
+<a id='snippet-EditableFieldsExtract'></a>
+```cs
+var result = ParchmentExtractor.Extract<OrderForm>(stream);
+
+result.ApplyTo(model);
+```
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L102-L106' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+`ExtractResult.Fields` reports a per-field outcome — `Extracted`, `Empty` (placeholder showing), `Missing` (control deleted, or the document wasn't produced from a template bound to this model), `ParseFailed` (with the raw text for diagnostics), or `Duplicate` — and `AllExtracted` is true when every field read cleanly. `ApplyTo` assigns `Extracted` values, applies `Empty` as null to nullable members only, and validates that every intermediate object on nested paths is non-null *before* mutating anything (throwing `ParchmentExtractionException` otherwise). Extraction needs no `TemplateStore` — controls are matched by tag, so a service that only receives filled-in documents never has to register the template.
+
+### Control kinds
+
+| Member type | Control | Round-trip value |
+| --- | --- | --- |
+| `string` | plain text (`MultiLine = true` allows line breaks) | the text |
+| `bool` | checkbox | `w14:checked` — no text parsing |
+| `DateOnly` / `DateTime` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | canonical `w:fullDate`, maintained by Word's picker |
+| `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
+| `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
+| enums | dropdown, one item per member | `w:listItem` value |
+| numeric types | plain text | text parsed with the extraction culture |
+
+Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder and extract as `Empty`. Members must have a public non-init setter so extraction can write back.
+
+**Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
+
+- A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
+- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
+
+### Protection is cooperative, not security
+
+Word enforces `w:documentProtection` in its UI only. No password is set (a password would add no real protection while forcing non-deterministic salt generation into the output), so any user can lift the protection via Review → Restrict Editing, and any program can edit the underlying XML regardless. Editable fields are the right tool for *guiding* users to fill in specific values — not for tamper-proofing.
+
+Protection is applied at registration whenever the model declares at least one `[EditableField]` member. Opt out per template:
+
+```csharp
+store.RegisterDocxTemplate<OrderForm>("order-form", path, ProtectionMode.None);
+```
+
+or via the source-generator attribute:
+
+```csharp
+[ParchmentModel("Templates/order-form.docx", Protection = ProtectionMode.None)]
+```
+
+With `ProtectionMode.None` the fields still render as tagged controls (and still extract); the rest of the document stays editable too.
+
+### Culture
+
+Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Only free-text *numerics* are culture-sensitive: they render via the Fluid template culture (invariant by default) and parse back with `Extract`'s `culture` parameter — which defaults to `CultureInfo.InvariantCulture` to match. If renders are configured for another culture, pass the same culture to `Extract`.
+
+### Rules and limitations
+
+- **Docx flow only.** Markdown templates substitute into text before parsing, so substitution sites don't exist in the output; `[EditableField]` is ignored there — same rule as `[ExcelsiorTable]` and `[Html]`/`[Markdown]`.
+- **Document body only.** A token referencing an editable member in a header or footer renders as a plain read-only substitution — deliberate, so an editable body field can be mirrored read-only in a footer. Extraction reads the single body control.
+- **Loops render read-only.** An editable token inside `{% for %}` would stamp one control per iteration and produce duplicate tags, so loop bodies render editable members as plain text (`PARCH018` warns at compile time).
+- **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. Plain member access only; filters are rejected (`PARCH016`).
+- **No structural mixing.** An editable token cannot share a paragraph with an `[ExcelsiorTable]` / `[Html]` / `[Markdown]` token — structural replacement clones paragraph halves and would corrupt the editable range. Rejected at registration.
+- `[EditableField]` cannot be combined with `[ExcelsiorTable]`, `[Html]`, `[Markdown]`, or `[StringSyntax]` on the same member (`PARCH015`); unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All three also fail fast at runtime registration.
+- **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
+
+
 ## Markdown template
 
 A markdown template is a `.md` file containing the full body of the document plus liquid tokens for substitution, looping, and conditional content. The template below combines headings, emphasis, a pipe table driven by a loop, an ordered list driven by a loop, and a blockquote chosen by an `{% if %}`:
@@ -1458,11 +1597,55 @@ public partial class Outer  // <-- partial
 **Docx only. Warning, not error.** The template's `word/settings.xml` does not include the `<w:removePersonalInformation/>` element, which corresponds to Word's "Remove personal information from file properties on save" privacy option. Renders inherit the template's `settings.xml`, so any author / lastModifiedBy / revision metadata on the template propagates to every generated docx. To silence the warning, open the template in Word, go to File → Options → Trust Center → Trust Center Settings → Privacy Options, tick "Remove personal information from file properties on save", and re-save.
 
 
+### `PARCH013` — `[EditableField]` member has an unsupported type
+
+**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
+
+```csharp
+public partial class Order
+{
+    [EditableField]
+    public List<string> Items { get; set; }   // collections are not editable fields
+}
+```
+
+
+### `PARCH014` — `[EditableField]` member has no usable setter
+
+**Docx only.** Extraction writes values back onto the model, so the member needs a public non-init setter (or a non-readonly field). `{ get; }`, `{ get; init; }`, expression-bodied getters, and readonly fields are rejected.
+
+
+### `PARCH015` — `[EditableField]` combined with a conflicting attribute
+
+**Docx only.** An editable field is plain typed content, not rendered markup — combining it with `[ExcelsiorTable]`, `[Html]`, `[Markdown]`, or `[StringSyntax("html"/"markdown")]` on the same member is rejected.
+
+
+### `PARCH016` — `[EditableField]` token with filters or complex expression
+
+**Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`).
+
+
+### `PARCH017` — `[EditableField]` member referenced more than once in the body
+
+**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.)
+
+
+### `PARCH018` — `[EditableField]` token inside a loop
+
+**Docx only. Warning, not error.** Loop iterations would stamp one control per iteration and produce duplicate tags, so editable tokens inside `{% for %}` bodies render as plain read-only text instead of editable fields.
+
+```
+{% for line in Lines %}
+{{ PurchaseOrder }}   ← renders read-only inside the loop
+{% endfor %}
+```
+
+
 ## Model binding limitations
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
 
-**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, and auto-bullet-list dispatch on a static `IEnumerable<string>` are silently treated as no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required.
+**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are silently treated as no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required.
 
 ### Interfaces as the binding model
 
@@ -1530,6 +1713,8 @@ dotnet run --project src/Parchment.Benchmarks --configuration Release
 ## Determinism
 
 Rendering the same template with the same model produces a byte-identical output. Useful for hash-based caching, dedup, and legal sign-off workflows.
+
+[Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
 
 
 ## Icon

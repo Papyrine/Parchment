@@ -104,7 +104,21 @@ public sealed class ParchmentTemplateGenerator :
 
         var excelsiorTableType = context.SemanticModel.Compilation
             .GetTypeByMetadataName(ShapeBuilder.ExcelsiorTableAttributeFullName);
-        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, cancel);
+        var editableFieldType = context.SemanticModel.Compilation
+            .GetTypeByMetadataName(ShapeBuilder.EditableFieldAttributeFullName);
+        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, cancel);
+
+        var protection = ProtectionMode.WhenEditable;
+        foreach (var named in attribute.NamedArguments)
+        {
+            // The named argument arrives as the enum's underlying int — the SG cannot reference
+            // Parchment.dll's ProtectionMode type.
+            if (named.Key == "Protection" &&
+                named.Value.Value is int protectionValue)
+            {
+                protection = (ProtectionMode)protectionValue;
+            }
+        }
 
         return new(
             declaringNamespace,
@@ -114,6 +128,7 @@ public sealed class ParchmentTemplateGenerator :
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             path,
+            protection,
             EquatableLocation.From(rawLocation),
             shape,
             enclosingResult.Error);
@@ -172,12 +187,13 @@ public sealed class ParchmentTemplateGenerator :
             return new(
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
+                new(result.BodyParagraphs.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, false, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, false, exception.Message);
         }
     }
 
@@ -286,7 +302,201 @@ public sealed class ParchmentTemplateGenerator :
         var tokens = TokenScanner.Scan(matched.Paragraphs);
         ValidateTokens(context, target, tokens, location);
 
+        // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
+        // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
+        // at RegisterDocxTemplate regardless of whether a token references the member.
+        ValidateEditableShape(context, target, location);
+        if (HasEditableMembers(target.Shape))
+        {
+            // Token rules are body-scoped: the runtime dispatches editable fields only in the
+            // document body, so a header/footer occurrence of the same member is a deliberate
+            // read-only mirror, not a duplicate.
+            var bodyTokens = TokenScanner.Scan(matched.BodyParagraphs);
+            ValidateEditableTokens(context, target, bodyTokens, location);
+        }
+
         EmitRegistration(context, target, GenerateDocxRegistration(target));
+    }
+
+    static bool HasEditableMembers(ModelShape shape)
+    {
+        foreach (var type in shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member is { IsEditable: true, IsStatic: false })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    static void ValidateEditableShape(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                // Static members don't participate in dotted-path map dispatch (see the static
+                // caveat shared with Excelsior / Format / StringList) — silently ignored.
+                if (!member.IsEditable ||
+                    member.IsStatic)
+                {
+                    continue;
+                }
+
+                var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
+
+                if (member.IsExcelsiorTable ||
+                    member.IsHtml ||
+                    member.IsMarkdown)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.EditableConflictingAttribute,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay));
+                    continue;
+                }
+
+                if (member.EditableKind == null)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.EditableUnsupportedType,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay,
+                            Display(member.TypeFullyQualifiedName)));
+                    continue;
+                }
+
+                if (!member.HasUsableSetter)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.EditableNoSetter,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay));
+                }
+            }
+        }
+    }
+
+    static string Display(string fqn) =>
+        fqn.StartsWith("global::", StringComparison.Ordinal) ? fqn["global::".Length..] : fqn;
+
+    /// <summary>
+    /// Body-scoped editable-token rules. This pass tracks loop scope silently (no diagnostics —
+    /// <see cref="ValidateTokens"/> already reported PARCH001/002/005 over all parts) so PARCH016
+    /// / PARCH017 / PARCH018 don't double-report.
+    /// </summary>
+    static void ValidateEditableTokens(
+        SourceProductionContext context,
+        TargetInfo target,
+        IReadOnlyList<Token> tokens,
+        Location location)
+    {
+        var scope = new Dictionary<string, string>(StringComparer.Ordinal);
+        var loopStack = new Stack<(string? Name, string? PriorBinding)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var token in tokens)
+        {
+            switch (token.Kind)
+            {
+                case TokenKind.ForOpen:
+                    string? bound = null;
+                    string? prior = null;
+                    if (token.LoopVariable != null &&
+                        token.References.Count > 0)
+                    {
+                        var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
+                        var elementFqn = sourceFqn == null ? null : ShapeResolver.GetElementType(target.Shape, sourceFqn);
+                        if (elementFqn != null)
+                        {
+                            bound = token.LoopVariable;
+                            prior = scope.TryGetValue(bound, out var existing) ? existing : null;
+                            scope[bound] = elementFqn;
+                        }
+                    }
+
+                    loopStack.Push((bound, prior));
+                    break;
+
+                case TokenKind.ForClose:
+                    if (loopStack.Count > 0)
+                    {
+                        var (name, priorBinding) = loopStack.Pop();
+                        if (name != null)
+                        {
+                            if (priorBinding == null)
+                            {
+                                scope.Remove(name);
+                            }
+                            else
+                            {
+                                scope[name] = priorBinding;
+                            }
+                        }
+                    }
+
+                    break;
+
+                case TokenKind.Substitution:
+                    if (token.References.Count == 0)
+                    {
+                        break;
+                    }
+
+                    var member = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
+                    if (member is null or { IsEditable: false } or { IsStatic: true })
+                    {
+                        break;
+                    }
+
+                    if (loopStack.Count > 0)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableTokenInLoop,
+                                location,
+                                target.TemplatePath,
+                                token.Source));
+                        break;
+                    }
+
+                    if (!token.IsPlainIdentifier)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableTokenNotPlainIdentifier,
+                                location,
+                                target.TemplatePath,
+                                token.Source));
+                    }
+
+                    if (!seen.Add(string.Join(".", token.References[0])))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableTokenDuplicated,
+                                location,
+                                target.TemplatePath,
+                                token.Source));
+                    }
+
+                    break;
+            }
+        }
     }
 
     static void ProcessMarkdown(
@@ -625,6 +835,11 @@ public sealed class ParchmentTemplateGenerator :
     static string GenerateDocxRegistration(TargetInfo target)
     {
         var (templatePath, fieldsBlock, registrationsBlock) = PrepareCommon(target);
+        // Emit the protection argument only when it deviates from the default, so pre-existing
+        // registrations (and their snapshots) stay byte-identical.
+        var protection = target.Protection == ProtectionMode.WhenEditable
+            ? ""
+            : $", global::Parchment.ProtectionMode.{target.Protection}";
         var body =
             $$"""
               public static string TemplatePath => {{templatePath}};
@@ -633,7 +848,7 @@ public sealed class ParchmentTemplateGenerator :
               {{fieldsBlock}}public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
               {
               {{registrationsBlock}}  var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-                store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, path);
+                store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, path{{protection}});
               }
               """;
 

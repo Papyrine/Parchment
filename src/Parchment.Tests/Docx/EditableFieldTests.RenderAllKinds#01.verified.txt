@@ -1,0 +1,7 @@
+﻿Order ORD-100
+PO: 
+Approved: 
+Delivery: 
+Status: 
+Discount: 
+Notes:

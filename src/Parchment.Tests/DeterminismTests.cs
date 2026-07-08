@@ -27,4 +27,34 @@ public class DeterminismTests
         await store.Render("determinism", model, stream);
         return stream.ToArray();
     }
+
+    [Test]
+    public async Task EditableFieldRenderIsByteIdentical()
+    {
+        // Editable fields introduce sdt ids, perm-range ids, and document protection — all must
+        // be deterministic (sequential ids, passwordless enforcement, no timestamps).
+        using var template = DocxTemplateBuilder.Build(
+            """
+            PO: {{ PurchaseOrder }}
+
+            {{ Approved }} {{ Delivery }} {{ Status }} {{ Discount }}
+
+            {{ Notes }}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>("editable-determinism", template);
+
+        var first = await RenderEditable(store);
+        var second = await RenderEditable(store);
+
+        await Assert.That(first).IsEquivalentTo(second);
+    }
+
+    static async Task<byte[]> RenderEditable(TemplateStore store)
+    {
+        using var stream = new MemoryStream();
+        await store.Render("editable-determinism", EditableFieldTests.NewOrder(), stream);
+        return stream.ToArray();
+    }
 }

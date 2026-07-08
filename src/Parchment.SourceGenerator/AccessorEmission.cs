@@ -16,6 +16,10 @@
 ///   <item><description>String-list entries — dotted path + getter for every
 ///     <c>IEnumerable&lt;string&gt;</c> property that isn't already owned by
 ///     <c>[ExcelsiorTable]</c>.</description></item>
+///   <item><description>Editable entries — dotted path + kind + getter + setter + reachability
+///     check for every valid <c>[EditableField]</c> member. Setters route through the parent
+///     object (never the root — the leaf lives on the object at the end of the path), matching
+///     the runtime <c>EditableMap.BuildSetter</c>.</description></item>
 /// </list>
 ///
 /// Path-getters are emitted as inline cast-and-null-chain lambdas:
@@ -42,6 +46,7 @@ static class AccessorEmission
         var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
+        var editableEntries = new List<(List<string> Path, MemberEntry Member)>();
 
         // Fluid accessors: one block per non-empty type in the shape (System types & enums end
         // up with 0 members and are skipped).
@@ -68,12 +73,14 @@ static class AccessorEmission
             typesByFqn,
             excelsiorEntries,
             formatEntries,
-            stringListEntries);
+            stringListEntries,
+            editableEntries);
 
         if (fluidBlocks.Count == 0 &&
             excelsiorEntries.Count == 0 &&
             formatEntries.Count == 0 &&
-            stringListEntries.Count == 0)
+            stringListEntries.Count == 0 &&
+            editableEntries.Count == 0)
         {
             return null;
         }
@@ -85,6 +92,7 @@ static class AccessorEmission
         EmitExcelsiorBlock(fields, registrations, rootFqn, excelsiorEntries);
         EmitFormatBlock(fields, registrations, rootFqn, formatEntries);
         EmitStringListBlock(fields, registrations, rootFqn, stringListEntries);
+        EmitEditableBlock(fields, registrations, rootFqn, editableEntries);
 
         fields.TrimTrailingNewlines();
         registrations.TrimTrailingNewlines();
@@ -99,7 +107,8 @@ static class AccessorEmission
         Dictionary<string, TypeEntry> typesByFqn,
         List<(List<string>, string, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
-        List<List<string>> stringLists)
+        List<List<string>> stringLists,
+        List<(List<string>, MemberEntry)> editables)
     {
         if (!typesByFqn.TryGetValue(currentTypeFqn, out var typeEntry))
         {
@@ -152,6 +161,18 @@ static class AccessorEmission
                 continue;
             }
 
+            if (member.IsEditable)
+            {
+                // Invalid editable members (unsupported type, no setter) already carry an error
+                // diagnostic (PARCH013/014) — skip them so the emitted source stays compilable.
+                if (member is { EditableKind: not null, HasUsableSetter: true })
+                {
+                    editables.Add((nextPath, member));
+                }
+
+                continue;
+            }
+
             // Descend only into POCO branches — types with members. Enumerables and system types
             // end up with 0 members in the shape, so this filter naturally skips them.
             if (!typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var nextType) ||
@@ -165,7 +186,7 @@ static class AccessorEmission
                 continue;
             }
 
-            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists);
+            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables);
             visited.Remove(member.TypeFullyQualifiedName);
         }
     }
@@ -326,6 +347,125 @@ static class AccessorEmission
             """);
 
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof({rootFqn}), _StringLists);");
+    }
+
+    static void EmitEditableBlock(
+        StringBuilder fields,
+        StringBuilder registrations,
+        string rootFqn,
+        List<(List<string> Path, MemberEntry Member)> entries)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        fields.Append(
+            """
+            static readonly global::Parchment.Generated.EditableFieldMapEntry[] _Editables =
+            {
+
+            """);
+        foreach (var (path, member) in entries)
+        {
+            fields.Append("  new(\"");
+            fields.AppendJoin('.', path);
+            fields.Append("\", global::Parchment.Generated.EditableFieldKind.");
+            fields.Append(member.EditableKind!.Value);
+            fields.Append(", typeof(");
+            fields.Append(StripNullableSuffix(member.TypeFullyQualifiedName));
+            fields.Append("), ");
+            fields.Append(member.EditableIsNullable ? "true" : "false");
+            fields.Append(", ");
+            EmitGetter(fields, rootFqn, path);
+            fields.Append(", ");
+            EmitSetter(fields, rootFqn, path, member);
+            fields.Append(", ");
+            EmitCanReach(fields, rootFqn, path);
+            fields.Append(", ");
+            fields.Append(member.EditableMultiLine ? "true" : "false");
+            fields.Append(", ");
+            fields.Append(ToStringLiteral(member.EditableDateFormat));
+            fields.AppendLine("),");
+        }
+
+        fields.Append(
+            """
+            };
+
+            """);
+
+        registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof({rootFqn}), _Editables);");
+    }
+
+    // "decimal?" → "decimal" for typeof() — the runtime entry carries the underlying type
+    // (nullability travels separately as IsNullable). Char compare instead of EndsWith: the
+    // char overload doesn't exist on netstandard2.0.
+    static string StripNullableSuffix(string fqn) =>
+        fqn.Length > 0 && fqn[fqn.Length - 1] == '?' ? fqn.Substring(0, fqn.Length - 1) : fqn;
+
+    /// <summary>
+    /// Setter shape mirrors runtime <c>EditableMap.BuildSetter</c>: walk to the PARENT object
+    /// (null-conditional per hop), assign on it — never on the root. Callers validate
+    /// reachability first, so a null parent is a silent no-op rather than a throw.
+    /// </summary>
+    static void EmitSetter(StringBuilder sb, string rootFqn, List<string> path, MemberEntry member)
+    {
+        var castFqn = member.TypeFullyQualifiedName;
+        if (member.EditableIsNullable &&
+            castFqn[castFqn.Length - 1] != '?')
+        {
+            castFqn += "?";
+        }
+
+        var cast = member.EditableIsNullable ? $"({castFqn})v" : $"({castFqn})v!";
+
+        sb.Append("(o, v) => { ");
+        if (path.Count == 1)
+        {
+            sb.Append("((");
+            sb.Append(rootFqn);
+            sb.Append(")o).");
+            sb.Append(path[0]);
+            sb.Append(" = ");
+            sb.Append(cast);
+            sb.Append("; }");
+            return;
+        }
+
+        sb.Append("var p = ((");
+        sb.Append(rootFqn);
+        sb.Append(")o)");
+        AppendParentPath(sb, path);
+        sb.Append("; if (p != null) { p.");
+        sb.Append(path[path.Count - 1]);
+        sb.Append(" = ");
+        sb.Append(cast);
+        sb.Append("; } }");
+    }
+
+    static void EmitCanReach(StringBuilder sb, string rootFqn, List<string> path)
+    {
+        if (path.Count == 1)
+        {
+            sb.Append("static o => true");
+            return;
+        }
+
+        sb.Append("o => ((");
+        sb.Append(rootFqn);
+        sb.Append(")o)");
+        AppendParentPath(sb, path);
+        sb.Append(" != null");
+    }
+
+    static void AppendParentPath(StringBuilder sb, List<string> path)
+    {
+        for (var i = 0; i < path.Count - 1; i++)
+        {
+            sb.Append(i == 0 ? "." : "?.");
+            sb.Append(path[i]);
+        }
     }
 
     static void EmitGetter(StringBuilder sb, string rootFqn, List<string> path)

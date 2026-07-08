@@ -18,4 +18,12 @@ public sealed class ParchmentModelAttribute(string templatePath) :
     Attribute
 {
     public string TemplatePath { get; } = templatePath;
+
+    /// <summary>
+    /// Controls document lockdown for templates whose model declares
+    /// <see cref="EditableFieldAttribute"/> members. Passed through to
+    /// <see cref="TemplateStore.RegisterDocxTemplate{TModel}(string, string, ProtectionMode)"/>
+    /// by the generated <c>RegisterWith</c> helper. Ignored for markdown templates.
+    /// </summary>
+    public ProtectionMode Protection { get; set; } = ProtectionMode.WhenEditable;
 }

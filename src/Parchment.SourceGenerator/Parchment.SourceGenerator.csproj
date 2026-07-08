@@ -9,7 +9,12 @@
          stale diagnostics/generated code after a consumer upgrades. Safe for a Roslyn
          component (never referenced at runtime), unlike the runtime Parchment assembly
          which stays pinned via src/Directory.Build.props. -->
-    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <!-- Numeric part of Version only: AssemblyVersion/FileVersion require
+         major.minor.build.revision, so a prerelease Version (e.g. 3.1.0-beta.1) would
+         otherwise fail to compile (CS7034/CS7035). Split drops the suffix; a release
+         version with no '-' is unchanged, preserving distinct-per-release identity. -->
+    <AssemblyVersion>$(Version.Split('-')[0])</AssemblyVersion>
+    <FileVersion>$(Version.Split('-')[0])</FileVersion>
     <NoWarn>$(NoWarn);RS1041;RS2008;RS1038;RS1036</NoWarn>
     <!-- PackageShader configuration: keep Fluid types internal in the merged assembly -->
     <Shader_Internalize>true</Shader_Internalize>

@@ -13,12 +13,28 @@ static class GeneratorDriver
                 }
 
                 public string TemplatePath { get; }
+
+                public ProtectionMode Protection { get; set; }
+            }
+
+            public enum ProtectionMode
+            {
+                WhenEditable,
+                None
             }
 
             public sealed class TemplateStore { }
 
             [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
             public sealed class ExcelsiorTableAttribute : System.Attribute { }
+
+            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
+            public sealed class EditableFieldAttribute : System.Attribute
+            {
+                public bool MultiLine { get; set; }
+
+                public string? DateFormat { get; set; }
+            }
         }
         """;
 
@@ -58,7 +74,9 @@ static class GeneratorDriver
             "GeneratorTest",
             syntaxTrees,
             BuildReferences(),
-            new(OutputKind.DynamicallyLinkedLibrary));
+            // Nullable context on so `string?` members carry NullableAnnotation.Annotated —
+            // ShapeBuilder reads it to decide editable-field nullability.
+            new(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
         var additionalTexts = texts.ToImmutable();
         var driver = CSharpGeneratorDriver.Create(
@@ -72,6 +90,58 @@ static class GeneratorDriver
     }
 
     public static byte[] BuildDocxBytes(params string[] paragraphs) => BuildDocx(paragraphs);
+
+    /// <summary>
+    /// A docx whose body and default header both carry paragraphs — for validating that
+    /// body-scoped editable rules ignore header occurrences (the read-only mirror pattern).
+    /// </summary>
+    public static byte[] BuildDocxBytesWithHeader(string[] bodyParagraphs, string[] headerParagraphs)
+    {
+        using var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(new Body());
+            var body = mainPart.Document.Body!;
+
+            var headerPart = mainPart.AddNewPart<HeaderPart>("rIdHeader");
+            var header = new Header();
+            foreach (var text in headerParagraphs)
+            {
+                header.Append(BuildParagraph(text));
+            }
+
+            headerPart.Header = header;
+
+            foreach (var text in bodyParagraphs)
+            {
+                body.Append(BuildParagraph(text));
+            }
+
+            body.Append(
+                new SectionProperties(
+                    new HeaderReference
+                    {
+                        Type = HeaderFooterValues.Default,
+                        Id = "rIdHeader"
+                    }));
+
+            var settingsPart = mainPart.AddNewPart<DocumentSettingsPart>();
+            settingsPart.Settings = new(
+                new RemovePersonalInformation(),
+                new RemoveDateAndTime());
+        }
+
+        return stream.ToArray();
+    }
+
+    static Paragraph BuildParagraph(string text) =>
+        new(
+            new Run(
+                new Text(text)
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                }));
 
     public static byte[] BuildDocxBytesWithoutPrivacyFlag(params string[] paragraphs) =>
         BuildDocx(paragraphs, removePersonalInformation: false);

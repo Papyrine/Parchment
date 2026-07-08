@@ -122,23 +122,38 @@ static class ScopeTreeBuilder
     {
         var branches = new List<IfBranch>();
         var elseBody = new List<RangeNode>();
+        string? elseAnchorName = null;
 
         // First branch is the if itself
         var firstBody = BuildBlock(queue, BlockTagKind.EndIf, templateName, partUri);
-        branches.Add(new(opening.Block!.Condition!, firstBody));
+        branches.Add(new(opening.Block!.Condition!, opening.AnchorName, firstBody));
 
         // Collect elsif / else branches until endif
         while (queue.TryPeek(out var peek) &&
                peek.Block?.Kind is BlockTagKind.ElsIf or BlockTagKind.Else)
         {
             var branchOpening = queue.Dequeue();
+
+            // Branch tags after {% else %} break the positional branch ranges the runner keeps —
+            // and are malformed liquid anyway (the markdown flow's full-template Fluid parse
+            // rejects them too).
+            if (elseAnchorName != null)
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"Unexpected '{branchOpening.Block!.Source}' after '{{% else %}}'.",
+                    partUri,
+                    branchOpening.Block!.Source);
+            }
+
             var branchBody = BuildBlock(queue, BlockTagKind.EndIf, templateName, partUri);
             if (branchOpening.Block!.Kind == BlockTagKind.ElsIf)
             {
-                branches.Add(new(branchOpening.Block!.Condition!, branchBody));
+                branches.Add(new(branchOpening.Block!.Condition!, branchOpening.AnchorName, branchBody));
             }
             else
             {
+                elseAnchorName = branchOpening.AnchorName;
                 elseBody.AddRange(branchBody);
             }
         }
@@ -158,6 +173,7 @@ static class ScopeTreeBuilder
             opening.AnchorName,
             closing.AnchorName,
             branches,
+            elseAnchorName,
             elseBody);
     }
 
