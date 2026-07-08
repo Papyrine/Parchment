@@ -199,9 +199,6 @@ public class EditableFieldTests
     [Test]
     public async Task RenderAllKinds()
     {
-        // No {{ Delivery }} here: Morph's page render formats the date control from w:fullDate
-        // with the machine locale, which would make the png snapshot culture-dependent. Date
-        // structure is asserted in SdtStructurePerKind instead.
         using var template = DocxTemplateBuilder.Build(
             """
             Order {{ Number }}
@@ -209,6 +206,8 @@ public class EditableFieldTests
             PO: {{ PurchaseOrder }}
 
             Approved: {{ Approved }}
+
+            Delivery: {{ Delivery }}
 
             Status: {{ Status }}
 
