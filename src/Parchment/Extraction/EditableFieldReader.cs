@@ -10,7 +10,7 @@ using W14 = DocumentFormat.OpenXml.Office2010.Word;
 /// </summary>
 static class EditableFieldReader
 {
-    public static ExtractedField Read(SdtElement sdt, EditableEntry entry, CultureInfo culture)
+    public static ExtractedField Read(SdtElement sdt, EditableEntry entry, CultureInfo culture, MainDocumentPart mainPart)
     {
         var raw = RawText(sdt);
         if (entry.Kind == EditableFieldKind.Checkbox)
@@ -51,8 +51,32 @@ static class EditableFieldReader
             EditableFieldKind.DropDown =>
                 ReadDropDown(sdt, entry, raw),
 
+            EditableFieldKind.Html when isPlaceholder =>
+                new(entry.DottedPath, FieldState.Empty, null, raw),
+            EditableFieldKind.Html =>
+                ReadHtml(sdt, entry, mainPart),
+
             _ => throw new InvalidOperationException($"Unknown editable kind {entry.Kind}")
         };
+    }
+
+    static ExtractedField ReadHtml(SdtElement sdt, EditableEntry entry, MainDocumentPart mainPart)
+    {
+        var content = sdt.ChildElements.FirstOrDefault(_ => _.LocalName == "sdtContent");
+        if (content == null)
+        {
+            return new(entry.DottedPath, FieldState.Empty, null, string.Empty);
+        }
+
+        // The (possibly Word-edited) block content is the source of truth — serialize it back to
+        // an HTML string. Empty content extracts as Empty so ApplyTo can null a nullable member.
+        var html = OpenXmlHtmlSerializer.ToHtml(content, mainPart);
+        if (html.Length == 0)
+        {
+            return new(entry.DottedPath, FieldState.Empty, null, string.Empty);
+        }
+
+        return new(entry.DottedPath, FieldState.Extracted, html, html);
     }
 
     public static string RawText(SdtElement sdt)

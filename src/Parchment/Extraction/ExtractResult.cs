@@ -9,12 +9,15 @@ namespace Parchment;
 public sealed class ExtractResult<TModel>
 {
     EditableMap map;
+    IReadOnlyList<ExtractedCollection> collections;
 
-    internal ExtractResult(IReadOnlyList<ExtractedField> fields, EditableMap map)
+    internal ExtractResult(IReadOnlyList<ExtractedField> fields, IReadOnlyList<ExtractedCollection> collections, EditableMap map)
     {
         Fields = fields;
+        this.collections = collections;
         this.map = map;
-        AllExtracted = fields.All(_ => _.State is FieldState.Extracted or FieldState.Empty);
+        AllExtracted = fields.All(_ => _.State is FieldState.Extracted or FieldState.Empty) &&
+                       collections.All(_ => _.State == FieldState.Extracted);
     }
 
     /// <summary>
@@ -72,6 +75,25 @@ public sealed class ExtractResult<TModel>
             }
         }
 
+        var applicableCollections = new List<ExtractedCollection>();
+        foreach (var collection in collections)
+        {
+            // Missing collections (container absent) are skipped, like Missing scalar fields.
+            if (collection.State != FieldState.Extracted)
+            {
+                continue;
+            }
+
+            if (collection.Entry.CanReach(model))
+            {
+                applicableCollections.Add(collection);
+            }
+            else
+            {
+                (unreachable ??= []).Add(collection.Entry.DottedPath);
+            }
+        }
+
         if (unreachable != null)
         {
             throw new ParchmentExtractionException(
@@ -81,6 +103,13 @@ public sealed class ExtractResult<TModel>
         foreach (var (entry, value) in applicable)
         {
             entry.Setter(model, value);
+        }
+
+        // Replace-all: the rebuilt list is the new collection state (added rows appear, removed rows
+        // are absent). Callers needing identity preservation diff the rebuilt list themselves.
+        foreach (var collection in applicableCollections)
+        {
+            collection.Entry.Setter(model, collection.List);
         }
     }
 }

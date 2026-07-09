@@ -38,4 +38,9 @@ public static class GeneratedRegistration
         Type modelType,
         IEnumerable<EditableFieldMapEntry> entries) =>
         EditableMap.RegisterPrecompiled(modelType, entries);
+
+    public static void RegisterEditableCollections(
+        Type modelType,
+        IEnumerable<CollectionFieldMapEntry> entries) =>
+        EditableMap.RegisterPrecompiledCollections(modelType, entries);
 }
