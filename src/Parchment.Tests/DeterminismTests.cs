@@ -88,4 +88,53 @@ public class DeterminismTests
             stream);
         return stream.ToArray();
     }
+
+    [Test]
+    public async Task EditableCollectionRenderIsByteIdentical()
+    {
+        // Repeating sections stamp a container sdt id, per-item ids and a perm-range id — all must be
+        // deterministic across renders.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }} Amount: {{ b.Amount }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableCollectionTests.BudgetPlan>("collection-determinism", template);
+
+        var first = await RenderCollection(store);
+        var second = await RenderCollection(store);
+
+        await Assert.That(first).IsEquivalentTo(second);
+    }
+
+    static async Task<byte[]> RenderCollection(TemplateStore store)
+    {
+        using var stream = new MemoryStream();
+        await store.Render(
+            "collection-determinism",
+            new EditableCollectionTests.BudgetPlan
+            {
+                Title = "T",
+                Budgets =
+                [
+                    new()
+                    {
+                        Year = "2026",
+                        Amount = 10m
+                    },
+                    new()
+                    {
+                        Year = "2027",
+                        Amount = 20m
+                    }
+                ]
+            },
+            stream);
+        return stream.ToArray();
+    }
 }

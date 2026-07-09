@@ -1,3 +1,5 @@
+using W15 = DocumentFormat.OpenXml.Office2013.Word;
+
 namespace Parchment;
 
 /// <summary>
@@ -57,9 +59,40 @@ public static class ParchmentExtractor
             }
 
             var fields = new List<ExtractedField>();
+            var collections = new List<ExtractedCollection>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var consumed = new HashSet<SdtElement>();
+
+            // Repeating-section pass first: reconstruct each editable collection and mark its inner
+            // controls consumed so the scalar pass below skips them (their tags are item-relative and
+            // non-unique — they must be read grouped by section item, not flat).
             foreach (var sdt in body.Descendants<SdtElement>())
             {
+                if (sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSection>() == null)
+                {
+                    continue;
+                }
+
+                var tag = sdt.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value;
+                if (tag == null ||
+                    !map.TryGetCollection(tag, out var collectionEntry) ||
+                    !seenCollections.Add(collectionEntry.DottedPath))
+                {
+                    continue;
+                }
+
+                collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!)));
+                MarkConsumed(sdt, consumed);
+            }
+
+            foreach (var sdt in body.Descendants<SdtElement>())
+            {
+                if (consumed.Contains(sdt))
+                {
+                    continue;
+                }
+
                 var tag = sdt.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value;
                 if (tag == null ||
                     !map.TryGet(tag, out var entry))
@@ -84,7 +117,15 @@ public static class ParchmentExtractor
                 }
             }
 
-            return new(fields, map);
+            foreach (var collectionEntry in map.Collections)
+            {
+                if (!seenCollections.Contains(collectionEntry.DottedPath))
+                {
+                    collections.Add(new(collectionEntry, FieldState.Missing, null));
+                }
+            }
+
+            return new(fields, collections, map);
         }
         finally
         {
@@ -104,6 +145,80 @@ public static class ParchmentExtractor
         catch (Exception exception) when (exception is FileFormatException or InvalidDataException or OpenXmlPackageException)
         {
             throw new ParchmentExtractionException("The stream is not a valid docx package.", exception);
+        }
+    }
+
+    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
+    {
+        var listType = typeof(List<>).MakeGenericType(entry.ElementType);
+        var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+
+        foreach (var itemSdt in RepeatedItems(container))
+        {
+            var item = entry.ElementFactory();
+            var anyValue = false;
+            foreach (var elementEntry in entry.ElementMap.Entries)
+            {
+                var control = FindControl(itemSdt, elementEntry.DottedPath);
+                if (control == null)
+                {
+                    continue;
+                }
+
+                var field = EditableFieldReader.Read(control, elementEntry, culture, mainPart);
+                if (field.State == FieldState.Extracted &&
+                    elementEntry.CanReach(item))
+                {
+                    elementEntry.Setter(item, field.Value);
+                    anyValue = true;
+                }
+            }
+
+            // Drop all-empty items: the blank clone template Word needs, or a row the user cleared.
+            if (anyValue)
+            {
+                list.Add(item);
+            }
+        }
+
+        if (!entry.IsArray)
+        {
+            return list;
+        }
+
+        var array = Array.CreateInstance(entry.ElementType, list.Count);
+        list.CopyTo(array, 0);
+        return array;
+    }
+
+    static IEnumerable<SdtElement> RepeatedItems(SdtElement container)
+    {
+        var content = container.ChildElements.FirstOrDefault(_ => _.LocalName == "sdtContent");
+        if (content == null)
+        {
+            yield break;
+        }
+
+        foreach (var child in content.ChildElements)
+        {
+            if (child is SdtElement sdt &&
+                sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null)
+            {
+                yield return sdt;
+            }
+        }
+    }
+
+    static SdtElement? FindControl(SdtElement itemSdt, string tag) =>
+        itemSdt.Descendants<SdtElement>()
+            .FirstOrDefault(_ => _.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == tag);
+
+    static void MarkConsumed(SdtElement container, HashSet<SdtElement> consumed)
+    {
+        consumed.Add(container);
+        foreach (var inner in container.Descendants<SdtElement>())
+        {
+            consumed.Add(inner);
         }
     }
 }
