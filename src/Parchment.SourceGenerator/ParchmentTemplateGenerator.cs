@@ -352,8 +352,9 @@ public sealed class ParchmentTemplateGenerator :
 
                 var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
 
+                // [Html] + [EditableField] is supported (renders an editable rich-content block that
+                // extracts back to HTML). [ExcelsiorTable] and [Markdown] remain conflicts.
                 if (member.IsExcelsiorTable ||
-                    member.IsHtml ||
                     member.IsMarkdown)
                 {
                     context.ReportDiagnostic(
@@ -362,6 +363,24 @@ public sealed class ParchmentTemplateGenerator :
                             location,
                             target.ModelDisplayName,
                             memberDisplay));
+                    continue;
+                }
+
+                // An [EditableField] collection of a POCO element type renders as a repeating section
+                // (EditableKind stays null). The element-type + nesting constraints are enforced by the
+                // runtime at registration; here only the collection member's own setter is required.
+                if (member.EditableCollectionElementFqn != null)
+                {
+                    if (!member.HasUsableSetter)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableNoSetter,
+                                location,
+                                target.ModelDisplayName,
+                                memberDisplay));
+                    }
+
                     continue;
                 }
 
@@ -412,7 +431,7 @@ public sealed class ParchmentTemplateGenerator :
         Location location)
     {
         var scope = new Dictionary<string, string>(StringComparer.Ordinal);
-        var loopStack = new Stack<(string? Name, string? PriorBinding)>();
+        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var token in tokens)
@@ -422,8 +441,12 @@ public sealed class ParchmentTemplateGenerator :
                 case TokenKind.ForOpen:
                     string? bound = null;
                     string? prior = null;
+                    var isEditableCollectionLoop = false;
                     if (token is { LoopVariable: not null, References.Count: > 0 })
                     {
+                        var sourceMember = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
+                        isEditableCollectionLoop = sourceMember?.EditableCollectionElementFqn != null;
+
                         var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
                         var elementFqn = sourceFqn == null ? null : ShapeResolver.GetElementType(target.Shape, sourceFqn);
                         if (elementFqn != null)
@@ -434,13 +457,13 @@ public sealed class ParchmentTemplateGenerator :
                         }
                     }
 
-                    loopStack.Push((bound, prior));
+                    loopStack.Push((bound, prior, isEditableCollectionLoop));
                     break;
 
                 case TokenKind.ForClose:
                     if (loopStack.Count > 0)
                     {
-                        var (name, priorBinding) = loopStack.Pop();
+                        var (name, priorBinding, _) = loopStack.Pop();
                         if (name != null)
                         {
                             if (priorBinding == null)
@@ -468,7 +491,20 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    if (loopStack.Count > 0)
+                    // A loop over an editable collection turns its loop-variable tokens into
+                    // repeating-section controls, so PARCH018 (editable token in a loop) does not apply.
+                    var insideEditableCollection = false;
+                    foreach (var frame in loopStack)
+                    {
+                        if (frame.IsEditableCollection)
+                        {
+                            insideEditableCollection = true;
+                            break;
+                        }
+                    }
+
+                    if (loopStack.Count > 0 &&
+                        !insideEditableCollection)
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(
@@ -476,6 +512,14 @@ public sealed class ParchmentTemplateGenerator :
                                 location,
                                 target.TemplatePath,
                                 token.Source));
+                        break;
+                    }
+
+                    // Editable-collection loop-variable tokens are handled by the repeating-section
+                    // render — they don't participate in the flat body's plain-identifier / duplicate
+                    // checks (their tags are item-relative), so stop here.
+                    if (insideEditableCollection)
+                    {
                         break;
                     }
 

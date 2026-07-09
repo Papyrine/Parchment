@@ -35,5 +35,13 @@ public enum EditableFieldKind
     Time,
 
     /// <summary>Dropdown control (<c>w:dropDownList</c>) with one item per enum member.</summary>
-    DropDown
+    DropDown,
+
+    /// <summary>
+    /// Block-level rich-text control (a block <c>w:sdt</c>) for a <c>string</c> member also marked
+    /// <c>[Html]</c>. The value is HTML: it renders as editable formatted content (paragraphs,
+    /// emphasis, lists, links) inside an editable range, and extraction serializes the (possibly
+    /// user-edited) block content back to an HTML string.
+    /// </summary>
+    Html
 }

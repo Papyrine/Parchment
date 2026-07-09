@@ -10,5 +10,6 @@ enum EditableFieldKind
     Date,
     DateTimeOffset,
     Time,
-    DropDown
+    DropDown,
+    Html
 }

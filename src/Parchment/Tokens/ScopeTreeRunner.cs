@@ -104,6 +104,12 @@ class ScopeTreeRunner(
             var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
             if (evaluated is EditableToken editable)
             {
+                if (editable.Entry.Kind == EditableFieldKind.Html)
+                {
+                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    continue;
+                }
+
                 EditableSplicer.Insert(
                     host,
                     token.Offset,
@@ -160,6 +166,37 @@ class ScopeTreeRunner(
         {
             (structuralReplacements ??= []).Add(new(host, BuildStructuralReplacements(host, soloStructuralTokens)));
         }
+    }
+
+    /// <summary>
+    /// Queues an editable-HTML field as a block-level structural replacement. The member renders a
+    /// rich-content control the user can edit within an editable range; it must occupy its own
+    /// paragraph (like a read-only [Html] token) so the block <c>w:sdt</c> + perm range replace the
+    /// host cleanly. Extraction serializes the block content back to HTML.
+    /// </summary>
+    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, int originalLength)
+    {
+        if (tokenCount != 1 ||
+            token.Offset != 0 ||
+            token.Length != originalLength)
+        {
+            throw new ParchmentRenderException(
+                templateName,
+                $"Editable HTML token '{token.Source}' must sit alone in its paragraph — it renders a block-level editable region. Move it to its own paragraph.",
+                partUri,
+                Snippet(host, token),
+                token.Source);
+        }
+
+        var html = editable.Value as string;
+        IReadOnlyList<OpenXmlElement> content = string.IsNullOrWhiteSpace(html)
+            ? []
+            : WordHtmlConverter.ToElements(
+                html,
+                mainPart,
+                imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
+
+        (structuralReplacements ??= []).Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState)));
     }
 
     /// <summary>
@@ -485,6 +522,25 @@ class ScopeTreeRunner(
 
         var items = await ResolveIterableAsync(loop);
         var bodyElements = CaptureBetween(open, close);
+
+        // A loop over an [EditableField] collection renders as an editable Word repeating section
+        // rather than the read-only inline expansion. Body-only: header/footer parts get
+        // EditableMap.Empty, so TryGetCollection is false there and the loop stays read-only.
+        var sourceRefs = IdentifierVisitor.Collect(loop.LoopSource);
+        if (sourceRefs.Count > 0 &&
+            editables.TryGetCollection(sourceRefs[0].Dotted, out var collectionEntry))
+        {
+            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
+            foreach (var element in bodyElements)
+            {
+                element.Remove();
+            }
+
+            open.Remove();
+            close.Remove();
+            return;
+        }
+
         OpenXmlElement insertAnchor = open;
 
         var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
@@ -578,6 +634,84 @@ class ScopeTreeRunner(
 
         open.Remove();
         close.Remove();
+    }
+
+    /// <summary>
+    /// Renders an editable-collection loop as a Word repeating section: one
+    /// <c>w15:repeatingSectionItem</c> per model item (each rendered with an item-scoped editable map
+    /// so <c>{{ item.Field }}</c> tokens become item-relative controls), wrapped in the repeating-section
+    /// container + editable perm range. An empty collection still renders one blank item so Word has a
+    /// clone template.
+    /// </summary>
+    async Task RenderEditableCollection(
+        LoopNode loop,
+        CollectionEntry entry,
+        OpenXmlElement open,
+        OpenXmlElement parent,
+        List<OpenXmlElement> bodyElements,
+        List<FluidValue> items)
+    {
+        var effectiveItems = items.Count > 0
+            ? items
+            : [FluidValue.Create(entry.ElementFactory(), context.Options)];
+
+        var scratch = new Body();
+        var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
+        var repeatedItems = new List<SdtBlock>();
+
+        foreach (var fluidItem in effectiveItems)
+        {
+            var rawItem = fluidItem.ToObjectValue();
+            context.EnterChildScope();
+            try
+            {
+                context.SetValue(loop.LoopVariable, fluidItem);
+                cloneAnchors.Clear();
+                foreach (var element in bodyElements)
+                {
+                    var clone = element.CloneNode(true);
+                    scratch.AppendChild(clone);
+                    CollectAnchors(clone, cloneAnchors);
+                }
+
+                var itemRunner = new ScopeTreeRunner(
+                    templateName,
+                    partUri,
+                    cloneAnchors,
+                    context,
+                    mainPart,
+                    rootModel,
+                    excelsiorTables,
+                    formats,
+                    stringLists,
+                    entry.ElementMap.ScopedToItem(loop.LoopVariable, rawItem),
+                    editableState,
+                    numberingState,
+                    styles,
+                    imagePolicies);
+                await itemRunner.RunAsync(loop.Body);
+                itemRunner.ApplyStructural();
+
+                var itemBody = new List<OpenXmlElement>();
+                foreach (var element in scratch.ChildElements.ToList())
+                {
+                    element.Remove();
+                    itemBody.Add(element);
+                }
+
+                repeatedItems.Add(EditableRepeatingBuilder.BuildItem(itemBody, editableState));
+            }
+            finally
+            {
+                context.ReleaseScope();
+            }
+        }
+
+        var anchor = open;
+        foreach (var produced in EditableRepeatingBuilder.BuildContainer(entry, repeatedItems, editableState))
+        {
+            anchor = parent.InsertAfter(produced, anchor);
+        }
     }
 
     static List<OpenXmlElement> CaptureBetween(OpenXmlElement start, OpenXmlElement end)

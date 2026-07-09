@@ -68,6 +68,29 @@ static class ShapeBuilder
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
+
+                    // An [EditableField] collection of a POCO element type renders as a repeating
+                    // section: EditableKind stays null and the element fqn is recorded instead.
+                    // A collection of a system element type (e.g. List<string>) is not one — it falls
+                    // through to the scalar path, where MapEditableKind yields null → PARCH013.
+                    string? editableCollectionElementFqn = null;
+                    EditableFieldKind? editableKind = null;
+                    if (isEditable)
+                    {
+                        var collectionElement = memberType.SpecialType == SpecialType.System_String
+                            ? null
+                            : ModelSymbolResolver.TryGetElementType(memberType);
+                        if (collectionElement != null &&
+                            !IsSystemType(collectionElement))
+                        {
+                            editableCollectionElementFqn = Fqn(collectionElement);
+                        }
+                        else
+                        {
+                            editableKind = EditableKindFor(isHtml, isMarkdown, memberType);
+                        }
+                    }
+
                     members.Add(new(
                         memberName,
                         Fqn(memberType),
@@ -79,11 +102,12 @@ static class ShapeBuilder
                         excelsiorHeadingStyle,
                         excelsiorBodyStyle,
                         isEditable,
-                        isEditable ? MapEditableKind(memberType) : null,
-                        isEditable && IsNullableMember(memberType),
+                        editableKind,
+                        isEditable && editableCollectionElementFqn == null && IsNullableMember(memberType),
                         isEditable && HasUsableSetter(member),
                         editableMultiLine,
-                        editableDateFormat));
+                        editableDateFormat,
+                        editableCollectionElementFqn));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -220,6 +244,27 @@ static class ShapeBuilder
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Chooses the editable kind for a member, accounting for the format markers. Lockstep with
+    /// runtime <c>EditableMap.BuildEntry</c>: <c>[Html]</c> on a string selects the rich-content
+    /// <see cref="EditableFieldKind.Html"/>; <c>[Markdown]</c> yields null so it's never emitted as
+    /// an editable member (the PARCH015 conflict pass reports it first).
+    /// </summary>
+    static EditableFieldKind? EditableKindFor(bool isHtml, bool isMarkdown, ITypeSymbol type)
+    {
+        if (isMarkdown)
+        {
+            return null;
+        }
+
+        if (isHtml)
+        {
+            return type.SpecialType == SpecialType.System_String ? EditableFieldKind.Html : null;
+        }
+
+        return MapEditableKind(type);
     }
 
     /// <summary>
