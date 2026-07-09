@@ -62,10 +62,8 @@ public class DeterminismTests
     public async Task HtmlEditableFieldRenderIsByteIdentical()
     {
         // Editable HTML introduces a block sdt id, a perm-range id, and document protection — all
-        // must be deterministic across renders. (Lists are intentionally excluded: when a template
-        // has no numbering part, OpenXmlHtml adds one with a non-deterministic relationship id —
-        // a pre-existing gap in that library that also affects read-only [Html], orthogonal to the
-        // editable wrapper.)
+        // must be deterministic across renders, including the numbering instances a list creates
+        // (OpenXmlHtml 1.0.6+ pins the numbering part's relationship id).
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
 
         var store = new TemplateStore();
@@ -85,7 +83,7 @@ public class DeterminismTests
             new EditableFieldTests.EditableArticle
             {
                 Title = "T",
-                Body = "<p>Hello <strong>world</strong> and <em>more</em></p><p>Second paragraph.</p>"
+                Body = "<p>Hello <strong>world</strong> and <em>more</em></p><ul><li>a</li><li>b</li></ul>"
             },
             stream);
         return stream.ToArray();

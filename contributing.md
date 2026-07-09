@@ -218,7 +218,7 @@ Two-way binding: marked members render as tagged content controls inside editabl
 
 ### Determinism guarantee
 
-See `readme.md` → "Determinism". Implementation discipline: avoid `w:rsid` randomness, never set `PackageProperties.Created`, no timestamps. Editable fields: sequential sdt/perm-range ids (`EditableState`), passwordless `w:documentProtection` (a password would need a random salt). `DeterminismTests.cs` renders samples twice (including scalar and HTML editable-field cases) and asserts byte equality — don't break it. Caveat: a **pre-existing OpenXmlHtml** gap is out of scope here — rendering `[Html]` with a list into a template that lacks a numbering part draws a non-deterministic numbering relationship id, so `HtmlEditableFieldRenderIsByteIdentical` deliberately excludes lists.
+See `readme.md` → "Determinism". Implementation discipline: avoid `w:rsid` randomness, never set `PackageProperties.Created`, no timestamps. Editable fields: sequential sdt/perm-range ids (`EditableState`), passwordless `w:documentProtection` (a password would need a random salt). `DeterminismTests.cs` renders samples twice (including scalar and HTML editable-field cases, the latter with a list) and asserts byte equality — don't break it. This relies on **OpenXmlHtml 1.0.6+** pinning the numbering part's relationship id; earlier versions drew a random one, so a list rendered into a template lacking a numbering part was non-deterministic.
 
 ### Scenario directories (`src/Parchment.Tests/Scenarios/`)
 
