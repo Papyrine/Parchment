@@ -324,6 +324,61 @@ public class EditableFieldGeneratorTests
         await Assert.That(ids).Contains("PARCH018");
     }
 
+    const string collectionModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            [EditableField]
+            public string Note { get; set; } = "";
+
+            [EditableField]
+            public decimal Amount { get; set; }
+        }
+
+        [ParchmentModel("template.docx")]
+        public partial class Order
+        {
+            [EditableField]
+            public List<Line> Lines { get; set; } = new();
+        }
+        """;
+
+    [Test]
+    public Task EditableCollection_EmitsCollectionEntry()
+    {
+        // [EditableField] on a POCO collection → a repeating-section registration
+        // (RegisterEditableCollections) with element-rooted sub-entry getters/setters; the
+        // loop-variable tokens do NOT report PARCH018.
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "{% endfor %}");
+        return Verify(result);
+    }
+
+    [Test]
+    public async Task EditableCollection_NoDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "{% endfor %}");
+        var runResult = result.Results.Single();
+        var ids = runResult.Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Any(_ => _.StartsWith("PARCH", StringComparison.Ordinal))).IsFalse();
+
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).Contains("_EditableCollections");
+        await Assert.That(generated).Contains("RegisterEditableCollections");
+    }
+
     [Test]
     public async Task StaticEditableMember_IsIgnored()
     {

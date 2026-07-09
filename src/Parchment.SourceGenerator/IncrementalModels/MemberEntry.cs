@@ -13,4 +13,7 @@ sealed record MemberEntry(
     bool EditableIsNullable = false,
     bool HasUsableSetter = false,
     bool EditableMultiLine = false,
-    string? EditableDateFormat = null);
+    string? EditableDateFormat = null,
+    // Non-null when this is an [EditableField] collection of a POCO element type (rendered as a Word
+    // repeating section). EditableKind stays null; the value is the element type's fully-qualified name.
+    string? EditableCollectionElementFqn = null);

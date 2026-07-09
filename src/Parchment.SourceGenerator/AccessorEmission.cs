@@ -47,6 +47,7 @@ static class AccessorEmission
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
         var editableEntries = new List<(List<string> Path, MemberEntry Member)>();
+        var collectionEntries = new List<(List<string> Path, MemberEntry Member)>();
 
         // Fluid accessors: one block per non-empty type in the shape (System types & enums end
         // up with 0 members and are skipped).
@@ -74,13 +75,15 @@ static class AccessorEmission
             excelsiorEntries,
             formatEntries,
             stringListEntries,
-            editableEntries);
+            editableEntries,
+            collectionEntries);
 
         if (fluidBlocks.Count == 0 &&
             excelsiorEntries.Count == 0 &&
             formatEntries.Count == 0 &&
             stringListEntries.Count == 0 &&
-            editableEntries.Count == 0)
+            editableEntries.Count == 0 &&
+            collectionEntries.Count == 0)
         {
             return null;
         }
@@ -93,6 +96,7 @@ static class AccessorEmission
         EmitFormatBlock(fields, registrations, rootFqn, formatEntries);
         EmitStringListBlock(fields, registrations, rootFqn, stringListEntries);
         EmitEditableBlock(fields, registrations, rootFqn, editableEntries);
+        EmitCollectionBlock(fields, registrations, rootFqn, typesByFqn, collectionEntries);
 
         fields.TrimTrailingNewlines();
         registrations.TrimTrailingNewlines();
@@ -108,7 +112,8 @@ static class AccessorEmission
         List<(List<string>, string, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
-        List<(List<string>, MemberEntry)> editables)
+        List<(List<string>, MemberEntry)> editables,
+        List<(List<string>, MemberEntry)> collections)
     {
         if (!typesByFqn.TryGetValue(currentTypeFqn, out var typeEntry))
         {
@@ -166,6 +171,17 @@ static class AccessorEmission
 
             if (member.IsEditable)
             {
+                // An editable collection (POCO element) → repeating section, registered separately.
+                if (member.EditableCollectionElementFqn != null)
+                {
+                    if (member.HasUsableSetter)
+                    {
+                        collections.Add((nextPath, member));
+                    }
+
+                    continue;
+                }
+
                 // Invalid editable members (unsupported type, no setter) already carry an error
                 // diagnostic (PARCH013/014) — skip them so the emitted source stays compilable.
                 if (member is { EditableKind: not null, HasUsableSetter: true })
@@ -189,7 +205,7 @@ static class AccessorEmission
                 continue;
             }
 
-            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables);
+            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables, collections);
             visited.Remove(member.TypeFullyQualifiedName);
         }
     }
@@ -371,25 +387,9 @@ static class AccessorEmission
             """);
         foreach (var (path, member) in entries)
         {
-            fields.Append("  new(\"");
-            fields.AppendJoin('.', path);
-            fields.Append("\", global::Parchment.Generated.EditableFieldKind.");
-            fields.Append(member.EditableKind!.Value);
-            fields.Append(", typeof(");
-            fields.Append(StripNullableSuffix(member.TypeFullyQualifiedName));
-            fields.Append("), ");
-            fields.Append(member.EditableIsNullable ? "true" : "false");
-            fields.Append(", ");
-            EmitGetter(fields, rootFqn, path);
-            fields.Append(", ");
-            EmitSetter(fields, rootFqn, path, member);
-            fields.Append(", ");
-            EmitCanReach(fields, rootFqn, path);
-            fields.Append(", ");
-            fields.Append(member.EditableMultiLine ? "true" : "false");
-            fields.Append(", ");
-            fields.Append(ToStringLiteral(member.EditableDateFormat));
-            fields.AppendLine("),");
+            fields.Append("  ");
+            EmitEditableEntry(fields, rootFqn, path, member);
+            fields.AppendLine(",");
         }
 
         fields.Append(
@@ -399,6 +399,107 @@ static class AccessorEmission
             """);
 
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof({rootFqn}), _Editables);");
+    }
+
+    static void EmitEditableEntry(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member)
+    {
+        builder.Append("new(\"");
+        builder.AppendJoin('.', path);
+        builder.Append("\", global::Parchment.Generated.EditableFieldKind.");
+        builder.Append(member.EditableKind!.Value);
+        builder.Append(", typeof(");
+        builder.Append(StripNullableSuffix(member.TypeFullyQualifiedName));
+        builder.Append("), ");
+        builder.Append(member.EditableIsNullable ? "true" : "false");
+        builder.Append(", ");
+        EmitGetter(builder, rootFqn, path);
+        builder.Append(", ");
+        EmitSetter(builder, rootFqn, path, member);
+        builder.Append(", ");
+        EmitCanReach(builder, rootFqn, path);
+        builder.Append(", ");
+        builder.Append(member.EditableMultiLine ? "true" : "false");
+        builder.Append(", ");
+        builder.Append(ToStringLiteral(member.EditableDateFormat));
+        builder.Append(')');
+    }
+
+    static void EmitCollectionBlock(
+        StringBuilder fields,
+        StringBuilder registrations,
+        string rootFqn,
+        Dictionary<string, TypeEntry> typesByFqn,
+        List<(List<string> Path, MemberEntry Member)> entries)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        fields.Append(
+            """
+            static readonly global::Parchment.Generated.CollectionFieldMapEntry[] _EditableCollections =
+            {
+
+            """);
+        foreach (var (path, member) in entries)
+        {
+            var elementFqn = member.EditableCollectionElementFqn!;
+            var isArray = member.TypeFullyQualifiedName.EndsWith("[]", StringComparison.Ordinal);
+
+            fields.Append("  new(\"");
+            fields.AppendJoin('.', path);
+            fields.Append("\", typeof(");
+            fields.Append(elementFqn);
+            fields.Append("), ");
+            EmitSetter(fields, rootFqn, path, member);
+            fields.Append(", ");
+            EmitCanReach(fields, rootFqn, path);
+            fields.Append(", static () => new ");
+            fields.Append(elementFqn);
+            fields.Append("(), ");
+            EmitElementFields(fields, elementFqn, typesByFqn);
+            fields.Append(", ");
+            fields.Append(isArray ? "true" : "false");
+            fields.AppendLine("),");
+        }
+
+        fields.Append(
+            """
+            };
+
+            """);
+
+        registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterEditableCollections(typeof({rootFqn}), _EditableCollections);");
+    }
+
+    // The element type's editable members, getters/setters rooted at an element instance (item-relative
+    // dotted paths) — the sub-entries read/written inside each repeated section item.
+    static void EmitElementFields(StringBuilder builder, string elementFqn, Dictionary<string, TypeEntry> typesByFqn)
+    {
+        var elementEditables = new List<(List<string> Path, MemberEntry Member)>();
+        WalkForMaps(
+            elementFqn,
+            [],
+            new(StringComparer.Ordinal)
+            {
+                elementFqn
+            },
+            typesByFqn,
+            [],
+            [],
+            [],
+            elementEditables,
+            []);
+
+        builder.Append("new global::Parchment.Generated.EditableFieldMapEntry[] { ");
+        foreach (var (path, member) in elementEditables)
+        {
+            EmitEditableEntry(builder, elementFqn, path, member);
+            builder.Append(", ");
+        }
+
+        builder.Append('}');
     }
 
     // "decimal?" → "decimal" for typeof() — the runtime entry carries the underlying type

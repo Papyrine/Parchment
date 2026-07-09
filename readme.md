@@ -1000,6 +1000,48 @@ Checkbox, date, and dropdown values round-trip through canonical control state a
 - `[EditableField]` combined with `[ExcelsiorTable]` or `[Markdown]` on the same member is rejected (`PARCH015`); `[Html]` (or `[StringSyntax("html")]`) instead selects the rich-text kind (see [Rich text (HTML)](#rich-text-html)). Unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All fail fast at runtime registration.
 - **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
 
+### Editable collections
+
+Mark a collection member — a `List<T>`, `T[]`, or `IList<T>` of a POCO element type — with `[EditableField]`, and a `{% for %}` loop over it renders as a **Word repeating section** (`w15:repeatingSection`). Reviewers add, remove, and reorder rows with Word's native repeating-section controls; each row's fields are ordinary editable controls, and `ParchmentExtractor` rebuilds the list from whatever rows the document ends up with.
+
+```cs
+public class Milestone
+{
+    [EditableField]
+    public string Name { get; set; } = "";
+
+    [EditableField]
+    public DateOnly Due { get; set; }
+}
+
+public class Roadmap
+{
+    [EditableField]
+    public List<Milestone> Milestones { get; set; } = [];
+}
+```
+
+The template is a plain loop; the loop-variable tokens become the per-row controls:
+
+```liquid
+{% for m in Milestones %}
+{{ m.Name }} — due {{ m.Due }}
+{% endfor %}
+```
+
+After the form comes back, extract onto a model instance — the rebuilt list replaces the collection member:
+
+```cs
+var result = ParchmentExtractor.Extract<Roadmap>(stream);
+result.ApplyTo(model); // model.Milestones is the edited list — added rows appear, removed rows are gone
+```
+
+- **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
+- **An empty collection renders one blank row** so Word has a template to clone; an all-blank row extracts as nothing, so clearing a row deletes it.
+- **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
+- **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
+- **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
+
 
 ## Markdown template
 

@@ -68,6 +68,29 @@ static class ShapeBuilder
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
+
+                    // An [EditableField] collection of a POCO element type renders as a repeating
+                    // section: EditableKind stays null and the element fqn is recorded instead.
+                    // A collection of a system element type (e.g. List<string>) is not one — it falls
+                    // through to the scalar path, where MapEditableKind yields null → PARCH013.
+                    string? editableCollectionElementFqn = null;
+                    EditableFieldKind? editableKind = null;
+                    if (isEditable)
+                    {
+                        var collectionElement = memberType.SpecialType == SpecialType.System_String
+                            ? null
+                            : ModelSymbolResolver.TryGetElementType(memberType);
+                        if (collectionElement != null &&
+                            !IsSystemType(collectionElement))
+                        {
+                            editableCollectionElementFqn = Fqn(collectionElement);
+                        }
+                        else
+                        {
+                            editableKind = EditableKindFor(isHtml, isMarkdown, memberType);
+                        }
+                    }
+
                     members.Add(new(
                         memberName,
                         Fqn(memberType),
@@ -79,11 +102,12 @@ static class ShapeBuilder
                         excelsiorHeadingStyle,
                         excelsiorBodyStyle,
                         isEditable,
-                        isEditable ? EditableKindFor(isHtml, isMarkdown, memberType) : null,
-                        isEditable && IsNullableMember(memberType),
+                        editableKind,
+                        isEditable && editableCollectionElementFqn == null && IsNullableMember(memberType),
                         isEditable && HasUsableSetter(member),
                         editableMultiLine,
-                        editableDateFormat));
+                        editableDateFormat,
+                        editableCollectionElementFqn));
                     Enqueue(memberType, visited, queue);
                 }
 

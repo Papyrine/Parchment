@@ -76,6 +76,38 @@ sealed class EditableMap
 
     internal static void RegisterPrecompiled(Type modelType, IEnumerable<EditableFieldMapEntry> entries)
     {
+        var dict = BuildEntryDict(entries);
+        // Merge, so RegisterEditable and RegisterEditableCollections (emitted as separate calls) each
+        // contribute their half regardless of order.
+        precompiledCache.AddOrUpdate(
+            modelType,
+            _ => new(dict, EmptyCollections()),
+            (_, existing) => new(dict, existing.collections));
+    }
+
+    internal static void RegisterPrecompiledCollections(Type modelType, IEnumerable<CollectionFieldMapEntry> entries)
+    {
+        var dict = new Dictionary<string, CollectionEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            dict[entry.DottedPath] = new(
+                entry.DottedPath,
+                entry.ElementType,
+                entry.Setter,
+                entry.CanReach,
+                entry.ElementFactory,
+                new(BuildEntryDict(entry.ElementFields), EmptyCollections()),
+                entry.IsArray);
+        }
+
+        precompiledCache.AddOrUpdate(
+            modelType,
+            _ => new(new(StringComparer.OrdinalIgnoreCase), dict),
+            (_, existing) => new(existing.entries, dict));
+    }
+
+    static Dictionary<string, EditableEntry> BuildEntryDict(IEnumerable<EditableFieldMapEntry> entries)
+    {
         var dict = new Dictionary<string, EditableEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
@@ -91,8 +123,11 @@ sealed class EditableMap
                 entry.DateFormat);
         }
 
-        precompiledCache[modelType] = new(dict, new(StringComparer.OrdinalIgnoreCase));
+        return dict;
     }
+
+    static Dictionary<string, CollectionEntry> EmptyCollections() =>
+        new(StringComparer.OrdinalIgnoreCase);
 
     static void WalkType(
         Type type,
