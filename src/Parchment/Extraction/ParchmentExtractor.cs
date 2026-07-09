@@ -48,7 +48,8 @@ public static class ParchmentExtractor
         try
         {
             using var doc = OpenReadOnly(source);
-            var body = doc.MainDocumentPart?.Document?.Body;
+            var mainPart = doc.MainDocumentPart;
+            var body = mainPart?.Document?.Body;
             if (body == null)
             {
                 throw new ParchmentExtractionException(
@@ -72,7 +73,7 @@ public static class ParchmentExtractor
                     continue;
                 }
 
-                fields.Add(EditableFieldReader.Read(sdt, entry, effectiveCulture));
+                fields.Add(EditableFieldReader.Read(sdt, entry, effectiveCulture, mainPart!));
             }
 
             foreach (var entry in map.Entries)

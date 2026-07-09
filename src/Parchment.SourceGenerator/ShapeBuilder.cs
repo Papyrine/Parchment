@@ -79,7 +79,7 @@ static class ShapeBuilder
                         excelsiorHeadingStyle,
                         excelsiorBodyStyle,
                         isEditable,
-                        isEditable ? MapEditableKind(memberType) : null,
+                        isEditable ? EditableKindFor(isHtml, isMarkdown, memberType) : null,
                         isEditable && IsNullableMember(memberType),
                         isEditable && HasUsableSetter(member),
                         editableMultiLine,
@@ -220,6 +220,27 @@ static class ShapeBuilder
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Chooses the editable kind for a member, accounting for the format markers. Lockstep with
+    /// runtime <c>EditableMap.BuildEntry</c>: <c>[Html]</c> on a string selects the rich-content
+    /// <see cref="EditableFieldKind.Html"/>; <c>[Markdown]</c> yields null so it's never emitted as
+    /// an editable member (the PARCH015 conflict pass reports it first).
+    /// </summary>
+    static EditableFieldKind? EditableKindFor(bool isHtml, bool isMarkdown, ITypeSymbol type)
+    {
+        if (isMarkdown)
+        {
+            return null;
+        }
+
+        if (isHtml)
+        {
+            return type.SpecialType == SpecialType.System_String ? EditableFieldKind.Html : null;
+        }
+
+        return MapEditableKind(type);
     }
 
     /// <summary>

@@ -122,24 +122,44 @@ sealed class EditableMap
         NullabilityInfoContext nullability,
         string templateName)
     {
-        GuardConflictingAttributes(owner, member, templateName);
+        var isHtml = GuardConflictingAttributes(owner, member, templateName);
 
         var underlying = Nullable.GetUnderlyingType(memberType);
         var effective = underlying ?? memberType;
-        var kind = MapKind(effective);
-        if (kind == null)
-        {
-            throw new ParchmentRegistrationException(
-                templateName,
-                $"[EditableField] member '{owner.Name}.{member.Name}' has unsupported type '{memberType.Name}'. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool?).");
-        }
 
-        if (kind == EditableFieldKind.Checkbox &&
-            underlying != null)
+        EditableFieldKind kind;
+        if (isHtml)
         {
-            throw new ParchmentRegistrationException(
-                templateName,
-                $"[EditableField] member '{owner.Name}.{member.Name}' is bool? — a checkbox cannot represent null. Use a non-nullable bool.");
+            // [Html] + [EditableField] renders an editable rich-content block that extracts back
+            // to an HTML string — so the member must be a string.
+            if (effective != typeof(string))
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] member '{owner.Name}.{member.Name}' is marked [Html] but is '{memberType.Name}', not string. Editable HTML round-trips a string value.");
+            }
+
+            kind = EditableFieldKind.Html;
+        }
+        else
+        {
+            var mapped = MapKind(effective);
+            if (mapped == null)
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] member '{owner.Name}.{member.Name}' has unsupported type '{memberType.Name}'. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool?).");
+            }
+
+            if (mapped == EditableFieldKind.Checkbox &&
+                underlying != null)
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] member '{owner.Name}.{member.Name}' is bool? — a checkbox cannot represent null. Use a non-nullable bool.");
+            }
+
+            kind = mapped.Value;
         }
 
         var setter = BuildSetter(owner, member, parentGetter, templateName);
@@ -147,7 +167,7 @@ sealed class EditableMap
 
         return new(
             dottedPath,
-            kind.Value,
+            kind,
             effective,
             isNullable,
             getter,
@@ -157,34 +177,58 @@ sealed class EditableMap
             attribute.DateFormat);
     }
 
-    static void GuardConflictingAttributes(Type owner, MemberInfo member, string templateName)
+    /// <summary>
+    /// Rejects attribute combinations that can't coexist with <c>[EditableField]</c> and reports
+    /// whether the member opts into editable HTML. <c>[Html]</c> (or <c>[StringSyntax("html")]</c>)
+    /// is allowed — it selects the rich-content <see cref="EditableFieldKind.Html"/> control.
+    /// <c>[ExcelsiorTable]</c> is always a conflict; <c>[Markdown]</c> is rejected because editable
+    /// round-trip is HTML-only (extraction has no OpenXML→Markdown serializer).
+    /// </summary>
+    static bool GuardConflictingAttributes(Type owner, MemberInfo member, string templateName)
     {
-        string? conflict = null;
+        var isHtml = false;
         foreach (var attribute in member.GetCustomAttributes(true))
         {
             var name = attribute.GetType().Name;
             if (attribute is ExcelsiorTableAttribute)
             {
-                conflict = "ExcelsiorTable";
+                throw Conflict(owner, member, templateName, "ExcelsiorTable");
             }
-            else if (name is "HtmlAttribute" or "MarkdownAttribute")
+
+            if (name == "MarkdownAttribute")
             {
-                conflict = name[..^"Attribute".Length];
+                throw MarkdownNotSupported(owner, member, templateName);
             }
-            else if (attribute is StringSyntaxAttribute syntax &&
-                     syntax.Syntax.ToLowerInvariant() is "html" or "markdown")
+
+            if (name == "HtmlAttribute")
             {
-                conflict = $"StringSyntax(\"{syntax.Syntax}\")";
+                isHtml = true;
+            }
+            else if (attribute is StringSyntaxAttribute syntax)
+            {
+                switch (syntax.Syntax.ToLowerInvariant())
+                {
+                    case "markdown":
+                        throw MarkdownNotSupported(owner, member, templateName);
+                    case "html":
+                        isHtml = true;
+                        break;
+                }
             }
         }
 
-        if (conflict != null)
-        {
-            throw new ParchmentRegistrationException(
-                templateName,
-                $"Member '{owner.Name}.{member.Name}': [EditableField] cannot be combined with [{conflict}] — an editable field is plain typed content, not rendered markup.");
-        }
+        return isHtml;
     }
+
+    static ParchmentRegistrationException Conflict(Type owner, MemberInfo member, string templateName, string other) =>
+        new(
+            templateName,
+            $"Member '{owner.Name}.{member.Name}': [EditableField] cannot be combined with [{other}] — an editable field is plain typed content, not rendered markup.");
+
+    static ParchmentRegistrationException MarkdownNotSupported(Type owner, MemberInfo member, string templateName) =>
+        new(
+            templateName,
+            $"Member '{owner.Name}.{member.Name}': [EditableField] supports editable rich text via [Html] only — [Markdown] round-trip is not supported. Use [Html], or drop [EditableField] to render read-only Markdown.");
 
     static Action<object, object?> BuildSetter(Type owner, MemberInfo member, Func<object, object?> parentGetter, string templateName)
     {

@@ -352,8 +352,9 @@ public sealed class ParchmentTemplateGenerator :
 
                 var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
 
+                // [Html] + [EditableField] is supported (renders an editable rich-content block that
+                // extracts back to HTML). [ExcelsiorTable] and [Markdown] remain conflicts.
                 if (member.IsExcelsiorTable ||
-                    member.IsHtml ||
                     member.IsMarkdown)
                 {
                     context.ReportDiagnostic(

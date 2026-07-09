@@ -112,7 +112,7 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor EditableConflictingAttribute = new(
         id: "PARCH015",
         title: "[EditableField] combined with a conflicting attribute",
-        messageFormat: "Model '{0}' member '{1}' combines [EditableField] with [ExcelsiorTable] / [Html] / [Markdown] / [StringSyntax]; an editable field is plain typed content, not rendered markup",
+        messageFormat: "Model '{0}' member '{1}' combines [EditableField] with [ExcelsiorTable] or [Markdown]; editable rich text is supported via [Html] only, and other formats are plain typed content, not rendered markup",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

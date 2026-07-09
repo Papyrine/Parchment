@@ -64,6 +64,15 @@ sealed class FormatMap
             var format = DetectFormat(member, templateName, type);
             if (format != null)
             {
+                // A member that is also [EditableField] is claimed by the editable map — it renders
+                // as an editable rich-content control and extracts back to HTML, not the read-only
+                // format path. (EditableMap mirrors this: it rejects [Markdown]+[EditableField] and
+                // accepts [Html]+[EditableField].)
+                if (member.GetCustomAttribute<EditableFieldAttribute>(true) != null)
+                {
+                    continue;
+                }
+
                 var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
                 if (underlying == typeof(string))
                 {

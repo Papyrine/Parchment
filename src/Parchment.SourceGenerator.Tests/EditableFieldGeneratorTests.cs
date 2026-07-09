@@ -73,6 +73,34 @@ public class EditableFieldGeneratorTests
     }
 
     [Test]
+    public Task HtmlEditable_EmitsHtmlKind()
+    {
+        // [Html] + [EditableField] emits an editable entry of kind Html (not a read-only format
+        // entry) with the normal string getter/setter.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class HtmlAttribute : System.Attribute
+            {
+            }
+
+            [ParchmentModel("template.docx")]
+            public partial class Order
+            {
+                [EditableField]
+                [Html]
+                public string Body { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
+        return Verify(result);
+    }
+
+    [Test]
     public Task UnsupportedType_ReportsParch013()
     {
         var source =
@@ -143,6 +171,35 @@ public class EditableFieldGeneratorTests
     [Test]
     public async Task ConflictingAttribute_ReportsParch015()
     {
+        // [Markdown] + [EditableField] stays a conflict (editable rich text is HTML-only).
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class MarkdownAttribute : System.Attribute
+            {
+            }
+
+            [ParchmentModel("template.docx")]
+            public partial class Order
+            {
+                [EditableField]
+                [Markdown]
+                public string Body { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).Contains("PARCH015");
+    }
+
+    [Test]
+    public async Task HtmlEditable_IsAllowed()
+    {
+        // [Html] + [EditableField] is supported — an editable rich-content block, no PARCH015.
         var source =
             """
             using Parchment;
@@ -162,9 +219,10 @@ public class EditableFieldGeneratorTests
                 public string Body { get; set; } = "";
             }
             """;
-        var result = GeneratorDriver.Run(source, "x");
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
         var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
-        await Assert.That(ids).Contains("PARCH015");
+        await Assert.That(ids.Contains("PARCH015")).IsFalse();
+        await Assert.That(ids.Any(_ => _.StartsWith("PARCH"))).IsFalse();
     }
 
     [Test]

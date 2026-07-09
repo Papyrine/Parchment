@@ -850,7 +850,7 @@ Behavior:
 
 Mark model members with `[EditableField]` and the rendered docx becomes a fillable, locked form:
 
-- Each marked member renders as a Word **content control** (`w:sdt`) tagged with the member's dotted model path and typed per the member — plain text, checkbox, date picker, or dropdown.
+- Each marked member renders as a Word **content control** (`w:sdt`) tagged with the member's dotted model path and typed per the member — plain text, checkbox, date picker, dropdown, or a rich-text block for HTML.
 - The rest of the document is locked: `w:documentProtection w:edit="readOnly"` is written into the output's settings, with an editable-range exception (`w:permStart`/`w:permEnd`, everyone) punched around each control. Users can fill the fields but not edit anything else; the controls themselves are locked against deletion (`w:lock="sdtLocked"`).
 - `ParchmentExtractor` reads the values back out of the returned document and applies them onto a model instance — two-way binding for the editable subset. The document is a lossy projection of the model (loops expanded, formatting applied), so it is the *editable subset* that round-trips, merged onto a caller-supplied model.
 
@@ -944,6 +944,7 @@ result.ApplyTo(model);
 | `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
 | enums | dropdown, one item per member | `w:listItem` value |
 | numeric types | plain text | text parsed with the extraction culture |
+| `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
 Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder and extract as `Empty`. Members must have a public non-init setter so extraction can write back.
 
@@ -951,6 +952,21 @@ Nullable variants are supported except `bool?` — a checkbox cannot represent n
 
 - A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
 - The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
+
+### Rich text (HTML)
+
+A `string` member marked both `[EditableField]` and `[Html]` renders as an **editable rich-content block**. The HTML value becomes formatted Word content — paragraphs, bold / italic / underline / strikethrough, superscript / subscript, bullet and numbered lists, links, and `h1`–`h6` headings — inside a block-level content control wrapped in an editable range, so the formatted content stays editable while the rest of the document remains locked. Extraction serializes the (possibly Word-edited) block back to an HTML string, so the field round-trips as HTML rather than flattened text:
+
+```cs
+public class Article
+{
+    [Html]
+    [EditableField]
+    public required string Body { get; set; }
+}
+```
+
+The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
 
 ### Protection is cooperative, not security
 
@@ -981,7 +997,7 @@ Checkbox, date, and dropdown values round-trip through canonical control state a
 - **Loops render read-only.** An editable token inside `{% for %}` would stamp one control per iteration and produce duplicate tags, so loop bodies render editable members as plain text (`PARCH018` warns at compile time).
 - **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. Plain member access only; filters are rejected (`PARCH016`).
 - **No structural mixing.** An editable token cannot share a paragraph with an `[ExcelsiorTable]` / `[Html]` / `[Markdown]` token — structural replacement clones paragraph halves and would corrupt the editable range. Rejected at registration.
-- `[EditableField]` cannot be combined with `[ExcelsiorTable]`, `[Html]`, `[Markdown]`, or `[StringSyntax]` on the same member (`PARCH015`); unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All three also fail fast at runtime registration.
+- `[EditableField]` combined with `[ExcelsiorTable]` or `[Markdown]` on the same member is rejected (`PARCH015`); `[Html]` (or `[StringSyntax("html")]`) instead selects the rich-text kind (see [Rich text (HTML)](#rich-text-html)). Unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All fail fast at runtime registration.
 - **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
 
 
@@ -1617,7 +1633,7 @@ public partial class Order
 
 ### `PARCH015` — `[EditableField]` combined with a conflicting attribute
 
-**Docx only.** An editable field is plain typed content, not rendered markup — combining it with `[ExcelsiorTable]`, `[Html]`, `[Markdown]`, or `[StringSyntax("html"/"markdown")]` on the same member is rejected.
+**Docx only.** `[Html]` (or `[StringSyntax("html")]`) is supported and selects the [rich-text kind](#rich-text-html). Combining `[EditableField]` with `[ExcelsiorTable]`, `[Markdown]`, or `[StringSyntax("markdown")]` on the same member is rejected — editable round-trip is HTML-only (extraction has no OpenXML-to-Markdown serializer).
 
 
 ### `PARCH016` — `[EditableField]` token with filters or complex expression

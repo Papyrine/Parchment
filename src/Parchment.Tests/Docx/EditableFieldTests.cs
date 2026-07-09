@@ -698,12 +698,14 @@ public class EditableFieldTests
     [Test]
     public async Task ConflictingFormatAttributeIsRejected()
     {
+        // [Markdown] + [EditableField] stays rejected — editable rich text round-trips via [Html]
+        // only (extraction has no OpenXML->Markdown serializer).
         using var template = DocxTemplateBuilder.Build("x");
         var store = new TemplateStore();
         var exception = await Assert.That(
                 () => store.RegisterDocxTemplate<ConflictModel>("editable-conflict", template))
             .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("cannot be combined");
+        await Assert.That(exception!.Message).Contains("Markdown");
     }
 
     public class MixedStructuralModel
@@ -724,6 +726,148 @@ public class EditableFieldTests
                 () => store.RegisterDocxTemplate<MixedStructuralModel>("editable-mixed", template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("own paragraph");
+    }
+
+    public class EditableArticle
+    {
+        public required string Title;
+
+        [Html]
+        [EditableField]
+        public required string Body { get; set; }
+    }
+
+    public class MarkdownEditableModel
+    {
+        [EditableField]
+        [Markdown]
+        public string Body { get; set; } = "";
+    }
+
+    [Test]
+    public async Task HtmlEditableRendersLockedEditableBlock()
+    {
+        using var stream = await RenderModel(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>Hello <strong>world</strong></p>"
+            },
+            "html-editable-block");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        var sdt = FindSdtBlock(body, "Body");
+        await Assert.That(sdt.SdtProperties!.GetFirstChild<SdtAlias>()!.Val!.Value).IsEqualTo("Body");
+        await Assert.That(sdt.SdtProperties.GetFirstChild<SdtLock>()!.Val!.Value).IsEqualTo(LockingValues.SdtLocked);
+        // Rich content: the formatting survives into the editable block.
+        await Assert.That(sdt.Descendants<Bold>().Any()).IsTrue();
+        await Assert.That(sdt.InnerText).IsEqualTo("Hello world");
+        // Wrapped in a single editable perm range.
+        await Assert.That(body.Descendants<PermStart>().Count()).IsEqualTo(1);
+        await Assert.That(body.Descendants<PermEnd>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task HtmlEditableOutputValidates()
+    {
+        using var stream = await RenderModel(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>Hello <strong>world</strong></p><ul><li>a</li><li>b</li></ul>"
+            },
+            "html-editable-valid");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+        var errors = validator.Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    [Test]
+    public async Task HtmlEditableRoundTripsThroughExtraction()
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>Hello <strong>world</strong> and <em>more</em></p><ul><li>one</li><li>two</li></ul>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model, "html-editable-roundtrip");
+
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Verify(model.Body);
+    }
+
+    [Test]
+    public async Task HtmlEditableEditedContentRoundTrips()
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>original</p>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model, "html-editable-edited");
+
+        // Simulate the user editing the rich block in Word.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            content.RemoveAllChildren();
+            content.AppendChild(
+                new Paragraph(
+                    new Run(
+                        new RunProperties(new Bold()),
+                        new Text("edited"))));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(model.Body).IsEqualTo("<p><strong>edited</strong></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableRendersPlaceholderWhenEmpty()
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = ""
+        };
+        using var stream = await RenderModel("{{ Body }}", model, "html-editable-empty");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+        await Assert.That(sdt.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        var field = result.Fields.First(_ => _.Path == "Body");
+        await Assert.That(field.State).IsEqualTo(FieldState.Empty);
+    }
+
+    [Test]
+    public async Task MarkdownEditableIsRejected()
+    {
+        using var template = DocxTemplateBuilder.Build("x");
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<MarkdownEditableModel>("editable-markdown", template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("Markdown");
     }
 
     public class EditableQuote
@@ -752,6 +896,18 @@ public class EditableFieldTests
         return stream;
     }
 
+    static async Task<MemoryStream> RenderModel<T>(string templateContent, T model, string name)
+    {
+        using var template = DocxTemplateBuilder.Build(templateContent);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<T>(name, template);
+
+        var stream = new MemoryStream();
+        await store.Render(name, model!, stream);
+        stream.Position = 0;
+        return stream;
+    }
+
     static SdtRun FindSdt(OpenXmlCompositeElement root, string tag)
     {
         var sdt = root.Descendants<SdtRun>()
@@ -759,6 +915,18 @@ public class EditableFieldTests
         if (sdt == null)
         {
             throw new InvalidOperationException($"No sdt with tag '{tag}' found");
+        }
+
+        return sdt;
+    }
+
+    static SdtBlock FindSdtBlock(OpenXmlCompositeElement root, string tag)
+    {
+        var sdt = root.Descendants<SdtBlock>()
+            .FirstOrDefault(_ => _.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == tag);
+        if (sdt == null)
+        {
+            throw new InvalidOperationException($"No block sdt with tag '{tag}' found");
         }
 
         return sdt;

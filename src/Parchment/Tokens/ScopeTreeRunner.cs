@@ -104,6 +104,12 @@ class ScopeTreeRunner(
             var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
             if (evaluated is EditableToken editable)
             {
+                if (editable.Entry.Kind == EditableFieldKind.Html)
+                {
+                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    continue;
+                }
+
                 EditableSplicer.Insert(
                     host,
                     token.Offset,
@@ -160,6 +166,37 @@ class ScopeTreeRunner(
         {
             (structuralReplacements ??= []).Add(new(host, BuildStructuralReplacements(host, soloStructuralTokens)));
         }
+    }
+
+    /// <summary>
+    /// Queues an editable-HTML field as a block-level structural replacement. The member renders a
+    /// rich-content control the user can edit within an editable range; it must occupy its own
+    /// paragraph (like a read-only [Html] token) so the block <c>w:sdt</c> + perm range replace the
+    /// host cleanly. Extraction serializes the block content back to HTML.
+    /// </summary>
+    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, int originalLength)
+    {
+        if (tokenCount != 1 ||
+            token.Offset != 0 ||
+            token.Length != originalLength)
+        {
+            throw new ParchmentRenderException(
+                templateName,
+                $"Editable HTML token '{token.Source}' must sit alone in its paragraph — it renders a block-level editable region. Move it to its own paragraph.",
+                partUri,
+                Snippet(host, token),
+                token.Source);
+        }
+
+        var html = editable.Value as string;
+        IReadOnlyList<OpenXmlElement> content = string.IsNullOrWhiteSpace(html)
+            ? []
+            : WordHtmlConverter.ToElements(
+                html,
+                mainPart,
+                imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
+
+        (structuralReplacements ??= []).Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState)));
     }
 
     /// <summary>
