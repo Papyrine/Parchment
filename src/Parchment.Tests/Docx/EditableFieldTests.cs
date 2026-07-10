@@ -414,6 +414,41 @@ public class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableSeedsListDefinitions()
+    {
+        using var stream = await RenderModel(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>plain</p>"
+            },
+            "html-editable-seeds-numbering");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var numbering = doc.MainDocumentPart!.NumberingDefinitionsPart?.Numbering;
+
+        // The value has no list, yet protection has locked numbering.xml — so a definition must be
+        // seeded, or Word would disable bullets inside the editable block.
+        await Assert.That(numbering).IsNotNull();
+        var formats = numbering!.Elements<AbstractNum>()
+            .Select(_ => _.Elements<Level>().First(level => level.LevelIndex?.Value == 0).NumberingFormat!.Val!.Value)
+            .ToList();
+        await Assert.That(formats).Contains(NumberFormatValues.Bullet);
+        await Assert.That(formats).Contains(NumberFormatValues.Decimal);
+    }
+
+    [Test]
+    public async Task PlainEditableDoesNotSeedListDefinitions()
+    {
+        using var stream = await Render("{{ PurchaseOrder }}", NewOrder());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        // No rich-text field, so nothing to seed — the plain-text control can't hold a list anyway.
+        await Assert.That(doc.MainDocumentPart!.NumberingDefinitionsPart).IsNull();
+    }
+
+    [Test]
     public async Task NonSoloTokenPreservesSurroundingText()
     {
         using var stream = await Render("PO: {{ PurchaseOrder }} (required)", NewOrder());

@@ -64,6 +64,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 protection == ProtectionMode.WhenEditable)
             {
                 SettingsProtection.Apply(doc.MainDocumentPart!);
+
+                // Read-only protection locks numbering.xml, a document-level part, outside every
+                // editable range. Word then disables bullets and numbering even inside a rich-text
+                // field the user may edit — unless the list definitions already exist. Seed them.
+                if (editableMap.HasHtmlField)
+                {
+                    WordNumbering.EnsureListDefinitions(doc.MainDocumentPart!);
+                }
             }
 
             doc.Save();
