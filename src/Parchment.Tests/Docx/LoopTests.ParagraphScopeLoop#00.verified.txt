@@ -1,8 +1,0 @@
-﻿{
-  Text:
-Items:
-- Consulting services — API design: 12 x 185
-- Consulting services — implementation: 40 x 165
-- Project management: 8 x 145
-End.
-}

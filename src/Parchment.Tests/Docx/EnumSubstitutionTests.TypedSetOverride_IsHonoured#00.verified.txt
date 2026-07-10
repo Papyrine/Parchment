@@ -1,3 +1,0 @@
-﻿{
-  Text: Tier: BRAVO-OVERRIDE
-}

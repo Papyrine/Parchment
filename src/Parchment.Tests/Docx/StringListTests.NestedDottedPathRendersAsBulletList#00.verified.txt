@@ -1,7 +1,0 @@
-﻿{
-  Text:
-Bob
-C#
-OpenXML
-Liquid
-}

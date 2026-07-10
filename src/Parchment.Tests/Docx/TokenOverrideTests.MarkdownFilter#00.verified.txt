@@ -1,7 +1,0 @@
-﻿{
-  Text:
-# Release notes
-Bug fixes
-Fixed crash on empty input
-Resolved timeout in batch mode
-}

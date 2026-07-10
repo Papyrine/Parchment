@@ -7,12 +7,5 @@
     Calibri,
     Calibri Light,
     Times New Roman
-  ],
-  Text:
-Quote Q-2026-0042
-Thank you for your business.
-Item	Qty	Unit Price
-Strategy workshop	2	$4,500
-Implementation support	8	$1,750
-Documentation review	1	$950
+  ]
 }

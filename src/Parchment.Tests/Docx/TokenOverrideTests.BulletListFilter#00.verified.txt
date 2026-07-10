@@ -1,7 +1,0 @@
-﻿{
-  Text:
-Tags:
-priority
-net-30
-repeat-customer
-}

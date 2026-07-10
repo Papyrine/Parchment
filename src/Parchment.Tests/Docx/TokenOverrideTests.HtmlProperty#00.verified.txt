@@ -1,7 +1,0 @@
-﻿{
-  Text:
-# Welcome
-Welcome to the weekly digest.
-Search performance is up
-Two regressions closed
-}

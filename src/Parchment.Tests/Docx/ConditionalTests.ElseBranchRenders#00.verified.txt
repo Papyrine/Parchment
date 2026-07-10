@@ -1,6 +1,0 @@
-﻿{
-  Text:
-Start
-Negative: fallback
-End
-}

@@ -1,6 +1,0 @@
-﻿{
-  Text:
-one
-two
-three
-}

@@ -1,6 +1,0 @@
-﻿{
-  Text:
-Left	Center	Right	Default
-a	b	c	d
-e	f	g	h
-}

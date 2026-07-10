@@ -7,10 +7,5 @@
     Calibri,
     Calibri Light,
     Times New Roman
-  ],
-  Text:
-Title: Report
-Hello world
-Second para
-End.
+  ]
 }

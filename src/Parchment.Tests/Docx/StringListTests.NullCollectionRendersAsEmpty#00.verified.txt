@@ -1,5 +1,0 @@
-﻿{
-  Text:
-Header
-Footer
-}

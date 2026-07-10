@@ -994,6 +994,17 @@ The formatting is cosmetic. Extraction reads the control's `w:t` text (turning `
 
 The one way to make Word refuse the keystroke is `w:documentProtection w:edit="forms"`, which disallows formatting inside the protected region. Parchment writes `readOnly` instead, because forms protection also blocks selecting and copying the locked text.
 
+### Rich content cannot be whitelisted in Word
+
+There is no way to tell Word "allow bold and italic in this control, but not tables". The file format has no per-control formatting whitelist, and the two protection dials that come close are both the wrong shape:
+
+- **`w:edit="forms"` is all-or-nothing.** Users may fill in fields and nothing else: no bold, no italic, no table insertion. There is no way to permit character formatting while denying block content.
+- **`w:formatting="1"` is style-granular, not element-granular.** It means *only allow formatting with unlocked styles* — the unit of permission is a style (a style carrying `<w:locked/>` cannot be applied), and switching it on blocks direct formatting outright. Bold and italic are direct formatting rather than styles, and a table is not a style at all, so neither can be expressed. It is orthogonal to `w:edit`.
+
+`w:sdt` itself offers only a fixed menu of discrete control types — plain text, rich text, combo box, dropdown, date, checkbox, picture. "Rich text" means any content: paragraphs, images, tables. There is no inline-emphasis-only variant.
+
+So the boundary is enforced on extraction, not in Word. Whatever a user pastes into an `[EditableField] [Html]` control, only the supported subset survives the round-trip: a table degrades to its cell paragraphs (no text is dropped, but it never returns as `<table>`), and other unsupported content degrades to its text. Tighten the rule further — stripping `<strong>`, say — in the serializer, not in the protection settings.
+
 ### Culture
 
 Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Only free-text *numerics* are culture-sensitive: they render via the Fluid template culture (invariant by default) and parse back with `Extract`'s `culture` parameter — which defaults to `CultureInfo.InvariantCulture` to match. If renders are configured for another culture, pass the same culture to `Extract`.

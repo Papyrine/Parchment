@@ -1,5 +1,0 @@
-﻿{
-  Text:
-Before
-After
-}

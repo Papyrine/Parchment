@@ -1,5 +1,0 @@
-﻿{
-  Text:
-Q2 Platform Health Review
-Platform reliability and developer experience both trended upward this quarter, driven by the build pipeline rewrite and the new on-call rotation.
-}

@@ -1,6 +1,0 @@
-﻿{
-  Text:
-item
-line one
-line two
-}

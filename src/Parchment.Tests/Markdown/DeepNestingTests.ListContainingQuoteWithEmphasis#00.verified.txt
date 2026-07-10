@@ -1,6 +1,0 @@
-﻿{
-  Text:
-first item
-nested quote with bold text
-second item
-}

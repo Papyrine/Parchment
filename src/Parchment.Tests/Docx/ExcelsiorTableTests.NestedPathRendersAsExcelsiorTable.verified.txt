@@ -1,6 +1,6 @@
 ﻿Order ORD-2026-0001
 Buyer: Acme Corp
-End.
 Street	City
 1 Pine St	Portland
 42 Oak Ave	Seattle
+End.

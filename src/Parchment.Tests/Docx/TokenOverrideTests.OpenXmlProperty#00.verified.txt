@@ -1,5 +1,0 @@
-﻿{
-  Text:
-# Status
-Critical: review required
-}

@@ -7,10 +7,5 @@
     Calibri,
     Calibri Light,
     Times New Roman
-  ],
-  Text:
-Title: Report
-Heading
-Some bold text.
-End.
+  ]
 }

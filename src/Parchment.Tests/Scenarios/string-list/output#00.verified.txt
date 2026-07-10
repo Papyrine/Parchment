@@ -7,12 +7,5 @@
     Calibri,
     Calibri Light,
     Times New Roman
-  ],
-  Text:
-Person: Ada Lovelace
-Tags:
-Author
-Mathematician
-Engineer
-End.
+  ]
 }

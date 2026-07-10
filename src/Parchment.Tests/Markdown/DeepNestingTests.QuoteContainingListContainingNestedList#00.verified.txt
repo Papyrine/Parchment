@@ -1,9 +1,0 @@
-﻿{
-  Text:
-Top quote
-outer one
-inner a
-inner b
-outer two
-Tail
-}

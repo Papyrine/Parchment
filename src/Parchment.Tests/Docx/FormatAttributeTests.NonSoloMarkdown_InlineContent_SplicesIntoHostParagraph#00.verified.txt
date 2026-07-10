@@ -1,3 +1,0 @@
-﻿{
-  Text: Note: bold and italic (end)
-}

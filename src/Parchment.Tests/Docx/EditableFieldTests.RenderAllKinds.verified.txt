@@ -1,0 +1,9 @@
+﻿Order ORD-100
+PO: PO-2026-17
+Approved: ☒
+Delivery: 2026-07-06
+Status: Submitted
+Discount: 10
+Notes: Click or tap here to enter text.
+Line one
+Line two

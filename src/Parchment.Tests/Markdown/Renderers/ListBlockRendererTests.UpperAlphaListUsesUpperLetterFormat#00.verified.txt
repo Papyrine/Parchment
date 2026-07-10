@@ -1,5 +1,0 @@
-﻿{
-  Text:
-first
-second
-}
