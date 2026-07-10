@@ -24,6 +24,16 @@ sealed class EditableMap
 
     public bool IsEmpty => entries.Count == 0 && collections.Count == 0;
 
+    /// <summary>
+    /// Whether any reachable editable member — directly or inside an editable collection's element
+    /// type — is rich-text HTML. Such a field lets the user apply bullets and numbering, which Word
+    /// can only do against a list definition that already exists (see
+    /// <c>WordNumbering.EnsureListDefinitions</c>), so registration seeds one when this is true.
+    /// </summary>
+    public bool HasHtmlField =>
+        entries.Values.Any(_ => _.Kind == EditableFieldKind.Html) ||
+        collections.Values.Any(_ => _.ElementMap.HasHtmlField);
+
     public IReadOnlyCollection<EditableEntry> Entries => entries.Values;
 
     public IReadOnlyCollection<CollectionEntry> Collections => collections.Values;
