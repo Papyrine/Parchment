@@ -986,6 +986,14 @@ or via the source-generator attribute:
 
 With `ProtectionMode.None` the fields still render as tagged controls (and still extract); the rest of the document stays editable too.
 
+### Plain-text fields accept character formatting
+
+A plain `[EditableField]` renders as a Word plain-text content control (`<w:text/>`). That element constrains the control's *content model* — a single run of text, no images, no nested controls, no extra paragraphs — but it says nothing about run properties, and Word deliberately lets a user bold or italicise the control's contents. Nothing on `w:sdt` forbids it: `w:lock="sdtLocked"` only stops the control being deleted.
+
+The formatting is cosmetic. Extraction reads the control's `w:t` text (turning `w:br` into a newline) and ignores `w:rPr` entirely, so a bolded field extracts exactly as an unbolded one and the emphasis never reaches the model. This applies to plain fields only — for an `[EditableField] [Html]` field, formatting *is* the value, and bold round-trips as `<strong>`.
+
+The one way to make Word refuse the keystroke is `w:documentProtection w:edit="forms"`, which disallows formatting inside the protected region. Parchment writes `readOnly` instead, because forms protection also blocks selecting and copying the locked text.
+
 ### Culture
 
 Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Only free-text *numerics* are culture-sensitive: they render via the Fluid template culture (invariant by default) and parse back with `Extract`'s `culture` parameter — which defaults to `CultureInfo.InvariantCulture` to match. If renders are configured for another culture, pass the same culture to `Extract`.
