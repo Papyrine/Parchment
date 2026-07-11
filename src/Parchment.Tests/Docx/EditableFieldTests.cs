@@ -449,6 +449,68 @@ public class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableSeedsStyleDefinitions()
+    {
+        // The test fixture ships a full styles part, but a real code-built template (like the bid export)
+        // ships none — strip it so the seed has something to do.
+        using var stream = await RenderStylesStripped(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>plain</p>"
+            },
+            "html-editable-seeds-styles");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var styles = doc.MainDocumentPart!.StyleDefinitionsPart?.Styles;
+
+        // Protection has locked styles.xml, so the heading styles must be seeded or Word would grey out
+        // the style gallery inside the editable block.
+        await Assert.That(styles).IsNotNull();
+        var styleIds = styles!.Elements<Style>().Select(_ => _.StyleId?.Value).ToList();
+        await Assert.That(styleIds).Contains("Heading1");
+        await Assert.That(styleIds).Contains("ListParagraph");
+    }
+
+    [Test]
+    public async Task PlainEditableDoesNotSeedStyleDefinitions()
+    {
+        using var stream = await RenderStylesStripped("{{ PurchaseOrder }}", NewOrder(), "plain-editable-no-styles");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        // No rich-text field, so nothing to seed — the stripped styles part stays absent.
+        await Assert.That(doc.MainDocumentPart!.StyleDefinitionsPart).IsNull();
+    }
+
+    // Renders after removing the fixture's styles part, so style seeding is observable (the fixture
+    // otherwise ships every style the seed would add, making it a no-op).
+    static async Task<MemoryStream> RenderStylesStripped<T>(string templateContent, T model, string name)
+    {
+        using var template = DocxTemplateBuilder.Build(templateContent);
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var stylesPart = doc.MainDocumentPart!.StyleDefinitionsPart;
+            if (stylesPart != null)
+            {
+                doc.MainDocumentPart.DeletePart(stylesPart);
+            }
+
+            doc.Save();
+        }
+
+        template.Position = 0;
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<T>(name, template);
+
+        var stream = new MemoryStream();
+        await store.Render(name, model!, stream);
+        stream.Position = 0;
+        return stream;
+    }
+
+    [Test]
     public async Task NonSoloTokenPreservesSurroundingText()
     {
         using var stream = await Render("PO: {{ PurchaseOrder }} (required)", NewOrder());

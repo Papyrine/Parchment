@@ -968,7 +968,12 @@ public class Article
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
 
-When a model has an `[EditableField] [Html]` member, registration seeds a bullet and a numbered list definition into the template (via `WordNumbering.EnsureListDefinitions`). Word can apply a list only against a definition that already exists — creating one writes to the document-level `word/numbering.xml`, which read-only protection locks — so without the seed the bullet and numbering buttons stay greyed out even inside the editable block. Seeding a definition Word can reference makes the buttons live, so a user can add a list to a field that started with none. The definitions are unused clutter if no list is ever added, which is harmless; the seed is skipped entirely when protection is off (`ProtectionMode.None`) or no member is `[Html]`.
+When a model has an `[EditableField] [Html]` member, registration seeds list and style definitions into the template so Word's list buttons and style gallery work inside the editable block. Word can apply a list or a named style only against a definition that already exists — creating one writes to the document-level `word/numbering.xml` or `word/styles.xml`, which read-only protection locks — so without the seed the bullet and numbering buttons and the heading styles stay greyed out. Seeding definitions Word can reference makes them live, so a user can add a list or apply a heading to a field that started with neither:
+
+- `WordNumbering.EnsureListDefinitions` seeds a bullet and a numbered list definition.
+- `WordStyles.EnsureStyleDefinitions` seeds `Normal`, `Heading1`–`Heading6`, and `ListParagraph`.
+
+Both are idempotent (a definition the template already provides is left alone) and skipped entirely when protection is off (`ProtectionMode.None`) or no member is `[Html]`. The seeded definitions are unused clutter if never applied, which is harmless.
 
 ### Protection is cooperative, not security
 
