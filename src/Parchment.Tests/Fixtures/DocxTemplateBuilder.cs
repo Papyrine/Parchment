@@ -77,6 +77,56 @@ static class DocxTemplateBuilder
         return stream;
     }
 
+    /// <summary>
+    /// Builds a template whose body is a single one-row, two-column table: a label cell and a
+    /// value cell containing <paramref name="valueCellText"/> as its only paragraph (the
+    /// whole-cell editable-range shape). <paramref name="extraValueCellParagraph"/> appends a
+    /// second paragraph to the value cell to exercise the shared-cell fallback.
+    /// </summary>
+    public static MemoryStream BuildWithTable(
+        string labelText,
+        string valueCellText,
+        bool extraValueCellParagraph = false)
+    {
+        var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(new Body());
+            var body = mainPart.Document.Body!;
+
+            AddStyles(mainPart);
+
+            var valueCell = new TableCell(BuildParagraph(valueCellText));
+            if (extraValueCellParagraph)
+            {
+                valueCell.AppendChild(BuildParagraph("sibling"));
+            }
+
+            body.Append(
+                new Table(
+                    new TableProperties(
+                        new TableWidth
+                        {
+                            Type = TableWidthUnitValues.Auto
+                        }),
+                    new TableGrid(
+                        new GridColumn(),
+                        new GridColumn()),
+                    new TableRow(
+                        new TableCell(BuildParagraph(labelText)),
+                        valueCell)));
+            body.Append(new SectionProperties(new PageSize
+            {
+                Width = 6500,
+                Height = 8000
+            }));
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
     static IEnumerable<string> SplitParagraphs(string content)
     {
         if (string.IsNullOrEmpty(content))

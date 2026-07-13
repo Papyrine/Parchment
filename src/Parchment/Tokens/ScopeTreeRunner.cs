@@ -196,7 +196,7 @@ class ScopeTreeRunner(
                 mainPart,
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
 
-        (structuralReplacements ??= []).Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState)));
+        (structuralReplacements ??= []).Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState, host)));
     }
 
     /// <summary>

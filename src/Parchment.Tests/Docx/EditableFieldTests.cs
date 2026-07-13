@@ -904,6 +904,99 @@ public class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableAloneInTableCellUsesWholeCellPermRange()
+    {
+        using var stream = await RenderTableModel(
+            "Body:",
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>one</p><p>two</p><p>three</p>"
+            },
+            "html-editable-cell");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        // The control fills the cell; the editable exception is the whole cell (row-level
+        // colFirst/colLast), not a block range inside it — a tight range excludes the
+        // end-of-cell marker, which makes Word silently refuse list formatting on the
+        // cell's first/last paragraphs.
+        var sdt = FindSdtBlock(body, "Body");
+        var cell = (TableCell)sdt.Parent!;
+        await Assert.That(cell.Elements<Paragraph>().Any()).IsFalse();
+        await Assert.That(cell.Descendants<PermStart>().Any()).IsFalse();
+        await Assert.That(cell.Descendants<PermEnd>().Any()).IsFalse();
+
+        var row = (TableRow)cell.Parent!;
+        var start = row.Elements<PermStart>().Single();
+        await Assert.That(start.ColumnFirst!.Value).IsEqualTo(1);
+        await Assert.That(start.ColumnLast!.Value).IsEqualTo(1);
+        await Assert.That(start.EditorGroup!.Value).IsEqualTo(RangePermissionEditingGroupValues.Everyone);
+        await Assert.That(row.Elements<PermEnd>().Single().Id!.Value).IsEqualTo(start.Id!.Value);
+        // permStart precedes the cells; permEnd follows them.
+        await Assert.That(row.ChildElements[0]).IsEqualTo(start);
+        await Assert.That(row.ChildElements[row.ChildElements.Count - 1]).IsTypeOf<PermEnd>();
+
+        var sdtId = sdt.SdtProperties!.GetFirstChild<SdtId>()!.Val!.Value;
+        await Assert.That(start.Id!.Value).IsEqualTo(sdtId);
+
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+        await Assert.That(validator.Validate(doc).Select(_ => $"{_.Description} @ {_.Path?.XPath}")).IsEmpty();
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        var field = result.Fields.Single(_ => _.Path == "Body");
+        await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableSharingTableCellKeepsBlockPermRange()
+    {
+        using var stream = await RenderTableModel(
+            "Body:",
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = "<p>content</p>"
+            },
+            "html-editable-cell-shared",
+            extraValueCellParagraph: true);
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        // A sibling paragraph shares the cell, so a whole-cell range would expose it to
+        // editing — the tight block range around the control is kept instead.
+        var sdt = FindSdtBlock(body, "Body");
+        var cell = (TableCell)sdt.Parent!;
+        await Assert.That(cell.Elements<PermStart>().Single().ColumnFirst).IsNull();
+        await Assert.That(cell.Elements<PermEnd>().Count()).IsEqualTo(1);
+        var row = (TableRow)cell.Parent!;
+        await Assert.That(row.Elements<PermStart>().Any()).IsFalse();
+        await Assert.That(row.Elements<PermEnd>().Any()).IsFalse();
+    }
+
+    static async Task<MemoryStream> RenderTableModel<T>(
+        string labelText,
+        string valueCellText,
+        T model,
+        string name,
+        bool extraValueCellParagraph = false)
+    {
+        using var template = DocxTemplateBuilder.BuildWithTable(labelText, valueCellText, extraValueCellParagraph);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<T>(name, template);
+
+        var stream = new MemoryStream();
+        await store.Render(name, model!, stream);
+        stream.Position = 0;
+        return stream;
+    }
+
+    [Test]
     public async Task HtmlEditableOutputValidates()
     {
         using var stream = await RenderModel(
