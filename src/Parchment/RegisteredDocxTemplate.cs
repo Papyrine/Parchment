@@ -36,6 +36,10 @@ class RegisteredDocxTemplate(
                 Anchors.StripAll(root);
             }
 
+            // Stamp compatibilityMode=15 so Word opens the output normally instead of in
+            // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
+            SettingsCompatibility.Apply(mainPart);
+
             doc.Save();
         }
 
