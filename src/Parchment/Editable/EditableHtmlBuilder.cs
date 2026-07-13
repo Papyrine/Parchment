@@ -13,7 +13,7 @@ using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 /// </summary>
 static class EditableHtmlBuilder
 {
-    const string placeholderText = "Click or tap here to enter text.";
+    const string placeholderText = "Enter rich text";
 
     public static IReadOnlyList<OpenXmlElement> Build(
         EditableEntry entry,

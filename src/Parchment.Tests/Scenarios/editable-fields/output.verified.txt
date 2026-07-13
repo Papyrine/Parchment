@@ -3,4 +3,4 @@ Purchase order: PO-77041
 Approved: ☒
 Status: Submitted
 Notes:
-Click or tap here to enter text.
+Enter text

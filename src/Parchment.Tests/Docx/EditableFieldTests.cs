@@ -294,6 +294,42 @@ public class EditableFieldTests
         await Assert.That(instructions.InnerText).IsEqualTo("Line oneLine two");
     }
 
+    public class PlaceholderKindsModel
+    {
+        [EditableField]
+        public QuoteStatus? Choice { get; set; }
+
+        [EditableField]
+        public Date? When { get; set; }
+
+        [EditableField]
+        public string? Text { get; set; }
+    }
+
+    [Test]
+    public async Task PlaceholderTextMatchesControlKind()
+    {
+        using var stream = await RenderModel(
+            """
+            {{ Choice }}
+
+            {{ When }}
+
+            {{ Text }}
+            """,
+            new PlaceholderKindsModel(),
+            "placeholder-kinds");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        // Each unset control shows the placeholder for its own kind — a dropdown reading "Enter text"
+        // looks like a broken text field.
+        await Assert.That(FindSdt(body, "Choice").InnerText).IsEqualTo("Choose an item");
+        await Assert.That(FindSdt(body, "When").InnerText).IsEqualTo("Enter a date");
+        await Assert.That(FindSdt(body, "Text").InnerText).IsEqualTo("Enter text");
+    }
+
     [Test]
     public async Task TemporalKindsRenderWithCorrectControls()
     {
@@ -949,6 +985,7 @@ public class EditableFieldTests
         using var doc = WordprocessingDocument.Open(stream, false);
         var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
         await Assert.That(sdt.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+        await Assert.That(sdt.InnerText).IsEqualTo("Enter rich text");
 
         stream.Position = 0;
         var result = ParchmentExtractor.Extract<EditableArticle>(stream);

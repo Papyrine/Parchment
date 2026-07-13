@@ -946,7 +946,7 @@ result.ApplyTo(model);
 | numeric types | plain text | text parsed with the extraction culture |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
-Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder and extract as `Empty`. Members must have a public non-init setter so extraction can write back.
+Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`. Members must have a public non-init setter so extraction can write back.
 
 **Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
 
