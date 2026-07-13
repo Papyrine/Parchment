@@ -13,7 +13,11 @@ using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 /// </summary>
 static class EditableFieldBuilder
 {
-    const string placeholderText = "Click or tap here to enter text.";
+    // Kind-appropriate placeholder text: a dropdown showing "Enter text" reads as a broken text field,
+    // not a picker. Short imperative, no trailing period.
+    const string textPlaceholder = "Enter text";
+    const string datePlaceholder = "Enter a date";
+    const string dropDownPlaceholder = "Choose an item";
 
     public static IReadOnlyList<OpenXmlElement> Build(
         EditableEntry entry,
@@ -97,7 +101,7 @@ static class EditableFieldBuilder
 
         if (string.IsNullOrEmpty(value))
         {
-            return (kind, PlaceholderRun(sitePr), true);
+            return (kind, PlaceholderRun(sitePr, textPlaceholder), true);
         }
 
         return (kind, TextRun(value, sitePr, entry.MultiLine), false);
@@ -108,7 +112,7 @@ static class EditableFieldBuilder
         var kind = new SdtContentText();
         if (value == null)
         {
-            return (kind, PlaceholderRun(sitePr), true);
+            return (kind, PlaceholderRun(sitePr, textPlaceholder), true);
         }
 
         var text = ((IFormattable)value).ToString(null, culture);
@@ -164,7 +168,7 @@ static class EditableFieldBuilder
 
         if (value == null)
         {
-            return (kind, PlaceholderRun(sitePr), true);
+            return (kind, PlaceholderRun(sitePr, datePlaceholder), true);
         }
 
         // Only DateOnly and DateTime reach here (see BuildKind). DateTime's time-of-day is
@@ -199,7 +203,7 @@ static class EditableFieldBuilder
         var kind = new SdtContentText();
         if (string.IsNullOrEmpty(text))
         {
-            return (kind, PlaceholderRun(sitePr), true);
+            return (kind, PlaceholderRun(sitePr, textPlaceholder), true);
         }
 
         return (kind, TextRun(text, sitePr, multiLine: false), false);
@@ -220,7 +224,7 @@ static class EditableFieldBuilder
 
         if (value == null)
         {
-            return (kind, PlaceholderRun(sitePr), true);
+            return (kind, PlaceholderRun(sitePr, dropDownPlaceholder), true);
         }
 
         return (kind, TextRun(value.ToString()!, sitePr, multiLine: false), false);
@@ -268,7 +272,7 @@ static class EditableFieldBuilder
         return run;
     }
 
-    static Run PlaceholderRun(RunProperties? sitePr)
+    static Run PlaceholderRun(RunProperties? sitePr, string text)
     {
         var pr = ClonePr(sitePr);
         // Word's built-in grey placeholder look. The style may not exist in the template's
@@ -281,7 +285,7 @@ static class EditableFieldBuilder
             0);
         var run = new Run(pr);
         run.AppendChild(
-            new Text(placeholderText)
+            new Text(text)
             {
                 Space = SpaceProcessingModeValues.Preserve
             });

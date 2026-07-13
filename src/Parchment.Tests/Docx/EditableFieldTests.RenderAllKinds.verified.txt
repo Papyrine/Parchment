@@ -4,6 +4,6 @@ Approved: ☒
 Delivery: 2026-07-06
 Status: Submitted
 Discount: 10
-Notes: Click or tap here to enter text.
+Notes: Enter text
 Line one
 Line two
