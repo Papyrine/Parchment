@@ -1,14 +1,20 @@
-using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
-
 /// <summary>
 /// Builds the block-level editable-HTML region. The block content control (a rich-text
 /// <c>w:sdt</c> — no kind element, which is what Word treats as rich text) carries the dotted
-/// model path as its <c>w:tag</c> (the round-trip key) and <c>w:lock="sdtLocked"</c> so users can
-/// edit the formatted content but not delete the control. A perm range (edGrp="everyone") punches
+/// model path as its <c>w:tag</c> (the round-trip key). A perm range (edGrp="everyone") punches
 /// an editable exception through the document's read-only protection — the block-level analogue
 /// of <see cref="EditableFieldBuilder"/>. Rendered HTML blocks (from OpenXmlHtml's
 /// <c>WordHtmlConverter</c>) are moved into the control's <c>sdtContent</c>; an empty value
 /// renders the grey placeholder paragraph.
+///
+/// Unlike <see cref="EditableFieldBuilder"/>, no <c>w:lock="sdtLocked"</c>: Word silently refuses
+/// paragraph formatting (bullets, indents) on a locked control whenever the selection spans
+/// multiple paragraphs and includes the control's first or last one — verified in Word against
+/// otherwise-identical variants differing only in the lock. Rich-text fields exist precisely for
+/// multi-paragraph formatted content, so the lock breaks their core use. The trade-off is that a
+/// user can delete the emptied control itself (the enclosing read-only protection still prevents
+/// selecting across it from outside); extraction reports the field as missing rather than
+/// silently losing content.
 ///
 /// The perm range takes one of two shapes:
 /// <list type="bullet">
@@ -47,10 +53,6 @@ static class EditableHtmlBuilder
         sdtPr.AppendChild(new SdtId
         {
             Val = id
-        });
-        sdtPr.AppendChild(new SdtLock
-        {
-            Val = LockingValues.SdtLocked
         });
 
         var isPlaceholder = content.Count == 0;

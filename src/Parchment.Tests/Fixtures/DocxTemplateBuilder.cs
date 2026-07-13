@@ -81,12 +81,14 @@ static class DocxTemplateBuilder
     /// Builds a template whose body is a single one-row, two-column table: a label cell and a
     /// value cell containing <paramref name="valueCellText"/> as its only paragraph (the
     /// whole-cell editable-range shape). <paramref name="extraValueCellParagraph"/> appends a
-    /// second paragraph to the value cell to exercise the shared-cell fallback.
+    /// second paragraph to the value cell to exercise the shared-cell fallback;
+    /// <paramref name="bodyParagraphText"/> prepends a body paragraph before the table.
     /// </summary>
     public static MemoryStream BuildWithTable(
         string labelText,
         string valueCellText,
-        bool extraValueCellParagraph = false)
+        bool extraValueCellParagraph = false,
+        string? bodyParagraphText = null)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -96,6 +98,11 @@ static class DocxTemplateBuilder
             var body = mainPart.Document.Body!;
 
             AddStyles(mainPart);
+
+            if (bodyParagraphText != null)
+            {
+                body.Append(BuildParagraph(bodyParagraphText));
+            }
 
             var valueCell = new TableCell(BuildParagraph(valueCellText));
             if (extraValueCellParagraph)

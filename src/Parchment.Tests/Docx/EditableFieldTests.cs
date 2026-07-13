@@ -878,7 +878,7 @@ public class EditableFieldTests
     }
 
     [Test]
-    public async Task HtmlEditableRendersLockedEditableBlock()
+    public async Task HtmlEditableRendersUnlockedEditableBlock()
     {
         using var stream = await RenderModel(
             "{{ Body }}",
@@ -894,7 +894,10 @@ public class EditableFieldTests
 
         var sdt = FindSdtBlock(body, "Body");
         await Assert.That(sdt.SdtProperties!.GetFirstChild<SdtAlias>()!.Val!.Value).IsEqualTo("Body");
-        await Assert.That(sdt.SdtProperties.GetFirstChild<SdtLock>()!.Val!.Value).IsEqualTo(LockingValues.SdtLocked);
+        // No sdtLocked: Word refuses multi-paragraph list formatting on a locked control when the
+        // selection includes its first or last paragraph, and multi-paragraph formatted content is
+        // the whole point of a rich-text field.
+        await Assert.That(sdt.SdtProperties.GetFirstChild<SdtLock>()).IsNull();
         // Rich content: the formatting survives into the editable block.
         await Assert.That(sdt.Descendants<Bold>().Any()).IsTrue();
         await Assert.That(sdt.InnerText).IsEqualTo("Hello world");
@@ -949,6 +952,45 @@ public class EditableFieldTests
         var result = ParchmentExtractor.Extract<EditableArticle>(stream);
         var field = result.Fields.Single(_ => _.Path == "Body");
         await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
+    }
+
+    public class RichTextShapes
+    {
+        [Html]
+        [EditableField]
+        public required string BodyHosted { get; set; }
+
+        [Html]
+        [EditableField]
+        public required string CellHosted { get; set; }
+    }
+
+    [Test]
+    public async Task RenderHtmlEditableShapes()
+    {
+        // Snapshots the two rich-text shapes end to end: a body-hosted control (tight perm wrap,
+        // no sdtLocked) and a sole-content-of-cell control (row-level whole-cell perm range) —
+        // the markup Word verification showed is required for list formatting to work on every
+        // paragraph of a protected rich-text field.
+        using var template = DocxTemplateBuilder.BuildWithTable(
+            "Cell hosted:",
+            "{{ CellHosted }}",
+            bodyParagraphText: "{{ BodyHosted }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<RichTextShapes>("html-editable-shapes", template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            "html-editable-shapes",
+            new RichTextShapes
+            {
+                BodyHosted = "<p>body intro</p><ul><li>body first</li><li>body second</li></ul>",
+                CellHosted = "<p>cell intro</p><ul><li>cell first</li><li>cell second</li></ul>"
+            },
+            stream);
+
+        stream.Position = 0;
+        await Verify(stream, "docx");
     }
 
     [Test]
