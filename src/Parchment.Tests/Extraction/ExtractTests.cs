@@ -74,6 +74,29 @@ public class ExtractTests
     }
 
     [Test]
+    public async Task FormattingOnPlainFieldDoesNotLeakIntoValue()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        // A plain-text control sits inside the editable range, so Word lets a user bold/italicise it.
+        // That formatting is cosmetic — extraction reads w:t only and must ignore w:rPr, so the value
+        // comes back identical to unformatted text. Split across two runs to prove concatenation too.
+        Edit(stream, body =>
+        {
+            var sdt = FindSdt(body, "PurchaseOrder");
+            sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            content.RemoveAllChildren();
+            content.AppendChild(new Run(new RunProperties(new Bold()), new Text("PO-")));
+            content.AppendChild(new Run(new RunProperties(new Italic()), new Text("BOLD")));
+        });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("PO-BOLD");
+    }
+
+    [Test]
     public async Task DeletedControlReportsMissing()
     {
         using var stream = await RenderOrder(EditableFieldTests.NewOrder());
