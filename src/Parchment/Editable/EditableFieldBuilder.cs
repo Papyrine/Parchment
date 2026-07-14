@@ -214,10 +214,15 @@ static class EditableFieldBuilder
         var kind = new SdtContentDropDownList();
         foreach (var name in Enum.GetNames(entry.ClrType))
         {
+            // Value is the member name — the canonical round-trip key extraction reads back. DisplayText
+            // is the friendly label, rendered through Excelsior so a dropdown matches inline `{{ enum }}`
+            // substitutions and Excelsior table cells: a [Display] attribute or ValueRenderer.ForEnums
+            // override if set, otherwise the humanized member name.
+            var member = (Enum)Enum.Parse(entry.ClrType, name);
             kind.AppendChild(
                 new ListItem
                 {
-                    DisplayText = name,
+                    DisplayText = EnumRender.Render(member),
                     Value = name
                 });
         }
@@ -227,7 +232,9 @@ static class EditableFieldBuilder
             return (kind, PlaceholderRun(sitePr, dropDownPlaceholder), true);
         }
 
-        return (kind, TextRun(value.ToString()!, sitePr, multiLine: false), false);
+        // The visible text must be the selected item's DisplayText, so extraction maps it back via the
+        // matching w:listItem.
+        return (kind, TextRun(EnumRender.Render((Enum)value), sitePr, multiLine: false), false);
     }
 
     static Run TextRun(string value, RunProperties? sitePr, bool multiLine)

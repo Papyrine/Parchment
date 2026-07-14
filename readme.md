@@ -942,7 +942,7 @@ result.ApplyTo(model);
 | `DateOnly` / `DateTime` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | canonical `w:fullDate`, maintained by Word's picker |
 | `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
 | `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
-| enums | dropdown, one item per member | `w:listItem` value |
+| enums | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
 | numeric types | plain text | text parsed with the extraction culture |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
@@ -952,6 +952,8 @@ Nullable variants are supported except `bool?` — a checkbox cannot represent n
 
 - A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
 - The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
+
+**Friendly enum labels.** A dropdown shows a friendly label but stores the member name. The label comes from the same [Excelsior](https://github.com/SimonCropp/Excelsior) rendering used for inline `{{ enum }}` substitutions and Excelsior table cells: a `[Display(Name = …)]` / `[Description]` attribute or a global `ValueRenderer.ForEnums` override if configured, otherwise the humanized member name (`NotYetCommenced` → `Not yet commenced`). Only the *display* is affected — each `w:listItem` keeps the member name as its `w:val`, so extraction reads the enum back from that regardless of the label, and no `[Display]` attribute or culture setting can break the round-trip.
 
 ### Rich text (HTML)
 

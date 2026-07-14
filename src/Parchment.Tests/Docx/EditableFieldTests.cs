@@ -330,6 +330,41 @@ public class EditableFieldTests
         await Assert.That(FindSdt(body, "Text").InnerText).IsEqualTo("Enter text");
     }
 
+    public enum ReviewStage
+    {
+        NotYetStarted,
+
+        [System.ComponentModel.DataAnnotations.Display(Name = "Under review")]
+        InProgress
+    }
+
+    public class ReviewModel
+    {
+        [EditableField]
+        public ReviewStage Stage { get; set; }
+    }
+
+    [Test]
+    public async Task DropDownShowsFriendlyEnumLabelsButRoundTripsTheMemberName()
+    {
+        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.InProgress }, "enum-friendly");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var sdt = FindSdt(doc.MainDocumentPart!.Document!.Body!, "Stage");
+        var items = sdt.SdtProperties!.GetFirstChild<SdtContentDropDownList>()!.Elements<ListItem>().ToList();
+
+        // DisplayText is friendly (humanized, or the [Display] name); Value stays the member name.
+        await Assert.That(items.Select(_ => _.DisplayText!.Value!)).IsEquivalentTo(["Not yet started", "Under review"]);
+        await Assert.That(items.Select(_ => _.Value!.Value!)).IsEquivalentTo(["NotYetStarted", "InProgress"]);
+        // The visible text is the selected item's friendly label.
+        await Assert.That(sdt.InnerText).IsEqualTo("Under review");
+
+        // ...and it round-trips back to the enum value via the list item's Value.
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<ReviewModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Stage").Value).IsEqualTo(ReviewStage.InProgress);
+    }
+
     [Test]
     public async Task TemporalKindsRenderWithCorrectControls()
     {
