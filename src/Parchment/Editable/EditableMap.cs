@@ -25,6 +25,13 @@ sealed class EditableMap
     public bool IsEmpty => entries.Count == 0 && collections.Count == 0;
 
     /// <summary>
+    /// Whether any editable <em>collection</em> (repeating-section) member is registered. The loop
+    /// renderer checks this before probing a loop's source against the collection map, so a template
+    /// with no editable collections skips that lookup entirely.
+    /// </summary>
+    public bool HasCollections => collections.Count > 0;
+
+    /// <summary>
     /// Whether any reachable editable member — directly or inside an editable collection's element
     /// type — is rich-text HTML. Such a field lets the user apply bullets and numbering, which Word
     /// can only do against a list definition that already exists (see

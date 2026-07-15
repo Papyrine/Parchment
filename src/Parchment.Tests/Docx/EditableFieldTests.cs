@@ -366,6 +366,29 @@ public class EditableFieldTests
     }
 
     [Test]
+    public async Task DropDownUserPickingAFriendlyLabelExtractsToTheEnum()
+    {
+        // Render one value, then simulate the user choosing a different option in Word — which replaces
+        // the control text with that item's friendly label ("Under review"), NOT the member name.
+        // Extraction must resolve the label back through the w:listItem, so the read value differs from
+        // what was rendered — proving it isn't just echoing the rendered member.
+        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.NotYetStarted }, "enum-user-pick");
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdt(doc.MainDocumentPart!.Document!.Body!, "Stage");
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            content.RemoveAllChildren();
+            content.AppendChild(new Run(new Text("Under review")));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<ReviewModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Stage").Value).IsEqualTo(ReviewStage.InProgress);
+    }
+
+    [Test]
     public async Task TemporalKindsRenderWithCorrectControls()
     {
         using var stream = await Render(

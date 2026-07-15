@@ -19,6 +19,16 @@ class RegisteredDocxTemplate(
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             var mainPart = doc.MainDocumentPart!;
+            var mainPartUri = mainPart.Uri.ToString();
+            // Materialize the part roots once, keyed by uri. The previous code re-enumerated all
+            // parts (re-allocating each part's Uri.ToString()) to locate every part's root, and
+            // enumerated a second time for the strip pass — O(parts²) plus redundant string allocs.
+            var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
+            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            {
+                partRoots[uri] = root;
+            }
+
             var numberingState = new WordNumberingState(mainPart);
             var editableState = new EditableState();
             // Cache the StyleSet per render — Excelsior / Format / OpenXml / Mutate tokens all
@@ -28,18 +38,21 @@ class RegisteredDocxTemplate(
             foreach (var part in parts)
             {
                 cancel.ThrowIfCancellationRequested();
-                await RenderPartAsync(doc, mainPart, part, context, model, numberingState, editableState, styles);
+                if (!partRoots.TryGetValue(part.PartUri, out var root))
+                {
+                    continue;
+                }
+
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, styles);
             }
 
-            foreach (var (_, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var root in partRoots.Values)
             {
                 Anchors.StripAll(root);
             }
 
-            // Stamp compatibilityMode=15 so Word opens the output normally instead of in
-            // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
-            SettingsCompatibility.Apply(mainPart);
-
+            // compatibilityMode=15 is baked into the registration snapshot (see
+            // TemplateStore.RegisterDocxTemplate), so no per-render stamp is needed here.
             doc.Save();
         }
 
@@ -47,29 +60,12 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(WordprocessingDocument doc, MainDocumentPart mainPart, PartScopeTree part, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, Lazy<StyleSet> styles)
     {
-        OpenXmlCompositeElement? root = null;
-        foreach (var (uri, candidate) in DocxCloner.EnumerateParts(doc))
-        {
-            if (uri == part.PartUri)
-            {
-                root = candidate;
-                break;
-            }
-        }
-
-        if (root == null)
-        {
-            return;
-        }
-
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
         // as plain read-only text — deliberate (e.g. an editable PO number in the body can be
         // mirrored read-only in the footer).
-        var isBody = part.PartUri == mainPart.Uri.ToString();
-
         var map = Anchors.BuildMap(root);
         var runner = new ScopeTreeRunner(
             Name,

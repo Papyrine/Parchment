@@ -96,7 +96,10 @@ class ScopeTreeRunner(
         List<(DocxTokenSite site, object value)>? soloStructuralTokens = null;
         var splitQueued = false;
         var tokenCount = node.Tokens.Count;
-        var hasEditableSibling = HasEditableToken(node);
+        // Only a structural-producing token needs to know whether an editable field shares the
+        // paragraph, and that is the rare path — so defer the scan until one actually appears
+        // rather than running HasEditableToken on every substitution node.
+        bool? hasEditableSibling = null;
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
@@ -121,7 +124,8 @@ class ScopeTreeRunner(
 
             if (evaluated is MarkdownToken or HtmlToken or OpenXmlToken)
             {
-                if (hasEditableSibling)
+                hasEditableSibling ??= HasEditableToken(node);
+                if (hasEditableSibling.Value)
                 {
                     // Structural splice/split clones paragraph halves, which would corrupt the
                     // editable field's perm-range markers. Statically-known cases are rejected
@@ -525,10 +529,12 @@ class ScopeTreeRunner(
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
         // rather than the read-only inline expansion. Body-only: header/footer parts get
-        // EditableMap.Empty, so TryGetCollection is false there and the loop stays read-only.
-        var sourceRefs = IdentifierVisitor.Collect(loop.LoopSource);
-        if (sourceRefs.Count > 0 &&
-            editables.TryGetCollection(sourceRefs[0].Dotted, out var collectionEntry))
+        // EditableMap.Empty, so HasCollections is false there and the loop stays read-only.
+        // loop.SourceReference is precomputed at tree-build time, so the common (no editable
+        // collections) case costs a single bool check and never touches the AST.
+        if (editables.HasCollections &&
+            loop.SourceReference is { } sourceReference &&
+            editables.TryGetCollection(sourceReference, out var collectionEntry))
         {
             await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
             foreach (var element in bodyElements)

@@ -106,11 +106,17 @@ static class ScopeTreeBuilder
         }
 
         var closing = queue.Dequeue();
+        var loopSource = opening.Block!.LoopSource!;
+        // Resolve the source's first dotted reference once, here at build time, so ProcessLoopAsync
+        // never has to run IdentifierVisitor.Collect (which allocates a visitor + path lists) per loop.
+        var sourceRefs = IdentifierVisitor.Collect(loopSource);
+        var sourceReference = sourceRefs.Count > 0 ? sourceRefs[0].Dotted : null;
         return new(
             opening.AnchorName,
             closing.AnchorName,
             opening.Block!.LoopVariable!,
-            opening.Block!.LoopSource!,
+            loopSource,
+            sourceReference,
             body);
     }
 

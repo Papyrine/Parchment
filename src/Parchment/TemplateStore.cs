@@ -76,6 +76,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
             }
 
+            // Bake compatibilityMode=15 into the registration snapshot so every render inherits it
+            // from the clone rather than re-stamping (a settings-part scan) on each render. It is
+            // model-independent, so registration is the right place. See SettingsCompatibility.
+            SettingsCompatibility.Apply(doc.MainDocumentPart!);
+
             doc.Save();
 
             parts = ExtractParts(doc, name);

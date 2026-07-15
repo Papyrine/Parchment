@@ -8,7 +8,10 @@ static class Anchors
 {
     public const string Prefix = "parchment-anchor-";
 
-    public static string EnsureOn(Paragraph paragraph)
+    // Seed a per-part id counter from MaxBookmarkId once, then pass it by ref so each inserted
+    // anchor consumes the next id. The previous per-paragraph NextBookmarkId re-walked the whole
+    // part's BookmarkStart descendants on every call — O(paragraphs²) across a token-dense part.
+    public static string EnsureOn(Paragraph paragraph, ref int nextId)
     {
         var existing = paragraph
             .Elements<BookmarkStart>()
@@ -21,15 +24,15 @@ static class Anchors
         }
 
         var name = Prefix + Guid.NewGuid().ToString("N");
-        var id = NextBookmarkId(paragraph);
+        var idText = (nextId++).ToString();
         var start = new BookmarkStart
         {
-            Id = id.ToString(),
+            Id = idText,
             Name = name
         };
         var end = new BookmarkEnd
         {
-            Id = id.ToString()
+            Id = idText
         };
         InsertAfterProperties(paragraph, start, end);
         return name;
@@ -111,14 +114,15 @@ static class Anchors
         }
     }
 
-    static int NextBookmarkId(Paragraph paragraph)
+    /// <summary>
+    /// The highest numeric bookmark id already present in <paramref name="root"/>. Callers seed a
+    /// per-part id counter from this once (starting at result + 1) and increment locally as anchors
+    /// are inserted, rather than re-scanning the part for every anchor. Ids only need to be unique
+    /// within the part — Parchment anchors are located by name and stripped before save, so
+    /// cross-part id collisions never reach the output.
+    /// </summary>
+    public static int MaxBookmarkId(OpenXmlCompositeElement root)
     {
-        var root = (OpenXmlCompositeElement?)paragraph.Ancestors<Body>().FirstOrDefault() ??
-                   (OpenXmlCompositeElement?)paragraph.Ancestors<Header>().FirstOrDefault() ??
-                   (OpenXmlCompositeElement?)paragraph.Ancestors<Footer>().FirstOrDefault() ??
-                   paragraph.Ancestors<OpenXmlCompositeElement>().LastOrDefault() ??
-                   paragraph;
-
         var max = 0;
         foreach (var b in root.Descendants<BookmarkStart>())
         {
@@ -128,7 +132,7 @@ static class Anchors
             }
         }
 
-        return max + 1;
+        return max;
     }
 
     static void InsertAfterProperties(Paragraph paragraph, BookmarkStart start, BookmarkEnd end)

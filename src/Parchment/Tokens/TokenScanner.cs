@@ -7,6 +7,9 @@ static class TokenScanner
     public static List<ParagraphClassification> Scan(OpenXmlCompositeElement partRoot, string templateName, string partUri)
     {
         var results = new List<ParagraphClassification>();
+        // Seed the anchor id counter once for the whole part, then hand out incrementing ids as
+        // anchors are inserted — see Anchors.MaxBookmarkId / EnsureOn.
+        var nextBookmarkId = Anchors.MaxBookmarkId(partRoot) + 1;
         foreach (var paragraph in partRoot.Descendants<Paragraph>().ToList())
         {
             var classification = ClassifyParagraph(paragraph, templateName, partUri);
@@ -15,7 +18,7 @@ static class TokenScanner
                 continue;
             }
 
-            var anchor = Anchors.EnsureOn(paragraph);
+            var anchor = Anchors.EnsureOn(paragraph, ref nextBookmarkId);
             results.Add(classification with { AnchorName = anchor });
         }
 
