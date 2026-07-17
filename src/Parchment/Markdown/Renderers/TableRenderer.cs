@@ -52,10 +52,16 @@ class TableRenderer :
             }
         }
 
-        // No width hints from Markdig (totalPct == 0) or every column has the same width —
-        // either way the default Word auto-distribution yields the same layout, so skip the
-        // explicit emission to keep the docx output minimal. Source-aligned pipe tables are
-        // filtered upstream via OpenXmlMarkdownRenderer.SkipColumnWidths.
+        // Skip when Markdig gave no width hints (totalPct == 0), and when every column is the same
+        // width. Uniform separators are the conventional way to write a table (`| --- | --- |`)
+        // rather than a request for equal columns, so they are treated as "no opinion" and the
+        // table is left on Word's autofit, which sizes columns to their content. Source-aligned
+        // pipe tables — the other conventional style, where the dashes are padded for readability —
+        // are filtered upstream via OpenXmlMarkdownRenderer.SkipColumnWidths.
+        //
+        // The cost is that genuinely equal columns cannot be stated: equal dash counts are
+        // indistinguishable from the conventional separator. Expressing that needs explicit width
+        // syntax, not a dash-count heuristic.
         if (totalPct <= 0 || allEqual)
         {
             return null;

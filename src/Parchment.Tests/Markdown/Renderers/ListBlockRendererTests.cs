@@ -23,6 +23,38 @@ public class ListBlockRendererTests
         await VerifyDocument(md);
     }
 
+    // Every level used to be emitted at ilvl=0, so nesting was lost: the marker never changed and
+    // the indentation the abstractNum's level supplies never applied.
+    [Test]
+    public async Task NestedListItemsUseTheirNestingLevel()
+    {
+        var paragraphs = RenderList("- outer\n  - inner\n    - innermost\n- outer two");
+
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 1, 2, 0]);
+    }
+
+    // Word defines nine levels per abstractNum; a deeper list clamps to the last rather than
+    // emitting an ilvl with no matching level, which renders unindented and unmarked.
+    [Test]
+    public async Task NestingDeeperThanNineLevelsClampsToTheLast()
+    {
+        var markdown = new StringBuilder();
+        for (var depth = 0; depth < 12; depth++)
+        {
+            markdown.Append(new string(' ', depth * 2)).Append("- item").Append('\n');
+        }
+
+        var paragraphs = RenderList(markdown.ToString());
+
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 8]);
+    }
+
     [Test]
     public async Task OrderedListProducesNumberingInstance()
     {

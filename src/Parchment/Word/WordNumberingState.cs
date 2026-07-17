@@ -93,14 +93,29 @@ class WordNumberingState(MainDocumentPart mainPart)
         }
     }
 
+    // Word writes all nine levels for every abstractNum, and a paragraph whose ilvl has no matching
+    // level renders unindented with no marker. The abstractNum is cached per format, so defining the
+    // full set costs one definition rather than one per list.
+    internal const int MaxIlvl = 8;
+
+    // Word cycles these three glyphs across the nine levels.
+    static readonly (string Glyph, string Font)[] bulletGlyphs =
+    [
+        ("\uF0B7", "Symbol"),
+        ("o", "Courier New"),
+        ("\uF0A7", "Wingdings")
+    ];
+
     int CreateBulletAbstract(Numbering numbering)
     {
         var id = nextAbstractNumId++;
         var abstractNum = new AbstractNum { AbstractNumberId = id };
-        abstractNum.Append(
-            BuildBulletLevel(0, "\uF0B7", "Symbol"),
-            BuildBulletLevel(1, "o", "Courier New"),
-            BuildBulletLevel(2, "\uF0A7", "Wingdings"));
+        for (var ilvl = 0; ilvl <= MaxIlvl; ilvl++)
+        {
+            var (glyph, font) = bulletGlyphs[ilvl % bulletGlyphs.Length];
+            abstractNum.Append(BuildBulletLevel(ilvl, glyph, font));
+        }
+
         numbering.InsertAt(abstractNum, 0);
         return id;
     }
@@ -109,10 +124,11 @@ class WordNumberingState(MainDocumentPart mainPart)
     {
         var id = nextAbstractNumId++;
         var abstractNum = new AbstractNum { AbstractNumberId = id };
-        abstractNum.Append(
-            BuildOrderedLevel(0, format),
-            BuildOrderedLevel(1, format),
-            BuildOrderedLevel(2, format));
+        for (var ilvl = 0; ilvl <= MaxIlvl; ilvl++)
+        {
+            abstractNum.Append(BuildOrderedLevel(ilvl, format));
+        }
+
         numbering.InsertAt(abstractNum, 0);
         return id;
     }

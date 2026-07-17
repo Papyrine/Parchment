@@ -1253,7 +1253,7 @@ Behaviour notes:
   | A    | Short                 | 1     |
   ```
 
-- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators therefore mean "no opinion on widths", not "equal widths" — to pin equal columns, vary the separator dash counts to state them explicitly.
+- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators are the conventional way to write a separator row rather than a request for equal columns, so they are read as "no opinion on widths". The consequence is that equal columns cannot currently be stated at all — equal dash counts are indistinguishable from the conventional separator, so relative widths are the only thing dash counts can express.
 - Tables nested in blockquotes or list items are auto-sized to fit their indented container, so the explicit dxa column widths are skipped regardless of dash counts.
 
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
