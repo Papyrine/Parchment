@@ -1,5 +1,41 @@
 public class BindingScenarioTests
 {
+    public class DotxModel
+    {
+        public required string Title { get; init; }
+    }
+
+    // RegisterDocxTemplate clones the supplied package and the clone becomes the output, so a .dotx
+    // template produced a template-typed package that Word opened as a new unsaved document.
+    [Test]
+    public async Task DotxTemplateProducesDocumentTypedOutput()
+    {
+        using var dotx = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(dotx, WordprocessingDocumentType.Template))
+        {
+            var main = doc.AddMainDocumentPart();
+            main.Document = new(new Body(new Paragraph(new Run(new Text("{{ Title }}")))));
+        }
+
+        dotx.Position = 0;
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<DotxModel>("dotx", dotx);
+
+        using var output = new MemoryStream();
+        await store.Render(
+            "dotx",
+            new DotxModel
+            {
+                Title = "x"
+            },
+            output);
+        output.Position = 0;
+
+        using var result = WordprocessingDocument.Open(output, false);
+        await Assert.That(result.DocumentType).IsEqualTo(WordprocessingDocumentType.Document);
+    }
+
     // -- #1 public fields ----------------------------------------------------
 
     public class FieldModel

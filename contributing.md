@@ -307,6 +307,10 @@ Full rationale and alternatives in `readme.md` → "Source generator (recommende
 
 ## Non-obvious gotchas
 
+- **`readme.md` is generated; `src/Parchment/nuget-readme.md` is hand-maintained**: every code block in the root readme is a `<!-- snippet: X -->` / `<!-- endSnippet -->` pair that MarkdownSnippets extracts from compiled, executing tests (config: `src/mdsnippets.json`, run on every push by `.github/workflows/on-push-do-docs.yml`, which auto-commits the regenerated file). A signature change breaks the build and the readme is rewritten, so those blocks cannot drift. **`nuget-readme.md` contains no snippet markers**, so its fences compile against nothing and rot silently — and it is the nuget.org landing page (`Parchment.csproj` `PackageReadmeFile`). Every sample in it had drifted before being corrected by hand. It is deliberately not snippet-ified: MarkdownSnippets appends root-relative `snippet source` links, which resolve on GitHub but 404 on nuget.org. **Any public signature change needs a manual check of `nuget-readme.md`.**
+
+- **`mdsnippets.json` sets `ValidateContent: true`**, which rejects a configured list of informal words across **every** markdown file in the tree — including scratch files that were never checked in. A stray note dropped in the repo root will fail the build of `Parchment.Tests` with a `Content validation: Invalid word detected` error pointing at a line in that file. The rejected list is printed in full in the error message.
+
 - **Tokens straddling run boundaries**: Word splits text into multiple `<w:r>` when formatting changes, proofing markers fire, or smart-quote autocorrect runs. `{{ customer.name }}` can land across N runs. Scanner uses `paragraph.InnerText` + `RunMap` (offset → `<w:t>`) so substitutions land correctly. Formatting of the **first run** containing the opening `{{` wins for the entire substitution.
 
 - **PascalCase tokens**: Parchment liquid uses PascalCase (`{{ Customer.Name }}`); Fluid's default member access is case-insensitive. No snake-case translation — an earlier `MemberNameStrategies.SnakeCase` attempt was abandoned (API doesn't exist in Fluid 2.15).

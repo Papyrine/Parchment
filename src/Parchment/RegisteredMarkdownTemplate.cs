@@ -8,9 +8,18 @@ class RegisteredMarkdownTemplate(
 {
     public override async Task Render(object model, Stream output, Cancel cancel)
     {
-        var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
-        await parsedTemplate.RenderAsync(writer, NullEncoder.Default, context);
+        try
+        {
+            await parsedTemplate.RenderAsync(writer, NullEncoder.Default, context);
+        }
+        catch (TokenNotRenderableException exception)
+        {
+            // A Fluid value converter cannot see the template name, so it is attached here.
+            throw new ParchmentRenderException(Name, exception.Message);
+        }
+
         var markdownText = writer.ToString();
         cancel.ThrowIfCancellationRequested();
 

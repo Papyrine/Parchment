@@ -124,9 +124,13 @@ Declare a model property as `TokenValue` and return one of:
 - `new OpenXmlToken(Func<IOpenXmlContext, IEnumerable<OpenXmlElement>>)` — the callback emits raw OpenXML elements. Useful for rich tables, generated charts, custom-styled lists.
 - `new MutateToken(Action<Paragraph, IOpenXmlContext>)` — the callback receives the host paragraph and mutates it in place. The token text is cleared before the callback runs. Useful for adding runs with custom formatting, injecting bookmarks, or tweaking paragraph properties while preserving the original paragraph.
 
+These hatches substitute structurally, replacing or mutating the host paragraph, which is something only the docx flow has. A [markdown template](#markdown-template) renders liquid to markdown source first and parses that source afterwards, so there is no host paragraph at substitution time. A `TokenValue` property used there behaves as follows: plain text, `MarkdownToken`, and `HtmlToken` contribute their source (markdown and html are both handled by the markdown parser), while `OpenXmlToken` and `MutateToken` have no source form and throw `ParchmentRenderException`. Reach for `RegisterDocxTemplate` when a token needs to emit OpenXML directly.
+
 #### List filters
 
 `bullet_list` and `numbered_list` render an `IEnumerable<string>` property as a real Word list (`<w:numPr>` with a proper numbering definition), not as literal text. The token must sit alone in its paragraph — the host paragraph is replaced with one `<w:p>` per item.
+
+Both filters also work in a [markdown template](#markdown-template), where they emit markdown list source that the renderer then parses — the result is the same Word list. So is `| markdown`, which passes its source straight through to the markdown parser.
 
 Content:
 
@@ -1175,6 +1179,8 @@ The rendered docx (page 1):
 
 The optional `styleSource` is a docx whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used.
 
+A Word template (`.dotx`/`.dotm`) is accepted as a style source. The style source is cloned and the clone becomes the rendered output, so the package is retyped to a document at registration — otherwise the output would be template-typed and Word would open it as a new unsaved document based on it rather than as the document itself. The same applies to a template passed to `RegisterDocxTemplate`.
+
 
 ### Supported Markdig extensions
 
@@ -1201,7 +1207,7 @@ Standard `*italic*`, `**bold**`, and `_italic_` work as usual.
 | 3 | 4 |
 ```
 
-Header cells are bold and centered. Rendered output:
+Header cells are bold and centered, and the header row carries `<w:tblHeader/>` so it repeats on every page a table spans. Rendered output:
 
 ![Pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableEmitsTableWithGridRowsAndHeaderFormatting%23page01.verified.png)
 
@@ -1247,7 +1253,7 @@ Behaviour notes:
   | A    | Short                 | 1     |
   ```
 
-- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted — Word's default auto-distribution produces the same layout, so the docx stays minimal.
+- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators therefore mean "no opinion on widths", not "equal widths" — to pin equal columns, vary the separator dash counts to state them explicitly.
 - Tables nested in blockquotes or list items are auto-sized to fit their indented container, so the explicit dxa column widths are skipped regardless of dash counts.
 
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
@@ -1263,6 +1269,8 @@ Grid tables use `+---+` borders and `+===+` to separate the header row:
 | 3 | 4 |
 +---+---+
 ```
+
+A cell spanning several columns emits `<w:gridSpan>` and takes the combined width of the columns it covers. Row spanning (`vMerge`) is not supported.
 
 Rendered output:
 
@@ -1495,6 +1503,18 @@ await store.Render(
 ## Registration-time validation
 
 Whether registering by hand (`RegisterDocxTemplate<T>(...)`) or through the source generator's `RegisterWith(store)` helper, the template is fully validated against `T` at registration — before any render runs. Missing members, block tags targeting non-enumerable properties, or `[ExcelsiorTable]` tokens that break the solo-in-paragraph / plain-member-access rules throw `ParchmentRegistrationException` immediately. Register templates at app startup and any binding mismatch surfaces there, not on the first render.
+
+Validation covers loop bodies. A loop variable is bound to the element type of whatever it iterates, so a member reached through it is checked like any other:
+
+```handlebars
+{% for portfolio in Portfolios %}{% if portfolio.HasVariations %}…{% endif %}{% endfor %}
+```
+
+If `HasVariations` is not a member of the element type, registration throws. Left unchecked this is a silent failure rather than a loud one — liquid resolves the unknown member to nil, the `{% if %}` goes false, and the whole block vanishes from the rendered document with nothing reported.
+
+Identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws.
+
+Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{% for row in Rows -%}` behave the same as the plain form. This matters for markdown templates, where `{%-` is often needed to keep a raw-html block free of the blank line that would otherwise end it.
 
 
 ## Source generator (recommended)

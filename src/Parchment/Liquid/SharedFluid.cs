@@ -10,6 +10,19 @@ static class SharedFluid
 
     public static TemplateOptions Options { get; } = BuildOptions();
 
+    /// <summary>
+    /// Options for the markdown flow, which needs <see cref="TokenValue"/> flattened to markdown
+    /// source rather than left as an <c>ObjectValue</c>.
+    /// </summary>
+    /// <remarks>
+    /// This cannot go on <see cref="Options"/>: the docx flow needs the TokenValue to survive as an
+    /// ObjectValue so <c>ScopeTreeRunner.InterpretFluidValue</c> can dispatch it structurally.
+    /// Without a converter the markdown flow falls through to Fluid's default object handling,
+    /// which calls ToString() and writes the type name into the document. The MemberAccessStrategy
+    /// is shared, so RegisterModel covers both sets of options.
+    /// </remarks>
+    public static TemplateOptions MarkdownOptions { get; } = BuildMarkdownOptions();
+
     static readonly ConcurrentDictionary<Type, bool> registeredTypes = new();
 
     static readonly MethodInfo registerGenericMethod = typeof(MemberAccessStrategyExtensions)
@@ -40,6 +53,23 @@ static class SharedFluid
             if (value is Enum e)
             {
                 return new StringValue(EnumRender.Render(e));
+            }
+
+            return null;
+        });
+
+        return options;
+    }
+
+    static TemplateOptions BuildMarkdownOptions()
+    {
+        var options = BuildOptions();
+        options.MemberAccessStrategy = Options.MemberAccessStrategy;
+        options.ValueConverters.Add(static value =>
+        {
+            if (value is TokenValue token)
+            {
+                return new StringValue(TokenMarkdown.Render(token));
             }
 
             return null;
