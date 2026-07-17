@@ -4,6 +4,58 @@ public class TableRendererTests
 {
     public class EmptyModel;
 
+    // Without tblHeader a table broken across a page break loses its header on every later page.
+    [Test]
+    public async Task HeaderRowRepeatsAcrossPages()
+    {
+        const string md =
+            """
+            | A | B |
+            |---|---|
+            | 1 | 2 |
+            """;
+
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<MarkdigTable>(md));
+        var rows = ((Table) renderer.Drain().Single()).Elements<TableRow>().ToList();
+
+        var headerProperties = rows[0].GetFirstChild<TableRowProperties>();
+        await Assert.That(headerProperties).IsNotNull();
+        await Assert.That(headerProperties!.GetFirstChild<TableHeader>()).IsNotNull();
+
+        // Body rows must not repeat.
+        await Assert.That(rows[1].GetFirstChild<TableRowProperties>()).IsNull();
+    }
+
+    // Grid-table colspan was read only to advance the column cursor, never emitted — so the row
+    // ended up with fewer <w:tc> than the grid had <w:gridCol>, silently ragged.
+    [Test]
+    public async Task GridTableColspanEmitsGridSpan()
+    {
+        const string md =
+            """
+            +---+---+
+            | A | B |
+            +===+===+
+            | spans two |
+            +---+---+
+            """;
+
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<MarkdigTable>(md));
+        var table = (Table) renderer.Drain().Single();
+
+        var gridColumns = table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().Count();
+        var bodyCells = table.Elements<TableRow>().Last().Elements<TableCell>().ToList();
+
+        await Assert.That(bodyCells.Count).IsEqualTo(1);
+        var gridSpan = bodyCells[0].TableCellProperties?.GetFirstChild<GridSpan>();
+        await Assert.That(gridSpan).IsNotNull();
+
+        // The spans across the row must add up to the number of grid columns.
+        await Assert.That(gridSpan!.Val?.Value).IsEqualTo(gridColumns);
+    }
+
     [Test]
     public async Task PipeTableEmitsTableWithGridRowsAndHeaderFormatting()
     {

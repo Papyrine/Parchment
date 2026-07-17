@@ -180,16 +180,34 @@ class TableRenderer :
         int[]? columnWidths)
     {
         var tableRow = new TableRow();
+
+        // Repeat the header on every page a table spans. Without this a table broken across a page
+        // break loses its header entirely on the later pages.
+        if (row.IsHeader)
+        {
+            tableRow.Append(new TableRowProperties(new TableHeader()));
+        }
+
         var index = 0;
         foreach (var cell in row.OfType<Markdig.Extensions.Tables.TableCell>())
         {
             var columnIndex = cell.ColumnIndex >= 0 ? cell.ColumnIndex : index;
             var alignment = columnIndex < columns.Count ? columns[columnIndex].Alignment : null;
-            var width = columnWidths is not null && columnIndex < columnWidths.Length
-                ? columnWidths[columnIndex]
-                : 0;
-            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment, width));
-            index += cell.ColumnSpan > 0 ? cell.ColumnSpan : 1;
+            var span = cell.ColumnSpan > 0 ? cell.ColumnSpan : 1;
+
+            // A spanning cell covers its own column plus the ones it swallows, so it gets their
+            // combined width.
+            var width = 0;
+            if (columnWidths is not null)
+            {
+                for (var i = columnIndex; i < columnIndex + span && i < columnWidths.Length; i++)
+                {
+                    width += columnWidths[i];
+                }
+            }
+
+            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment, width, span));
+            index += span;
         }
 
         return tableRow;
@@ -200,19 +218,20 @@ class TableRenderer :
         Markdig.Extensions.Tables.TableCell cell,
         bool isHeader,
         Markdig.Extensions.Tables.TableColumnAlign? alignment,
-        int widthDxa)
+        int widthDxa,
+        int columnSpan)
     {
         // Fast path: data-table cells are overwhelmingly a single ParagraphBlock containing one
         // LiteralInline (plain text). Skip the PushContainer / Render / PopContainer dance and
         // synthesize the OpenXml subtree directly. Falls through to the general path for any
         // structural variant — emphasis, links, multiple paragraphs, embedded HTML, etc.
-        if (TryBuildPlainCell(cell, isHeader, alignment, widthDxa) is { } fast)
+        if (TryBuildPlainCell(cell, isHeader, alignment, widthDxa, columnSpan) is { } fast)
         {
             return fast;
         }
 
         var tableCell = new TableCell();
-        ApplyCellWidth(tableCell, widthDxa);
+        ApplyCellProperties(tableCell, widthDxa, columnSpan);
         renderer.PushContainer();
         foreach (var child in cell)
         {
@@ -254,7 +273,8 @@ class TableRenderer :
         Markdig.Extensions.Tables.TableCell cell,
         bool isHeader,
         Markdig.Extensions.Tables.TableColumnAlign? alignment,
-        int widthDxa)
+        int widthDxa,
+        int columnSpan)
     {
         if (cell is not [ParagraphBlock paragraphBlock])
         {
@@ -293,23 +313,43 @@ class TableRenderer :
         }
 
         var tableCell = new TableCell(paragraph);
-        ApplyCellWidth(tableCell, widthDxa);
+        ApplyCellProperties(tableCell, widthDxa, columnSpan);
         return tableCell;
     }
 
-    static void ApplyCellWidth(TableCell tableCell, int widthDxa)
+    // Grid-table colspan was read only to advance the column cursor and never emitted, so a
+    // spanning row ended up with fewer <w:tc> than the grid had <w:gridCol> — a silently ragged
+    // table rather than an error.
+    static void ApplyCellProperties(TableCell tableCell, int widthDxa, int columnSpan)
     {
-        if (widthDxa <= 0)
+        if (widthDxa <= 0 &&
+            columnSpan <= 1)
         {
             return;
         }
 
-        tableCell.TableCellProperties = new(
-            new TableCellWidth
-            {
-                Type = TableWidthUnitValues.Dxa,
-                Width = widthDxa.ToString(CultureInfo.InvariantCulture)
-            });
+        // tcW precedes gridSpan in the tcPr schema sequence.
+        var properties = new TableCellProperties();
+        if (widthDxa > 0)
+        {
+            properties.Append(
+                new TableCellWidth
+                {
+                    Type = TableWidthUnitValues.Dxa,
+                    Width = widthDxa.ToString(CultureInfo.InvariantCulture)
+                });
+        }
+
+        if (columnSpan > 1)
+        {
+            properties.Append(
+                new GridSpan
+                {
+                    Val = columnSpan
+                });
+        }
+
+        tableCell.TableCellProperties = properties;
     }
 
     static void ApplyCellFormatting(

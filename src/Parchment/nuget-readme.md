@@ -6,23 +6,37 @@ Parchment is a Word (.docx) generation library that combines a .NET data model w
 
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<Invoice>("invoice", File.ReadAllBytes("invoice-template.docx"));
-var bytes = await store.Render("invoice", SampleData.Invoice());
-File.WriteAllBytes("out.docx", bytes);
+store.RegisterDocxTemplate<Invoice>("invoice", "invoice-template.docx");
+
+using var stream = new MemoryStream();
+await store.Render("invoice", SampleData.Invoice(), stream);
+```
+
+`Render` writes to a stream the caller supplies. To write straight to disk, use `RenderToFile`:
+
+```cs
+await store.RenderToFile("invoice", SampleData.Invoice(), "out.docx");
 ```
 
 The template may include:
 
-- Substitution tokens: `{{ customer.name }}`
-- Paragraph-scope loops: `{% for line in lines %}` … `{% endfor %}`
-- Table-row-scope loops: put `{% for line in lines %}` on its own in one row and `{% endfor %}` on its own in another
-- Conditionals: `{% if customer.is_preferred %}` … `{% endif %}`
+- Substitution tokens: `{{ Customer.Name }}`
+- Paragraph-scope loops: `{% for line in Lines %}` … `{% endfor %}`
+- Table-row-scope loops: put `{% for line in Lines %}` on its own in one row and `{% endfor %}` on its own in another
+- Conditionals: `{% if Customer.IsPreferred %}` … `{% endif %}`
+
+Members are resolved against the model by name. There is no snake-case translation layer, so use the property names as declared.
 
 ## Markdown template flow
 
+The style source is a `Stream` over a docx whose styles the output inherits. It is optional — omit it for a blank default.
+
 ```cs
-store.RegisterMarkdownTemplate<Report>("report", markdownSource, styleSource: brandDocxBytes);
-var bytes = await store.Render("report", reportModel);
+var store = new TemplateStore();
+store.RegisterMarkdownTemplate<Report>("report", markdownSource, styleSource);
+
+using var stream = new MemoryStream();
+await store.Render("report", reportModel, stream);
 ```
 
 ## Source generator
@@ -45,4 +59,4 @@ public partial class Report
 }
 ```
 
-See the [readme](https://github.com/SimonCropp/Parchment#readme) for full documentation.
+See the [readme](https://github.com/Papyrine/Parchment#readme) for full documentation.

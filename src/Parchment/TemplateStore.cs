@@ -1,4 +1,4 @@
-namespace Parchment;
+﻿namespace Parchment;
 
 public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 {
@@ -80,6 +80,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             // from the clone rather than re-stamping (a settings-part scan) on each render. It is
             // model-independent, so registration is the right place. See SettingsCompatibility.
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
+            EnsureDocumentType(doc);
 
             doc.Save();
 
@@ -106,23 +107,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 $"Failed to parse markdown as a liquid template: {error}");
         }
 
-        var refs = IdentifierVisitor.Collect(template);
-        foreach (var reference in refs)
-        {
-            if (reference.Segments.Count == 0)
-            {
-                continue;
-            }
-
-            // Skip loop variables — they get bound at render time via liquid scope and can't be
-            // pre-validated without knowing the full scope tree.
-            if (IsLikelyLoopVariable(reference.Root, markdown))
-            {
-                continue;
-            }
-
-            ModelValidator.Validate(typeof(TModel), reference, null, name, null, null);
-        }
+        MarkdownReferenceValidator.Validate(template, typeof(TModel), name);
 
         byte[] bytes;
         if (styleSource is MemoryStream existingMs)
@@ -140,9 +125,45 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             bytes = BlankDocxTemplate;
         }
 
+        bytes = NormalizeStyleSource(bytes);
+
         var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), bytes, template, Policies);
         templates[name] = registered;
         logger.LogInformation("Registered markdown template {Name} for {ModelType}", name, typeof(TModel).Name);
+    }
+
+    /// <summary>
+    /// Retypes a template-typed package (<c>.dotx</c>/<c>.dotm</c>) as a document.
+    /// </summary>
+    /// <remarks>
+    /// Both flows clone the supplied package and the clone becomes the rendered output, so a
+    /// template source would otherwise produce a template-typed output — which Word opens as a new
+    /// unsaved document based on it, rather than as the document itself. The type is
+    /// model-independent, so this belongs at registration rather than on every render.
+    /// </remarks>
+    static void EnsureDocumentType(WordprocessingDocument doc)
+    {
+        if (doc.DocumentType != WordprocessingDocumentType.Document)
+        {
+            doc.ChangeDocumentType(WordprocessingDocumentType.Document);
+        }
+    }
+
+    static byte[] NormalizeStyleSource(byte[] bytes)
+    {
+        using var stream = DocxCloner.ToWritableStream(bytes);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            if (doc.DocumentType == WordprocessingDocumentType.Document)
+            {
+                return bytes;
+            }
+
+            EnsureDocumentType(doc);
+            doc.Save();
+        }
+
+        return stream.ToArray();
     }
 
     static void GuardBindingModel<TModel>(string name)
@@ -219,97 +240,6 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         return stream.ToArray();
     }
-
-    static bool IsLikelyLoopVariable(string identifier, string markdown)
-    {
-        // Hand-rolled scan for `{%\s*for\s+<identifier>\s+in\s+` so the markdown reference
-        // validator can skip loop-bound names (they're bound at render time, not pre-validatable
-        // against the model). Loop tag never spans paragraph boundaries in liquid, so a flat scan
-        // of the markdown source is sufficient.
-        var span = markdown.AsSpan();
-        var idSpan = identifier.AsSpan();
-        var index = 0;
-        while (index < span.Length - 1)
-        {
-            var brace = span[index..].IndexOf('{');
-            if (brace < 0)
-            {
-                return false;
-            }
-
-            index += brace;
-            if (index + 1 >= span.Length ||
-                span[index + 1] != '%')
-            {
-                index++;
-                continue;
-            }
-
-            var cursor = index + 2;
-            cursor = SkipWhitespace(span, cursor);
-            if (!Matches(span, cursor, "for"))
-            {
-                index++;
-                continue;
-            }
-
-            cursor += 3;
-            var afterFor = SkipWhitespace(span, cursor);
-            if (afterFor == cursor)
-            {
-                index++;
-                continue;
-            }
-
-            cursor = afterFor;
-            if (!Matches(span, cursor, idSpan))
-            {
-                index++;
-                continue;
-            }
-
-            cursor += idSpan.Length;
-            var afterId = SkipWhitespace(span, cursor);
-            if (afterId == cursor)
-            {
-                index++;
-                continue;
-            }
-
-            cursor = afterId;
-            if (!Matches(span, cursor, "in"))
-            {
-                index++;
-                continue;
-            }
-
-            cursor += 2;
-            var afterIn = SkipWhitespace(span, cursor);
-            if (afterIn == cursor)
-            {
-                index++;
-                continue;
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
-    static int SkipWhitespace(CharSpan span, int from)
-    {
-        while (from < span.Length && char.IsWhiteSpace(span[from]))
-        {
-            from++;
-        }
-
-        return from;
-    }
-
-    static bool Matches(CharSpan span, int from, CharSpan literal) =>
-        from + literal.Length <= span.Length &&
-        span.Slice(from, literal.Length).SequenceEqual(literal);
 
     public Task Render(string name, object model, Stream output, Cancel cancel = default)
     {

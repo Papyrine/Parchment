@@ -300,4 +300,250 @@ public class MarkdownFlowTests
             File.Delete(pngPath);
         }
     }
+
+    public class LoopModel
+    {
+        public required IReadOnlyList<Row> Rows { get; init; }
+    }
+
+    public class Row
+    {
+        public required string Name { get; init; }
+    }
+
+    static void Register(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        new TemplateStore().RegisterMarkdownTemplate<LoopModel>("t", markdown, styleSource);
+    }
+
+    // Leading whitespace control is exactly what a markdown template needs, since markdown ends an
+    // html block at the first blank line. The old text scan looked for a literal "{% for row in "
+    // and so rejected this valid template.
+    [Test]
+    public void LeadingWhitespaceControlOnForIsAccepted() =>
+        Register("{%- for row in Rows %}{{ row.Name }}{% endfor %}");
+
+    [Test]
+    public void TrailingWhitespaceControlOnForIsAccepted() =>
+        Register("{% for row in Rows -%}{{ row.Name }}{% endfor %}");
+
+    [Test]
+    public void BothWhitespaceControlsOnForAreAccepted() =>
+        Register("{%- for row in Rows -%}{{ row.Name }}{% endfor %}");
+
+    // The old scan skipped the whole subtree once it decided a root was a loop variable, so this
+    // typo threw nothing at registration or render — the if went false and the body vanished.
+    [Test]
+    public async Task TypoOnLoopVariableMemberFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for row in Rows %}{% if row.NoSuchMember %}x{% endif %}{% endfor %}"));
+        await Assert.That(exception!.Message).Contains("NoSuchMember");
+    }
+
+    [Test]
+    public async Task TypoOnLoopVariableSubstitutionFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{%- for row in Rows %}{{ row.Nope }}{% endfor %}"));
+        await Assert.That(exception!.Message).Contains("Nope");
+    }
+
+    [Test]
+    public async Task TypoOnLoopSourceFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for row in NoSuchCollection %}{{ row.Name }}{% endfor %}"));
+        await Assert.That(exception!.Message).Contains("NoSuchCollection");
+    }
+
+    // A loop variable must not outlive its loop.
+    [Test]
+    public async Task LoopVariableDoesNotLeakPastItsLoop()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for row in Rows %}{{ row.Name }}{% endfor %}{{ row.Name }}"));
+        await Assert.That(exception).IsNotNull();
+    }
+
+    [Test]
+    public void NestedLoopsBindIndependently() =>
+        Register("{% for row in Rows %}{% for inner in Rows %}{{ inner.Name }}{{ row.Name }}{% endfor %}{% endfor %}");
+
+    // forloop is introduced by liquid itself and is not a model member.
+    [Test]
+    public void ForLoopIsAccepted() =>
+        Register("{% for row in Rows %}{{ forloop.index }}{{ row.Name }}{% endfor %}");
+
+    [Test]
+    public void AssignIsAccepted() =>
+        Register("{% assign total = Rows %}{% for row in total %}{{ row.Name }}{% endfor %}");
+
+    [Test]
+    public void CaptureIsAccepted() =>
+        Register("{% capture heading %}Report{% endcapture %}{{ heading }}");
+
+    // An assign whose value is a typo must still fail — the value expression is validated.
+    [Test]
+    public async Task AssignOfUnknownMemberFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% assign total = NoSuchThing %}{{ total }}"));
+        await Assert.That(exception!.Message).Contains("NoSuchThing");
+    }
+
+    static MemoryStream BuildDotx()
+    {
+        var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Template))
+        {
+            var main = doc.AddMainDocumentPart();
+            main.Document = new(new Body(new Paragraph()));
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
+    // The style source is cloned and the clone becomes the output, so a .dotx used to produce a
+    // template-typed package that Word opened as a new unsaved document rather than the document.
+    [Test]
+    public async Task DotxStyleSourceProducesDocumentTypedOutput()
+    {
+        using var dotx = BuildDotx();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<TitleModel>("t", "# {{ Title }}", dotx);
+
+        using var output = new MemoryStream();
+        await store.Render(
+            "t",
+            new TitleModel
+            {
+                Title = "x"
+            },
+            output);
+        output.Position = 0;
+
+        using var result = WordprocessingDocument.Open(output, false);
+        await Assert.That(result.DocumentType).IsEqualTo(WordprocessingDocumentType.Document);
+    }
+
+    public class ItemsModel
+    {
+        public required IReadOnlyList<string> Items { get; init; }
+    }
+
+    public class TokenModel
+    {
+        public required TokenValue Value { get; init; }
+    }
+
+    static async Task<string> RenderText<TModel>(string markdown, TModel model)
+        where TModel : class
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<TModel>("t", markdown, styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render("t", model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!.InnerText;
+    }
+
+    // These filters build an OpenXmlToken for the docx flow. The markdown flow has no OpenXML to
+    // substitute into, so without a markdown-source form the token reached the writer and Fluid
+    // wrote "Parchment.OpenXmlToken" into the document.
+    [Test]
+    public async Task BulletListFilterRendersListInMarkdownFlow()
+    {
+        var text = await RenderText(
+            "{{ Items | bullet_list }}",
+            new ItemsModel
+            {
+                Items = ["alpha", "beta"]
+            });
+        await Assert.That(text).IsEqualTo("alphabeta");
+        await Assert.That(text).DoesNotContain("OpenXmlToken");
+    }
+
+    [Test]
+    public async Task NumberedListFilterRendersListInMarkdownFlow()
+    {
+        var text = await RenderText(
+            "{{ Items | numbered_list }}",
+            new ItemsModel
+            {
+                Items = ["alpha", "beta"]
+            });
+        await Assert.That(text).IsEqualTo("alphabeta");
+        await Assert.That(text).DoesNotContain("OpenXmlToken");
+    }
+
+    [Test]
+    public async Task MarkdownFilterRendersSourceInMarkdownFlow()
+    {
+        var text = await RenderText(
+            "{{ Items[0] | markdown }}",
+            new ItemsModel
+            {
+                Items = ["**bold**"]
+            });
+        await Assert.That(text).IsEqualTo("bold");
+        await Assert.That(text).DoesNotContain("MarkdownToken");
+    }
+
+    [Test]
+    public async Task MarkdownTokenPropertyRendersSource()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new MarkdownToken("# Heading")
+            });
+        await Assert.That(text).IsEqualTo("Heading");
+    }
+
+    [Test]
+    public async Task HtmlTokenPropertyRendersSource()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new HtmlToken("<p>from html</p>")
+            });
+        await Assert.That(text).IsEqualTo("from html");
+    }
+
+    [Test]
+    public async Task PlainTextTokenPropertyRendersValue()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = "just text"
+            });
+        await Assert.That(text).IsEqualTo("just text");
+    }
+
+    // An OpenXmlToken has no markdown form, so it has to fail loudly rather than stringify.
+    [Test]
+    public async Task OpenXmlTokenPropertyThrowsInMarkdownFlow()
+    {
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
+            async () => await RenderText(
+                "{{ Value }}",
+                new TokenModel
+                {
+                    Value = new OpenXmlToken(_ => [])
+                }));
+        await Assert.That(exception!.Message).Contains("OpenXmlToken");
+        await Assert.That(exception.Message).Contains("RegisterDocxTemplate");
+    }
 }
