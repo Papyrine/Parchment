@@ -241,7 +241,15 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         return stream.ToArray();
     }
 
-    public Task Render(string name, object model, Stream output, Cancel cancel = default)
+    public Task Render(string name, object model, Stream output, Cancel cancel = default) =>
+        Render(name, model, output, null, cancel);
+
+    /// <summary>
+    /// Renders and stamps the document's properties. Only the values set on
+    /// <paramref name="properties"/> are written; each part is merged, so properties the template
+    /// carries of its own survive.
+    /// </summary>
+    public Task Render(string name, object model, Stream output, DocumentProperties? properties, Cancel cancel = default)
     {
         if (!templates.TryGetValue(name, out var template))
         {
@@ -262,13 +270,17 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 $"Model type mismatch: registered as {template.ModelType.Name} but received {model.GetType().Name}");
         }
 
-        return template.Render(model, output, cancel);
+        return template.Render(model, output, properties, cancel);
     }
 
-    public async Task RenderToFile(string name, object model, string path, Cancel cancel = default)
+    public async Task RenderToFile(string name, object model, string path, Cancel cancel = default) =>
+        await RenderToFile(name, model, path, null, cancel).ConfigureAwait(false);
+
+    /// <inheritdoc cref="Render(string, object, Stream, DocumentProperties, Cancel)"/>
+    public async Task RenderToFile(string name, object model, string path, DocumentProperties? properties, Cancel cancel = default)
     {
         await using var file = File.Create(path);
-        await Render(name, model, file, cancel).ConfigureAwait(false);
+        await Render(name, model, file, properties, cancel).ConfigureAwait(false);
     }
 
     public static void AddFilter(string name, FilterDelegate filter) =>

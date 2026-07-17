@@ -6,7 +6,7 @@ class RegisteredMarkdownTemplate(
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
 {
-    public override async Task Render(object model, Stream output, Cancel cancel)
+    public override async Task Render(object model, Stream output, DocumentProperties? properties, Cancel cancel)
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
@@ -51,6 +51,11 @@ class RegisteredMarkdownTemplate(
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
             // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
             SettingsCompatibility.Apply(mainPart);
+
+            if (properties != null)
+            {
+                DocumentPropertiesWriter.Apply(doc, properties);
+            }
 
             doc.Save();
         }

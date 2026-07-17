@@ -1530,6 +1530,42 @@ await store.Render(
 <!-- endSnippet -->
 
 
+## Document properties
+
+Pass a `DocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
+
+```cs
+await store.Render(
+    "bill",
+    model,
+    stream,
+    new DocumentProperties
+    {
+        Title = "Bill 42",
+        Author = "Drafting Office",
+        Status = "Final",
+        Company = "Papyrine",
+        Custom =
+        {
+            ["BillNumber"] = "42",
+            ["Introduced"] = new DateOnly(2026, 3, 1)
+        }
+    });
+```
+
+Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
+
+**Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
+
+Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+`Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
+
+```cs
+using DocumentProperties = Parchment.DocumentProperties;
+```
+
+
 ## Registration-time validation
 
 Whether registering by hand (`RegisterDocxTemplate<T>(...)`) or through the source generator's `RegisterWith(store)` helper, the template is fully validated against `T` at registration — before any render runs. Missing members, block tags targeting non-enumerable properties, or `[ExcelsiorTable]` tokens that break the solo-in-paragraph / plain-member-access rules throw `ParchmentRegistrationException` immediately. Register templates at app startup and any binding mismatch surfaces there, not on the first render.

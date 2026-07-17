@@ -10,7 +10,7 @@ class RegisteredDocxTemplate(
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
 {
-    public override async Task Render(object model, Stream output, Cancel cancel)
+    public override async Task Render(object model, Stream output, DocumentProperties? properties, Cancel cancel)
     {
         cancel.ThrowIfCancellationRequested();
 
@@ -53,6 +53,11 @@ class RegisteredDocxTemplate(
 
             // compatibilityMode=15 is baked into the registration snapshot (see
             // TemplateStore.RegisterDocxTemplate), so no per-render stamp is needed here.
+            if (properties != null)
+            {
+                DocumentPropertiesWriter.Apply(doc, properties);
+            }
+
             doc.Save();
         }
 
