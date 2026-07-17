@@ -7,6 +7,7 @@ class ListBlockRenderer :
             ? renderer.Numbering.CreateOrderedNumbering(MapOrderedFormat(listBlock))
             : renderer.Numbering.CreateBulletNumbering();
         var ilvl = ResolveIlvl(listBlock);
+        var listStyleId = MarkdownStyle.Resolve(listBlock);
 
         foreach (var item in listBlock)
         {
@@ -31,11 +32,15 @@ class ListBlockRenderer :
                     continue;
                 }
 
+                // {.StyleName} on an item ("- text{.Caption}") attaches to the item's own leaf;
+                // one before the list attaches to the ListBlock and covers every item. The item
+                // wins where both are present.
+                var styleId = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph";
                 var properties = new ParagraphProperties
                 {
                     ParagraphStyleId = new()
                     {
-                        Val = "ListParagraph"
+                        Val = styleId
                     },
                     NumberingProperties = new(
                         new NumberingLevelReference

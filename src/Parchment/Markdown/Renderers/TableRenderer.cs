@@ -18,15 +18,20 @@ class TableRenderer :
             ? null
             : ComputeColumnWidths(columns);
 
+        // {.StyleName} has to lead the table, on its own line, matching how it is written for a
+        // heading or paragraph. A trailing one is not an option: directly after the last row it
+        // stops the table parsing at all, and after a blank line it binds to nothing.
+        var styleId = MarkdownStyle.Resolve(tableBlock);
+
         var table = new Table();
-        table.Append(BuildTableProperties(renderer.CurrentIndent, columnWidths is not null));
+        table.Append(BuildTableProperties(renderer.CurrentIndent, columnWidths is not null, styleId));
         table.Append(BuildTableGrid(tableBlock, columnWidths));
 
         foreach (var child in tableBlock)
         {
             if (child is Markdig.Extensions.Tables.TableRow row)
             {
-                table.Append(BuildRow(renderer, row, columns, columnWidths));
+                table.Append(BuildRow(renderer, row, columns, columnWidths, styleId is not null));
             }
         }
 
@@ -79,12 +84,25 @@ class TableRenderer :
         return widths;
     }
 
-    static TableProperties BuildTableProperties(int indent, bool hasColumnWidths)
+    static TableProperties BuildTableProperties(int indent, bool hasColumnWidths, string? styleId)
     {
-        var width = indent > 0
-            ? new TableWidth { Type = TableWidthUnitValues.Auto }
-            : new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct };
-        var properties = new TableProperties(width);
+        var properties = new TableProperties();
+
+        // tblStyle leads the tblPr sequence.
+        if (styleId != null)
+        {
+            properties.Append(
+                new TableStyle
+                {
+                    Val = styleId
+                });
+        }
+
+        properties.Append(
+            indent > 0
+                ? new TableWidth { Type = TableWidthUnitValues.Auto }
+                : new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct });
+
         if (indent > 0)
         {
             properties.Append(
@@ -100,8 +118,15 @@ class TableRenderer :
             properties.Append(new TableLayout { Type = TableLayoutValues.Fixed });
         }
 
-        properties.Append(BuildBorders());
-        properties.Append(BuildCellMargins());
+        // Direct formatting beats a table style in Word, so emitting the default borders and cell
+        // margins alongside a tblStyle would silently override the style the caller asked for.
+        // Without a style they are the only thing making the table legible, so they stay.
+        if (styleId == null)
+        {
+            properties.Append(BuildBorders());
+            properties.Append(BuildCellMargins());
+        }
+
         return properties;
     }
 
@@ -183,7 +208,8 @@ class TableRenderer :
         OpenXmlMarkdownRenderer renderer,
         Markdig.Extensions.Tables.TableRow row,
         IList<Markdig.Extensions.Tables.TableColumnDefinition> columns,
-        int[]? columnWidths)
+        int[]? columnWidths,
+        bool hasTableStyle)
     {
         var tableRow = new TableRow();
 
@@ -212,7 +238,10 @@ class TableRenderer :
                 }
             }
 
-            tableRow.Append(BuildCell(renderer, cell, row.IsHeader, alignment, width, span));
+            // A table style supplies its own header formatting through conditional formatting
+            // (firstRow), so the hardcoded bold and centring stand down rather than override it.
+            var isHeader = row.IsHeader && !hasTableStyle;
+            tableRow.Append(BuildCell(renderer, cell, isHeader, alignment, width, span));
             index += span;
         }
 

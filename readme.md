@@ -1320,13 +1320,43 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 
 #### [Generic attributes](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GenericAttributesSpecs.md)
 
-Attach a Word style to a heading or paragraph with `{.StyleName}` syntax. The first class attribute is used as the paragraph's `ParagraphStyleId`:
+Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
+
+Headings and paragraphs take the style as their `ParagraphStyleId`:
 
 ```markdown
 ## Section heading {.MyCustomHeading}
 
 Some intro paragraph. {.IntroBlock}
 ```
+
+Emphasis takes it as a character style (`RunStyle`), alongside the emphasis itself:
+
+```markdown
+**Important** {.LeadIn} — the rest of the sentence.
+```
+
+A list takes it on its own line, and it applies to every item. A style on an individual item wins over one on the list. Without either, items keep the built-in `ListParagraph`:
+
+```markdown
+{.ChecklistItem}
+- applies to both items
+- and this one
+
+- plain item
+- styled item{.Highlight}
+```
+
+A table takes it as its `TableStyle` (`tblStyle`), and it must lead the table on its own line — a trailing attribute directly after the last row stops the table parsing, and one after a blank line binds to nothing:
+
+```markdown
+{.BrandTable}
+| Name | Status |
+|------|--------|
+| A    | Ready  |
+```
+
+**Direct formatting stands down for a styled table.** Word lets direct formatting beat a table style, so an unstyled markdown table's default borders, cell margins, and bold-centred header would silently override the style. When `{.StyleName}` is present none of them are emitted, leaving the style in full control — including its own header formatting via conditional `firstRow`. The header row still repeats across pages. Without a style the defaults are unchanged.
 
 
 ### HTML comments are stripped
