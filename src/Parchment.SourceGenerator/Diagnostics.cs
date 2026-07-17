@@ -140,4 +140,12 @@ static class Diagnostics
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor RenderAttributeOnStaticMember = new(
+        id: "PARCH019",
+        title: "Render attribute on a static member has no effect",
+        messageFormat: "Member '{0}' is static, so '[{1}]' has no effect; the per-template maps that dispatch it walk instance members only. The value still binds and renders as plain text. Make the member non-static, or drop the attribute.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }

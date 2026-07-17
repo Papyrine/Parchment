@@ -1812,12 +1812,26 @@ public partial class Order
 {% endfor %}
 ```
 
+### `PARCH019` — render attribute on a static member has no effect
+
+**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time.
+
+```csharp
+public partial class Report
+{
+    [Html]
+    public static string Banner { get; set; }   // renders as plain text, [Html] does nothing
+}
+```
+
+Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
+
 
 ## Model binding limitations
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
 
-**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are silently treated as no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required.
+**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position warns at compile time (`PARCH019`); auto-bullet-list dispatch does not, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
 
 ### Interfaces as the binding model
 
