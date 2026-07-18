@@ -339,7 +339,7 @@ public class MarkdownFlowTests
     {
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{% for row in Rows %}{% if row.NoSuchMember %}x{% endif %}{% endfor %}"));
-        await Assert.That(exception!.Message).Contains("NoSuchMember");
+        await Assert.That(exception.Message).Contains("NoSuchMember");
     }
 
     [Test]
@@ -347,7 +347,7 @@ public class MarkdownFlowTests
     {
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{%- for row in Rows %}{{ row.Nope }}{% endfor %}"));
-        await Assert.That(exception!.Message).Contains("Nope");
+        await Assert.That(exception.Message).Contains("Nope");
     }
 
     [Test]
@@ -355,7 +355,7 @@ public class MarkdownFlowTests
     {
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{% for row in NoSuchCollection %}{{ row.Name }}{% endfor %}"));
-        await Assert.That(exception!.Message).Contains("NoSuchCollection");
+        await Assert.That(exception.Message).Contains("NoSuchCollection");
     }
 
     // A loop variable must not outlive its loop.
@@ -390,7 +390,7 @@ public class MarkdownFlowTests
     {
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{% assign total = NoSuchThing %}{{ total }}"));
-        await Assert.That(exception!.Message).Contains("NoSuchThing");
+        await Assert.That(exception.Message).Contains("NoSuchThing");
     }
 
     static MemoryStream BuildDotx()
