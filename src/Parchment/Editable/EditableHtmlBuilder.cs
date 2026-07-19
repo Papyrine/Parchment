@@ -109,8 +109,7 @@ static class EditableHtmlBuilder
     {
         cell = null;
         row = null;
-        if (host.Parent is not TableCell parentCell ||
-            parentCell.Parent is not TableRow parentRow)
+        if (host.Parent is not TableCell {Parent: TableRow parentRow} parentCell)
         {
             return false;
         }
@@ -156,10 +155,11 @@ static class EditableHtmlBuilder
             ColumnLast = colFirst + GridSpan(cell) - 1
         };
         row.InsertBefore(start, row.Elements<TableCell>().First());
-        row.AppendChild(new PermEnd
-        {
-            Id = id
-        });
+        row.AppendChild(
+            new PermEnd
+            {
+                Id = id
+            });
     }
 
     static int GridSpan(TableCell cell) =>
