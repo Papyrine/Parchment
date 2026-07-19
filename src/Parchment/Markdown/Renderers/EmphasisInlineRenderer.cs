@@ -6,12 +6,24 @@ class EmphasisInlineRenderer :
         var before = renderer.Top.CurrentRuns.Count;
         renderer.WriteChildren(inline);
 
+        // A {.StyleName} on emphasis ("**text**{.Lead}") binds to this inline. Nothing read it
+        // before, so it was dropped without a word — the run kept the emphasis and lost the style.
+        var styleId = MarkdownStyle.Resolve(inline);
+
         var top = renderer.Top;
         for (var i = before; i < top.CurrentRuns.Count; i++)
         {
             if (top.CurrentRuns[i] is Run run)
             {
                 ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
+                if (styleId != null)
+                {
+                    // Assigned through the typed property so rStyle lands first in the rPr sequence.
+                    run.RunProperties!.RunStyle = new()
+                    {
+                        Val = styleId
+                    };
+                }
             }
         }
     }

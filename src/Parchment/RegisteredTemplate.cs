@@ -3,5 +3,5 @@ abstract class RegisteredTemplate(string name, Type modelType)
     public string Name { get; } = name;
     public Type ModelType { get; } = modelType;
 
-    public abstract Task Render(object model, Stream output, Cancel cancel);
+    public abstract Task Render(object model, Stream output, DocumentProperties? properties, Cancel cancel);
 }

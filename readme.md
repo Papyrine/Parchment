@@ -1253,7 +1253,7 @@ Behaviour notes:
   | A    | Short                 | 1     |
   ```
 
-- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators therefore mean "no opinion on widths", not "equal widths" — to pin equal columns, vary the separator dash counts to state them explicitly.
+- When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators are the conventional way to write a separator row rather than a request for equal columns, so they are read as "no opinion on widths". The consequence is that equal columns cannot currently be stated at all — equal dash counts are indistinguishable from the conventional separator, so relative widths are the only thing dash counts can express.
 - Tables nested in blockquotes or list items are auto-sized to fit their indented container, so the explicit dxa column widths are skipped regardless of dash counts.
 
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
@@ -1320,13 +1320,43 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 
 #### [Generic attributes](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GenericAttributesSpecs.md)
 
-Attach a Word style to a heading or paragraph with `{.StyleName}` syntax. The first class attribute is used as the paragraph's `ParagraphStyleId`:
+Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
+
+Headings and paragraphs take the style as their `ParagraphStyleId`:
 
 ```markdown
 ## Section heading {.MyCustomHeading}
 
 Some intro paragraph. {.IntroBlock}
 ```
+
+Emphasis takes it as a character style (`RunStyle`), alongside the emphasis itself:
+
+```markdown
+**Important** {.LeadIn} — the rest of the sentence.
+```
+
+A list takes it on its own line, and it applies to every item. A style on an individual item wins over one on the list. Without either, items keep the built-in `ListParagraph`:
+
+```markdown
+{.ChecklistItem}
+- applies to both items
+- and this one
+
+- plain item
+- styled item{.Highlight}
+```
+
+A table takes it as its `TableStyle` (`tblStyle`), and it must lead the table on its own line — a trailing attribute directly after the last row stops the table parsing, and one after a blank line binds to nothing:
+
+```markdown
+{.BrandTable}
+| Name | Status |
+|------|--------|
+| A    | Ready  |
+```
+
+**Direct formatting stands down for a styled table.** Word lets direct formatting beat a table style, so an unstyled markdown table's default borders, cell margins, and bold-centred header would silently override the style. When `{.StyleName}` is present none of them are emitted, leaving the style in full control — including its own header formatting via conditional `firstRow`. The header row still repeats across pages. Without a style the defaults are unchanged.
 
 
 ### HTML comments are stripped
@@ -1498,6 +1528,42 @@ await store.Render(
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L318-L387' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+
+## Document properties
+
+Pass a `DocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
+
+```cs
+await store.Render(
+    "bill",
+    model,
+    stream,
+    new DocumentProperties
+    {
+        Title = "Bill 42",
+        Author = "Drafting Office",
+        Status = "Final",
+        Company = "Papyrine",
+        Custom =
+        {
+            ["BillNumber"] = "42",
+            ["Introduced"] = new DateOnly(2026, 3, 1)
+        }
+    });
+```
+
+Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
+
+**Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
+
+Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+`Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
+
+```cs
+using DocumentProperties = Parchment.DocumentProperties;
+```
 
 
 ## Registration-time validation
