@@ -886,4 +886,92 @@ public class ParchmentTemplateGeneratorTests
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics).IsEmpty();
     }
+
+    // A render attribute on a static member is dropped: the maps that dispatch it walk instance
+    // members only, so the value renders as plain text and the attribute does nothing. Silent at
+    // runtime, so the generator says so.
+    [Test]
+    public async Task RenderAttributeOnStaticMemberWarns()
+    {
+        // The generator matches [Html] by type name, and it lives in Excelsior, which this
+        // compilation does not reference — so it is declared locally, as the other tests do.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public sealed class HtmlAttribute : System.Attribute
+            {
+            }
+
+            [ParchmentModel("template.docx")]
+            public partial class Report
+            {
+                [Html]
+                public static string Banner { get; set; } = "";
+
+                public string Title { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Title }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+
+        var warning = diagnostics.SingleOrDefault(_ => _.Id == "PARCH019");
+        await Assert.That(warning).IsNotNull();
+        await Assert.That(warning!.GetMessage()).Contains("Banner");
+        await Assert.That(warning.GetMessage()).Contains("Html");
+    }
+
+    [Test]
+    public async Task RenderAttributeOnInstanceMemberDoesNotWarn()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public sealed class HtmlAttribute : System.Attribute
+            {
+            }
+
+            [ParchmentModel("template.docx")]
+            public partial class Report
+            {
+                [Html]
+                public string Banner { get; set; } = "";
+
+                public string Title { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Title }} {{ Banner }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
+    }
+
+    // A plain static member carries no attribute to drop, so it is not worth a warning.
+    [Test]
+    public async Task PlainStaticMemberDoesNotWarn()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel("template.docx")]
+            public partial class Report
+            {
+                public static string Banner { get; set; } = "";
+
+                public string Title { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Title }} {{ Banner }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
+    }
 }

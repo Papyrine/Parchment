@@ -333,6 +333,33 @@ public sealed class ParchmentTemplateGenerator :
         return false;
     }
 
+    // IsStringList is inferred from the member's type rather than written by hand, so it is not
+    // reported — a static IEnumerable<string> is not a mistake the way a hand-written attribute is.
+    static string? IgnoredStaticAttribute(MemberEntry member)
+    {
+        if (member.IsExcelsiorTable)
+        {
+            return "ExcelsiorTable";
+        }
+
+        if (member.IsHtml)
+        {
+            return "Html";
+        }
+
+        if (member.IsMarkdown)
+        {
+            return "Markdown";
+        }
+
+        if (member.IsEditable)
+        {
+            return "EditableField";
+        }
+
+        return null;
+    }
+
     static void ValidateEditableShape(
         SourceProductionContext context,
         TargetInfo target,
@@ -342,15 +369,31 @@ public sealed class ParchmentTemplateGenerator :
         {
             foreach (var member in type.Members)
             {
-                // Static members don't participate in dotted-path map dispatch (see the static
-                // caveat shared with Excelsior / Format / StringList) — silently ignored.
-                if (!member.IsEditable ||
-                    member.IsStatic)
+                var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
+
+                // A render attribute on a static member is a no-op: the per-template maps that
+                // dispatch it walk instance members only, so the value renders as plain text and
+                // the attribute is dropped. That is silent at runtime, hence the warning.
+                if (member.IsStatic)
                 {
+                    var ignored = IgnoredStaticAttribute(member);
+                    if (ignored != null)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.RenderAttributeOnStaticMember,
+                                location,
+                                memberDisplay,
+                                ignored));
+                    }
+
                     continue;
                 }
 
-                var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
+                if (!member.IsEditable)
+                {
+                    continue;
+                }
 
                 // [Html] + [EditableField] is supported (renders an editable rich-content block that
                 // extracts back to HTML). [ExcelsiorTable] and [Markdown] remain conflicts.
