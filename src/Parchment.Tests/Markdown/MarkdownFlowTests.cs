@@ -393,6 +393,31 @@ public class MarkdownFlowTests
         await Assert.That(exception.Message).Contains("NoSuchThing");
     }
 
+    // Overriding VisitForStatement means base is never called, so the else branch has to be walked
+    // explicitly. Without that a typo in it registers clean and the branch renders empty.
+    [Test]
+    public async Task TypoInForElseBranchFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for row in Rows %}{{ row.Name }}{% else %}{{ NoSuchThing }}{% endfor %}"));
+        await Assert.That(exception.Message).Contains("NoSuchThing");
+    }
+
+    [Test]
+    public void ValidForElseBranchIsAccepted() =>
+        Register("{% for row in Rows %}{{ row.Name }}{% else %}{{ Rows }}{% endfor %}");
+
+    // forloop is scoped to the loop body, so outside one it is still an error — but the message
+    // should say what forloop is rather than describing it as a missing model member.
+    [Test]
+    public async Task ForLoopOutsideALoopFailsWithAnExplanation()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{{ forloop.index }}"));
+        await Assert.That(exception.Message).Contains("{% for %}");
+        await Assert.That(exception.Message).DoesNotContain("is not a member of");
+    }
+
     static MemoryStream BuildDotx()
     {
         var stream = new MemoryStream();
