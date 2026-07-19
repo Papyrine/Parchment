@@ -998,7 +998,7 @@ public class EditableFieldTests
         await Assert.That(row.Elements<PermEnd>().Single().Id!.Value).IsEqualTo(start.Id!.Value);
         // permStart precedes the cells; permEnd follows them.
         await Assert.That(row.ChildElements[0]).IsEqualTo(start);
-        await Assert.That(row.ChildElements[row.ChildElements.Count - 1]).IsTypeOf<PermEnd>();
+        await Assert.That(row.ChildElements[^1]).IsTypeOf<PermEnd>();
 
         var sdtId = sdt.SdtProperties!.GetFirstChild<SdtId>()!.Val!.Value;
         await Assert.That(start.Id!.Value).IsEqualTo(sdtId);

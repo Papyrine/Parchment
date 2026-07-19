@@ -157,13 +157,13 @@ static class AccessorEmission
             // A member that is also [EditableField] is claimed by the editable map (rich-content
             // control that extracts back to HTML), not the read-only format path — mirrors runtime
             // FormatMap.Build.
-            if (member.IsHtml && !member.IsEditable)
+            if (member is {IsHtml: true, IsEditable: false})
             {
                 formats.Add((nextPath, FormatMapKind.Html));
                 continue;
             }
 
-            if (member.IsMarkdown && !member.IsEditable)
+            if (member is {IsMarkdown: true, IsEditable: false})
             {
                 formats.Add((nextPath, FormatMapKind.Markdown));
                 continue;
