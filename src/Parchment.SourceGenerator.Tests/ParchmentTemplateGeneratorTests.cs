@@ -36,6 +36,27 @@ public class ParchmentTemplateGeneratorTests
         }
         """;
 
+    // Same shape as the inline source in Markdown_ForLoop_Valid, shared by the liquid-identifier
+    // tests below so the allowlist cases read as a set.
+    const string invoiceModelMd =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel("template.md")]
+        public partial class Invoice
+        {
+            public List<Line> Lines { get; set; } = new();
+        }
+        """;
+
     [Test]
     public Task Substitution_Valid()
     {
@@ -513,6 +534,63 @@ public class ParchmentTemplateGeneratorTests
             x
             {% endfor %}
             """);
+        return Verify(result);
+    }
+
+    // The generator has to accept every liquid-introduced identifier the runtime markdown validator
+    // accepts. It emits PARCH001 at Error, so a disagreement here fails the build for a template
+    // that registers and renders correctly.
+    [Test]
+    public Task Markdown_ForLoopIdentifier_Accepted()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            invoiceModelMd,
+            """
+            {% for line in Lines %}
+            {{ forloop.index }}. {{ line.Description }}
+            {% endfor %}
+            """);
+        return Verify(result);
+    }
+
+    [Test]
+    public Task Markdown_AssignTarget_Accepted()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            invoiceModelMd,
+            """
+            {% assign total = Lines %}
+            {% for line in total %}
+            - {{ line.Description }}
+            {% endfor %}
+            """);
+        return Verify(result);
+    }
+
+    [Test]
+    public Task Markdown_CaptureTarget_Accepted()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            letterModelMd,
+            "{% capture heading %}Report{% endcapture %}{{ heading }}");
+        return Verify(result);
+    }
+
+    // The target is untyped, but the value is a normal expression and stays checked.
+    [Test]
+    public Task Markdown_AssignOfUnknownMember_Reported()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            letterModelMd,
+            "{% assign total = NoSuchThing %}{{ total }}");
+        return Verify(result);
+    }
+
+    // forloop is scoped to a loop body in both validators, so outside one it stays an error.
+    [Test]
+    public Task Markdown_ForLoopIdentifierOutsideLoop_Reported()
+    {
+        var result = GeneratorDriver.RunMarkdown(letterModelMd, "{{ forloop.index }}");
         return Verify(result);
     }
 

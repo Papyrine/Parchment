@@ -137,6 +137,29 @@ public class ReferenceValidatorTests
         await Assert.That(exception!.Message).Contains("NotARealField");
     }
 
+    // The markdown flow allows forloop inside a loop body. The docx flow iterates through its own
+    // scope tree and never populates it, so this has to keep failing — but the message should name
+    // forloop instead of reading as a missing model member and sending the reader after a property.
+    [Test]
+    public async Task ForLoopIdentifier_FailsRegistrationWithAnExplanation()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for it in Items %}
+
+            {{ forloop.index }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<Doc>("forloop", template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("{% for %}");
+        await Assert.That(exception.Message).DoesNotContain("is not a member of");
+    }
+
     [Test]
     public async Task NonEnumerableLoopSource_FailsRegistration()
     {

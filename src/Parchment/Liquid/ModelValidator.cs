@@ -17,7 +17,7 @@ static class ModelValidator
         {
             throw new ParchmentRegistrationException(
                 templateName,
-                $"Identifier '{path.Root}' is not a member of '{modelType.Name}'",
+                UnresolvedRootMessage(path.Root, modelType),
                 partUri,
                 tokenSource,
                 path.ToString());
@@ -39,6 +39,22 @@ static class ModelValidator
 
             currentType = next;
         }
+    }
+
+    // `forloop` resolves against no model member by design, so the generic "not a member of" text
+    // reads as a missing property and sends the reader looking for one. The markdown flow allows it
+    // inside a loop body; reaching here means either a docx template, which runs its own loop scope
+    // and never populates it, or a markdown template referencing it outside any loop.
+    static string UnresolvedRootMessage(string root, Type modelType)
+    {
+        if (root == "forloop")
+        {
+            return "'forloop' is provided by liquid only inside a {% for %} body of a markdown " +
+                   "template. Docx templates iterate through their own scope tree and do not " +
+                   "provide it.";
+        }
+
+        return $"Identifier '{root}' is not a member of '{modelType.Name}'";
     }
 
     public static Type? TryResolveElementType(Type enumerableType)

@@ -1,0 +1,17 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: : (9,1)-(9,30),
+      Message: Template 'template.md' token '{% assign ... %}' references 'NoSuchThing' which is not a member of 'Letter',
+      Severity: Error,
+      Descriptor: {
+        Id: PARCH001,
+        Title: Template references an unknown model member,
+        MessageFormat: Template '{0}' token '{1}' references '{2}' which is not a member of '{3}',
+        Category: Parchment,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

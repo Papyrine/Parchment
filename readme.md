@@ -1592,7 +1592,7 @@ Validation covers loop bodies. A loop variable is bound to the element type of w
 
 If `HasVariations` is not a member of the element type, registration throws. Left unchecked this is a silent failure rather than a loud one — liquid resolves the unknown member to nil, the `{% if %}` goes false, and the whole block vanishes from the rendered document with nothing reported.
 
-Identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws.
+**Markdown templates only:** identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws. Docx templates support none of the three: they iterate through Parchment's own scope tree rather than liquid's `{% for %}`, so `forloop` is never populated, and `assign` / `capture` are not among the supported block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so in both cases rather than rendering a blank.
 
 Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{% for row in Rows -%}` behave the same as the plain form. This matters for markdown templates, where `{%-` is often needed to keep a raw-html block free of the blank line that would otherwise end it.
 
