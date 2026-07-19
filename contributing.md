@@ -22,9 +22,9 @@ dotnet run --project IntegrationTests/IntegrationTests --configuration Release
 dotnet run --project src/Parchment.Tests --configuration Release -- --filter "FullyQualifiedName~Substitution"
 ```
 
-Snapshots: **Verify.TUnit + Verify.OpenXml + Morph.Skia**. Failed test writes `*.received.*`; accept by renaming to `*.verified.*`. PNG page renders fire on `net10.0` automatically when `Morph.Skia` is referenced.
+Snapshots: **Verify.TUnit + Verify.OpenXml + Morph.Skia**. Failed test writes `*.received.*`; accept by renaming to `*.verified.*`. PNG page renders fire on `net10.0` automatically when `Morph.Skia` is referenced. The `*.verified.png` files are byte-for-byte outputs of Morph's deterministic renderer, so they are coupled to the exact `Morph.Skia` version pinned in `src/Directory.Packages.props`: bumping it changes rendered layout, requiring a re-accept of the PNG snapshots plus a regeneration of the scenario `input.png` files via the `[Explicit]` `ScenarioInputRenderer` test (see "Scenario directories"). PNG-only failures with equal `.docx`/`.txt` snapshots mean the rasterizer changed, not Parchment.
 
-CI: `src/appveyor.yml`. Build first installs every TTF/OTF in `src/Fonts/` into the Windows fonts dir, validating each via `System.Drawing.Text.PrivateFontCollection` so a CRLF-mangled font fails the build instead of producing "font not found" at test time.
+CI: `src/appveyor.yml`. Build first installs every TTF/OTF in `src/Fonts/` into the Windows fonts dir, validating each via `System.Drawing.Text.PrivateFontCollection` so a CRLF-mangled font fails the build instead of producing "font not found" at test time. Morph >= 1.1.4 embeds the Aptos 400/700 regular + italic faces inside `Morph.dll`, so PNG renders do not depend on that install for those faces; it still covers faces Morph does not embed (`Aptos_Display_700.ttf`).
 
 ## Architecture
 

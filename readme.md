@@ -1318,6 +1318,20 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 | `---` | \u2014 (em-dash) |
 | `...` | \u2026 (ellipsis) |
 
+### Tabs
+
+A tab character in markdown text renders as a real Word tab (`<w:tab/>`), landing on the paragraph style's tab stops:
+
+```markdown
+A	SUBMISSIONS WITHIN AUTHORITY
+B	SECOND ITEM
+```
+
+A tab left inside `<w:t>` is not a Word tab — Word renders the raw character as ordinary whitespace — so the tab is emitted as its own element beside the text.
+
+Two things markdown does with tabs elsewhere still apply, since they happen before rendering: a **leading** tab is indentation (four spaces, or a code block), and a **trailing** tab is trimmed with the rest of the line's trailing whitespace. A tab between text is the one that survives to become a Word tab. HTML has no equivalent — a tab in html source folds to a space, per html's own rules — so markdown text is the way to ask for one.
+
+
 #### [Generic attributes](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GenericAttributesSpecs.md)
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
@@ -1528,6 +1542,42 @@ await store.Render(
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L318-L387' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+
+## Document properties
+
+Pass a `DocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
+
+```cs
+await store.Render(
+    "bill",
+    model,
+    stream,
+    new DocumentProperties
+    {
+        Title = "Bill 42",
+        Author = "Drafting Office",
+        Status = "Final",
+        Company = "Papyrine",
+        Custom =
+        {
+            ["BillNumber"] = "42",
+            ["Introduced"] = new DateOnly(2026, 3, 1)
+        }
+    });
+```
+
+Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
+
+**Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
+
+Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+`Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
+
+```cs
+using DocumentProperties = Parchment.DocumentProperties;
+```
 
 
 ## Registration-time validation
@@ -1776,12 +1826,26 @@ public partial class Order
 {% endfor %}
 ```
 
+### `PARCH019` — render attribute on a static member has no effect
+
+**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time.
+
+```csharp
+public partial class Report
+{
+    [Html]
+    public static string Banner { get; set; }   // renders as plain text, [Html] does nothing
+}
+```
+
+Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
+
 
 ## Model binding limitations
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
 
-**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are silently treated as no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required.
+**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position warns at compile time (`PARCH019`); auto-bullet-list dispatch does not, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
 
 ### Interfaces as the binding model
 

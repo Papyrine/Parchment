@@ -397,7 +397,12 @@ public class EditableFieldGeneratorTests
             """;
         var result = GeneratorDriver.Run(source, "{{ Logo }}");
         var runResult = result.Results.Single();
-        await Assert.That(runResult.Diagnostics).IsEmpty();
+
+        // Ignored, but no longer silently: the attribute does nothing on a static member, so the
+        // generator says so rather than leaving it to be discovered at render.
+        var warning = runResult.Diagnostics.SingleOrDefault(_ => _.Id == "PARCH019");
+        await Assert.That(warning).IsNotNull();
+        await Assert.That(warning!.GetMessage()).Contains("EditableField");
 
         var generated = runResult.GeneratedSources.Single().SourceText.ToString();
         await Assert.That(generated).DoesNotContain("_Editables");
