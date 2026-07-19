@@ -1318,6 +1318,20 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 | `---` | \u2014 (em-dash) |
 | `...` | \u2026 (ellipsis) |
 
+### Tabs
+
+A tab character in markdown text renders as a real Word tab (`<w:tab/>`), landing on the paragraph style's tab stops:
+
+```markdown
+A	SUBMISSIONS WITHIN AUTHORITY
+B	SECOND ITEM
+```
+
+A tab left inside `<w:t>` is not a Word tab — Word renders the raw character as ordinary whitespace — so the tab is emitted as its own element beside the text.
+
+Two things markdown does with tabs elsewhere still apply, since they happen before rendering: a **leading** tab is indentation (four spaces, or a code block), and a **trailing** tab is trimmed with the rest of the line's trailing whitespace. A tab between text is the one that survives to become a Word tab. HTML has no equivalent — a tab in html source folds to a space, per html's own rules — so markdown text is the way to ask for one.
+
+
 #### [Generic attributes](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GenericAttributesSpecs.md)
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
