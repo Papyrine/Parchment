@@ -328,6 +328,21 @@ Full rationale and alternatives in `readme.md` → "Source generator (recommende
 - One template per model via the attribute is canonical. Multi-template / POCO / dynamic-path scenarios use the runtime `TemplateStore.RegisterDocxTemplate<T>` / `RegisterMarkdownTemplate<T>` overloads — keep them as the supported escape hatch.
 - When touching `ParchmentTemplateGenerator.cs`, the attribute predicate, target shape, `BuildPartialSource` wrapping, and any new diagnostics all treat the attribute target as the model type. No second symbol to thread through.
 
+### Equal table column widths are deliberately inexpressible
+
+`TableRenderer.ComputeColumnWidths` reads relative widths from the dash counts in a pipe table's separator row, and ignores them in two cases: no width hints at all (`totalPct == 0`), and every column carrying the same count (`allEqual`). `OpenXmlMarkdownRenderer.SkipColumnWidths` filters a third upstream — source-aligned tables, where the dashes are padded so the markdown lines up. All three mean "no opinion on widths", so the table is left on Word's autofit and sizes to content.
+
+The cost is that genuinely equal columns cannot be stated. Equal dash counts are indistinguishable from `| --- | --- |`, which is how nearly everyone writes a separator regardless of intent.
+
+**Removing the `allEqual` check was tried and reverted.** It is not redundant with `SkipColumnWidths`: that one catches source-aligned tables, `allEqual` catches uniform-but-unaligned ones. Dropping it regresses the most common table shape in the corpus from content-sized to equal fixed columns. No dash-count heuristic can separate the two intents, because they are written identically — so this is a syntax gap, not a heuristic to tune.
+
+Expressing it needs explicit width syntax, and a table already takes a leading `{.StyleName}` on its own line as a place to carry one. Four things to settle first:
+
+- **Syntax** — key=value on the existing generic attribute, or a dedicated one.
+- **Units** — relative weights, percentages, or absolute. `w:gridCol` takes twips only, and `TableRenderer` already converts ratios against `GridWidthBudgetDxa`.
+- **`MarkdownStyle` contract** — `Resolve` reads `Classes.FirstOrDefault()` and deliberately discards `#id`, further classes, and key=value properties, documented and test-pinned. Widths on the generic attribute means consuming key=value, which revises that.
+- **Layout** — explicit widths would presumably emit `tblLayout` fixed, as the existing width path does. Equal fixed columns and autofit look different, so this is a rendering decision.
+
 ## Non-obvious gotchas
 
 - **`readme.md` is generated; `src/Parchment/nuget-readme.md` is hand-maintained**: every code block in the root readme is a `<!-- snippet: X -->` / `<!-- endSnippet -->` pair that MarkdownSnippets extracts from compiled, executing tests (config: `src/mdsnippets.json`, run on every push by `.github/workflows/on-push-do-docs.yml`, which auto-commits the regenerated file). A signature change breaks the build and the readme is rewritten, so those blocks cannot drift. **`nuget-readme.md` contains no snippet markers**, so its fences compile against nothing and rot silently — and it is the nuget.org landing page (`Parchment.csproj` `PackageReadmeFile`). Every sample in it had drifted before being corrected by hand. It is deliberately not snippet-ified: MarkdownSnippets appends root-relative `snippet source` links, which resolve on GitHub but 404 on nuget.org. **Any public signature change needs a manual check of `nuget-readme.md`.**
@@ -340,7 +355,7 @@ Full rationale and alternatives in `readme.md` → "Source generator (recommende
   - `{.StyleName}` is *unreachable* on a thematic break, a table row or cell, and an html block. Markdig binds the attribute somewhere else in each case — to a `ParagraphBlock`, to the whole `Table`, or nowhere. Not implementable, so documented instead.
   - A fenced code block's language arrives as a synthesised `language-xxx` class. `MarkdownStyle.ResolveCodeBlock` skips it, or every ` ```csharp ` block would get a style called `language-csharp` that nobody defined.
   - An explicit column alignment (`|:-:|`) still applies to a styled table, while the renderer's default borders, cell margins and implicit header centring stand down. The alignment is authored intent; the defaults are supplied on the author's behalf.
-  - Equal table columns cannot be stated: equal dash counts are indistinguishable from the conventional `| --- | --- |`, so the heuristic reads them as "no opinion". Expressing it needs explicit width syntax.
+  - Equal table columns cannot be stated: equal dash counts are indistinguishable from the conventional `| --- | --- |`, so the heuristic reads them as "no opinion". See "Equal table column widths are deliberately inexpressible" above.
   - A render attribute on a static member stays a no-op. Both registration routes now report it (`PARCH019` under the generator, an `ILogger` warning at runtime), but the attribute maps still walk instance members only.
 
 - **Tokens straddling run boundaries**: Word splits text into multiple `<w:r>` when formatting changes, proofing markers fire, or smart-quote autocorrect runs. `{{ customer.name }}` can land across N runs. Scanner uses `paragraph.InnerText` + `RunMap` (offset → `<w:t>`) so substitutions land correctly. Formatting of the **first run** containing the opening `{{` wins for the entire substitution.
