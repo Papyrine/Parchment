@@ -1336,6 +1336,8 @@ Two things markdown does with tabs elsewhere still apply, since they happen befo
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
 
+A Word style is a single name, so the rest of what the syntax can carry has nowhere to map and is ignored: an id (`{#intro}`), key=value properties (`{.Caption width=400}`), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
+
 Headings and paragraphs take the style as their `ParagraphStyleId`:
 
 ```markdown

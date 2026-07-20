@@ -16,10 +16,6 @@ class HeadingBlockRenderer :
         renderer.FlushParagraph(properties);
     }
 
-    static string ResolveStyle(HeadingBlock block, int level)
-    {
-        var attributes = block.TryGetAttributes();
-        var cls = attributes?.Classes?.FirstOrDefault();
-        return cls ?? $"Heading{level}";
-    }
+    static string ResolveStyle(HeadingBlock block, int level) =>
+        MarkdownStyle.Resolve(block) ?? $"Heading{level}";
 }

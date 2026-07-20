@@ -11,7 +11,6 @@ class OpenXmlMarkdownRenderer :
     {
         MainPart = mainPart;
         HeadingOffset = headingOffset;
-        AvailableStyles = StyleSet.Read(mainPart);
         Numbering = numbering;
         ImagePolicies = imagePolicies;
         stack.Push(new());
@@ -39,7 +38,6 @@ class OpenXmlMarkdownRenderer :
 
     public MainDocumentPart MainPart { get; }
     public int HeadingOffset { get; }
-    public StyleSet AvailableStyles { get; }
     public WordNumberingState Numbering { get; }
     public ImagePolicies ImagePolicies { get; }
 

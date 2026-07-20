@@ -4,8 +4,7 @@ class ParagraphBlockRenderer :
     protected override void Write(OpenXmlMarkdownRenderer renderer, ParagraphBlock block)
     {
         ParagraphProperties? properties = null;
-        var attributes = block.TryGetAttributes();
-        var cls = attributes?.Classes?.FirstOrDefault();
+        var cls = MarkdownStyle.Resolve(block);
         if (cls != null)
         {
             properties = new()
