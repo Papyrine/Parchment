@@ -78,6 +78,22 @@ static class SharedFluid
         return options;
     }
 
+    /// <summary>
+    /// Registers a user filter against every option set.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Options"/> and <see cref="MarkdownOptions"/> hold separate FilterCollections.
+    /// Fluid exposes <c>TemplateOptions.Filters</c> as get-only, so the two cannot be pointed at one
+    /// instance the way <c>MemberAccessStrategy</c> is. Registering against a single set is a silent
+    /// no-op in the other flow: Fluid treats an unknown filter as a pass-through, so the value
+    /// renders unfiltered with nothing reported.
+    /// </remarks>
+    public static void AddFilter(string name, FilterDelegate filter)
+    {
+        Options.Filters.AddFilter(name, filter);
+        MarkdownOptions.Filters.AddFilter(name, filter);
+    }
+
     public static void RegisterModel(Type modelType) =>
         RegisterTypeGraph(modelType);
 
