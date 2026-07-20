@@ -33,6 +33,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         GuardBindingModel<TModel>(name);
         SharedFluid.RegisterModel(typeof(TModel));
+        StaticRenderAttributes.Warn(typeof(TModel), name, logger);
 
         var excelsiorMap = ExcelsiorTableMap.Build(typeof(TModel), name);
         var formatMap = FormatMap.Build(typeof(TModel), name);
@@ -99,6 +100,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         GuardBindingModel<TModel>(name);
         SharedFluid.RegisterModel(typeof(TModel));
+        StaticRenderAttributes.Warn(typeof(TModel), name, logger);
 
         if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
         {

@@ -171,7 +171,7 @@ sealed class EditableMap
                 // A collection of a POCO element type (with its own [EditableField] members) becomes an
                 // editable repeating section; anything else is a scalar/HTML editable field.
                 if (TryGetElementType(memberType, out var elementType) &&
-                    ShouldDescend(elementType))
+                    ModelGraph.ShouldDescend(elementType))
                 {
                     collections[dottedPath] = BuildCollectionEntry(
                         dottedPath, type, member, memberType, elementType, parentGetter, templateName);
@@ -194,7 +194,7 @@ sealed class EditableMap
             }
 
             var memberUnderlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
-            if (!ShouldDescend(memberUnderlying))
+            if (!ModelGraph.ShouldDescend(memberUnderlying))
             {
                 continue;
             }
@@ -509,26 +509,4 @@ sealed class EditableMap
             return parent == null ? null : memberGetter(parent);
         };
 
-    static bool ShouldDescend(Type type)
-    {
-        if (type.IsPrimitive || type.IsEnum)
-        {
-            return false;
-        }
-
-        if (type == typeof(string) ||
-            type == typeof(decimal) ||
-            type == typeof(DateTime) ||
-            type == typeof(DateTimeOffset) ||
-            type == typeof(Date) ||
-            type == typeof(Time) ||
-            type == typeof(TimeSpan) ||
-            type == typeof(Guid) ||
-            type == typeof(Uri))
-        {
-            return false;
-        }
-
-        return !typeof(IEnumerable).IsAssignableFrom(type);
-    }
 }

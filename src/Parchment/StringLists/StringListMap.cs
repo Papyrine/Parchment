@@ -74,7 +74,7 @@ sealed class StringListMap
             // Descend into POCO members. Skip leaves and other collection types (loops handle
             // those). Track visited types per branch so self-referential models don't recurse
             // forever; the same type can still appear at multiple unrelated paths.
-            if (!ShouldDescend(underlying))
+            if (!ModelGraph.ShouldDescend(underlying))
             {
                 continue;
             }
@@ -104,26 +104,4 @@ sealed class StringListMap
             return memberGetter(parent);
         };
 
-    static bool ShouldDescend(Type type)
-    {
-        if (type.IsPrimitive || type.IsEnum)
-        {
-            return false;
-        }
-
-        if (type == typeof(string) ||
-            type == typeof(decimal) ||
-            type == typeof(DateTime) ||
-            type == typeof(DateTimeOffset) ||
-            type == typeof(Date) ||
-            type == typeof(Time) ||
-            type == typeof(TimeSpan) ||
-            type == typeof(Guid) ||
-            type == typeof(Uri))
-        {
-            return false;
-        }
-
-        return !typeof(IEnumerable).IsAssignableFrom(type);
-    }
 }
