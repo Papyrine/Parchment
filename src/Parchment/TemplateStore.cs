@@ -284,7 +284,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     public static void AddFilter(string name, FilterDelegate filter) =>
-        SharedFluid.Options.Filters.AddFilter(name, filter);
+        SharedFluid.AddFilter(name, filter);
 
     static List<PartScopeTree> ExtractParts(WordprocessingDocument doc, string name)
     {
