@@ -1,0 +1,20 @@
+﻿{
+  Diagnostics: [
+    {
+      Location: : (10,1)-(10,30),
+      Message:
+Template 'template.md' could not be read: Failed to parse markdown as a liquid template: Invalid 'for' tag at (1:7)
+Source:
+{% for line in Lines | reverse %},
+      Severity: Error,
+      Descriptor: {
+        Id: PARCH006,
+        Title: Failed to read template,
+        MessageFormat: Template '{0}' could not be read: {1},
+        Category: Parchment,
+        DefaultSeverity: Error,
+        IsEnabledByDefault: true
+      }
+    }
+  ]
+}

@@ -407,6 +407,23 @@ public class MarkdownFlowTests
     public void ValidForElseBranchIsAccepted() =>
         Register("{% for row in Rows %}{{ row.Name }}{% else %}{{ Rows }}{% endfor %}");
 
+    // Looping something that resolves but is not enumerable is a mistake, not an unknown. The docx
+    // validator and the source generator both reject it; markdown used to accept it as untyped and
+    // render nothing.
+    [Test]
+    public async Task NonEnumerableLoopSourceFailsRegistration()
+    {
+        // Row is a POCO. A string would not do here — it is IEnumerable<char>, so it resolves.
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for row in Rows %}{% for inner in row %}{{ inner }}{% endfor %}{% endfor %}"));
+        await Assert.That(exception.Message).Contains("enumerable");
+    }
+
+    // A range has no member path at all, so nothing about it is knowable and it stays accepted.
+    [Test]
+    public void RangeLoopSourceIsAccepted() =>
+        Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
+
     // forloop is scoped to the loop body, so outside one it is still an error — but the message
     // should say what forloop is rather than describing it as a missing model member.
     [Test]

@@ -122,10 +122,14 @@ class MarkdownValidator
         // `forloop` is introduced by liquid for the duration of the body.
         var addedForLoop = untyped.Add("forloop");
 
-        if (sourceIsUntyped)
+        if (sourceIsUntyped ||
+            sourcePath == null)
         {
-            // Falling through to the root-model binding below would report a PARCH001 on every
-            // member reached through the loop variable, none of them real.
+            // Nothing is known about what is being iterated: an untyped identifier, or a source
+            // with no member path at all such as the range in `{% for i in (1..5) %}`. Neither
+            // reported a diagnostic above, so falling through to the root-model binding below would
+            // report a PARCH001 on every member reached through the loop variable, none of them
+            // real.
             scope.Remove(loopVariable);
             untyped.Add(loopVariable);
         }
@@ -225,6 +229,10 @@ class MarkdownValidator
         }
     }
 
+    // Returns null for a source with no static member path — a range, or an indexer whose key is
+    // itself an expression. WalkFor treats that as untyped rather than binding to the root model.
+    // A filtered source needs no handling here: Fluid rejects `{% for x in Src | filter %}` as an
+    // invalid for tag, so it never reaches validation on either the runtime or the generator path.
     static List<string>? TryGetMemberPath(Expression expression)
     {
         if (expression is not MemberExpression member)

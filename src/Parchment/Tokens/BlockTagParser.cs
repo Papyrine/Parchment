@@ -21,7 +21,26 @@ static class BlockTagParser
             return false;
         }
 
-        var inner = span[2..^2].Trim();
+        var inner = span[2..^2];
+
+        // Whitespace control. The hyphens in `{%-` and `-%}` belong to the delimiter, not the tag,
+        // so they come off before the tag is read. They have to be adjacent to the delimiter to
+        // count, which is why this runs before the trim — `{% - for %}` stays a parse error.
+        // Markdown templates go through Fluid's own parser, which handles this; the docx flow scans
+        // tags itself and used to reject `{%- for row in Rows %}` as a malformed block tag.
+        if (inner.Length > 0 &&
+            inner[0] == '-')
+        {
+            inner = inner[1..];
+        }
+
+        if (inner.Length > 0 &&
+            inner[^1] == '-')
+        {
+            inner = inner[..^1];
+        }
+
+        inner = inner.Trim();
         if (inner.IsEmpty)
         {
             return false;

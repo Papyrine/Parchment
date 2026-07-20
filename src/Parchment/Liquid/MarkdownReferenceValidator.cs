@@ -43,7 +43,7 @@ class MarkdownReferenceValidator :
         // before the loop variable is introduced.
         Visit(forStatement.Source);
 
-        var elementType = ResolveElementType(forStatement.Source);
+        var elementType = ResolveElementType(forStatement.Source, forStatement.Identifier);
 
         var hadScope = scope.TryGetValue(forStatement.Identifier, out var previousScope);
         var hadUntyped = untyped.Contains(forStatement.Identifier);
@@ -51,7 +51,7 @@ class MarkdownReferenceValidator :
 
         if (elementType == null)
         {
-            // The source is not a resolvable enumerable (a range, or a value off an assign). The
+            // Nothing statically known about the source — a range, or a value off an assign. The
             // loop variable still exists, so accept it without checking its members.
             scope.Remove(forStatement.Identifier);
             untyped.Add(forStatement.Identifier);
@@ -143,7 +143,17 @@ class MarkdownReferenceValidator :
         return base.VisitMemberExpression(expression);
     }
 
-    Type? ResolveElementType(Expression source)
+    /// <summary>
+    /// Element type of whatever the loop iterates, or null when nothing about the source is
+    /// statically known — a range, or a value off an assign.
+    /// </summary>
+    /// <remarks>
+    /// A source that resolves to a real type which is not enumerable is a different case: that is a
+    /// mistake, not an unknown, and both the docx validator and the source generator reject it. This
+    /// one used to accept it as untyped, which left the markdown path the only one that would render
+    /// `{% for p in Profile %}` over a POCO as nothing at all, silently.
+    /// </remarks>
+    Type? ResolveElementType(Expression source, string loopVariable)
     {
         var refs = IdentifierVisitor.Collect(source);
         if (refs.Count == 0)
@@ -157,7 +167,17 @@ class MarkdownReferenceValidator :
             return null;
         }
 
-        return ModelValidator.TryResolveElementType(iterableType);
+        var elementType = ModelValidator.TryResolveElementType(iterableType);
+        if (elementType == null)
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                $"Loop source '{refs[0]}' does not resolve to an enumerable type.",
+                null,
+                loopVariable);
+        }
+
+        return elementType;
     }
 
     Type? ResolvePathType(IdentifierPath path)

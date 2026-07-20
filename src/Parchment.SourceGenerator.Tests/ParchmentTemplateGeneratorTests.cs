@@ -594,6 +594,36 @@ public class ParchmentTemplateGeneratorTests
         return Verify(result);
     }
 
+    // Fluid rejects a filter on a for source, so it never reaches validation. Pinned because the
+    // shape looks supportable and the validators were once thought to differ over it.
+    [Test]
+    public Task Markdown_FilteredForLoopSource_IsAParseError()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            invoiceModelMd,
+            """
+            {% for line in Lines | reverse %}
+            - {{ line.Description }}
+            {% endfor %}
+            """);
+        return Verify(result);
+    }
+
+    // A range has no member path at all, so the loop variable is untyped rather than bound to the
+    // root model. Binding to the root reported a PARCH001 on every member reached through it.
+    [Test]
+    public Task Markdown_RangeForLoopSource_NoDiagnostic()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            letterModelMd,
+            """
+            {% for i in (1..5) %}
+            {{ i.size }}
+            {% endfor %}
+            """);
+        return Verify(result);
+    }
+
     [Test]
     public Task Markdown_TemplateFileMissing()
     {
