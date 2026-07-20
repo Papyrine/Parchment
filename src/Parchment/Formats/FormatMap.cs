@@ -87,7 +87,7 @@ sealed class FormatMap
             }
 
             var memberUnderlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
-            if (!ShouldDescend(memberUnderlying))
+            if (!ModelGraph.ShouldDescend(memberUnderlying))
             {
                 continue;
             }
@@ -194,27 +194,5 @@ sealed class FormatMap
     static string? ReadStringSyntax(MemberInfo member) =>
         member.GetCustomAttribute<StringSyntaxAttribute>(true)?.Syntax.ToLowerInvariant();
 
-    static bool ShouldDescend(Type type)
-    {
-        if (type.IsPrimitive || type.IsEnum)
-        {
-            return false;
-        }
-
-        if (type == typeof(string) ||
-            type == typeof(decimal) ||
-            type == typeof(DateTime) ||
-            type == typeof(DateTimeOffset) ||
-            type == typeof(Date) ||
-            type == typeof(Time) ||
-            type == typeof(TimeSpan) ||
-            type == typeof(Guid) ||
-            type == typeof(Uri))
-        {
-            return false;
-        }
-
-        return !typeof(IEnumerable).IsAssignableFrom(type);
-    }
 }
 
