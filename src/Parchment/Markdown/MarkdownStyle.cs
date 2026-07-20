@@ -20,4 +20,36 @@ static class MarkdownStyle
 {
     public static string? Resolve(IMarkdownObject node) =>
         node.TryGetAttributes()?.Classes?.FirstOrDefault();
+
+    /// <summary>
+    /// Resolves the style for a code block, skipping the <c>language-xxx</c> class Markdig
+    /// synthesises from a fence's info string.
+    /// </summary>
+    /// <remarks>
+    /// That class is not written by the author, so treating it as a style name would give every
+    /// <c>```csharp</c> block a style called <c>language-csharp</c> — one nobody defined, purely
+    /// because the fence named a language.
+    /// </remarks>
+    public static string? ResolveCodeBlock(CodeBlock block)
+    {
+        var classes = block.TryGetAttributes()?.Classes;
+        if (classes == null)
+        {
+            return null;
+        }
+
+        var info = (block as FencedCodeBlock)?.Info;
+        foreach (var cls in classes)
+        {
+            if (info is { Length: > 0 } &&
+                cls == $"language-{info}")
+            {
+                continue;
+            }
+
+            return cls;
+        }
+
+        return null;
+    }
 }

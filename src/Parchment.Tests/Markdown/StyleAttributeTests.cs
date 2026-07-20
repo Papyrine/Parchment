@@ -105,6 +105,114 @@ public class StyleAttributeTests
         await Assert.That(last.RunProperties?.RunStyle).IsNull();
     }
 
+    // A quote takes the attribute on the line above, which covers every line of it.
+    [Test]
+    public async Task QuoteStyleIsApplied()
+    {
+        // A blank quoted line makes two paragraphs; without it the lines lazily continue into one.
+        var styles = RenderParagraphStyles<QuoteBlock>("{.PullQuote}\n> one\n>\n> two");
+        await Assert.That(styles).IsEquivalentTo(["PullQuote", "PullQuote"]);
+    }
+
+    // Written at the end of a quoted line it binds to that line alone, and the narrower one wins.
+    [Test]
+    public async Task QuoteLineStyleBeatsTheBlockStyle()
+    {
+        var styles = RenderParagraphStyles<QuoteBlock>("{.PullQuote}\n> one {.Attribution}\n>\n> two");
+        await Assert.That(styles).IsEquivalentTo(["Attribution", "PullQuote"]);
+    }
+
+    [Test]
+    public async Task UnstyledQuoteKeepsTheDefault()
+    {
+        var styles = RenderParagraphStyles<QuoteBlock>("> one");
+        await Assert.That(styles).IsEquivalentTo(["Quote"]);
+    }
+
+    [Test]
+    public async Task CodeBlockStyleIsApplied()
+    {
+        var styles = RenderParagraphStyles<CodeBlock>("``` {.Snippet}\nvar x = 1;\n```");
+        await Assert.That(styles).IsEquivalentTo(["Snippet"]);
+    }
+
+    // Markdig turns a fence's info string into a `language-xxx` class. It is synthesised, not
+    // written, so treating it as a style would give every ```csharp block a style called
+    // language-csharp that nobody defined.
+    [Test]
+    public async Task FenceLanguageIsNotMistakenForAStyle()
+    {
+        var styles = RenderParagraphStyles<CodeBlock>("```csharp\nvar x = 1;\n```");
+        await Assert.That(styles).IsEquivalentTo(["Code"]);
+    }
+
+    [Test]
+    public async Task CodeBlockStyleWinsOverTheFenceLanguage()
+    {
+        var styles = RenderParagraphStyles<CodeBlock>("```csharp {.Snippet}\nvar x = 1;\n```");
+        await Assert.That(styles).IsEquivalentTo(["Snippet"]);
+    }
+
+    [Test]
+    public async Task CodeInlineStyleBecomesRunStyle()
+    {
+        var run = FirstRun("Text `code`{.Mono} tail");
+        await Assert.That(run.RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Mono");
+    }
+
+    [Test]
+    public async Task LinkStyleOverridesHyperlink()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>("[text](http://x){.Reference}"));
+        var hyperlink = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
+        var run = hyperlink.Elements<Run>().First();
+
+        await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Reference");
+    }
+
+    [Test]
+    public async Task UnstyledLinkKeepsHyperlink()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>("[text](http://x)"));
+        var hyperlink = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
+        var run = hyperlink.Elements<Run>().First();
+
+        await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task AutolinkStyleOverridesHyperlink()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>("<http://x>{.Reference}"));
+        var hyperlink = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
+        var run = hyperlink.Elements<Run>().First();
+
+        await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Reference");
+    }
+
+    static Run FirstRun(string markdown)
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>(markdown));
+        return ((Paragraph) renderer.Drain()[0])
+            .Elements<Run>()
+            .First(_ => _.RunProperties?.RunStyle != null);
+    }
+
+    static List<string> RenderParagraphStyles<TBlock>(string markdown)
+        where TBlock : Block
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<TBlock>(markdown));
+        return renderer.Drain()
+            .OfType<Paragraph>()
+            .Select(_ => _.ParagraphProperties!.ParagraphStyleId!.Val!.Value!)
+            .ToList();
+    }
+
     static List<string> RenderListStyles(string markdown)
     {
         var renderer = RendererHarness.BuildRenderer();
