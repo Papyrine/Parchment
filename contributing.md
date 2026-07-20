@@ -228,9 +228,32 @@ A `List<T>` / `T[]` / `IList<T>` of a POCO element type, marked `[EditableField]
 
 **Lockstep**: `CollectionEntry` build/constraints ↔ `ShapeBuilder` collection detection + `ValidateEditableShape`; `RenderEditableCollection` ↔ `AccessorEmission` collection emission; `RegisterPrecompiledCollections` ↔ the `CollectionFieldMapEntry` carrier. Tests: `EditableCollectionTests` + `DeterminismTests.EditableCollectionRenderIsByteIdentical` (runtime), `EditableFieldGeneratorTests.EditableCollection_*` (SG).
 
+### Validation topology — four validators that must agree
+
+The same template is validated by four separate implementations, and they validate the *same* templates against the *same* model. Any disagreement is a bug, and the direction matters: the source generator's diagnostics are `Error`, so a template the runtime accepts but the generator rejects fails the build outright.
+
+| path | entry point |
+|---|---|
+| markdown, runtime | `Liquid/MarkdownReferenceValidator` (Fluid AST walk, scope + `untyped` set) |
+| docx, runtime | `Tokens/TokenScanner` → `ScopeTreeBuilder` → `ReferenceValidator` |
+| markdown, source generator | `Parchment.SourceGenerator/MarkdownValidator` |
+| docx, source generator | `ParchmentTemplateGenerator.ValidateTokens` |
+
+**Lockstep**: the `untyped` set in `MarkdownReferenceValidator` ↔ the one in `MarkdownValidator` — `forloop` scoped to a loop body, `{% assign %}` / `{% capture %}` targets, and a loop variable whose source has no static member path. Loop-source resolution ↔ `ShapeResolver.GetElementType`. When tightening one, check the other three.
+
+Known and deliberate asymmetries, so they are not "fixed" into divergence:
+
+- The docx flow runs its own scope tree rather than liquid's `{% for %}`, so it never populates `forloop`, and `assign` / `capture` are not among its block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so rather than rendering a blank.
+- A loop source that resolves to a real type which is not enumerable is a mistake and throws on all paths. One that does not resolve at all — a range, an assign target — is an unknown, and the loop variable is accepted as untyped.
+- A filtered source (`{% for x in Src | filter %}`) never reaches any validator: Fluid rejects it as an invalid `for` tag.
+
 ### Determinism guarantee
 
 See `readme.md` → "Determinism". Implementation discipline: avoid `w:rsid` randomness, never set `PackageProperties.Created`, no timestamps. Editable fields: sequential sdt/perm-range ids (`EditableState`), passwordless `w:documentProtection` (a password would need a random salt). `DeterminismTests.cs` renders samples twice (including scalar and HTML editable-field cases, the latter with a list) and asserts byte equality — don't break it. This relies on **OpenXmlHtml 1.0.6+** pinning the numbering part's relationship id; earlier versions drew a random one, so a list rendered into a template lacking a numbering part was non-deterministic.
+
+**Zip entry timestamps are pinned** (`Word/ZipTimestamps.cs`, called at the end of both `RegisteredDocxTemplate.Render` and `RegisteredMarkdownTemplate.Render`). Entries cloned from the registration snapshot keep their stamps through a save, but a part *added* during the render — the settings part on every markdown render, a numbering part for a list, an image — is stamped with the wall clock, and `[Content_Types].xml` is re-stamped on every save. Zip stores those at 2-second resolution, so before the pin two renders were byte-identical only when their saves fell inside the same 2-second window, and never across days. The double-render tests could not catch it: they render milliseconds apart and so almost always landed in the same quantum. `DeterminismTests.*PinsZipEntryTimestamps` assert the stable date directly instead.
+
+`ZipTimestamps` patches only the four DOS time/date bytes in each local header and central directory record — no reordering, no recompression, no content rewrite. **`DeterministicIoPackaging.DeterministicPackage.Convert` was tried here and reverted**: it is built for snapshot normalization and rewrites entry *content*, which for product output loses document data — it normalizes core properties (dropping the template's own `dc:creator` that the document-properties merge exists to preserve) and its png normalizer throws on a minimal 1×1 png. The stable date matches that package's, so archives normalized by either read the same.
 
 ### Scenario directories (`src/Parchment.Tests/Scenarios/`)
 
@@ -310,6 +333,15 @@ Full rationale and alternatives in `readme.md` → "Source generator (recommende
 - **`readme.md` is generated; `src/Parchment/nuget-readme.md` is hand-maintained**: every code block in the root readme is a `<!-- snippet: X -->` / `<!-- endSnippet -->` pair that MarkdownSnippets extracts from compiled, executing tests (config: `src/mdsnippets.json`, run on every push by `.github/workflows/on-push-do-docs.yml`, which auto-commits the regenerated file). A signature change breaks the build and the readme is rewritten, so those blocks cannot drift. **`nuget-readme.md` contains no snippet markers**, so its fences compile against nothing and rot silently — and it is the nuget.org landing page (`Parchment.csproj` `PackageReadmeFile`). Every sample in it had drifted before being corrected by hand. It is deliberately not snippet-ified: MarkdownSnippets appends root-relative `snippet source` links, which resolve on GitHub but 404 on nuget.org. **Any public signature change needs a manual check of `nuget-readme.md`.**
 
 - **`mdsnippets.json` sets `ValidateContent: true`**, which rejects a configured list of informal words across **every** markdown file in the tree — including scratch files that were never checked in. A stray note dropped in the repo root will fail the build of `Parchment.Tests` with a `Content validation: Invalid word detected` error pointing at a line in that file. The rejected list is printed in full in the error message.
+
+- **Reading a `StyleSet` rewrites the styles part.** `StyleSet.Read` touches `StyleDefinitionsPart.Styles`, which materializes that part's DOM — and OpenXml then re-serialises it on save in its own attribute order, so the output no longer matches the template byte for byte. The content is unchanged and Word does not care, but snapshots move. The docx flow wraps the read in a `Lazy<StyleSet>` so it only materializes when a token actually asks for styles; the markdown renderer used to read it eagerly for a field nothing consumed, which is why removing that field changed a scenario baseline. The same applies to any part whose typed root is touched.
+
+- **Some asymmetries are constraints, not oversights.** Each of these looked like a defect, was investigated, and is deliberate — with a test pinning it, so a passing test asserting "ignored" is evidence of a decision rather than a gap:
+  - `{.StyleName}` is *unreachable* on a thematic break, a table row or cell, and an html block. Markdig binds the attribute somewhere else in each case — to a `ParagraphBlock`, to the whole `Table`, or nowhere. Not implementable, so documented instead.
+  - A fenced code block's language arrives as a synthesised `language-xxx` class. `MarkdownStyle.ResolveCodeBlock` skips it, or every ` ```csharp ` block would get a style called `language-csharp` that nobody defined.
+  - An explicit column alignment (`|:-:|`) still applies to a styled table, while the renderer's default borders, cell margins and implicit header centring stand down. The alignment is authored intent; the defaults are supplied on the author's behalf.
+  - Equal table columns cannot be stated: equal dash counts are indistinguishable from the conventional `| --- | --- |`, so the heuristic reads them as "no opinion". Expressing it needs explicit width syntax.
+  - A render attribute on a static member stays a no-op. Both registration routes now report it (`PARCH019` under the generator, an `ILogger` warning at runtime), but the attribute maps still walk instance members only.
 
 - **Tokens straddling run boundaries**: Word splits text into multiple `<w:r>` when formatting changes, proofing markers fire, or smart-quote autocorrect runs. `{{ customer.name }}` can land across N runs. Scanner uses `paragraph.InnerText` + `RunMap` (offset → `<w:t>`) so substitutions land correctly. Formatting of the **first run** containing the opening `{{` wins for the entire substitution.
 
