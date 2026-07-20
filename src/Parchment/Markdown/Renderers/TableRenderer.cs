@@ -326,11 +326,10 @@ class TableRenderer :
         var content = literal.Content.AsSpan();
         if (content.Length > 0)
         {
-            var run = new Run(
-                new Text(XmlCharSanitizer.Strip(content).ToString())
-                {
-                    Space = SpaceProcessingModeValues.Preserve
-                });
+            // Through LiteralInlineRenderer so a tab becomes a real <w:tab/>. This fast path built
+            // its own run and so was the one place a tab stayed a raw character inside <w:t>, where
+            // Word renders it as ordinary whitespace.
+            var run = LiteralInlineRenderer.BuildRun(XmlCharSanitizer.Strip(content).ToString());
             if (isHeader)
             {
                 run.RunProperties = new();

@@ -50,4 +50,25 @@ public class TabTests
         var kinds = run.ChildElements.Select(_ => _.GetType().Name).ToList();
         await Assert.That(kinds).IsEquivalentTo(["Text"]);
     }
+
+    // A cell holding a single literal takes a fast path that built its own run, so it was the one
+    // place a tab stayed a raw character. The general cell path always worked.
+    [Test]
+    public async Task TabInAPlainTableCellBecomesWordTab()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(RendererHarness.FirstBlock<Markdig.Extensions.Tables.Table>("| A\tB |\n|---|\n| c\td |"));
+        var table = (Table) renderer.Drain().Single();
+
+        foreach (var cell in table.Descendants<TableCell>())
+        {
+            var run = cell.GetFirstChild<Paragraph>()!.GetFirstChild<Run>()!;
+            // The header cell's run leads with RunProperties carrying its Bold.
+            var kinds = run.ChildElements
+                .Where(_ => _ is not RunProperties)
+                .Select(_ => _.GetType().Name)
+                .ToList();
+            await Assert.That(kinds).IsEquivalentTo(["Text", "TabChar", "Text"]);
+        }
+    }
 }

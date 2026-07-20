@@ -957,7 +957,7 @@ Nullable variants are supported except `bool?` — a checkbox cannot represent n
 - A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
 - The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
 
-**Friendly enum labels.** A dropdown shows a friendly label but stores the member name. The label comes from the same [Excelsior](https://github.com/SimonCropp/Excelsior) rendering used for inline `{{ enum }}` substitutions and Excelsior table cells: a `[Display(Name = …)]` / `[Description]` attribute or a global `ValueRenderer.ForEnums` override if configured, otherwise the humanized member name (`NotYetCommenced` → `Not yet commenced`). Only the *display* is affected — each `w:listItem` keeps the member name as its `w:val`, so extraction reads the enum back from that regardless of the label, and no `[Display]` attribute or culture setting can break the round-trip.
+**Friendly enum labels.** A dropdown shows a friendly label but stores the member name. The label comes from the same [Excelsior](https://github.com/Papyrine/Excelsior) rendering used for inline `{{ enum }}` substitutions and Excelsior table cells: a `[Display(Name = …)]` / `[Description]` attribute or a global `ValueRenderer.ForEnums` override if configured, otherwise the humanized member name (`NotYetCommenced` → `Not yet commenced`). Only the *display* is affected — each `w:listItem` keeps the member name as its `w:val`, so extraction reads the enum back from that regardless of the label, and no `[Display]` attribute or culture setting can break the round-trip.
 
 ### Rich text (HTML)
 
@@ -1373,6 +1373,8 @@ A table takes it as its `TableStyle` (`tblStyle`), and it must lead the table on
 ```
 
 **Direct formatting stands down for a styled table.** Word lets direct formatting beat a table style, so an unstyled markdown table's default borders, cell margins, and bold-centred header would silently override the style. When `{.StyleName}` is present none of them are emitted, leaving the style in full control — including its own header formatting via conditional `firstRow`. The header row still repeats across pages. Without a style the defaults are unchanged.
+
+An explicit column alignment (`|:-:|`, `|--:|`) is the exception, and still applies to a styled table. Those defaults are formatting the renderer supplies on the author's behalf; an alignment is the author asking for one directly, so a style does not override it. The header's *implicit* centring — which nothing in the markdown asked for — does stand down.
 
 Quotes, code blocks, inline code and links each override the built-in style they would otherwise get — `Quote`, `Code` and `Hyperlink`. A quote takes it on the line above and it applies to every line; one written at the end of a quoted line applies to that line alone and wins over the block's. A code fence takes it in the info string, after any language:
 
