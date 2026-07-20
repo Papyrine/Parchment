@@ -61,6 +61,10 @@ class RegisteredDocxTemplate(
             doc.Save();
         }
 
+        // A part added during this render — a numbering part for a list, an image, editable-field
+        // seeding — is stamped with the wall clock, so byte-identical output held only when two
+        // renders landed in the same 2-second zip quantum. See ZipTimestamps.
+        ZipTimestamps.Pin(stream);
         stream.Position = 0;
         await stream.CopyToAsync(output, cancel);
     }
