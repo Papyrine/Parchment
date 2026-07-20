@@ -117,7 +117,7 @@ The generator deliberately **does not** embed docx/markdown bytes — generates 
 
 ### Excelsior table dispatch (`[ExcelsiorTable]`)
 
-A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered by [Excelsior](https://github.com/SimonCropp/Excelsior) instead of default string substitution. Parchment takes a hard `PackageReference` on `Excelsior` (>= 2.3.0); the attribute lives in Parchment (`Parchment.ExcelsiorTableAttribute`), so dep direction is Parchment → Excelsior.
+A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered by [Excelsior](https://github.com/Papyrine/Excelsior) instead of default string substitution. Parchment takes a hard `PackageReference` on `Excelsior` (>= 2.3.0); the attribute lives in Parchment (`Parchment.ExcelsiorTableAttribute`), so dep direction is Parchment → Excelsior.
 
 **Runtime path** (`src/Parchment/Excelsior/`):
 

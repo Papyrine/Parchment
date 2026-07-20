@@ -232,4 +232,39 @@ public class DocumentPropertiesTests
         await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
         await Assert.That(Core(doc, dc + "creator")).IsEqualTo("Original Author");
     }
+
+    // Every other test here registers through RegisterDocxTemplate, so the markdown flow's call to
+    // DocumentPropertiesWriter.Apply was wired but unproven. The writer is shared, so this covers
+    // the wiring rather than the merge semantics: one value written, one the style source carries
+    // left alone.
+    [Test]
+    public async Task MarkdownFlowWritesAndMergesProperties()
+    {
+        using var styleSource = BuildTemplateWithOwnProperties();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Model>("md", "# {{ Title }}", styleSource);
+
+        using var output = new MemoryStream();
+        await store.Render(
+            "md",
+            new Model
+            {
+                Title = "x"
+            },
+            output,
+            new DocumentProperties
+            {
+                Title = "Bill 42",
+                Custom =
+                {
+                    ["Chamber"] = "Lower"
+                }
+            });
+        output.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(output, false);
+        await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
+        await Assert.That(Custom(doc, "Chamber")).IsEqualTo("Lower");
+        await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
+    }
 }

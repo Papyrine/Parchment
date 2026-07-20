@@ -105,6 +105,23 @@ public class StyleAttributeTests
         await Assert.That(last.RunProperties?.RunStyle).IsNull();
     }
 
+    // The renderer's own defaults stand down for a styled table, but an explicit column alignment
+    // is authored intent rather than something the renderer invented, so it still applies. Only the
+    // implicit header centre — which the author did not ask for — is suppressed.
+    [Test]
+    public async Task ExplicitColumnAlignmentSurvivesATableStyle()
+    {
+        var table = Render("{.BrandTable}\n| A | B |\n|:-:|---|\n| 1 | 2 |");
+        var cells = table.Descendants<TableCell>().ToList();
+
+        var aligned = cells[0].GetFirstChild<Paragraph>()!.ParagraphProperties!.GetFirstChild<Justification>();
+        await Assert.That(aligned!.Val?.Value).IsEqualTo(JustificationValues.Center);
+
+        // The unaligned header cell takes nothing, since the implicit centre stood down.
+        await Assert.That(cells[1].GetFirstChild<Paragraph>()!.ParagraphProperties?.GetFirstChild<Justification>())
+            .IsNull();
+    }
+
     // A quote takes the attribute on the line above, which covers every line of it.
     [Test]
     public async Task QuoteStyleIsApplied()
