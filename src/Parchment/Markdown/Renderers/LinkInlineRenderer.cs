@@ -32,6 +32,7 @@ class LinkInlineRenderer :
         {
             Id = relId
         };
+        var styleId = MarkdownStyle.Resolve(inline) ?? "Hyperlink";
         foreach (var run in produced)
         {
             if (run is Run runElement)
@@ -40,7 +41,7 @@ class LinkInlineRenderer :
                 runElement.RunProperties.Append(
                     new RunStyle
                     {
-                        Val = "Hyperlink"
+                        Val = styleId
                     });
                 hyperlink.Append(runElement);
             }

@@ -1374,6 +1374,24 @@ A table takes it as its `TableStyle` (`tblStyle`), and it must lead the table on
 
 **Direct formatting stands down for a styled table.** Word lets direct formatting beat a table style, so an unstyled markdown table's default borders, cell margins, and bold-centred header would silently override the style. When `{.StyleName}` is present none of them are emitted, leaving the style in full control — including its own header formatting via conditional `firstRow`. The header row still repeats across pages. Without a style the defaults are unchanged.
 
+Quotes, code blocks, inline code and links each override the built-in style they would otherwise get — `Quote`, `Code` and `Hyperlink`. A quote takes it on the line above and it applies to every line; one written at the end of a quoted line applies to that line alone and wins over the block's. A code fence takes it in the info string, after any language:
+
+```markdown
+{.PullQuote}
+> Applies to the whole quote.
+> This line overrides it. {.Attribution}
+
+``` {.Snippet}
+fenced code
+```
+
+Use `code`{.Mono} for inline code, and [a link](https://example.com){.Reference}.
+```
+
+A fence's language is not a style: ```` ```csharp ```` keeps `Code`, because Markdig turns the info string into a `language-csharp` class that nobody wrote.
+
+Three places accept the syntax but cannot receive it, because markdown binds the attribute elsewhere: on a thematic break and after a table row it lands on a paragraph, on a table cell it lands on the whole table, and an html block takes none at all. Style the table itself, or the paragraph, instead.
+
 
 ### HTML comments are stripped
 

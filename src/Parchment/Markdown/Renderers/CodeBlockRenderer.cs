@@ -10,12 +10,14 @@ class CodeBlockRenderer :
             return;
         }
 
+        var styleId = MarkdownStyle.ResolveCodeBlock(block) ?? "Code";
+
         foreach (var line in block.Lines.Lines.Take(count))
         {
             var properties = new ParagraphProperties(
                 new ParagraphStyleId
                 {
-                    Val = "Code"
+                    Val = styleId
                 });
             if (indent > 0)
             {

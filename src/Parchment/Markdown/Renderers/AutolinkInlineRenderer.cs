@@ -9,7 +9,7 @@ class AutolinkInlineRenderer :
             new RunProperties(
                 new RunStyle
                 {
-                    Val = "Hyperlink"
+                    Val = MarkdownStyle.Resolve(inline) ?? "Hyperlink"
                 }),
             new Text(inline.Url)
             {
