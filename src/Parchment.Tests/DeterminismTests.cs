@@ -1,5 +1,51 @@
 public class DeterminismTests
 {
+    // The double-render tests in this class compare renders taken milliseconds apart, which left a
+    // hole: zip entry timestamps have 2-second resolution, entries cloned from the registration
+    // snapshot keep their stamps, and a part ADDED during the render (settings, numbering, images)
+    // was stamped with the wall clock. Two renders straddling a 2-second quantum differed in
+    // exactly those bytes — a rare flake here, and a standing violation of the byte-identical
+    // guarantee for any consumer rendering the same input twice on different days. Every entry is
+    // now pinned to ZipTimestamps.StableDate, which these two tests assert directly since a
+    // sleep-across-the-quantum repro is too slow for the suite.
+    [Test]
+    public async Task DocxRenderPinsZipEntryTimestamps()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ Number }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Invoice>("docx-timestamps", template);
+
+        using var stream = new MemoryStream();
+        await store.Render("docx-timestamps", SampleData.Invoice(), stream);
+        stream.Position = 0;
+
+        await AssertPinnedTimestamps(stream);
+    }
+
+    [Test]
+    public async Task MarkdownRenderPinsZipEntryTimestamps()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Invoice>("markdown-timestamps", "# {{ Number }}", styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render("markdown-timestamps", SampleData.Invoice(), stream);
+        stream.Position = 0;
+
+        await AssertPinnedTimestamps(stream);
+    }
+
+    static async Task AssertPinnedTimestamps(MemoryStream stream)
+    {
+        using var archive = new System.IO.Compression.ZipArchive(stream);
+        await Assert.That(archive.Entries.Count).IsGreaterThan(0);
+        foreach (var entry in archive.Entries)
+        {
+            await Assert.That(entry.LastWriteTime.DateTime).IsEqualTo(ZipTimestamps.StableDate);
+        }
+    }
+
     [Test]
     public async Task DocxRenderIsByteIdentical()
     {
