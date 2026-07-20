@@ -137,6 +137,28 @@ public class ReferenceValidatorTests
         await Assert.That(exception!.Message).Contains("NotARealField");
     }
 
+    // Whitespace control is documented as transparent to validation, in a section covering docx as
+    // well as markdown. Markdown goes through Fluid's parser, which strips the hyphens; the docx
+    // flow scans tags itself and used to reject these as malformed block tags.
+    [Test]
+    public void WhitespaceControlOnBlockTagsIsAccepted()
+    {
+        var index = 0;
+        foreach (var open in new[] { "{%-", "{%" })
+        {
+            foreach (var close in new[] { "-%}", "%}" })
+            {
+                using var template = DocxTemplateBuilder.Build(
+                    open + " for it in Items " + close +
+                    "\n\n{{ it.Sku }}\n\n" +
+                    open + " endfor " + close);
+
+                var store = new TemplateStore();
+                store.RegisterDocxTemplate<Doc>($"ws-{index++}", template);
+            }
+        }
+    }
+
     // The markdown flow allows forloop inside a loop body. The docx flow iterates through its own
     // scope tree and never populates it, so this has to keep failing — but the message should name
     // forloop instead of reading as a missing model member and sending the reader after a property.
