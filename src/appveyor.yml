@@ -48,9 +48,9 @@ build_script:
 - pwsh: ./dotnet-install.ps1 -JSonFile global.json -Architecture x64 -InstallDir 'C:\Program Files\dotnet'
 - dotnet build src --configuration Release
 - dotnet build IntegrationTests --configuration Release
-- dotnet run --project src/Parchment.Tests --configuration Release --no-build
-- dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release --no-build
-- dotnet run --project IntegrationTests/IntegrationTests --configuration Release --no-build
+- dotnet run --project src/Parchment.Tests --configuration Release --no-build -- --report-trx
+- dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release --no-build -- --report-trx
+- dotnet run --project IntegrationTests/IntegrationTests --configuration Release --no-build -- --report-trx
 on_failure:
   - ps: |
       $root = (Get-Location).Path
@@ -59,5 +59,14 @@ on_failure:
         Push-AppveyorArtifact $_.FullName -FileName $rel
       }
 test: off
+on_finish:
+- pwsh: |
+    $url = "https://ci.appveyor.com/api/testresults/mstest/$env:APPVEYOR_JOB_ID"
+    $client = [System.Net.WebClient]::new()
+    foreach ($trx in Get-ChildItem -Recurse -Filter *.trx -ErrorAction SilentlyContinue)
+    {
+      Write-Host "Uploading $($trx.FullName)"
+      $client.UploadFile($url, $trx.FullName)
+    }
 artifacts:
 - path: nugets\*.nupkg
