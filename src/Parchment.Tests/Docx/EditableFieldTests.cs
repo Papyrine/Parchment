@@ -334,7 +334,7 @@ public class EditableFieldTests
     {
         NotYetStarted,
 
-        [System.ComponentModel.DataAnnotations.Display(Name = "Under review")]
+        [Display(Name = "Under review")]
         InProgress
     }
 

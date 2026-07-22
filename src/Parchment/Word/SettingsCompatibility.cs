@@ -48,7 +48,7 @@ static class SettingsCompatibility
         var compat = settings.GetFirstChild<Compatibility>();
         if (compat == null)
         {
-            compat = new Compatibility();
+            compat = new();
             var before = settings.ChildElements.FirstOrDefault(_ => following.Contains(_.GetType()));
             if (before == null)
             {

@@ -1,5 +1,3 @@
-using Markdig.Renderers.Html;
-
 /// <summary>
 /// Reads the style name from a <c>{.StyleName}</c> generic attribute.
 /// </summary>

@@ -1,6 +1,5 @@
 using DocumentFormat.OpenXml.VariantTypes;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
-using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
 
 /// <summary>
 /// Applies a <see cref="DocumentProperties"/> to a rendered document: core properties to
@@ -126,7 +125,7 @@ static class DocumentPropertiesWriter
         }
 
         var part = document.ExtendedFilePropertiesPart ?? document.AddExtendedFilePropertiesPart();
-        var extended = part.Properties ??= new ExtendedProps.Properties();
+        var extended = part.Properties ??= new();
 
         if (properties.Company != null)
         {
@@ -148,7 +147,7 @@ static class DocumentPropertiesWriter
         }
 
         var part = document.CustomFilePropertiesPart ?? document.AddCustomFilePropertiesPart();
-        var custom = part.Properties ??= new CustomProps.Properties();
+        var custom = part.Properties ??= new();
 
         foreach (var (name, value) in properties.Custom)
         {
@@ -208,7 +207,7 @@ static class DocumentPropertiesWriter
             float f => new VTDouble(((double) f).ToString(CultureInfo.InvariantCulture)),
             decimal m => new VTDouble(m.ToString(CultureInfo.InvariantCulture)),
             DateTime time => new VTFileTime(time.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)),
-            DateOnly date => new VTFileTime($"{date:yyyy-MM-dd}T00:00:00Z"),
+            Date date => new VTFileTime($"{date:yyyy-MM-dd}T00:00:00Z"),
             // Written as text rather than the clsid variant: Word's Advanced Properties dialog only
             // surfaces Text/Date/Number/Yes-No, so a string shows as an editable property whereas
             // clsid would not appear at all.

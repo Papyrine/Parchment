@@ -151,7 +151,7 @@ public static class ParchmentExtractor
     static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
     {
         var listType = typeof(List<>).MakeGenericType(entry.ElementType);
-        var list = (System.Collections.IList)Activator.CreateInstance(listType)!;
+        var list = (IList)Activator.CreateInstance(listType)!;
 
         foreach (var itemSdt in RepeatedItems(container))
         {
