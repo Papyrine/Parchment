@@ -280,8 +280,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         return template.Render(model, output, properties, cancel);
     }
 
-    public async Task RenderToFile(string name, object model, string path, Cancel cancel = default) =>
-        await RenderToFile(name, model, path, null, cancel).ConfigureAwait(false);
+    public Task RenderToFile(string name, object model, string path, Cancel cancel = default) =>
+        RenderToFile(name, model, path, null, cancel);
 
     /// <inheritdoc cref="Render(string, object, Stream, DocumentProperties, Cancel)"/>
     public async Task RenderToFile(string name, object model, string path, DocumentProperties? properties, Cancel cancel = default)
