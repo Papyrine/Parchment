@@ -44,6 +44,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         IReadOnlyList<PartScopeTree> parts;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
+            // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
+            // scanning or rewriting done first would be thrown away with the part it was done on —
+            // which is how a .dotx form template silently kept its FORMTEXT fields.
+            EnsureDocumentType(doc);
+
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
@@ -86,7 +91,6 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             // from the clone rather than re-stamping (a settings-part scan) on each render. It is
             // model-independent, so registration is the right place. See SettingsCompatibility.
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
-            EnsureDocumentType(doc);
 
             doc.Save();
 

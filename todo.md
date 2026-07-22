@@ -22,6 +22,10 @@ it affected real database content, not only authored markup.
  * **Word form fields.** `RegisterDocxTemplate` now rewrites legacy `FORMTEXT` fields into
    `{{ Name }}` tokens at registration, so a template authored as a Word form binds unchanged. This
    removes the need for the one-off `overview.dotx` conversion the migration had to script.
+ * **`.dotx` form templates.** `EnsureDocumentType` ran after the parts were scanned, and
+   `ChangeDocumentType` swaps the main part out — so the rewrite was discarded along with the part it
+   was made on, and a form saved as a `.dotx` silently kept its `FORMTEXT` fields. The type change now
+   runs before anything reads the parts.
 
 ## Open
 
