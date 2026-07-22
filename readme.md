@@ -46,6 +46,20 @@ Total: {{ Total }} {{ Currency }}
 <!-- endSnippet -->
 
 
+### Word form fields
+
+A template authored as a Word *form* holds its placeholders as legacy `FORMTEXT` fields rather than
+tokens. Registration rewrites each one into a `{{ FieldName }}` token, so such a template binds with no
+change to the document: name the form field after the model member and it substitutes like any other
+token. The run properties of the field result are kept, so the substituted text is formatted as the
+field displayed.
+
+Two kinds are left untouched, because neither can be a substitution site:
+
+ * Checkbox and dropdown fields, whose values Word manages itself.
+ * A field whose name could not be a member reference — `Due date` rather than `DueDate`.
+
+
 ### Render
 
 <!-- snippet: Substitution -->
