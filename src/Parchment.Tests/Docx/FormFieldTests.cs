@@ -20,6 +20,20 @@ public class FormFieldTests
         await Assert.That(text).IsEqualTo("bound value");
     }
 
+    // Word forms are usually saved as templates, so a .dotx has to bind the same as a .docx.
+    [Test]
+    public async Task FormTextFieldInDotxBindsLikeAToken()
+    {
+        using var template = BuildForm("Title", "placeholder", type: WordprocessingDocumentType.Template);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Model>("form", template);
+
+        var text = await Render(store);
+
+        await Assert.That(text).IsEqualTo("bound value");
+    }
+
     [Test]
     public async Task FormFieldKeepsTheFormattingOfItsResult()
     {
@@ -78,10 +92,10 @@ public class FormFieldTests
         return result.MainDocumentPart!.Document!.Body!.InnerText;
     }
 
-    static MemoryStream BuildForm(string name, string result, bool bold = false, bool textInput = true)
+    static MemoryStream BuildForm(string name, string result, bool bold = false, bool textInput = true, WordprocessingDocumentType type = WordprocessingDocumentType.Document)
     {
         var stream = new MemoryStream();
-        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        using (var doc = WordprocessingDocument.Create(stream, type))
         {
             var main = doc.AddMainDocumentPart();
 
