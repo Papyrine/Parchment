@@ -47,6 +47,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
+                // A template authored as a Word form carries its placeholders as FORMTEXT fields
+                // rather than tokens. Rewrite them first so the rest of registration sees a normal
+                // docx template — the mutation is baked into the registration snapshot below.
+                FormFields.ToTokens(root);
+
                 var classifications = TokenScanner.Scan(root, name, uri);
                 if (classifications.Count == 0)
                 {
