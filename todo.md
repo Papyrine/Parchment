@@ -1,24 +1,19 @@
 # Todo
 
-Still-open issues found while migrating [LegislationManager](../../LegislationManager) off Aspose.Words
-— 16 Word generators, all using `RegisterMarkdownTemplate` with the existing `.dotx` files as style
+Issues found while migrating [LegislationManager](../../LegislationManager) off Aspose.Words — 20 Word
+generators, all but one using `RegisterMarkdownTemplate` with the existing `.dotx` files as style
 sources.
 
-**Verified against `3.1.0`.** An earlier version of this list was written against `3.1.0-beta.10` while
-reading newer local HEAD source, so it reported several things that were already fixed. This list is
-re-tested: everything below still reproduces on the released `3.1.0`.
+**Everything on this list is now fixed.** The list is kept as a record of what the migration surfaced
+and where the fixes landed.
 
-For the record, upgrading `beta.10` → `3.1.0` was a strict improvement — **31 snapshots went back to
-matching the original Aspose output exactly, with no regressions.** The `<br>` fix (`AddBreakRun`)
+For the record, upgrading `3.1.0-beta.10` → `3.1.0` was a strict improvement — **31 snapshots went back
+to matching the original Aspose output exactly, with no regressions.** The `<br>` fix (`AddBreakRun`)
 closed the single biggest fidelity gap; it was the one recurring difference across every generator and
 it affected real database content, not only authored markup.
 
-## Fixed in this working tree
+## Fixed in Parchment
 
- * **Empty paragraphs.** `OpenXmlHtml` dropped any paragraph with no runs, so `<p></p>` was a no-op and
-   a blank spacer line could not be written as html. An explicitly empty text block now emits an empty
-   paragraph, keeping any paragraph properties on it. Containers are excluded, and a trailing bare one
-   is still trimmed.
  * **Word form fields.** `RegisterDocxTemplate` now rewrites legacy `FORMTEXT` fields into
    `{{ Name }}` tokens at registration, so a template authored as a Word form binds unchanged. This
    removes the need for the one-off `overview.dotx` conversion the migration had to script.
@@ -27,98 +22,56 @@ it affected real database content, not only authored markup.
    was made on, and a form saved as a `.dotx` silently kept its `FORMTEXT` fields. The type change now
    runs before anything reads the parts.
 
-## Open
+## Fixed in OpenXmlHtml
 
-### 1. A Word tab is still unreachable from an html block
-
-`Emit word tabs from markdown (#50)` covers markdown text. But content inside a raw html block still
-goes through the html path, where a literal tab collapses to a space — correct html, but it means
-`<w:tab/>` cannot be produced from an html block at all.
-
-This matters because raw html blocks are the only way to express several things (cell merges, shading,
-per-cell rich content), so a table that needs both `colspan` **and** tab-aligned text has no route.
-
-Reproduced on `3.1.0`: a literal tab inside `<p>cc\tFirst Parliamentary Counsel</p>` renders as a space.
-Worked around with a private-use sentinel rewritten to `<w:tab/>` in a post-render pass.
-
-Suggested: honour `&#9;` (or a `white-space: pre` span) in the html path, so the escape hatch exists.
-
-### 2. `font-weight: normal` cannot override a bold paragraph style
-
-`OpenXmlHtml/src/OpenXmlHtml/HtmlParser.cs` maps it to `format.Bold = false`, but the Word writer
-encodes false as the **absence** of `<w:b/>` rather than an explicit `<w:b w:val="0"/>`.
-
-Input: `<h3><b>SMITH</b><span style="font-weight: normal">, John</span></h3>`
-
-Output:
-
-```xml
-<w:r><w:rPr><w:b/></w:rPr><w:t>SMITH</w:t></w:r><w:r><w:t>, John</w:t></w:r>
-```
-
-The second run has no `rPr` at all, so under `Heading3` (bold) it inherits bold. Aspose's
-`builder.Bold = false` emitted the explicit off. No html-side workaround exists.
-
-### 3. Percentage cell widths are silently dropped
-
-| markup | result |
-|---|---|
-| `<td width="35%">` | no `<w:tcW>` emitted at all |
-| `<td style="width:35%">` | no `<w:tcW>` emitted at all |
-| `<td style="width:250px">` | `<w:tcW w:w="3750" w:type="dxa"/>` |
-
-The readme documents both the `width` attribute and cell css `width` as supported, and Word has
-`w:type="pct"`, so percentages are expressible. Forcing px means hand-computing twips against the page
-width — fragile, and wrong the moment margins change.
-
-### 4. A single-cell table collapses without a `<td>` width
-
-`<table style="width:602px">` correctly emits `<w:tblW w:w="9030" w:type="dxa"/>`, but the cell still
-shrinks to its content unless the `<td>` also carries a px width. Surprising given the table width was
-accepted.
-
-### 5. Whitespace is not folded the way a browser folds it
-
-`<p>Line1\r\n\r\nLine2</p>` keeps the doubled spaces. Aspose's html import collapsed runs of whitespace
-like a browser does, so db-sourced html needs a manual `\s+` → `" "` pass plus stripping whitespace
-after `<p>`.
-
-### 6. A `<li>` containing a block-level `<p>` loses its bullet
-
-`<li><p>x</p></li>` renders unbulleted while `<li>x</li>` bullets correctly. Description html that
-happens to be `<p>`-wrapped silently stops being a list — worth either unwrapping or keeping the
-numbering.
-
-### 7. An empty `<div style="page-break-before: always">` emits no break
-
-There is no paragraph for the property to attach to, so nothing happens. The css has to hang off a real
-paragraph (e.g. the heading that starts the new page). Reasonable once known, but it fails silently.
-
-Related, and arguably a Verify.OpenXml issue rather than this repo's: the text extractor reports
-`--- Page Break ---` for `<w:br w:type="page"/>` but not for `<w:pageBreakBefore/>`, so pagination that
-is actually correct looks like a lost break in snapshots.
+ * **Empty paragraphs.** Any paragraph with no runs was dropped, so `<p></p>` was a no-op and a blank
+   spacer line could not be written as html. An explicitly empty text block now emits an empty
+   paragraph, keeping any paragraph properties on it. Containers are excluded, and a trailing bare one
+   is still trimmed.
+ * **Page break placement.** `page-break-before` and `page-break-after` both emitted a standalone empty
+   paragraph carrying the break. That left a blank line at the top of every new page, and — because
+   renderers collapse an empty paragraph — often lost the break entirely: the affected snapshots
+   rendered to *fewer* pages than they should have. The break now lands on the paragraph it breaks
+   before, which is the element's own for `before` and the following one for `after`. An empty element
+   still gets a paragraph of its own, since that is the whole point of one, and a break onto a table
+   still takes an empty paragraph ahead of it because a table has no `w:pageBreakBefore`.
+ * **Word tabs from html.** A literal tab collapsed to a space wherever it appeared, so `<w:tab/>` could
+   not be produced from html at all. Preserved whitespace now emits real `<w:tab/>` elements, making
+   `white-space: pre` the escape hatch. Under the default folding rules a tab is still ordinary
+   whitespace, matching a browser.
+ * **Bullets on block-wrapped list items.** `<li><p>x</p></li>` rendered the marker on its own line with
+   the content stranded underneath, so `<p>`-wrapped description html silently stopped being a list.
+   The first block child of an item now continues that item's line. This only ever affected the text
+   prefix fallback (`ToParagraphs`, and `ToElements` without a `MainDocumentPart`) — real Word numbering
+   already handled it.
+ * **`font-weight: normal` over a bold paragraph style.** Now emitted as an explicit `<w:b w:val="false"/>`
+   rather than by omitting `<w:b/>`, so a `<span style="font-weight: normal">` inside an `<h3>` actually
+   renders unbolded instead of inheriting the style's bold.
+ * **Percentage cell widths.** `<td width="35%">` and `<td style="width:35%">` emitted no `w:tcW` at all.
+   Both now map to `w:type="pct"`.
+ * **Single-cell table widths.** A cell in a table with an absolute width shrank to its content unless
+   the `<td>` repeated the width. The table width now reaches the cell.
+ * **Whitespace folding.** Runs of whitespace now fold to a single space the way a browser folds them,
+   rather than reaching Word verbatim.
 
 ## Docs
 
-### 8. `src/Parchment/nuget-readme.md` is stale
-
-Shows `RegisterDocxTemplate<Invoice>("invoice", File.ReadAllBytes(...))` and
-`var bytes = await store.Render("invoice", model);` — neither overload exists. The root `readme.md` is
-correct.
-
-### 9. Readme claims not matched by behaviour
-
-Cell `width` documented as supported, percentages dropped (#3).
+Both readme drift items are resolved: `src/Parchment/nuget-readme.md` no longer shows overloads that do
+not exist, and the OpenXmlHtml readme's cell-width claim matches behaviour now that percentages work.
+The OpenXmlHtml readme also gained entries for `white-space`, page break placement, and how a block
+child of a list item is treated.
 
 ## Theme: failures are silent
 
-`3.1.0` improved this markedly — loop-body validation and the static-member warning both landed, and both
-would have saved real debugging time here.
+This was the one recurring shape across everything above: **a plausible-looking document with content
+quietly missing or unstyled, and no diagnostic.** Each item produced a valid document that was wrong,
+and each was caught only because there was a snapshot to diff against. A consumer without one ships the
+broken document.
 
-What remains follows the same shape: **a plausible-looking document with content quietly missing or
-unstyled, and no diagnostic.** Items #1, #2, #3, #6 and #7 above each produce a valid document that is
-wrong, and each was caught only because there was a snapshot to diff against. A consumer without
-one ships the broken document.
+The page break item is the sharpest example. It had been wrong long enough that the expected output was
+baked into the repo's own snapshots, and the tell was only visible once the page renders were compared:
+documents that should have spanned three pages had been rendering as one.
 
-A diagnostic (or debug log) on a dropped css property or an ignored attribute would close the remaining
-gap.
+Loop-body validation and the static-member warning both landed during the migration and both would have
+saved real debugging time. A diagnostic (or debug log) on a dropped css property or an ignored attribute
+would close the rest of the gap.
