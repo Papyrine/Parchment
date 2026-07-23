@@ -62,4 +62,22 @@ public class DocumentProperties
     /// <see cref="Custom"/>, so a name in both is removed.
     /// </summary>
     public HashSet<string> RemoveCustom { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Discards the properties the template carries before the values above are applied, so the
+    /// output starts empty rather than inheriting them.
+    /// </summary>
+    /// <remarks>
+    /// A template that a person has edited carries their editing history: <c>Creator</c> and
+    /// <c>LastModifiedBy</c> name them, and <c>Revision</c> and <c>LastPrinted</c> describe work
+    /// that has nothing to do with the generated document. Merging stays the default because a
+    /// template's properties are usually wanted — set this where they are not, and a document
+    /// rendered from someone's copy of the template stops carrying their name.
+    ///
+    /// Covers the core part in full, and <see cref="Company"/> and <see cref="Manager"/> on the
+    /// extended part. User-defined properties are left alone, since those are normally the
+    /// template's own data rather than metadata about who edited it — use
+    /// <see cref="RemoveCustom"/> to drop those by name.
+    /// </remarks>
+    public bool ClearBuiltIn { get; init; }
 }

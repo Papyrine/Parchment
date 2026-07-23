@@ -35,7 +35,8 @@ static class DocumentPropertiesWriter
     // core-property store, which is not cloned with the rest of the parts.
     static void ApplyCore(WordprocessingDocument document, DocumentProperties properties)
     {
-        if (properties is
+        if (!properties.ClearBuiltIn &&
+            properties is
             {
                 Title: null,
                 Author: null,
@@ -55,18 +56,18 @@ static class DocumentPropertiesWriter
         if (part == null)
         {
             part = document.AddCoreFilePropertiesPart();
-            root = new(
-                cp + "coreProperties",
-                new XAttribute(XNamespace.Xmlns + "cp", cp.NamespaceName),
-                new XAttribute(XNamespace.Xmlns + "dc", dc.NamespaceName));
+            root = NewCoreRoot();
+        }
+        else if (properties.ClearBuiltIn)
+        {
+            // A fresh root rather than removing the known elements one by one: the part carries more
+            // than this type can set — revision, lastPrinted, created, modified — and those are
+            // precisely the ones describing the template's own editing history.
+            root = NewCoreRoot();
         }
         else
         {
-            root = ReadRoot(part) ??
-                   new XElement(
-                       cp + "coreProperties",
-                       new XAttribute(XNamespace.Xmlns + "cp", cp.NamespaceName),
-                       new XAttribute(XNamespace.Xmlns + "dc", dc.NamespaceName));
+            root = ReadRoot(part) ?? NewCoreRoot();
         }
 
         Set(root, dc + "title", properties.Title);
@@ -81,6 +82,12 @@ static class DocumentPropertiesWriter
         using var stream = part.GetStream(FileMode.Create);
         new XDocument(root).Save(stream);
     }
+
+    static XElement NewCoreRoot() =>
+        new(
+            cp + "coreProperties",
+            new XAttribute(XNamespace.Xmlns + "cp", cp.NamespaceName),
+            new XAttribute(XNamespace.Xmlns + "dc", dc.NamespaceName));
 
     static XElement? ReadRoot(CoreFilePropertiesPart part)
     {
@@ -118,14 +125,31 @@ static class DocumentPropertiesWriter
 
     static void ApplyExtended(WordprocessingDocument document, DocumentProperties properties)
     {
-        if (properties.Company == null &&
-            properties.Manager == null)
+        if (properties is { ClearBuiltIn: false, Company: null, Manager: null })
         {
             return;
         }
 
-        var part = document.ExtendedFilePropertiesPart ?? document.AddExtendedFilePropertiesPart();
+        var part = document.ExtendedFilePropertiesPart;
+        if (part == null)
+        {
+            // Nothing to clear and nothing to write, so the part is not worth creating.
+            if (properties is { Company: null, Manager: null })
+            {
+                return;
+            }
+
+            part = document.AddExtendedFilePropertiesPart();
+        }
+
         var extended = part.Properties ??= new();
+
+        if (properties.ClearBuiltIn)
+        {
+            // Assigning null removes the element, so the names do not survive into the output.
+            extended.Company = null;
+            extended.Manager = null;
+        }
 
         if (properties.Company != null)
         {

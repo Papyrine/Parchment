@@ -977,14 +977,20 @@ Nullable variants are supported except `bool?` — a checkbox cannot represent n
 
 A `string` member marked both `[EditableField]` and `[Html]` renders as an **editable rich-content block**. The HTML value becomes formatted Word content — paragraphs, bold / italic / underline / strikethrough, superscript / subscript, bullet and numbered lists, links, and `h1`–`h6` headings — inside a block-level content control wrapped in an editable range, so the formatted content stays editable while the rest of the document remains locked. Extraction serializes the (possibly Word-edited) block back to an HTML string, so the field round-trips as HTML rather than flattened text:
 
+<!-- snippet: EditableRichTextModel -->
+<a id='snippet-EditableRichTextModel'></a>
 ```cs
-public class Article
+public class EditableArticle
 {
+    public required string Title;
+
     [Html]
     [EditableField]
     public required string Body { get; set; }
 }
 ```
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L922-L931' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
 
@@ -1001,13 +1007,13 @@ Word enforces `w:documentProtection` in its UI only. No password is set (a passw
 
 Protection is applied at registration whenever the model declares at least one `[EditableField]` member. Opt out per template:
 
-```csharp
+```cs
 store.RegisterDocxTemplate<OrderForm>("order-form", path, ProtectionMode.None);
 ```
 
 or via the source-generator attribute:
 
-```csharp
+```cs
 [ParchmentModel("Templates/order-form.docx", Protection = ProtectionMode.None)]
 ```
 
@@ -1050,37 +1056,49 @@ Checkbox, date, and dropdown values round-trip through canonical control state a
 
 Mark a collection member — a `List<T>`, `T[]`, or `IList<T>` of a POCO element type — with `[EditableField]`, and a `{% for %}` loop over it renders as a **Word repeating section** (`w15:repeatingSection`). Reviewers add, remove, and reorder rows with Word's native repeating-section controls; each row's fields are ordinary editable controls, and `ParchmentExtractor` rebuilds the list from whatever rows the document ends up with.
 
+<!-- snippet: EditableCollectionModel -->
+<a id='snippet-EditableCollectionModel'></a>
 ```cs
-public class Milestone
+public class Budget
 {
     [EditableField]
-    public string Name { get; set; } = "";
+    public required string Year { get; set; }
 
     [EditableField]
-    public DateOnly Due { get; set; }
+    public required decimal Amount { get; set; }
 }
 
-public class Roadmap
+public class BudgetPlan
 {
+    public required string Title;
+
     [EditableField]
-    public List<Milestone> Milestones { get; set; } = [];
+    public required List<Budget> Budgets { get; set; }
 }
 ```
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L5-L22' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 The template is a plain loop; the loop-variable tokens become the per-row controls:
 
 ```liquid
-{% for m in Milestones %}
-{{ m.Name }} — due {{ m.Due }}
+{% for b in Budgets %}
+Year: {{ b.Year }} Amount: {{ b.Amount }}
 {% endfor %}
 ```
 
 After the form comes back, extract onto a model instance — the rebuilt list replaces the collection member:
 
+<!-- snippet: EditableCollectionExtract -->
+<a id='snippet-EditableCollectionExtract'></a>
 ```cs
-var result = ParchmentExtractor.Extract<Roadmap>(stream);
-result.ApplyTo(model); // model.Milestones is the edited list — added rows appear, removed rows are gone
+var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+// model.Budgets is the edited list - added rows appear, removed rows are gone
+result.ApplyTo(model);
 ```
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L148-L153' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
 - **An empty collection renders one blank row** so Word has a template to clone; an all-blank row extracts as nothing, so clearing a row deletes it.
@@ -1447,13 +1465,17 @@ Pictures placed directly in the `.docx` template (Word's Insert &rarr; Picture, 
 
 By default, `TemplateStore` exposes `LocalImages = ImagePolicy.AllowAll()` and `WebImages = ImagePolicy.AllowAll()` — Parchment renders developer-bound model content, so locking either down by default would silently break `<img src="C:\...">` and `![](path)` references. If a model carries images from less-trusted sources, override the policies on the store:
 
+<!-- snippet: ImagePolicies -->
+<a id='snippet-ImagePolicies'></a>
 ```cs
 var store = new TemplateStore
 {
-    LocalImages = ImagePolicy.SafeDirectories("C:/assets/branding"),
-    WebImages = ImagePolicy.Deny()
+    LocalImages = OpenXmlHtml.ImagePolicy.SafeDirectories("C:/assets/branding"),
+    WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L597-L605' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
 
@@ -1584,6 +1606,8 @@ await store.Render(
 
 Pass a `DocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
 
+<!-- snippet: DocumentProperties -->
+<a id='snippet-DocumentProperties'></a>
 ```cs
 await store.Render(
     "bill",
@@ -1602,6 +1626,8 @@ await store.Render(
         }
     });
 ```
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L296-L315' title='Snippet source file'>snippet source</a> | <a href='#snippet-DocumentProperties' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
 
@@ -1609,11 +1635,31 @@ Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy 
 
 Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
 
+Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
+
+<!-- snippet: ClearBuiltIn -->
+<a id='snippet-ClearBuiltIn'></a>
+```cs
+var properties = new DocumentProperties
+{
+    ClearBuiltIn = true,
+    Title = "Bill 42"
+};
+```
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L360-L368' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.
+
 `Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
 
+<!-- snippet: DocumentPropertiesAlias -->
+<a id='snippet-DocumentPropertiesAlias'></a>
 ```cs
 using DocumentProperties = Parchment.DocumentProperties;
 ```
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L6-L8' title='Snippet source file'>snippet source</a> | <a href='#snippet-DocumentPropertiesAlias' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 
 ## Registration-time validation
@@ -1641,7 +1687,7 @@ The source generator is the recommended way to register templates. Decorate the 
 
 The model must be `partial` — the generator emits a `RegisterWith` helper onto the same class. Both docx and markdown templates are supported — the generator branches on the path's extension (`.docx` → docx flow, `.md` → markdown flow):
 
-```csharp
+```cs
 [ParchmentModel("Templates/invoice.docx")]
 public partial class Invoice
 {
@@ -1664,7 +1710,7 @@ The runtime `TemplateStore.RegisterDocxTemplate<T>(name, path)` / `RegisterMarkd
 
 In both cases the generator also emits a `RegisterWith(store)` helper so registration is one line at runtime:
 
-```csharp
+```cs
 var store = new TemplateStore();
 Invoice.RegisterWith(store);
 Report.RegisterWith(store, styleSource: File.OpenRead("brand.docx"));
@@ -1802,7 +1848,7 @@ Previously emitted when an `[Html]` / `[Markdown]` token shared its paragraph wi
 
 The decorated model is nested inside another type that is not declared `partial`. The generator emits the registration helper as `partial class { ... }` and every enclosing type in the chain must be partial too, otherwise the C# compiler rejects the declaration as conflicting with the user's existing one (CS0260). Make every enclosing type partial:
 
-```csharp
+```cs
 public partial class Outer  // <-- partial
 {
     [ParchmentModel("template.docx")]
@@ -1823,7 +1869,7 @@ public partial class Outer  // <-- partial
 
 **Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
 
-```csharp
+```cs
 public partial class Order
 {
     [EditableField]
@@ -1866,7 +1912,7 @@ public partial class Order
 
 **Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time.
 
-```csharp
+```cs
 public partial class Report
 {
     [Html]

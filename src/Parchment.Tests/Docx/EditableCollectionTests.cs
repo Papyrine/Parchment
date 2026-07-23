@@ -2,6 +2,7 @@ using W15 = DocumentFormat.OpenXml.Office2013.Word;
 
 public class EditableCollectionTests
 {
+    #region EditableCollectionModel
     public class Budget
     {
         [EditableField]
@@ -18,6 +19,7 @@ public class EditableCollectionTests
         [EditableField]
         public required List<Budget> Budgets { get; set; }
     }
+    #endregion
 
     static BudgetPlan NewPlan() =>
         new()
@@ -137,13 +139,18 @@ public class EditableCollectionTests
     {
         using var stream = await Render(template, NewPlan(), "budgets-rt");
 
-        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
         var model = new BudgetPlan
         {
             Title = "x",
             Budgets = []
         };
+
+        #region EditableCollectionExtract
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        // model.Budgets is the edited list - added rows appear, removed rows are gone
         result.ApplyTo(model);
+        #endregion
 
         await Assert.That(result.AllExtracted).IsTrue();
         await Assert.That(model.Budgets.Count).IsEqualTo(2);
