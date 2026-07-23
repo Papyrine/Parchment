@@ -2,11 +2,6 @@ using System.Xml.Linq;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
 using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
 
-// Excelsior exposes a DocumentProperties of its own and this project imports both namespaces.
-// begin-snippet: DocumentPropertiesAlias
-using DocumentProperties = Parchment.DocumentProperties;
-// end-snippet
-
 public class DocumentPropertiesTests
 {
     public class Model
@@ -57,7 +52,7 @@ public class DocumentPropertiesTests
         return stream;
     }
 
-    static async Task<WordprocessingDocument> Render(DocumentProperties? properties)
+    static async Task<WordprocessingDocument> Render(WordDocumentProperties? properties)
     {
         using var template = BuildTemplateWithOwnProperties();
         var store = new TemplateStore();
@@ -264,7 +259,7 @@ public class DocumentPropertiesTests
                 Title = "x"
             },
             output,
-            new DocumentProperties
+            new WordDocumentProperties
             {
                 Title = "Bill 42",
                 Custom =
@@ -293,13 +288,13 @@ public class DocumentPropertiesTests
         };
         using var stream = new MemoryStream();
 
-        #region DocumentProperties
+        #region WordDocumentProperties
 
         await store.Render(
             "bill",
             model,
             stream,
-            new DocumentProperties
+            new WordDocumentProperties
             {
                 Title = "Bill 42",
                 Author = "Drafting Office",
@@ -359,7 +354,7 @@ public class DocumentPropertiesTests
     {
         #region ClearBuiltIn
 
-        var properties = new DocumentProperties
+        var properties = new WordDocumentProperties
         {
             ClearBuiltIn = true,
             Title = "Bill 42"

@@ -6,7 +6,7 @@ class RegisteredMarkdownTemplate(
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
 {
-    public override async Task Render(object model, Stream output, DocumentProperties? properties, Cancel cancel)
+    public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();

@@ -2,7 +2,7 @@ using DocumentFormat.OpenXml.VariantTypes;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
 
 /// <summary>
-/// Applies a <see cref="DocumentProperties"/> to a rendered document: core properties to
+/// Applies a <see cref="WordDocumentProperties"/> to a rendered document: core properties to
 /// <c>docProps/core.xml</c>, company/manager to the extended part (<c>docProps/app.xml</c>), and
 /// user-defined entries to the custom part (<c>docProps/custom.xml</c>).
 /// </summary>
@@ -23,7 +23,7 @@ static class DocumentPropertiesWriter
     static readonly XNamespace cp = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     static readonly XNamespace dc = "http://purl.org/dc/elements/1.1/";
 
-    public static void Apply(WordprocessingDocument document, DocumentProperties properties)
+    public static void Apply(WordprocessingDocument document, WordDocumentProperties properties)
     {
         ApplyCore(document, properties);
         ApplyExtended(document, properties);
@@ -33,7 +33,7 @@ static class DocumentPropertiesWriter
     // Written as an explicit CoreFilePropertiesPart rather than through
     // OpenXmlPackage.PackageProperties: the latter is backed by the package's intrinsic
     // core-property store, which is not cloned with the rest of the parts.
-    static void ApplyCore(WordprocessingDocument document, DocumentProperties properties)
+    static void ApplyCore(WordprocessingDocument document, WordDocumentProperties properties)
     {
         if (!properties.ClearBuiltIn &&
             properties is
@@ -123,7 +123,7 @@ static class DocumentPropertiesWriter
         existing.Value = value;
     }
 
-    static void ApplyExtended(WordprocessingDocument document, DocumentProperties properties)
+    static void ApplyExtended(WordprocessingDocument document, WordDocumentProperties properties)
     {
         if (properties is { ClearBuiltIn: false, Company: null, Manager: null })
         {
@@ -162,7 +162,7 @@ static class DocumentPropertiesWriter
         }
     }
 
-    static void ApplyCustom(WordprocessingDocument document, DocumentProperties properties)
+    static void ApplyCustom(WordprocessingDocument document, WordDocumentProperties properties)
     {
         if (properties.Custom.Count == 0 &&
             properties.RemoveCustom.Count == 0)

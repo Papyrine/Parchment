@@ -10,7 +10,7 @@ class RegisteredDocxTemplate(
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
 {
-    public override async Task Render(object model, Stream output, DocumentProperties? properties, Cancel cancel)
+    public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         cancel.ThrowIfCancellationRequested();
 
