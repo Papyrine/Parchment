@@ -12,6 +12,8 @@ sealed class ExcelsiorTableMap
     ExcelsiorTableMap(Dictionary<string, ExcelsiorTableEntry> entries) =>
         this.entries = entries;
 
+    public static ExcelsiorTableMap Empty { get; } = new(new(StringComparer.OrdinalIgnoreCase));
+
     public bool IsEmpty => entries.Count == 0;
 
     public bool TryGet(string dottedPath, [NotNullWhen(true)] out ExcelsiorTableEntry? entry) =>

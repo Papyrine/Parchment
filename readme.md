@@ -1227,6 +1227,8 @@ The rendered docx (page 1):
 
 The optional `styleSource` is a docx whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used.
 
+The markdown replaces the body and nothing else, so those inherited parts arrive as authored — and their tokens bind against the same model. A `{{ Season }}` in the style source's header, or a `{% if %}` in its footer, works exactly as it would in the docx flow. Only the body-only token kinds are unavailable there: `[ExcelsiorTable]`, `[Format]`, string lists and editable fields are docx-flow features and do not apply to a markdown template's header.
+
 A Word template (`.dotx`/`.dotm`) is accepted as a style source. The style source is cloned and the clone becomes the rendered output, so the package is retyped to a document at registration — otherwise the output would be template-typed and Word would open it as a new unsaved document based on it rather than as the document itself. The same applies to a template passed to `RegisterDocxTemplate`.
 
 

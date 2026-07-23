@@ -14,6 +14,8 @@ sealed class StringListMap
     StringListMap(Dictionary<string, Func<object, object?>> entries) =>
         this.entries = entries;
 
+    public static StringListMap Empty { get; } = new(new(StringComparer.OrdinalIgnoreCase));
+
     public bool IsEmpty => entries.Count == 0;
 
     public bool TryGet(string dottedPath, [NotNullWhen(true)] out Func<object, object?>? getter) =>

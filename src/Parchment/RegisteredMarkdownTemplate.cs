@@ -2,6 +2,7 @@ class RegisteredMarkdownTemplate(
     string name,
     Type modelType,
     byte[] styleSourceBytes,
+    IReadOnlyList<PartScopeTree> nonBodyParts,
     IFluidTemplate parsedTemplate,
     ImagePolicies imagePolicies) :
     RegisteredTemplate(name, modelType)
@@ -48,6 +49,8 @@ class RegisteredMarkdownTemplate(
                 body.AppendChild(sectPr);
             }
 
+            await RenderNonBodyParts(doc, mainPart, model, numberingState, cancel);
+
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
             // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
             SettingsCompatibility.Apply(mainPart);
@@ -66,5 +69,59 @@ class RegisteredMarkdownTemplate(
         ZipTimestamps.Pin(stream);
         stream.Position = 0;
         await stream.CopyToAsync(output, cancel);
+    }
+
+    // Headers, footers and notes come from the style source with their tokens intact, so they bind
+    // here against the same model. The maps the docx flow threads through are all docx-only token
+    // kinds, so they are empty: a header binds substitutions, loops and conditionals, nothing more.
+    async Task RenderNonBodyParts(
+        WordprocessingDocument doc,
+        MainDocumentPart mainPart,
+        object model,
+        WordNumberingState numberingState,
+        Cancel cancel)
+    {
+        if (nonBodyParts.Count == 0)
+        {
+            return;
+        }
+
+        var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
+        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+        {
+            partRoots[uri] = root;
+        }
+
+        var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
+        var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
+
+        foreach (var part in nonBodyParts)
+        {
+            cancel.ThrowIfCancellationRequested();
+            if (!partRoots.TryGetValue(part.PartUri, out var root))
+            {
+                continue;
+            }
+
+            var runner = new ScopeTreeRunner(
+                Name,
+                part.PartUri,
+                Anchors.BuildMap(root),
+                context,
+                mainPart,
+                model,
+                ExcelsiorTableMap.Empty,
+                FormatMap.Empty,
+                StringListMap.Empty,
+                EditableMap.Empty,
+                new(),
+                numberingState,
+                styles,
+                imagePolicies);
+            await runner.RunAsync(part.Nodes);
+            runner.ApplyStructural();
+
+            Anchors.StripAll(root);
+        }
     }
 }
