@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
+using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
 
 // Excelsior exposes a DocumentProperties of its own and this project imports both namespaces.
 using DocumentProperties = Parchment.DocumentProperties;
@@ -38,7 +39,16 @@ public class DocumentPropertiesTests
                     XNamespace.Get("http://schemas.openxmlformats.org/package/2006/metadata/core-properties") + "coreProperties",
                     new XAttribute(XNamespace.Xmlns + "cp", "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"),
                     new XAttribute(XNamespace.Xmlns + "dc", "http://purl.org/dc/elements/1.1/"),
-                    new XElement(XNamespace.Get("http://purl.org/dc/elements/1.1/") + "creator", "Original Author"))).Save(coreStream);
+                    new XElement(XNamespace.Get("http://purl.org/dc/elements/1.1/") + "creator", "Original Author"),
+                    // Editing history this type cannot set, and the reason clearing exists at all:
+                    // it describes work on the template, not on the generated document.
+                    new XElement(XNamespace.Get("http://schemas.openxmlformats.org/package/2006/metadata/core-properties") + "revision", "21"),
+                    new XElement(XNamespace.Get("http://schemas.openxmlformats.org/package/2006/metadata/core-properties") + "lastPrinted", "2023-03-30T04:27:00Z"))).Save(coreStream);
+
+            var extended = doc.AddExtendedFilePropertiesPart();
+            extended.Properties = new(
+                new ExtendedProps.Company("Original Company"),
+                new ExtendedProps.Manager("Original Manager"));
         }
 
         stream.Position = 0;
@@ -265,6 +275,78 @@ public class DocumentPropertiesTests
         using var doc = WordprocessingDocument.Open(output, false);
         await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
         await Assert.That(Custom(doc, "Chamber")).IsEqualTo("Lower");
+        await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
+    }
+
+    // A template someone has edited names them, and that name should not travel with every document
+    // generated from it.
+    [Test]
+    public async Task ClearBuiltInDropsWhatTheTemplateCarried()
+    {
+        using var doc = await Render(
+            new()
+            {
+                ClearBuiltIn = true
+            });
+
+        await Assert.That(Core(doc, dc + "creator")).IsNull();
+    }
+
+    // The part holds more than this type can set, and those are the values describing the
+    // template's own history, so clearing has to reach them too.
+    [Test]
+    public async Task ClearBuiltInDropsValuesThatCannotBeSet()
+    {
+        using var doc = await Render(
+            new()
+            {
+                ClearBuiltIn = true
+            });
+
+        await Assert.That(Core(doc, cp + "revision")).IsNull();
+        await Assert.That(Core(doc, cp + "lastPrinted")).IsNull();
+    }
+
+    // Clearing happens first, so the values the caller did set still land.
+    [Test]
+    public async Task ClearBuiltInStillWritesTheValuesSet()
+    {
+        using var doc = await Render(
+            new()
+            {
+                ClearBuiltIn = true,
+                Title = "Bill 42"
+            });
+
+        await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
+        await Assert.That(Core(doc, dc + "creator")).IsNull();
+    }
+
+    [Test]
+    public async Task ClearBuiltInDropsCompanyAndManager()
+    {
+        using var doc = await Render(
+            new()
+            {
+                ClearBuiltIn = true
+            });
+
+        var extended = doc.ExtendedFilePropertiesPart!.Properties!;
+        await Assert.That(extended.Company?.Text).IsNull();
+        await Assert.That(extended.Manager?.Text).IsNull();
+    }
+
+    // User-defined properties are the template's own data rather than metadata about who edited it,
+    // so they are left alone — RemoveCustom drops those by name.
+    [Test]
+    public async Task ClearBuiltInLeavesCustomPropertiesAlone()
+    {
+        using var doc = await Render(
+            new()
+            {
+                ClearBuiltIn = true
+            });
+
         await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
     }
 }

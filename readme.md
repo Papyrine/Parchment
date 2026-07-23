@@ -1609,6 +1609,18 @@ Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy 
 
 Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
 
+Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
+
+```cs
+new DocumentProperties
+{
+    ClearBuiltIn = true,
+    Title = "Bill 42"
+}
+```
+
+A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.
+
 `Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
 
 ```cs
