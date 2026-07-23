@@ -13,6 +13,8 @@ sealed class FormatMap
     FormatMap(Dictionary<string, FormatEntry> entries) =>
         this.entries = entries;
 
+    public static FormatMap Empty { get; } = new(new(StringComparer.OrdinalIgnoreCase));
+
     public bool IsEmpty => entries.Count == 0;
 
     public bool TryGet(string dottedPath, [NotNullWhen(true)] out FormatEntry? entry) =>

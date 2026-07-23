@@ -137,10 +137,65 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         bytes = NormalizeStyleSource(bytes);
+        var (styleSourceBytes, parts) = ScanNonBodyParts<TModel>(bytes, name);
 
-        var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), bytes, template, Policies);
+        var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), styleSourceBytes, parts, template, Policies);
         templates[name] = registered;
         logger.LogInformation("Registered markdown template {Name} for {ModelType}", name, typeof(TModel).Name);
+    }
+
+    /// <summary>
+    /// Binds the style source's non-body parts — headers, footers, notes — the way the docx flow
+    /// binds every part.
+    /// </summary>
+    /// <remarks>
+    /// The markdown replaces the body and nothing else, so every other part arrives from the style
+    /// source exactly as authored. A style source is normally a real <c>.dotx</c>, and a header
+    /// carrying a date or a reference is ordinary, so those tokens have to bind too — otherwise the
+    /// same token binds in one flow and renders as literal text in the other.
+    ///
+    /// The scan mutates the package: anchors are baked in here so the render can find each scope
+    /// again, which is why the rewritten bytes are returned rather than the ones passed in.
+    /// </remarks>
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts<TModel>(byte[] bytes, string name)
+    {
+        using var stream = DocxCloner.ToWritableStream(bytes);
+        List<PartScopeTree> parts;
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var bodyUri = doc.MainDocumentPart?.Uri.ToString();
+            var found = false;
+            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            {
+                if (uri == bodyUri)
+                {
+                    continue;
+                }
+
+                var classifications = TokenScanner.Scan(root, name, uri);
+                if (classifications.Count == 0)
+                {
+                    continue;
+                }
+
+                var tree = ScopeTreeBuilder.Build(classifications, name, uri);
+                new ReferenceValidator(typeof(TModel), name, uri).ValidateTree(tree);
+                found = true;
+            }
+
+            if (!found)
+            {
+                return (bytes, []);
+            }
+
+            doc.Save();
+            parts = ExtractParts(doc, name);
+            // ExtractParts walks every part. The body was never scanned, so whatever it found there
+            // belongs to the markdown that replaces it, not to this pass.
+            parts.RemoveAll(_ => _.PartUri == bodyUri);
+        }
+
+        return (stream.ToArray(), parts);
     }
 
     /// <summary>
