@@ -32,6 +32,13 @@
     <PackageReference Include="Fluid.Core" Shade="true" PrivateAssets="all" />
     <PackageReference Include="Parlot" Shade="true" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Abstractions" Shade="true" PrivateAssets="all" />
+    <!-- Transitive dependency of FileProviders.Abstractions. Shaded explicitly: nothing in our own
+         code references it, so it is otherwise left out of the shade set and the shipped
+         FileProviders.Abstractions keeps binding it by its original identity. Analyzer hosts that
+         do not already supply Microsoft.Extensions.Primitives then fail to load the generator.
+         MSBuild does supply it, Rider/ReSharper InspectCode does not, which is why the gap only
+         showed up as bogus PARCH004 "not found in AdditionalFiles" under InspectCode. -->
+    <PackageReference Include="Microsoft.Extensions.Primitives" Shade="true" PrivateAssets="all" />
     <PackageReference Include="TimeZoneConverter" Shade="true" PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Shade="true" PrivateAssets="all" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
     <PackageReference Include="Microsoft.Bcl.HashCode" Shade="true" PrivateAssets="all" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
