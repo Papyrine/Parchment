@@ -308,7 +308,7 @@ public class DocumentPropertiesTests
                 Custom =
                 {
                     ["BillNumber"] = "42",
-                    ["Introduced"] = new DateOnly(2026, 3, 1)
+                    ["Introduced"] = new Date(2026, 3, 1)
                 }
             });
 

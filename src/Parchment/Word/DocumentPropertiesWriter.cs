@@ -125,9 +125,7 @@ static class DocumentPropertiesWriter
 
     static void ApplyExtended(WordprocessingDocument document, DocumentProperties properties)
     {
-        if (!properties.ClearBuiltIn &&
-            properties.Company == null &&
-            properties.Manager == null)
+        if (properties is { ClearBuiltIn: false, Company: null, Manager: null })
         {
             return;
         }
