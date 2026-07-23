@@ -588,4 +588,23 @@ public class MarkdownFlowTests
         await Assert.That(exception!.Message).Contains("OpenXmlToken");
         await Assert.That(exception.Message).Contains("RegisterDocxTemplate");
     }
+
+    // The policies are OpenXmlHtml's and belong to the store, so they cover every template
+    // registered on it rather than being decided per render.
+    [Test]
+    public async Task ImagePoliciesAreSetOnTheStore()
+    {
+        #region ImagePolicies
+
+        var store = new TemplateStore
+        {
+            LocalImages = OpenXmlHtml.ImagePolicy.SafeDirectories("C:/assets/branding"),
+            WebImages = OpenXmlHtml.ImagePolicy.Deny()
+        };
+
+        #endregion
+
+        await Assert.That(store.LocalImages).IsNotSameReferenceAs(store.WebImages);
+        await Assert.That(store.WebImages).IsNotNull();
+    }
 }

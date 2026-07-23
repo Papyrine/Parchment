@@ -919,6 +919,7 @@ public class EditableFieldTests
         await Assert.That(exception!.Message).Contains("own paragraph");
     }
 
+    #region EditableRichTextModel
     public class EditableArticle
     {
         public required string Title;
@@ -927,6 +928,7 @@ public class EditableFieldTests
         [EditableField]
         public required string Body { get; set; }
     }
+    #endregion
 
     public class MarkdownEditableModel
     {
