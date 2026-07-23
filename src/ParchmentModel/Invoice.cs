@@ -1,6 +1,8 @@
-namespace ParchmentModel;
+namespace ParchmentSample;
 
-public class Invoice
+#region GeneratorDocxModel
+[ParchmentModel("Templates/invoice.docx")]
+public partial class Invoice
 {
     public required string Number { get; init; }
     public required Date IssueDate { get; init; }
@@ -20,3 +22,4 @@ public class Invoice
     public decimal Total =>
         Subtotal + Tax;
 }
+#endregion

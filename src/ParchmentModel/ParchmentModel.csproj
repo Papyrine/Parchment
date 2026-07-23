@@ -2,9 +2,33 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <RootNamespace>ParchmentModel</RootNamespace>
+    <RootNamespace>ParchmentSample</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
+    <ProjectReference Include="..\Parchment\Parchment.csproj" />
+    <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <!-- PackageShader shades rather than IL-merges, so the generator loads its dependencies as sibling
+       assemblies and Roslyn needs all of them, not just Parchment.SourceGenerator.dll. The package
+       ships them together; a ProjectReference does not, so they are added here. The glob lives in a
+       target because a static item is evaluated before the generator has built, which on a clean
+       checkout would match nothing and silently drop the analyzer. -->
+  <Target Name="ReferenceShadedGenerator" BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Analyzer Include="..\Parchment.SourceGenerator\bin\$(Configuration)\netstandard2.0\Parchment.SourceGenerator*.dll" />
+    </ItemGroup>
+  </Target>
+  <ItemGroup>
+    <!-- The generator reads templates through AdditionalFiles, so the readme's setup snippet is this
+         project's own build rather than an illustration of one. -->
+    <AdditionalFiles Include="Templates\invoice.docx" />
+    <AdditionalFiles Include="Templates\report.md" />
+    <AdditionalFiles Include="Templates\order-form.docx" />
+    <!-- AdditionalFiles is compile-time only. The emitted RegisterWith resolves the path at run
+         time, so the templates have to be deployed as well - the same pair a consumer needs. -->
+    <Content Include="Templates\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

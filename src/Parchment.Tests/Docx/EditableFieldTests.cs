@@ -477,7 +477,10 @@ public class EditableFieldTests
     {
         using var template = DocxTemplateBuilder.Build("{{ PurchaseOrder }}");
         var store = new TemplateStore();
+
+        #region ProtectionModeNone
         store.RegisterDocxTemplate<EditableOrder>("editable-unprotected", template, ProtectionMode.None);
+        #endregion
 
         using var stream = new MemoryStream();
         await store.Render("editable-unprotected", NewOrder(), stream);

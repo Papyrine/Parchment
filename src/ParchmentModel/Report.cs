@@ -1,10 +1,13 @@
-namespace ParchmentModel;
+namespace ParchmentSample;
 
 #region ReportModel
-public class ReportContext
+#region GeneratorMarkdownModel
+[ParchmentModel("Templates/report.md")]
+public partial class ReportContext
 {
     public required Report Report;
 }
+#endregion
 
 public class Report
 {

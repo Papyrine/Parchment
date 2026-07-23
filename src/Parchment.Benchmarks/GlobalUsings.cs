@@ -14,4 +14,4 @@ global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 
 global using Parchment;
-global using ParchmentModel;
+global using ParchmentSample;

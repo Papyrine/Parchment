@@ -18,7 +18,7 @@ global using Markdig.Syntax.Inlines;
 global using Morph;
 global using NaughtyStrings;
 global using Parchment;
-global using ParchmentModel;
+global using ParchmentSample;
 
 global using TUnit.Core;
 

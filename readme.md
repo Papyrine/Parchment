@@ -989,7 +989,7 @@ public class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L922-L931' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L925-L934' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1007,15 +1007,30 @@ Word enforces `w:documentProtection` in its UI only. No password is set (a passw
 
 Protection is applied at registration whenever the model declares at least one `[EditableField]` member. Opt out per template:
 
+<!-- snippet: ProtectionModeNone -->
+<a id='snippet-ProtectionModeNone'></a>
 ```cs
-store.RegisterDocxTemplate<OrderForm>("order-form", path, ProtectionMode.None);
+store.RegisterDocxTemplate<EditableOrder>("editable-unprotected", template, ProtectionMode.None);
 ```
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L481-L483' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 or via the source-generator attribute:
 
+<!-- snippet: GeneratorProtectionMode -->
+<a id='snippet-GeneratorProtectionMode'></a>
 ```cs
 [ParchmentModel("Templates/order-form.docx", Protection = ProtectionMode.None)]
+public partial class OrderForm
+{
+    public required string Number { get; init; }
+
+    [EditableField]
+    public required string PurchaseOrder { get; set; }
+}
 ```
+<sup><a href='/src/ParchmentModel/OrderForm.cs#L3-L12' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorProtectionMode' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 With `ProtectionMode.None` the fields still render as tagged controls (and still extract); the rest of the document stays editable too.
 
@@ -1153,7 +1168,8 @@ The model the template binds against:
 <!-- snippet: ReportModel -->
 <a id='snippet-ReportModel'></a>
 ```cs
-public class ReportContext
+[ParchmentModel("Templates/report.md")]
+public partial class ReportContext
 {
     public required Report Report;
 }
@@ -1182,7 +1198,7 @@ public class ActionItem
     public required string Detail;
 }
 ```
-<sup><a href='/src/ParchmentModel/Report.cs#L3-L32' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Report.cs#L3-L35' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render it like any other template:
@@ -1622,7 +1638,7 @@ await store.Render(
         Custom =
         {
             ["BillNumber"] = "42",
-            ["Introduced"] = new DateOnly(2026, 3, 1)
+            ["Introduced"] = new Date(2026, 3, 1)
         }
     });
 ```
@@ -1687,22 +1703,47 @@ The source generator is the recommended way to register templates. Decorate the 
 
 The model must be `partial` — the generator emits a `RegisterWith` helper onto the same class. Both docx and markdown templates are supported — the generator branches on the path's extension (`.docx` → docx flow, `.md` → markdown flow):
 
+<!-- snippet: GeneratorDocxModel -->
+<a id='snippet-GeneratorDocxModel'></a>
 ```cs
 [ParchmentModel("Templates/invoice.docx")]
 public partial class Invoice
 {
-    public string Number { get; set; } = "";
-    public Customer Customer { get; set; } = new();
-    // ...
-}
+    public required string Number { get; init; }
+    public required Date IssueDate { get; init; }
+    public required Date DueDate { get; init; }
+    public required Customer Customer { get; init; }
+    public required IReadOnlyList<LineItem> Lines { get; init; }
+    public required string Currency { get; init; }
+    public string? Notes { get; init; }
+    public IReadOnlyList<string> Tags { get; init; } = [];
 
-[ParchmentModel("Templates/report.md")]
-public partial class Report
-{
-    public string Title { get; set; } = "";
-    // ...
+    public decimal Subtotal =>
+        Lines.Sum(x => x.LineTotal);
+
+    public decimal Tax =>
+        Math.Round(Subtotal * 0.1m, 2);
+
+    public decimal Total =>
+        Subtotal + Tax;
 }
 ```
+<sup><a href='/src/ParchmentModel/Invoice.cs#L3-L25' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorDocxModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+and for the markdown flow:
+
+<!-- snippet: GeneratorMarkdownModel -->
+<a id='snippet-GeneratorMarkdownModel'></a>
+```cs
+[ParchmentModel("Templates/report.md")]
+public partial class ReportContext
+{
+    public required Report Report;
+}
+```
+<sup><a href='/src/ParchmentModel/Report.cs#L4-L10' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorMarkdownModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 The attribute is applied directly to the binding model — there is no separate marker / "template" class. Models almost always need Parchment-aware code on them anyway (`[Html]` / `[Markdown]` / `[ExcelsiorTable]` annotations, helper properties shaping values for binding), so the `partial` + Parchment-dependency tax is already paid. See `CLAUDE.md` → "Design decisions" for the full rationale.
 
@@ -1710,11 +1751,15 @@ The runtime `TemplateStore.RegisterDocxTemplate<T>(name, path)` / `RegisterMarkd
 
 In both cases the generator also emits a `RegisterWith(store)` helper so registration is one line at runtime:
 
+<!-- snippet: GeneratorRegisterWith -->
+<a id='snippet-GeneratorRegisterWith'></a>
 ```cs
 var store = new TemplateStore();
 Invoice.RegisterWith(store);
-Report.RegisterWith(store, styleSource: File.OpenRead("brand.docx"));
+ReportContext.RegisterWith(store);
 ```
+<sup><a href='/src/Parchment.Tests/GeneratedRegistrationTests.cs#L9-L15' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorRegisterWith' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 The markdown helper has an extra optional `styleSource` parameter that mirrors `RegisterMarkdownTemplate<T>` — pass a brand docx whose page setup, headers/footers, and styles should be inherited by the rendered output.
 

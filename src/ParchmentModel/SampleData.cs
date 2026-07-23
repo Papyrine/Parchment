@@ -1,4 +1,4 @@
-namespace ParchmentModel;
+namespace ParchmentSample;
 
 public static class SampleData
 {
