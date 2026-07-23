@@ -32,7 +32,3 @@ global using Microsoft.Extensions.Logging.Abstractions;
 global using OpenXmlHtml;
 global using Parchment;
 global using Parchment.Generated;
-
-// Excelsior exposes a DocumentProperties of its own, and this project imports both namespaces.
-// Parchment's is the one meant here; Excelsior's is reachable as Excelsior.DocumentProperties.
-global using DocumentProperties = Parchment.DocumentProperties;

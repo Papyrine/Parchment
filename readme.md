@@ -1620,16 +1620,16 @@ await store.Render(
 
 ## Document properties
 
-Pass a `DocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
+Pass a `WordDocumentProperties` to `Render` or `RenderToFile` to stamp the values Word shows in the File > Info pane and the Advanced Properties dialog. Every member is optional:
 
-<!-- snippet: DocumentProperties -->
-<a id='snippet-DocumentProperties'></a>
+<!-- snippet: WordDocumentProperties -->
+<a id='snippet-WordDocumentProperties'></a>
 ```cs
 await store.Render(
     "bill",
     model,
     stream,
-    new DocumentProperties
+    new WordDocumentProperties
     {
         Title = "Bill 42",
         Author = "Drafting Office",
@@ -1642,7 +1642,7 @@ await store.Render(
         }
     });
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L296-L315' title='Snippet source file'>snippet source</a> | <a href='#snippet-DocumentProperties' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L291-L310' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
@@ -1656,26 +1656,18 @@ Set `ClearBuiltIn` where the template's properties are not wanted. It discards t
 <!-- snippet: ClearBuiltIn -->
 <a id='snippet-ClearBuiltIn'></a>
 ```cs
-var properties = new DocumentProperties
+var properties = new WordDocumentProperties
 {
     ClearBuiltIn = true,
     Title = "Bill 42"
 };
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L360-L368' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L355-L363' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.
 
-`Excelsior` exposes a `DocumentProperties` of its own with the same shape. A file importing both namespaces needs an alias:
-
-<!-- snippet: DocumentPropertiesAlias -->
-<a id='snippet-DocumentPropertiesAlias'></a>
-```cs
-using DocumentProperties = Parchment.DocumentProperties;
-```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L6-L8' title='Snippet source file'>snippet source</a> | <a href='#snippet-DocumentPropertiesAlias' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
+`Excelsior` exposes `BookProperties` with much the same shape for workbooks. The two are named apart deliberately, so a project writing both Word and Excel can import both namespaces and name either without an alias.
 
 
 ## Registration-time validation

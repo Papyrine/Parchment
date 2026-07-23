@@ -2,15 +2,15 @@ namespace Parchment;
 
 /// <summary>
 /// Standard and user-defined document properties — the values Word surfaces in the File &gt; Info
-/// pane and the Advanced Properties dialog. Pass to <see cref="TemplateStore.Render(string, object, Stream, DocumentProperties, Cancel)"/>.
+/// pane and the Advanced Properties dialog. Pass to <see cref="TemplateStore.Render(string, object, Stream, WordDocumentProperties, Cancel)"/>.
 /// </summary>
 /// <remarks>
 /// Every member is optional and only the values that are set are written, so a property left at its
 /// default leaves that part of the document as the template had it. This matters because a template
 /// usually arrives carrying properties of its own: the parts are merged, never rewritten wholesale.
-/// Mirrors <c>Excelsior.DocumentProperties</c>.
+/// Mirrors <c>Excelsior.WordDocumentProperties</c>.
 /// </remarks>
-public class DocumentProperties
+public class WordDocumentProperties
 {
     /// <summary>Maps to the core property <c>Title</c>.</summary>
     public string? Title { get; init; }
