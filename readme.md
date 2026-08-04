@@ -1386,7 +1386,7 @@ Two things markdown does with tabs elsewhere still apply, since they happen befo
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
 
-A Word style is a single name, so the rest of what the syntax can carry has nowhere to map and is ignored: an id (`{#intro}`), key=value properties (`{.Caption width=400}`), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
+An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
 
 Headings and paragraphs take the style as their `ParagraphStyleId`:
 
@@ -1445,18 +1445,46 @@ A fence's language is not a style: ```` ```csharp ```` keeps `Code`, because Mar
 Three places accept the syntax but cannot receive it, because markdown binds the attribute elsewhere: on a thematic break and after a table row it lands on a paragraph, on a table cell it lands on the whole table, and an html block takes none at all. Style the table itself, or the paragraph, instead.
 
 
-### HTML comments are stripped
+### Bookmarks and internal links
 
-HTML comment blocks (`<!-- ... -->`) are dropped during rendering rather than passed through as empty paragraphs. This allows embedding snippet markers, authoring notes, or TODOs in template sources without bleeding visible whitespace into the output docx:
+An id on a heading or paragraph becomes a Word bookmark wrapping that text, and a link whose target starts with `#` points at it — a real internal link, not a url:
 
 ```markdown
-# {{ Title }}
+# Summary {#summary}
 
-<!-- TODO: add executive summary -->
-Body text follows the heading.
+Detail that refers back to the [summary](#summary).
 ```
 
-Only standalone comment *blocks* are removed; inline HTML, scripts, styles, and any other HTML constructs render normally via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml).
+A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word.
+
+An id and a style can sit on the same block: `Text {#note}{.BOXText}`.
+
+A link with **no text** and a `#` target becomes a page reference instead — the page the bookmark lands on, which only Word can compute:
+
+```markdown
+| Section | Page |
+| --- | --- |
+| [Summary](#summary) | [](#summary) |
+```
+
+Word fills the number in when it updates the field (see below).
+
+
+### Table of contents
+
+A paragraph whose entire content is `[TOC]` becomes a Word table-of-contents field:
+
+```markdown
+Contents {.TOCHeading}
+
+[TOC]{levels=1}
+```
+
+`levels` sets the heading depth to include — `1` lists Heading1 only, and the default is Word's own 3. A style attribute applies to the field's paragraph.
+
+`[TOC]` is the spelling several markdown dialects already use, and markdown itself does nothing with it: with no `(url)` or `[label]` after it, it is the literal text `[TOC]`. So a template that also renders to html degrades to showing the marker rather than breaking, and `[TOC](https://example.com)` is still an ordinary link. Only a paragraph that is *nothing but* the marker is a request for the field.
+
+**Fields carry instructions, not answers.** A table of contents and a page reference both depend on where content lands on a page, which is a product of layout — so the rendered docx holds the field, and Word computes the value. Both are emitted dirty, so Word builds the table of contents when the document opens and offers to refresh page references. Until then a placeholder shows in their place, which is what a reader that does not update fields will display.
 
 
 ## Images

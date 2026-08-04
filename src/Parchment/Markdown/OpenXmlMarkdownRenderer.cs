@@ -6,6 +6,7 @@ class OpenXmlMarkdownRenderer :
     readonly List<(string TagName, Action<RunProperties> Apply)> activeInlineHtml = new();
     readonly Stack<int> indentStack = new();
     int currentIndent;
+    int nextBookmarkId;
 
     public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
     {
@@ -98,6 +99,33 @@ class OpenXmlMarkdownRenderer :
         top.Blocks.Add(paragraph);
         top.CurrentRuns.Clear();
     }
+
+    /// <summary>
+    /// Open a bookmark around whatever is written next in the current paragraph.
+    /// </summary>
+    /// <remarks>
+    /// Ids are allocated per render and renumbered document-wide once the walk finishes (see
+    /// <see cref="MarkdownRendering"/>), because html blocks bring their own bookmarks with their own
+    /// numbering and the two sequences would otherwise overlap.
+    /// </remarks>
+    internal string AddBookmarkStart(string name)
+    {
+        var id = (++nextBookmarkId).ToString(CultureInfo.InvariantCulture);
+        AddRun(
+            new BookmarkStart
+            {
+                Id = id,
+                Name = name
+            });
+        return id;
+    }
+
+    internal void AddBookmarkEnd(string id) =>
+        AddRun(
+            new BookmarkEnd
+            {
+                Id = id
+            });
 
     internal void AddRun(OpenXmlElement run)
     {
