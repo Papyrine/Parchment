@@ -1484,7 +1484,50 @@ Contents {.TOCHeading}
 
 `[TOC]` is the spelling several markdown dialects already use, and markdown itself does nothing with it: with no `(url)` or `[label]` after it, it is the literal text `[TOC]`. So a template that also renders to html degrades to showing the marker rather than breaking, and `[TOC](https://example.com)` is still an ordinary link. Only a paragraph that is *nothing but* the marker is a request for the field.
 
-**Fields carry instructions, not answers.** A table of contents and a page reference both depend on where content lands on a page, which is a product of layout — so the rendered docx holds the field, and Word computes the value. Both are emitted dirty, so Word builds the table of contents when the document opens and offers to refresh page references. Until then a placeholder shows in their place, which is what a reader that does not update fields will display.
+**Fields carry instructions, not answers.** A table of contents and a page reference both depend on where content lands on a page, which is a product of layout — so by default the rendered docx holds the field, and Word computes the value. Both are emitted dirty, so Word builds the table of contents when the document opens and offers to refresh page references. Until then a placeholder shows in their place, which is what a reader that does not update fields will display.
+
+To fill them in instead, see [Resolving page numbers](#resolving-page-numbers).
+
+
+### Resolving page numbers
+
+Leaving the fields for Word costs the reader a prompt on open, and shows placeholder text until they accept it. Supply a `PageNumbers` resolver and the values are computed as the document is built:
+
+```csharp
+var store = new TemplateStore
+{
+    PageNumbers = new MorphPageNumberResolver()
+};
+```
+
+`MorphPageNumberResolver` ships in the separate `Parchment.Morph` package and lays the document out with [Morph](https://github.com/Papyrine/Morph). Any other engine can be plugged in by implementing the interface, which is the whole surface — Parchment builds the entries, the styles and the links itself, and asks only where each bookmark landed:
+
+```csharp
+public interface IPageNumberResolver
+{
+    Task<IReadOnlyDictionary<string, int>> Resolve(Stream docx, Cancel cancel);
+}
+```
+
+With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything.
+
+**A table of contents changes its own pagination**, which is why the entries are written before anything measures: growing the field from a one-line placeholder to thirty entries pushes every heading below it down a page and would invalidate the numbers already taken. Filling a number into a line that already exists reflows nothing, so one measuring pass is enough.
+
+Two costs are worth knowing. Resolving means laying the document out, so it is a real pass rather than a lookup. And a resolver is only as right as its agreement with Word: an engine that breaks a page one line earlier reports numbers that are wrong and, with nothing left dirty, look authoritative. The fields survive so a reader can still refresh them — but nobody refreshes numbers that look right.
+
+
+### HTML comments are stripped
+
+HTML comment blocks (`<!-- ... -->`) are dropped during rendering rather than passed through as empty paragraphs. This allows embedding snippet markers, authoring notes, or TODOs in template sources without bleeding visible whitespace into the output docx:
+
+```markdown
+# {{ Title }}
+
+<!-- TODO: add executive summary -->
+Body text follows the heading.
+```
+
+Only standalone comment *blocks* are removed; inline HTML, scripts, styles, and any other HTML constructs render normally via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml).
 
 
 ## Images

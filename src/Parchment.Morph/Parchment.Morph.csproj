@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PolyNullability>true</PolyNullability>
+    <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
+    <Description>Resolves Parchment's table-of-contents and page-reference fields by laying the document out with Morph, so the numbers are in the file before Word opens it.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Morph.Skia" VersionOverride="1.2.0" />
+    <PackageReference Include="Polyfill" PrivateAssets="all" />
+    <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
+    <PackageReference Include="SponsorCheck" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="all" Condition="'$(CI)' == 'true'" />
+    <ProjectReference Include="..\Parchment\Parchment.csproj" />
+    <None Include="nuget-readme.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
