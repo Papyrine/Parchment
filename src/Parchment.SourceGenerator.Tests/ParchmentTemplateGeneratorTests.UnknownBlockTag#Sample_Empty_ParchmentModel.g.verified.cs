@@ -6,9 +6,14 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Empty
 {
+  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Empty =
+  {
+  };
+
   [global::System.Runtime.CompilerServices.ModuleInitializer]
   internal static void InitializeParchmentTemplate()
   {
+    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Empty), _Accessors_global__Sample_Empty);
     global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
       typeof(global::Sample.Empty),
       global::System.Convert.FromBase64String("scrubbed"));

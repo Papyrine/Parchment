@@ -1,4 +1,4 @@
-public class StringListTests
+public partial class StringListTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;
 
@@ -10,38 +10,44 @@ public class StringListTests
             scenarioName));
 
     #region StringListModel
-    public class Person
+    [ParchmentBindable]
+    public partial class Person
     {
         public required string Name;
         public required IEnumerable<string> Tags;
     }
     #endregion
 
-    public class PersonWithArray
+    [ParchmentBindable]
+    public partial class PersonWithArray
     {
         public required string Name { get; init; }
         public required string[] Tags { get; init; }
     }
 
-    public class PersonWithList
+    [ParchmentBindable]
+    public partial class PersonWithList
     {
         public required string Name { get; init; }
         public required List<string> Tags { get; init; }
     }
 
-    public class PersonWithReadOnlyList
+    [ParchmentBindable]
+    public partial class PersonWithReadOnlyList
     {
         public required string Name { get; init; }
         public required IReadOnlyList<string> Tags { get; init; }
     }
 
-    public class PersonWithNullableTags
+    [ParchmentBindable]
+    public partial class PersonWithNullableTags
     {
         public required string Name { get; init; }
         public IEnumerable<string>? Tags { get; init; }
     }
 
-    public class Customer
+    [ParchmentBindable]
+    public partial class Customer
     {
         public required string Name { get; init; }
         public required Profile Profile { get; init; }
@@ -52,13 +58,15 @@ public class StringListTests
         public required IReadOnlyList<string> Skills { get; init; }
     }
 
-    public class TwoListsDoc
+    [ParchmentBindable]
+    public partial class TwoListsDoc
     {
         public required IReadOnlyList<string> First { get; init; }
         public required IReadOnlyList<string> Second { get; init; }
     }
 
-    public class CustomersDoc
+    [ParchmentBindable]
+    public partial class CustomersDoc
     {
         public required IReadOnlyList<CustomerWithTags> Customers { get; init; }
     }
@@ -69,7 +77,8 @@ public class StringListTests
         public required IReadOnlyList<string> Tags { get; init; }
     }
 
-    public class PersonWithTagsField
+    [ParchmentBindable]
+    public partial class PersonWithTagsField
     {
         public required string Name { get; init; }
         public IReadOnlyList<string> Tags = [];

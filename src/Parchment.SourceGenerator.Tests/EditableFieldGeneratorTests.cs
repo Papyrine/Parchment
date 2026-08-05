@@ -143,6 +143,156 @@ public class EditableFieldGeneratorTests
     }
 
     [Test]
+    public async Task CollectionElementWithoutEditableMembers_ReportsParch022()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class EmptyElement
+            {
+                public string Name { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public List<EmptyElement> Items { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Select(_ => _.Id)).Contains("PARCH022");
+        await Assert.That(diagnostics.Single(_ => _.Id == "PARCH022").GetMessage()).Contains("no [EditableField] members");
+    }
+
+    [Test]
+    public async Task CollectionElementWithoutParameterlessCtor_ReportsParch022()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Budget
+            {
+                public Budget(string year) => Year = year;
+
+                [EditableField]
+                public string Year { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public List<Budget> Items { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Select(_ => _.Id)).Contains("PARCH022");
+        await Assert.That(diagnostics.Single(_ => _.Id == "PARCH022").GetMessage()).Contains("parameterless constructor");
+    }
+
+    [Test]
+    public async Task NestedEditableCollection_ReportsParch022()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+            }
+
+            public class Budget
+            {
+                [EditableField]
+                public string Year { get; set; } = "";
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public List<Budget> Items { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH022" && _.GetMessage().Contains("nested"))).IsTrue();
+    }
+
+    [Test]
+    public async Task ConflictingFormatMarkers_ReportsParch023()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class HtmlAttribute : System.Attribute { }
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class MarkdownAttribute : System.Attribute { }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [Html]
+                [Markdown]
+                public string Body { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).Contains("PARCH023");
+    }
+
+    [Test]
+    public async Task HtmlContradictedByStringSyntax_ReportsParch023()
+    {
+        var source =
+            """
+            using System.Diagnostics.CodeAnalysis;
+            using Parchment;
+
+            namespace Sample;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class HtmlAttribute : System.Attribute { }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [Html]
+                [StringSyntax("markdown")]
+                public string Body { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).Contains("PARCH023");
+    }
+
+    [Test]
     public async Task NoUsableSetter_ReportsParch014()
     {
         var source =

@@ -4,6 +4,9 @@ sealed record MemberEntry(
     bool IsExcelsiorTable = false,
     bool IsHtml = false,
     bool IsMarkdown = false,
+    // [Html] + [Markdown] on one member, or either contradicted by [StringSyntax] — reported as
+    // PARCH023 and excluded from format-map emission.
+    bool HasFormatConflict = false,
     bool IsStringList = false,
     bool IsStatic = false,
     string? ExcelsiorHeadingParagraphStyle = null,

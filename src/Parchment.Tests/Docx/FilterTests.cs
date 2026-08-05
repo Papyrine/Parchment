@@ -1,6 +1,7 @@
-public class FilterTests
+public partial class FilterTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Body { get; init; }
         public required IReadOnlyList<string> Items { get; init; }

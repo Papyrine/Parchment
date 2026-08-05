@@ -1,6 +1,7 @@
-public class PageBreakTests
+public partial class PageBreakTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     static async Task<(string Text, int Breaks)> Render(string markdown)
     {

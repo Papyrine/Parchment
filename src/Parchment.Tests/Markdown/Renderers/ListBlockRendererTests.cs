@@ -1,6 +1,7 @@
-public class ListBlockRendererTests
+public partial class ListBlockRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     [Test]
     public async Task BulletListProducesListParagraphsWithNumbering()

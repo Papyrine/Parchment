@@ -1,8 +1,9 @@
 using MarkdigTable = Markdig.Extensions.Tables.Table;
 
-public class TableRendererTests
+public partial class TableRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     // Without tblHeader a table broken across a page break loses its header on every later page.
     [Test]

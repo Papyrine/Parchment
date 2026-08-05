@@ -1,4 +1,4 @@
-public class LoopTests
+public partial class LoopTests
 {
     [Test]
     public async Task ParagraphScopeLoop()
@@ -68,7 +68,8 @@ public class LoopTests
         await Verify(stream, "docx");
     }
 
-    public class NestedModel
+    [ParchmentBindable]
+    public partial class NestedModel
     {
         public required IReadOnlyList<NestedGroup> Groups { get; init; }
     }
@@ -119,7 +120,8 @@ public class LoopTests
         await Verify(stream, "docx");
     }
 
-    public class TripleNestModel
+    [ParchmentBindable]
+    public partial class TripleNestModel
     {
         public required IReadOnlyList<Level1> Sections { get; init; }
     }
@@ -208,7 +210,8 @@ public class LoopTests
         await Verify(stream, "docx");
     }
 
-    public class LeakModel
+    [ParchmentBindable]
+    public partial class LeakModel
     {
         public required string Item { get; init; }
         public required IReadOnlyList<string> Items { get; init; }
@@ -254,7 +257,8 @@ public class LoopTests
         await Assert.That(paragraphs).DoesNotContain("After:beta.");
     }
 
-    public class NestedShadowModel
+    [ParchmentBindable]
+    public partial class NestedShadowModel
     {
         public required IReadOnlyList<OuterItem> Outers { get; init; }
     }

@@ -1,6 +1,7 @@
-public class ReferenceValidatorTests
+public partial class ReferenceValidatorTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Title { get; init; }
         public required Profile Profile { get; init; }
@@ -17,7 +18,8 @@ public class ReferenceValidatorTests
         public required string Sku { get; init; }
     }
 
-    public class SelfRef
+    [ParchmentBindable]
+    public partial class SelfRef
     {
         public required string Name { get; init; }
         public SelfRef? Next { get; init; }
@@ -211,12 +213,14 @@ public class ReferenceValidatorTests
         store.RegisterDocxTemplate<SelfRef>(template);
     }
 
-    public class DocumentBase
+    [ParchmentBindable]
+    public partial class DocumentBase
     {
         public required string Title { get; init; }
     }
 
-    public class Report : DocumentBase
+    [ParchmentBindable]
+    public partial class Report : DocumentBase
     {
         public required string Body { get; init; }
     }
@@ -226,7 +230,8 @@ public class ReferenceValidatorTests
         public string Title { get; init; } = "base";
     }
 
-    public class ShadowingReport : ShadowBase
+    [ParchmentBindable]
+    public partial class ShadowingReport : ShadowBase
     {
         public new string Title { get; init; } = "derived";
     }

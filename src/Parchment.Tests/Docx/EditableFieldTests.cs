@@ -2,7 +2,7 @@ using DocumentFormat.OpenXml.Validation;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 
-public class EditableFieldTests
+public partial class EditableFieldTests
 {
     static string ScenarioPath(string scenarioName) =>
         Path.Combine(
@@ -11,7 +11,8 @@ public class EditableFieldTests
             scenarioName);
 
     #region EditableFieldsModel
-    public class OrderForm
+    [ParchmentBindable]
+    public partial class OrderForm
     {
         public required string Number;
 
@@ -141,7 +142,8 @@ public class EditableFieldTests
         Accepted
     }
 
-    public class EditableOrder
+    [ParchmentBindable]
+    public partial class EditableOrder
     {
         public required string Number;
         public required List<string> Tags;
@@ -294,7 +296,8 @@ public class EditableFieldTests
         await Assert.That(instructions.InnerText).IsEqualTo("Line oneLine two");
     }
 
-    public class PlaceholderKindsModel
+    [ParchmentBindable]
+    public partial class PlaceholderKindsModel
     {
         [EditableField]
         public QuoteStatus? Choice { get; set; }
@@ -337,7 +340,8 @@ public class EditableFieldTests
         InProgress
     }
 
-    public class ReviewModel
+    [ParchmentBindable]
+    public partial class ReviewModel
     {
         [EditableField]
         public ReviewStage Stage { get; set; }
@@ -803,75 +807,6 @@ public class EditableFieldTests
         await Assert.That(exception!.Message).Contains("more than once");
     }
 
-    public class UnsupportedTypeModel
-    {
-        [EditableField]
-        public List<string> Items { get; set; } = [];
-    }
-
-    [Test]
-    public async Task UnsupportedMemberTypeIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<UnsupportedTypeModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("unsupported type");
-    }
-
-    public class NullableBoolModel
-    {
-        [EditableField]
-        public bool? Maybe { get; set; }
-    }
-
-    [Test]
-    public async Task NullableBoolIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<NullableBoolModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("bool?");
-    }
-
-    public class InitOnlyModel
-    {
-        [EditableField]
-        public string PurchaseOrder { get; init; } = "";
-    }
-
-    [Test]
-    public async Task InitOnlySetterIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<InitOnlyModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("setter");
-    }
-
-    public class GetOnlyModel
-    {
-        public string Prefix = "x";
-
-        [EditableField]
-        public string Computed => Prefix;
-    }
-
-    [Test]
-    public async Task GetOnlyMemberIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<GetOnlyModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("setter");
-    }
 
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
     sealed class MarkdownAttribute : Attribute;
@@ -879,27 +814,9 @@ public class EditableFieldTests
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
     sealed class HtmlAttribute : Attribute;
 
-    public class ConflictModel
-    {
-        [EditableField]
-        [Markdown]
-        public string Body { get; set; } = "";
-    }
 
-    [Test]
-    public async Task ConflictingFormatAttributeIsRejected()
-    {
-        // [Markdown] + [EditableField] stays rejected — editable rich text round-trips via [Html]
-        // only (extraction has no OpenXML->Markdown serializer).
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<ConflictModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("Markdown");
-    }
-
-    public class MixedStructuralModel
+    [ParchmentBindable]
+    public partial class MixedStructuralModel
     {
         [Html]
         public string Body { get; set; } = "";
@@ -920,7 +837,8 @@ public class EditableFieldTests
     }
 
     #region EditableRichTextModel
-    public class EditableArticle
+    [ParchmentBindable]
+    public partial class EditableArticle
     {
         public required string Title;
 
@@ -930,12 +848,6 @@ public class EditableFieldTests
     }
     #endregion
 
-    public class MarkdownEditableModel
-    {
-        [EditableField]
-        [Markdown]
-        public string Body { get; set; } = "";
-    }
 
     [Test]
     public async Task HtmlEditableRendersUnlockedEditableBlock()
@@ -1012,7 +924,8 @@ public class EditableFieldTests
         await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
     }
 
-    public class RichTextShapes
+    [ParchmentBindable]
+    public partial class RichTextShapes
     {
         [Html]
         [EditableField]
@@ -1182,18 +1095,9 @@ public class EditableFieldTests
         await Assert.That(field.State).IsEqualTo(FieldState.Empty);
     }
 
-    [Test]
-    public async Task MarkdownEditableIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<MarkdownEditableModel>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("Markdown");
-    }
 
-    public class EditableQuote
+    [ParchmentBindable]
+    public partial class EditableQuote
     {
         [EditableField]
         public required string Reference { get; set; }

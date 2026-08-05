@@ -1,8 +1,9 @@
 // Templates authored as Word forms carry their placeholders as legacy FORMTEXT fields rather than
 // {{ tokens }}. Registration rewrites them, so such a template binds like any other docx template.
-public class FormFieldTests
+public partial class FormFieldTests
 {
-    public class Model
+    [ParchmentBindable]
+    public partial class Model
     {
         public required string Title { get; init; }
     }

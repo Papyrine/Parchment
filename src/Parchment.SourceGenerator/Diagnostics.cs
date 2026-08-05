@@ -178,6 +178,24 @@ static class Diagnostics
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch020--model-matches-more-than-one-template-file");
 
+    public static readonly DiagnosticDescriptor EditableCollectionInvalid = new(
+        id: "PARCH022",
+        title: "[EditableField] collection has an unsupported shape",
+        messageFormat: "Model '{0}' member '{1}' is an [EditableField] collection but {2}",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch022--editablefield-collection-has-an-unsupported-shape");
+
+    public static readonly DiagnosticDescriptor ConflictingFormatMarkers = new(
+        id: "PARCH023",
+        title: "Member carries conflicting format markers",
+        messageFormat: "Model '{0}' member '{1}' carries conflicting format markers — [Html], [Markdown] and [StringSyntax] disagree. Pick one; there is no principled winner to apply silently.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch023--member-carries-conflicting-format-markers");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",

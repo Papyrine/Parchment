@@ -4,11 +4,12 @@ using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 // end-snippet
 
-public class TokenOverrideTests
+public partial class TokenOverrideTests
 {
     #region MarkdownPropertyModel
 
-    public class NoteModel
+    [ParchmentBindable]
+    public partial class NoteModel
     {
         public required string Title;
         public required TokenValue Body;
@@ -58,7 +59,8 @@ public class TokenOverrideTests
 
     #region MarkdownFilterModel
 
-    public class ArticleModel
+    [ParchmentBindable]
+    public partial class ArticleModel
     {
         public required string Heading;
         public required string Content;
@@ -105,7 +107,8 @@ public class TokenOverrideTests
 
     #region MutateModel
 
-    public class StyledModel
+    [ParchmentBindable]
+    public partial class StyledModel
     {
         public required string Label;
         public required TokenValue Highlight;
@@ -155,7 +158,8 @@ public class TokenOverrideTests
 
     #region HtmlPropertyModel
 
-    public class PostModel
+    [ParchmentBindable]
+    public partial class PostModel
     {
         public required string Title;
         public required TokenValue Body;
@@ -203,7 +207,8 @@ public class TokenOverrideTests
 
     #region OpenXmlPropertyModel
 
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Title;
         public required TokenValue Callout;
@@ -285,7 +290,8 @@ public class TokenOverrideTests
 
     #region ImageTokenModel
 
-    public class BrandKit
+    [ParchmentBindable]
+    public partial class BrandKit
     {
         public required string Title;
         public required TokenValue Logo;

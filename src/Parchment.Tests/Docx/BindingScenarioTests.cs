@@ -1,6 +1,7 @@
-public class BindingScenarioTests
+public partial class BindingScenarioTests
 {
-    public class DotxModel
+    [ParchmentBindable]
+    public partial class DotxModel
     {
         public required string Title { get; init; }
     }
@@ -37,7 +38,8 @@ public class BindingScenarioTests
 
     // -- #1 public fields ----------------------------------------------------
 
-    public class FieldModel
+    [ParchmentBindable]
+    public partial class FieldModel
     {
         public string Title = "";
         public NestedField Nested = new();
@@ -64,7 +66,8 @@ public class BindingScenarioTests
 
     // -- #2 polymorphism / abstract base ------------------------------------
 
-    public abstract class DocumentBase
+    [ParchmentBindable]
+    public abstract partial class DocumentBase
     {
         public required string Title { get; init; }
     }
@@ -108,7 +111,8 @@ public class BindingScenarioTests
 
     // -- static members ------------------------------------------------------
 
-    public class StaticHostModel
+    [ParchmentBindable]
+    public partial class StaticHostModel
     {
         public static string Logo { get; } = "Acme Inc.";
         public static string Footer = "© 2026";
@@ -137,7 +141,8 @@ public class BindingScenarioTests
 
     public record struct Point(int X, int Y);
 
-    public class ShapeModel
+    [ParchmentBindable]
+    public partial class ShapeModel
     {
         public required string Name { get; init; }
         public required Point Origin { get; init; }
@@ -159,7 +164,8 @@ public class BindingScenarioTests
 
     // -- #4 null model ------------------------------------------------------
 
-    public class TitledModel
+    [ParchmentBindable]
+    public partial class TitledModel
     {
         public required string Title { get; init; }
     }
@@ -183,7 +189,8 @@ public class BindingScenarioTests
 
     // -- #5 IDictionary<K, V> member access through KeyValuePair -----------
 
-    public class DictionaryHost
+    [ParchmentBindable]
+    public partial class DictionaryHost
     {
         public required IReadOnlyDictionary<string, ProductInfo> Products { get; init; }
     }

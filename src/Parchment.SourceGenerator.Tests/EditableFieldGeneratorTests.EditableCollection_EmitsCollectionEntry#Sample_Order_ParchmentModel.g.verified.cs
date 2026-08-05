@@ -17,7 +17,7 @@ partial class Order
   };
   static readonly global::Parchment.Generated.CollectionFieldMapEntry[] _EditableCollections =
   {
-    new("Lines", typeof(global::Sample.Line), (o, v) => { ((global::Sample.Order)o).Lines = (global::System.Collections.Generic.List<global::Sample.Line>)v!; }, static o => true, static () => new global::Sample.Line(), new global::Parchment.Generated.EditableFieldMapEntry[] { new("Note", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), false, o => ((global::Sample.Line)o).Note, (o, v) => { ((global::Sample.Line)o).Note = (string)v!; }, static o => true, false, null), new("Amount", global::Parchment.Generated.EditableFieldKind.Number, typeof(decimal), false, o => ((global::Sample.Line)o).Amount, (o, v) => { ((global::Sample.Line)o).Amount = (decimal)v!; }, static o => true, false, null), }, false),
+    new("Lines", typeof(global::Sample.Line), (o, v) => { ((global::Sample.Order)o).Lines = (global::System.Collections.Generic.List<global::Sample.Line>)v!; }, static o => true, static () => global::System.Activator.CreateInstance(typeof(global::Sample.Line))!, new global::Parchment.Generated.EditableFieldMapEntry[] { new("Note", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), false, o => ((global::Sample.Line)o).Note, (o, v) => { ((global::Sample.Line)o).Note = (string)v!; }, static o => true, false, null), new("Amount", global::Parchment.Generated.EditableFieldKind.Number, typeof(decimal), false, o => ((global::Sample.Line)o).Amount, (o, v) => { ((global::Sample.Line)o).Amount = (decimal)v!; }, static o => true, false, null), }, false),
   };
 
   [global::System.Runtime.CompilerServices.ModuleInitializer]

@@ -1,6 +1,7 @@
-public class HtmlBlockRendererTests
+public partial class HtmlBlockRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
 
     [Test]

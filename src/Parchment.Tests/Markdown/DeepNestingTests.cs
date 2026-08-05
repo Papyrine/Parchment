@@ -1,6 +1,7 @@
-public class DeepNestingTests
+public partial class DeepNestingTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     [Test]
     public async Task QuoteContainingListContainingNestedList()

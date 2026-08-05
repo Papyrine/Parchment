@@ -26,11 +26,17 @@ A markdown template's style source is found by convention too: `Report.dotx`, or
 
 ## Registering by hand
 
-For templates the generator cannot see — content produced at runtime, or a model that cannot be made `partial` — register against the model type directly.
+For templates the generator cannot see — content produced at runtime, per-tenant templates — register against the model type directly. The model still goes through the generator: mark it `[ParchmentBindable]` (and `partial`) so its accessors are pre-compiled without binding a template.
 
 A docx template:
 
 ```cs
+[ParchmentBindable]
+public partial class Invoice
+{
+    // ...
+}
+
 var store = new TemplateStore();
 store.RegisterDocxTemplate<Invoice>("invoice-template.docx");
 

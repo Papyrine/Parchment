@@ -1,4 +1,4 @@
-public class EnumSubstitutionTests
+public partial class EnumSubstitutionTests
 {
     [Test]
     public async Task PascalCaseEnum_IsHumanized()
@@ -99,12 +99,14 @@ public class EnumSubstitutionTests
         await Verify(output, "docx");
     }
 
-    public class EmploymentModel
+    [ParchmentBindable]
+    public partial class EmploymentModel
     {
         public required EmploymentStatus Status { get; init; }
     }
 
-    public class NullableEnumModel
+    [ParchmentBindable]
+    public partial class NullableEnumModel
     {
         public required EmploymentStatus? Backup { get; init; }
     }
@@ -116,7 +118,8 @@ public class EnumSubstitutionTests
         Contract
     }
 
-    public class RoleModel
+    [ParchmentBindable]
+    public partial class RoleModel
     {
         public required Role Role { get; init; }
     }
@@ -130,7 +133,8 @@ public class EnumSubstitutionTests
         Developer
     }
 
-    public class OverrideModel
+    [ParchmentBindable]
+    public partial class OverrideModel
     {
         public required OverrideEnum Tier { get; init; }
     }

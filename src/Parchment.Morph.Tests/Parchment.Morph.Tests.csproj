@@ -9,8 +9,17 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.Morph\Parchment.Morph.csproj" />
+    <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj"
+                      ReferenceOutputAssembly="false" />
     <!-- Shared with the main suite rather than reimplemented: the fixture that builds a blank
          style source is the same one every other render test starts from. -->
     <Compile Include="..\Parchment.Tests\Fixtures\DocxTemplateBuilder.cs" Link="DocxTemplateBuilder.cs" />
   </ItemGroup>
+  <!-- See Parchment.Tests.csproj — the model carries [ParchmentBindable], so the generator must run. -->
+  <Target Name="ReferenceShadedGenerator" BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Analyzer Include="..\Parchment.SourceGenerator\bin\$(Configuration)\netstandard2.0\Parchment.SourceGenerator*.dll" />
+    </ItemGroup>
+  </Target>
 </Project>

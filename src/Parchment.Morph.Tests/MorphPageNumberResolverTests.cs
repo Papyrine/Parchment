@@ -1,8 +1,9 @@
 // The two halves meeting: Parchment writes the fields and the entries, Morph lays the document out
 // and says which page each one landed on. Nothing here stubs the pagination.
-public class MorphPageNumberResolverTests
+public partial class MorphPageNumberResolverTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required IReadOnlyList<string> Sections { get; init; }
     }

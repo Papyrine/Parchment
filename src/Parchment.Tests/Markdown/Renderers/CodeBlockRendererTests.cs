@@ -1,6 +1,7 @@
-public class CodeBlockRendererTests
+public partial class CodeBlockRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
 
     [Test]

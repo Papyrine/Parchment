@@ -1,6 +1,7 @@
-public class PageNumberResolverTests
+public partial class PageNumberResolverTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Heading { get; init; }
     }

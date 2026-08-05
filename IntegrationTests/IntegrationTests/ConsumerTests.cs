@@ -1,11 +1,12 @@
-public class ConsumerTests
+public partial class ConsumerTests
 {
     public class Customer
     {
         public required string Name { get; init; }
     }
 
-    public class InvoiceModel
+    [ParchmentBindable]
+    public partial class InvoiceModel
     {
         public required string Number { get; init; }
         public required Customer Customer { get; init; }
@@ -44,7 +45,8 @@ public class ConsumerTests
         await Assert.That(stream.Length).IsGreaterThan(0);
     }
 
-    public class LoopModel
+    [ParchmentBindable]
+    public partial class LoopModel
     {
         public required IReadOnlyList<string> Items { get; init; }
     }

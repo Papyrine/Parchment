@@ -1,4 +1,4 @@
-public class FormatAttributeTests
+public partial class FormatAttributeTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;
 
@@ -19,7 +19,8 @@ public class FormatAttributeTests
     #endregion
 
     #region MarkdownFieldModel
-    public record MarkdownFieldDoc
+    [ParchmentBindable]
+    public partial record MarkdownFieldDoc
     {
         public required string Title;
 
@@ -29,7 +30,8 @@ public class FormatAttributeTests
     #endregion
 
     #region HtmlModel
-    public class HtmlDoc
+    [ParchmentBindable]
+    public partial class HtmlDoc
     {
         public required string Title;
 
@@ -39,7 +41,8 @@ public class FormatAttributeTests
     #endregion
 
     #region MarkdownModel
-    public class MarkdownDoc
+    [ParchmentBindable]
+    public partial class MarkdownDoc
     {
         public required string Title;
 
@@ -49,7 +52,8 @@ public class FormatAttributeTests
     #endregion
 
     #region StringSyntaxHtmlModel
-    public class StringSyntaxHtmlDoc
+    [ParchmentBindable]
+    public partial class StringSyntaxHtmlDoc
     {
         public required string Title;
 
@@ -68,21 +72,10 @@ public class FormatAttributeTests
     }
     #endregion
 
-    public class MismatchDoc
-    {
-        [Html]
-        [StringSyntax("markdown")]
-        public required string Body { get; init; }
-    }
 
-    public class BothDoc
-    {
-        [Html]
-        [Markdown]
-        public required string Body { get; init; }
-    }
 
-    public class TwoHtmlBlockDoc
+    [ParchmentBindable]
+    public partial class TwoHtmlBlockDoc
     {
         [Html]
         public required string A { get; init; }
@@ -389,18 +382,6 @@ public class FormatAttributeTests
     }
 
     [Test]
-    public async Task MismatchedHtmlAndStringSyntaxMarkdownIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("{{ Body }}");
-
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-            () => store.RegisterDocxTemplate<MismatchDoc>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("mismatched");
-    }
-
-    [Test]
     public async Task TwoBlockShapedFormatTokensInSameParagraph_Throws()
     {
         // Two non-solo block-shaped structural tokens in one paragraph would require overlapping
@@ -421,18 +402,6 @@ public class FormatAttributeTests
         var exception = await Assert.That(() => store.Render(model, stream))
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
-    }
-
-    [Test]
-    public async Task BothHtmlAndMarkdownIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("{{ Body }}");
-
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-            () => store.RegisterDocxTemplate<BothDoc>(template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("both [Html] and [Markdown]");
     }
 
     static byte[] OnePixelPng() =>

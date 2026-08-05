@@ -3,6 +3,7 @@ public sealed class ParchmentTemplateGenerator :
     IIncrementalGenerator
 {
     const string attributeFullName = "Parchment.ParchmentModelAttribute";
+    const string bindableAttributeFullName = "Parchment.ParchmentBindableAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -77,6 +78,74 @@ public sealed class ParchmentTemplateGenerator :
                     Process(productionContext, target, docData, markdownData, dotxData, projectDir);
                 }
             });
+
+        // [ParchmentBindable]: accessors-only emission for models registered by hand against
+        // templates the generator cannot see. No template inputs to combine, so each target is
+        // its own cacheable unit.
+        var bindables = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                bindableAttributeFullName,
+                static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
+                ExtractBindableTarget)
+            .Where(static _ => _ != null)
+            .Select(static (target, _) => target!)
+            .WithTrackingName(Stages.Bindables);
+
+        context.RegisterSourceOutput(
+            bindables,
+            static (productionContext, target) => ProcessBindable(productionContext, target));
+    }
+
+    static TargetInfo? ExtractBindableTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
+    {
+        // [ParchmentModel] already emits the accessors (together with the embedded template); a
+        // second module initializer here would collide with it, so the template attribute wins.
+        if (context.TargetSymbol is INamedTypeSymbol symbol &&
+            symbol.GetAttributes().Any(_ => _.AttributeClass?.ToDisplayString() == "Parchment.ParchmentModelAttribute"))
+        {
+            return null;
+        }
+
+        return ExtractTarget(context, cancel);
+    }
+
+    static void ProcessBindable(SourceProductionContext context, TargetInfo target)
+    {
+        var location = target.Location.ToLocation();
+
+        if (target.ExtractError != null)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.EnclosingTypeNotPartial,
+                    location,
+                    target.DeclaringName,
+                    target.ExtractError));
+            return;
+        }
+
+        // The template kind is unknown at compile time, so the shape rules that a docx
+        // registration would need are enforced here — an invalid editable member is an authoring
+        // mistake regardless of which template it later meets.
+        ValidateEditableShape(context, target, location);
+
+        EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
+    }
+
+    static string GenerateBindableRegistration(TargetInfo target)
+    {
+        var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
+        // The type name is folded into the method name so a base and a derived model can both be
+        // [ParchmentBindable] without the derived initializer hiding the base one (CS0108).
+        var body =
+            $$"""
+              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
+              internal static void InitializeParchmentBindable{{target.DeclaringName}}()
+              {
+              {{registrationsBlock}}}
+              """;
+
+        return BuildPartialSource(target, body);
     }
 
     static bool IsMarkdownPath(string path) =>
@@ -460,6 +529,16 @@ public sealed class ParchmentTemplateGenerator :
                     continue;
                 }
 
+                if (member.HasFormatConflict)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ConflictingFormatMarkers,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay));
+                }
+
                 if (!member.IsEditable)
                 {
                     continue;
@@ -480,8 +559,9 @@ public sealed class ParchmentTemplateGenerator :
                 }
 
                 // An [EditableField] collection of a POCO element type renders as a repeating section
-                // (EditableKind stays null). The element-type + nesting constraints are enforced by the
-                // runtime at registration; here only the collection member's own setter is required.
+                // (EditableKind stays null). Extraction rebuilds the list from the repeated items, so
+                // the collection needs a setter and its element type must be constructable, carry at
+                // least one editable member, and not nest a further editable collection.
                 if (member.EditableCollectionElementFqn != null)
                 {
                     if (!member.HasUsableSetter)
@@ -494,6 +574,7 @@ public sealed class ParchmentTemplateGenerator :
                                 memberDisplay));
                     }
 
+                    ValidateEditableCollection(context, target, location, memberDisplay, member);
                     continue;
                 }
 
@@ -521,6 +602,75 @@ public sealed class ParchmentTemplateGenerator :
             }
         }
     }
+
+    /// <summary>
+    /// The collection-shape half of the editable rules. Lockstep with the emission-side skip in
+    /// <c>AccessorEmission.WalkForMaps</c>: a shape reported here is not emitted, so the generated
+    /// source stays compilable while the diagnostic fails the build.
+    /// </summary>
+    static void ValidateEditableCollection(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location,
+        string memberDisplay,
+        MemberEntry member)
+    {
+        TypeEntry? element = null;
+        foreach (var type in target.Shape.Types)
+        {
+            if (type.TypeFullyQualifiedName == member.EditableCollectionElementFqn)
+            {
+                element = type;
+                break;
+            }
+        }
+
+        if (element == null)
+        {
+            return;
+        }
+
+        var elementDisplay = Display(element.TypeFullyQualifiedName);
+        if (!element.HasParameterlessCtor)
+        {
+            ReportCollectionInvalid(context, target, location, memberDisplay,
+                $"its element type '{elementDisplay}' has no public parameterless constructor — extraction rebuilds the list, so elements must be constructable");
+        }
+
+        var hasEditable = false;
+        foreach (var elementMember in element.Members)
+        {
+            if (elementMember.EditableCollectionElementFqn != null)
+            {
+                ReportCollectionInvalid(context, target, location, memberDisplay,
+                    $"its element type '{elementDisplay}' itself contains an editable collection — nested editable collections are not supported");
+            }
+            else if (elementMember is { IsEditable: true, IsStatic: false })
+            {
+                hasEditable = true;
+            }
+        }
+
+        if (!hasEditable)
+        {
+            ReportCollectionInvalid(context, target, location, memberDisplay,
+                $"its element type '{elementDisplay}' has no [EditableField] members — nothing to round-trip");
+        }
+    }
+
+    static void ReportCollectionInvalid(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location,
+        string memberDisplay,
+        string reason) =>
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.EditableCollectionInvalid,
+                location,
+                target.ModelDisplayName,
+                memberDisplay,
+                reason));
 
     static string Display(string fqn)
     {
@@ -730,7 +880,7 @@ public sealed class ParchmentTemplateGenerator :
 
     static readonly FluidParser markdownParser = new();
 
-    static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source)
+    static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source, string suffix = "ParchmentModel")
     {
         // The hint name must be unique across all targets in the compilation. Simple name alone
         // collides when two models share `DeclaringName` (e.g. `Outer1.Info` and `Outer2.Info`),
@@ -749,7 +899,7 @@ public sealed class ParchmentTemplateGenerator :
         builder.Append(target.DeclaringName);
         var hintPrefix = builder.ToString().Replace('.', '_');
         context.AddSource(
-            $"{hintPrefix}_ParchmentModel.g.cs",
+            $"{hintPrefix}_{suffix}.g.cs",
             SourceText.From(source, Encoding.UTF8));
     }
 
@@ -1115,5 +1265,6 @@ public sealed class ParchmentTemplateGenerator :
         public const string Dotxes = "Parchment_Dotxes";
         public const string DotxesCollected = "Parchment_DotxesCollected";
         public const string Combined = "Parchment_Combined";
+        public const string Bindables = "Parchment_Bindables";
     }
 }

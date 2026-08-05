@@ -10,6 +10,11 @@ static class GeneratorDriver
                 public ProtectionMode Protection { get; set; }
             }
 
+            [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
+            public sealed class ParchmentBindableAttribute : System.Attribute
+            {
+            }
+
             public enum ProtectionMode
             {
                 WhenEditable,
@@ -50,7 +55,7 @@ static class GeneratorDriver
     {
         var match = Regex.Match(
             userSource,
-            @"\[ParchmentModel[^\]]*\]\s*(?:public\s+|internal\s+)*partial\s+(?:record\s+struct|class|record|struct)\s+(\w+)");
+            @"\[ParchmentModel[^\]]*\]\s*(?:\[[^\]]*\]\s*)*(?:public\s+|internal\s+)*partial\s+(?:record\s+struct|class|record|struct)\s+(\w+)");
         if (!match.Success)
         {
             throw new InvalidOperationException("No [ParchmentModel] partial type found in the source under test.");

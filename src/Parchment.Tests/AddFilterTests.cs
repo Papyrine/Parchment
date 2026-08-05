@@ -1,9 +1,10 @@
 using Fluid;
 using Fluid.Values;
 
-public class AddFilterTests
+public partial class AddFilterTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Body { get; init; }
     }

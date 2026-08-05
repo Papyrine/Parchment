@@ -9,12 +9,13 @@
 /// duplicate abstracts whose final IDs depended on OOXML SDK save-time reordering — making rendered
 /// docx bytes non-deterministic across runs.
 /// </summary>
-public class NumberingStateSharingTests
+public partial class NumberingStateSharingTests
 {
     [AttributeUsage(AttributeTargets.Property)]
     sealed class MarkdownAttribute : Attribute;
 
-    public class TwoMarkdownDoc
+    [ParchmentBindable]
+    public partial class TwoMarkdownDoc
     {
         [Markdown]
         public required string FirstBody { get; init; }
@@ -23,7 +24,8 @@ public class NumberingStateSharingTests
         public required string SecondBody { get; init; }
     }
 
-    public class MixedDoc
+    [ParchmentBindable]
+    public partial class MixedDoc
     {
         public required IReadOnlyList<string> Tags { get; init; }
 
@@ -31,7 +33,8 @@ public class NumberingStateSharingTests
         public required string Body { get; init; }
     }
 
-    public class GroupsDoc
+    [ParchmentBindable]
+    public partial class GroupsDoc
     {
         public required IReadOnlyList<Group> Groups { get; init; }
         public required IReadOnlyList<string> Outer { get; init; }
@@ -42,7 +45,8 @@ public class NumberingStateSharingTests
         public required IReadOnlyList<string> Items { get; init; }
     }
 
-    public class IfDoc
+    [ParchmentBindable]
+    public partial class IfDoc
     {
         public required bool ShowInner { get; init; }
         public required IReadOnlyList<string> Inner { get; init; }
@@ -52,7 +56,8 @@ public class NumberingStateSharingTests
     [AttributeUsage(AttributeTargets.Property)]
     sealed class HtmlAttribute : Attribute;
 
-    public class TwoHtmlDoc
+    [ParchmentBindable]
+    public partial class TwoHtmlDoc
     {
         [Html]
         public required string FirstBody { get; init; }
@@ -61,7 +66,8 @@ public class NumberingStateSharingTests
         public required string SecondBody { get; init; }
     }
 
-    public class HtmlIfDoc
+    [ParchmentBindable]
+    public partial class HtmlIfDoc
     {
         public required bool ShowInner { get; init; }
 
@@ -72,7 +78,8 @@ public class NumberingStateSharingTests
         public required string Outer { get; init; }
     }
 
-    public class HtmlAndMarkdownDoc
+    [ParchmentBindable]
+    public partial class HtmlAndMarkdownDoc
     {
         [Html]
         public required string HtmlBody { get; init; }

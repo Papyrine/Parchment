@@ -1,9 +1,10 @@
 // Registering and rendering is keyed by the model type. There is no name to repeat at
 // registration and at every render, so there is no string for a caller to get wrong — the type
 // says which template to use.
-public class TypeKeyedTemplateTests
+public partial class TypeKeyedTemplateTests
 {
-    public class Invoice
+    [ParchmentBindable]
+    public partial class Invoice
     {
         public required string Number { get; init; }
     }
@@ -14,9 +15,10 @@ public class TypeKeyedTemplateTests
     }
 
     // Deliberately the same simple name as the Invoice above, in a different namespace.
-    public static class Other
+    public static partial class Other
     {
-        public class Invoice
+        [ParchmentBindable]
+        public partial class Invoice
         {
             public required string Number { get; init; }
         }

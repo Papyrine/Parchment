@@ -1,6 +1,7 @@
-public class HeaderFooterTokenTests
+public partial class HeaderFooterTokenTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Title { get; init; }
         public required string Author { get; init; }

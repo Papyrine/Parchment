@@ -1,4 +1,4 @@
-public class ExcelsiorTableTests
+public partial class ExcelsiorTableTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;
 
@@ -11,7 +11,8 @@ public class ExcelsiorTableTests
 
     #region ExcelsiorTableModel
 
-    public class Quote
+    [ParchmentBindable]
+    public partial class Quote
     {
         public required string Reference;
 
@@ -33,7 +34,8 @@ public class ExcelsiorTableTests
 
     #endregion
 
-    public class Order
+    [ParchmentBindable]
+    public partial class Order
     {
         public required string Number { get; init; }
         public required Buyer Buyer { get; init; }
@@ -56,7 +58,8 @@ public class ExcelsiorTableTests
         public required string City { get; init; }
     }
 
-    public class QuoteWithFieldLines
+    [ParchmentBindable]
+    public partial class QuoteWithFieldLines
     {
         public required string Reference { get; init; }
 
@@ -107,7 +110,8 @@ public class ExcelsiorTableTests
 
     #region ExcelsiorTableParagraphStyles
 
-    public class StyledQuote
+    [ParchmentBindable]
+    public partial class StyledQuote
     {
         [ExcelsiorTable(HeadingParagraphStyle = "TBLHeading", BodyParagraphStyle = "TBLText")]
         public required IReadOnlyList<QuoteLine> Lines;
@@ -155,7 +159,8 @@ public class ExcelsiorTableTests
 
     #region ExcelsiorTableViaOpenXmlToken
 
-    public class GroupedReport
+    [ParchmentBindable]
+    public partial class GroupedReport
     {
         public required IReadOnlyList<QuoteLine> Lines;
 

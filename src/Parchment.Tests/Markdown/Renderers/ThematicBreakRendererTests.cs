@@ -1,6 +1,7 @@
-public class ThematicBreakRendererTests
+public partial class ThematicBreakRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
 
     [Test]

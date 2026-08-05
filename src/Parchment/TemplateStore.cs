@@ -42,13 +42,12 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     {
         var name = modelType.Name;
         GuardBindingModel(modelType, name);
-        SharedFluid.RegisterModel(modelType);
-        StaticRenderAttributes.Warn(modelType, name, logger);
+        SharedFluid.EnsureModelRegistered(modelType, name);
 
-        var excelsiorMap = ExcelsiorTableMap.Build(modelType, name);
-        var formatMap = FormatMap.Build(modelType, name);
+        var excelsiorMap = ExcelsiorTableMap.Build(modelType);
+        var formatMap = FormatMap.Build(modelType);
         var stringListMap = StringListMap.Build(modelType);
-        var editableMap = EditableMap.Build(modelType, name);
+        var editableMap = EditableMap.Build(modelType);
 
         using var stream = DocxCloner.ToWritableStream(template);
         IReadOnlyList<PartScopeTree> parts;
@@ -137,8 +136,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     {
         var name = modelType.Name;
         GuardBindingModel(modelType, name);
-        SharedFluid.RegisterModel(modelType);
-        StaticRenderAttributes.Warn(modelType, name, logger);
+        SharedFluid.EnsureModelRegistered(modelType, name);
 
         if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
         {

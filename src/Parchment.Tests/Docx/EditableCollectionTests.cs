@@ -1,6 +1,6 @@
 using W15 = DocumentFormat.OpenXml.Office2013.Word;
 
-public class EditableCollectionTests
+public partial class EditableCollectionTests
 {
     #region EditableCollectionModel
     public class Budget
@@ -12,7 +12,8 @@ public class EditableCollectionTests
         public required decimal Amount { get; set; }
     }
 
-    public class BudgetPlan
+    [ParchmentBindable]
+    public partial class BudgetPlan
     {
         public required string Title;
 
@@ -112,27 +113,6 @@ public class EditableCollectionTests
         await Assert.That(errors).IsEmpty();
     }
 
-    public class EmptyElement
-    {
-        public string Name { get; set; } = "";
-    }
-
-    public class NoEditableElementModel
-    {
-        [EditableField]
-        public required List<EmptyElement> Items { get; set; }
-    }
-
-    [Test]
-    public async Task ElementWithoutEditableMembersIsRejected()
-    {
-        using var docx = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<NoEditableElementModel>(docx))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("no [EditableField] members");
-    }
 
     [Test]
     public async Task RoundTripsCollection()

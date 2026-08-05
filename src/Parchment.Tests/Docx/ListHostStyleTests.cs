@@ -1,4 +1,4 @@
-public class ListHostStyleTests
+public partial class ListHostStyleTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;
 
@@ -9,7 +9,8 @@ public class ListHostStyleTests
             "Scenarios",
             scenarioName));
 
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Title { get; init; }
         public required IReadOnlyList<string> Items { get; init; }

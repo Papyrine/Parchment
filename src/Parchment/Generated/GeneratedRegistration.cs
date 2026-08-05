@@ -2,15 +2,13 @@ namespace Parchment.Generated;
 
 /// <summary>
 /// Public entry points called from source-generator-emitted module initializers. Stores each
-/// model's embedded template definition, and pre-populates the runtime's per-type registration
-/// caches so the reflection-based <see cref="SharedFluid.RegisterModel"/> / <c>*Map.Build</c>
-/// walks short-circuit when a <see cref="TemplateStore"/> materializes the template.
+/// model's embedded template definition, and populates the runtime's per-type registration
+/// caches — the pre-compiled accessors and per-template maps every registration requires. There
+/// is no reflection fallback: a model registered by hand must carry <c>[ParchmentBindable]</c>
+/// (or <c>[ParchmentModel]</c>) so these calls have run when its assembly loaded.
 ///
-/// Not intended for hand-written consumption — call sites are emitted by the
-/// <c>Parchment.ParchmentModelAttribute</c> source generator. The runtime
-/// <see cref="TemplateStore.RegisterDocxTemplate{TModel}(string, ProtectionMode)"/> path stays
-/// fully functional for callers that can't use the source generator (POCO models, dynamic
-/// template paths, etc.).
+/// Not intended for hand-written consumption — call sites are emitted by the Parchment source
+/// generator.
 /// </summary>
 public static class GeneratedRegistration
 {

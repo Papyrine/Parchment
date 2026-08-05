@@ -2,9 +2,10 @@ using System.Xml.Linq;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
 using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
 
-public class DocumentPropertiesTests
+public partial class DocumentPropertiesTests
 {
-    public class Model
+    [ParchmentBindable]
+    public partial class Model
     {
         public required string Title { get; init; }
     }

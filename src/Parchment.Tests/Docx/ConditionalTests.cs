@@ -1,4 +1,4 @@
-public class ConditionalTests
+public partial class ConditionalTests
 {
     [Test]
     public async Task IfTrue()
@@ -28,7 +28,8 @@ public class ConditionalTests
         await Verify(stream, "docx");
     }
 
-    public class FlagModel
+    [ParchmentBindable]
+    public partial class FlagModel
     {
         public required bool Flag { get; init; }
         public required string Label { get; init; }
@@ -68,7 +69,8 @@ public class ConditionalTests
         await Verify(stream, "docx");
     }
 
-    public class TwoFlagModel
+    [ParchmentBindable]
+    public partial class TwoFlagModel
     {
         public required bool Flag { get; init; }
         public required bool Second { get; init; }

@@ -29,7 +29,7 @@ public static class ParchmentExtractor
     {
         ArgumentNullException.ThrowIfNull(docx);
 
-        var map = maps.GetOrAdd(typeof(TModel), static type => EditableMap.Build(type, type.Name));
+        var map = maps.GetOrAdd(typeof(TModel), static type => EditableMap.Build(type));
         if (map.IsEmpty)
         {
             throw new ParchmentExtractionException(

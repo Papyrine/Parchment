@@ -1,6 +1,7 @@
-public class MarkdownFlowTests
+public partial class MarkdownFlowTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Title { get; init; }
         public required string Author { get; init; }
@@ -48,14 +49,16 @@ public class MarkdownFlowTests
         await Verify(stream, "docx");
     }
 
-    public class TitleModel
+    [ParchmentBindable]
+    public partial class TitleModel
     {
         public required string Title { get; init; }
     }
 
     #region MarkdownTemplatePropertyModel
 
-    public class BriefModel
+    [ParchmentBindable]
+    public partial class BriefModel
     {
         public required string Title;
         public required string Details;
@@ -185,7 +188,8 @@ public class MarkdownFlowTests
         await Assert.That(withStream.ToArray()).IsEquivalentTo(withoutStream.ToArray());
     }
 
-    public class ImageModel
+    [ParchmentBindable]
+    public partial class ImageModel
     {
         public required string Caption { get; init; }
     }
@@ -293,7 +297,8 @@ public class MarkdownFlowTests
         }
     }
 
-    public class LoopModel
+    [ParchmentBindable]
+    public partial class LoopModel
     {
         public required IReadOnlyList<Row> Rows { get; init; }
     }
@@ -462,12 +467,14 @@ public class MarkdownFlowTests
         await Assert.That(result.DocumentType).IsEqualTo(WordprocessingDocumentType.Document);
     }
 
-    public class ItemsModel
+    [ParchmentBindable]
+public partial class ItemsModel
     {
         public required IReadOnlyList<string> Items { get; init; }
     }
 
-    public class TokenModel
+    [ParchmentBindable]
+public partial class TokenModel
     {
         public required TokenValue Value { get; init; }
     }

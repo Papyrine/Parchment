@@ -1,6 +1,7 @@
-public class NaughtyStringsTests
+public partial class NaughtyStringsTests
 {
-    public class NaughtyModel
+    [ParchmentBindable]
+    public partial class NaughtyModel
     {
         public required string Single { get; init; }
         public required IReadOnlyList<NaughtyItem> Items { get; init; }

@@ -1,8 +1,9 @@
 // End-to-end cover for the navigation features: what the renderer builds has to survive template
 // binding, style-source cloning and packaging to reach Word as a working field.
-public class NavigationFlowTests
+public partial class NavigationFlowTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required IReadOnlyList<Section> Sections { get; init; }
     }
