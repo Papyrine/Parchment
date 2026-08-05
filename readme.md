@@ -28,6 +28,31 @@ Parchment supports two complementary template formats:
 2. **Markdown template** — start from a `.md` file with full liquid support. Markdown is parsed by Markdig and rendered into a target docx. Optionally provide a style-source `.docx` whose styles, headers, footers, and section properties are inherited.
 
 
+## Naming a template
+
+A template is registered under a name and rendered by it. The name can be left out, in which case it is the model type's own name — the same name the [source generator](#source-generator) emits as `TemplateName`:
+
+```cs
+var store = new TemplateStore();
+store.RegisterMarkdownTemplate<Invoice>(markdown);
+
+await store.Render(invoice, stream);
+```
+
+The type says which template to use, so the string that would otherwise be repeated at registration and at every render — and that the compiler cannot check — is gone.
+
+Pass a name where a model has more than one template:
+
+```cs
+store.RegisterMarkdownTemplate<Invoice>("summary", summaryMarkdown);
+store.RegisterMarkdownTemplate<Invoice>("detail", detailMarkdown);
+
+await store.Render("summary", invoice, stream);
+```
+
+Rendering such a model without a name throws rather than picking one, since which template was found first would depend on registration order.
+
+
 ## Docx template
 
 

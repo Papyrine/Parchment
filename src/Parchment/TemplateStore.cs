@@ -27,6 +27,54 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     ImagePolicies Policies => new(LocalImages, WebImages);
 
+    /// <summary>
+    /// The name a template is registered under when none is given: the model type's own name, which
+    /// is what the source generator's <c>TemplateName</c> also emits.
+    /// </summary>
+    static string DefaultName<TModel>() => typeof(TModel).Name;
+
+    /// <summary>
+    /// The name the template for <typeparamref name="TModel"/> is registered under.
+    /// </summary>
+    /// <remarks>
+    /// A model with several templates has no single answer, so the name has to be given rather than
+    /// inferred — the alternative is rendering through whichever registration happened to be found
+    /// first, which would depend on registration order.
+    /// </remarks>
+    string NameFor<TModel>()
+    {
+        var found = new List<string>();
+        foreach (var pair in templates)
+        {
+            if (pair.Value.ModelType == typeof(TModel))
+            {
+                found.Add(pair.Key);
+            }
+        }
+
+        if (found.Count == 1)
+        {
+            return found[0];
+        }
+
+        var name = typeof(TModel).Name;
+        if (found.Count == 0)
+        {
+            throw new ParchmentRenderException(name, $"No template is registered for {name}");
+        }
+
+        found.Sort(StringComparer.Ordinal);
+        throw new ParchmentRenderException(
+            name,
+            $"{found.Count} templates are registered for {name} ({string.Join(", ", found)}); pass the name of the one to use.");
+    }
+
+    public void RegisterDocxTemplate<TModel>(string path, ProtectionMode protection = ProtectionMode.WhenEditable) =>
+        RegisterDocxTemplate<TModel>(DefaultName<TModel>(), path, protection);
+
+    public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
+        RegisterDocxTemplate<TModel>(DefaultName<TModel>(), template, protection);
+
     public void RegisterDocxTemplate<TModel>(string name, string path, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -109,6 +157,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         templates[name] = registered;
         logger.LogInformation("Registered docx template {Name} for {ModelType}", name, typeof(TModel).Name);
     }
+
+    public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
+        RegisterMarkdownTemplate<TModel>(DefaultName<TModel>(), markdown, styleSource);
 
     public void RegisterMarkdownTemplate<TModel>(string name, string markdown, Stream? styleSource = null)
     {
@@ -316,6 +367,30 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     public Task Render(string name, object model, Stream output, Cancel cancel = default) =>
         Render(name, model, output, null, cancel);
+
+    /// <summary>
+    /// Renders the template registered for <typeparamref name="TModel"/>, without naming it.
+    /// </summary>
+    /// <remarks>
+    /// The name is what a caller most easily gets wrong — a string repeated at registration and at
+    /// every render, which the compiler cannot check. Where a model has exactly one template the
+    /// type already identifies it; where it has several, <see cref="Render(string, object, Stream, Cancel)"/>
+    /// is the way to say which.
+    /// </remarks>
+    public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
+        Render(NameFor<TModel>(), model!, output, null, cancel);
+
+    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
+    public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default) =>
+        Render(NameFor<TModel>(), model!, output, properties, cancel);
+
+    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
+    public Task RenderToFile<TModel>(TModel model, string path, Cancel cancel = default) =>
+        RenderToFile(NameFor<TModel>(), model!, path, null, cancel);
+
+    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
+    public Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default) =>
+        RenderToFile(NameFor<TModel>(), model!, path, properties, cancel);
 
     /// <summary>
     /// Renders and stamps the document's properties. Only the values set on
