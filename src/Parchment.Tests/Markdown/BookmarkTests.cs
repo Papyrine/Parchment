@@ -63,7 +63,7 @@ public class BookmarkTests
         var id = new string('a', 60);
         var paragraph = (Paragraph)RendererHarness.RenderMarkdown($"Text {{#{id}}}").Single();
 
-        await Assert.That(paragraph.GetFirstChild<BookmarkStart>()!.Name?.Value).IsEqualTo(new string('a', 40));
+        await Assert.That(paragraph.GetFirstChild<BookmarkStart>()!.Name?.Value).IsEqualTo(new('a', 40));
     }
 
     // Word pairs a bookmark's start to its end by id, so two bookmarks sharing one id close the

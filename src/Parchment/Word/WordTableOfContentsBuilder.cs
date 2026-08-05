@@ -12,7 +12,7 @@
 /// gets them replaced, which is the point — outside it, refreshing would insert a second table.
 /// </para>
 /// </remarks>
-static class WordTableOfContentsBuilder
+static partial class WordTableOfContentsBuilder
 {
     // Stands in for the page number until the resolver reports one. A single digit keeps the entry
     // the width it will end up, so filling the real number in cannot rewrap the line.
@@ -131,7 +131,8 @@ static class WordTableOfContentsBuilder
     static int ParseMaxLevel(string instruction)
     {
         // \o "1-3"
-        var match = System.Text.RegularExpressions.Regex.Match(instruction, @"\\o\s+""\d+-(\d+)""");
+        var match = ParseMaxLevelRegex()
+            .Match(instruction);
         if (match.Success &&
             int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var level))
         {
@@ -157,4 +158,10 @@ static class WordTableOfContentsBuilder
         var right = margin?.Right?.Value ?? 1440;
         return (int)width - (int)left - (int)right;
     }
+
+    [GeneratedRegex(
+        """
+        \\o\s+"\d+-(\d+)"
+        """)]
+    private static partial Regex ParseMaxLevelRegex();
 }
