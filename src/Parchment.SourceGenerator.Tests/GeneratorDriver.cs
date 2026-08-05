@@ -83,11 +83,30 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
+    /// <summary>
+    /// Runs the generator as a real build does — the model on disk under a project directory the
+    /// compiler can see — so the emitted TemplatePath is the one a consumer would get.
+    /// </summary>
+    public static GeneratorDriverRunResult RunInProject(
+        string userSource,
+        string modelFileName,
+        params (string FileName, byte[] Bytes)[] files)
+    {
+        var setup = CreateDriverWithDocxes(
+            userSource,
+            files,
+            resourceName: null,
+            modelFileName: modelFileName,
+            withProjectDir: true);
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+    }
+
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         (string FileName, byte[] Bytes)[] docxes,
         string? resourceName,
-        string? modelFileName = null)
+        string? modelFileName = null,
+        bool withProjectDir = false)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -109,7 +128,7 @@ static class GeneratorDriver
             CSharpSyntaxTree.ParseText(attributeSource),
             modelFileName == null
                 ? CSharpSyntaxTree.ParseText(userSource)
-                : CSharpSyntaxTree.ParseText(userSource, path: Path.Combine(directory, modelFileName))
+                : CSharpSyntaxTree.ParseText(userSource, path: CreateModelPath(directory, modelFileName))
         };
 
         var compilation = CSharpCompilation.Create(
@@ -125,10 +144,17 @@ static class GeneratorDriver
             generators: [new ParchmentTemplateGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
             parseOptions: (CSharpParseOptions) syntaxTrees[0].Options,
-            optionsProvider: resourceName is null ? null : new ResourceNameOptionsProvider(resourceName),
+            optionsProvider: resourceName is null && !withProjectDir ? null : new TestOptionsProvider(resourceName, withProjectDir ? directory + Path.DirectorySeparatorChar : null),
             driverOptions: new(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 
         return new(driver, compilation, additionalTexts, paths.ToImmutable());
+    }
+
+    static string CreateModelPath(string directory, string modelFileName)
+    {
+        var path = Path.Combine(directory, modelFileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
     }
 
     public static byte[] BuildDocxBytes(params string[] paragraphs) => BuildDocx(paragraphs);
@@ -269,16 +295,18 @@ static class GeneratorDriver
     // Stands in for what the SDK writes into the generated editorconfig from
     // CompilerVisibleItemMetadata: every additional file reports the same resource name, which is
     // all a single-template test needs.
-    sealed class ResourceNameOptionsProvider(string resourceName) :
+    // Stands in for what the SDK writes into the generated editorconfig: per-file metadata from
+    // CompilerVisibleItemMetadata, and the project directory as a compiler-visible property.
+    sealed class TestOptionsProvider(string? resourceName, string? projectDir) :
         AnalyzerConfigOptionsProvider
     {
-        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(null);
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(null, projectDir);
 
-        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null);
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null, null);
 
-        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(resourceName);
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(resourceName, null);
 
-        sealed class Options(string? resourceName) :
+        sealed class Options(string? resourceName, string? projectDir) :
             AnalyzerConfigOptions
         {
             public override bool TryGetValue(string key, [NotNullWhen(true)] out string? value)
@@ -287,6 +315,13 @@ static class GeneratorDriver
                     key == "build_metadata.AdditionalFiles.ParchmentResourceName")
                 {
                     value = resourceName;
+                    return true;
+                }
+
+                if (projectDir != null &&
+                    key == "build_property.ProjectDir")
+                {
+                    value = projectDir;
                     return true;
                 }
 

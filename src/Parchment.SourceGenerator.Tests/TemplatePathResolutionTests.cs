@@ -56,6 +56,51 @@ public class TemplatePathResolutionTests
         await Assert.That(Codes(result)).Contains("PARCH004");
     }
 
+    // TemplatePath is what RegisterWith combines with a base path to find the template beside the
+    // assembly, so it has to be where the file ends up rather than what the attribute said. A model
+    // in Stocktakes/ naming "Templates/report.md" would otherwise send RegisterWith to a folder
+    // that exists only in the source tree.
+    [Test]
+    public async Task TemplatePathIsWhereTheTemplateLandsNotWhatTheAttributeSaid()
+    {
+        var result = GeneratorDriver.RunInProject(
+            """
+            using Parchment;
+
+            [ParchmentModel("Templates/report.md")]
+            public partial class Report
+            {
+                public required string Name { get; init; }
+            }
+            """,
+            "Stocktakes/Model.cs",
+            ("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+
+        await Assert.That(Generated(result)).Contains("""TemplatePath => "Stocktakes/Templates/report.md";""");
+    }
+
+    [Test]
+    public async Task TemplatePathIsUnchangedWhenTheAttributeAlreadyNamesTheRuntimeLocation()
+    {
+        var result = GeneratorDriver.RunInProject(
+            """
+            using Parchment;
+
+            [ParchmentModel("Stocktakes/Templates/report.md")]
+            public partial class Report
+            {
+                public required string Name { get; init; }
+            }
+            """,
+            "Stocktakes/Model.cs",
+            ("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+
+        await Assert.That(Generated(result)).Contains("""TemplatePath => "Stocktakes/Templates/report.md";""");
+    }
+
+    static string Generated(GeneratorDriverRunResult result) =>
+        string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+
     // Two templates whose paths both satisfy the attribute: one sitting beside the model, one whose
     // path merely ends the same way. Neither reading is wrong, so neither is chosen.
     [Test]
