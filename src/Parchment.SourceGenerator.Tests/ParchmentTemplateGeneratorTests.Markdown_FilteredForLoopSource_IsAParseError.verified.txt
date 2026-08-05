@@ -10,6 +10,7 @@ Source:
       Descriptor: {
         Id: PARCH006,
         Title: Failed to read template,
+        HelpLink: https://github.com/Papyrine/Parchment#parch006--template-file-unreadable,
         MessageFormat: Template '{0}' could not be read: {1},
         Category: Parchment,
         DefaultSeverity: Error,

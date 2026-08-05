@@ -2,12 +2,13 @@
   Diagnostics: [
     {
       Location: : (4,1)-(4,38),
-      Message: Template path 'does-not-exist.docx' was not found in AdditionalFiles — add <AdditionalFiles Include="..."/> to the csproj,
+      Message: Template path 'does-not-exist.docx' was not found in AdditionalFiles — declare it with <ParchmentTemplate Include="..."/> (or <ParchmentEmbeddedTemplate> to embed it) in the csproj. If it is already declared and only the IDE reports this, the file likely carries a second item type that hides it from the IDE's generator host.,
       Severity: Error,
       Descriptor: {
         Id: PARCH004,
         Title: Template file not found in AdditionalFiles,
-        MessageFormat: Template path '{0}' was not found in AdditionalFiles — add <AdditionalFiles Include="..."/> to the csproj,
+        HelpLink: https://github.com/Papyrine/Parchment#parch004--template-file-not-in-additionalfiles,
+        MessageFormat: Template path '{0}' was not found in AdditionalFiles — declare it with <ParchmentTemplate Include="..."/> (or <ParchmentEmbeddedTemplate> to embed it) in the csproj. If it is already declared and only the IDE reports this, the file likely carries a second item type that hides it from the IDE's generator host.,
         Category: Parchment,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

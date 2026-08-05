@@ -7,6 +7,7 @@
       Descriptor: {
         Id: PARCH003,
         Title: Unsupported block tag,
+        HelpLink: https://github.com/Papyrine/Parchment#parch003--unsupported-block-tag,
         MessageFormat: Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif),
         Category: Parchment,
         DefaultSeverity: Error,

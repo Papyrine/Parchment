@@ -6,7 +6,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references '{2}' which is not a member of '{3}'",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
 
     public static readonly DiagnosticDescriptor LoopSourceNotEnumerable = new(
         id: "PARCH002",
@@ -14,7 +15,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' loop '{1}' source does not resolve to a type implementing IEnumerable<T>",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch002--loop-source-is-not-enumerable");
 
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
@@ -22,15 +24,19 @@ static class Diagnostics
         messageFormat: "Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif)",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch003--unsupported-block-tag");
 
     public static readonly DiagnosticDescriptor TemplateFileMissing = new(
         id: "PARCH004",
         title: "Template file not found in AdditionalFiles",
-        messageFormat: "Template path '{0}' was not found in AdditionalFiles — add <AdditionalFiles Include=\"...\"/> to the csproj",
+        messageFormat: "Template path '{0}' was not found in AdditionalFiles — declare it with <ParchmentTemplate Include=\"...\"/> " +
+                       "(or <ParchmentEmbeddedTemplate> to embed it) in the csproj. If it is already declared and only the IDE " +
+                       "reports this, the file likely carries a second item type that hides it from the IDE's generator host.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch004--template-file-not-in-additionalfiles");
 
     public static readonly DiagnosticDescriptor MixedInlineBlockTag = new(
         id: "PARCH005",
@@ -38,7 +44,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' block tag '{1}' shares a paragraph with other content; block tags must be on their own lines",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch005--block-tag-shares-a-paragraph");
 
     public static readonly DiagnosticDescriptor TemplateReadError = new(
         id: "PARCH006",
@@ -46,7 +53,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' could not be read: {1}",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch006--template-file-unreadable");
 
     public static readonly DiagnosticDescriptor ExcelsiorTokenNotAlone = new(
         id: "PARCH007",
@@ -54,7 +62,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property but shares its paragraph with other content; structural table replacement would discard the surrounding text",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch007--excelsiortable-token-not-alone-in-paragraph");
 
     // PARCH009 was previously emitted for `[Html]`/`[Markdown]` tokens that did not sit alone in
     // their paragraph. The runtime now splices inline content in place and splits the host
@@ -67,7 +76,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [Html]/[Markdown] property with filters or a non-plain expression; the property's formatted rendering is selected by attribute so filters would not be applied",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch010--html--markdown-token-with-filters-or-complex-expression");
 
     public static readonly DiagnosticDescriptor ExcelsiorTokenNotPlainIdentifier = new(
         id: "PARCH008",
@@ -75,7 +85,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property with filters or a non-plain expression; the Excelsior render path bypasses Fluid and walks the model directly, so filters would be ignored",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch008--excelsiortable-token-with-filters-or-complex-expression");
 
     public static readonly DiagnosticDescriptor EnclosingTypeNotPartial = new(
         id: "PARCH011",
@@ -83,7 +94,8 @@ static class Diagnostics
         messageFormat: "Model '{0}' is nested inside '{1}' which is not declared partial; the source generator emits the registration helper as a partial declaration and every enclosing type on the chain must be partial too",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch011--enclosing-type-of-parchmentmodel-target-must-be-partial");
 
     public static readonly DiagnosticDescriptor MissingRemovePersonalInformation = new(
         id: "PARCH012",
@@ -91,7 +103,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' does not have the Word 'Remove personal information from file properties on save' setting enabled. Enable it via File → Options → Trust Center → Trust Center Settings → Privacy Options.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Warning,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch012--template-missing-remove-personal-information-on-save-setting");
 
     public static readonly DiagnosticDescriptor EditableUnsupportedType = new(
         id: "PARCH013",
@@ -99,7 +112,8 @@ static class Diagnostics
         messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch013--editablefield-member-has-an-unsupported-type");
 
     public static readonly DiagnosticDescriptor EditableNoSetter = new(
         id: "PARCH014",
@@ -107,7 +121,8 @@ static class Diagnostics
         messageFormat: "Model '{0}' member '{1}' is [EditableField] but has no public non-init setter; extraction writes values back onto the model, so the member must be settable",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch014--editablefield-member-has-no-usable-setter");
 
     public static readonly DiagnosticDescriptor EditableConflictingAttribute = new(
         id: "PARCH015",
@@ -115,7 +130,8 @@ static class Diagnostics
         messageFormat: "Model '{0}' member '{1}' combines [EditableField] with [ExcelsiorTable] or [Markdown]; editable rich text is supported via [Html] only, and other formats are plain typed content, not rendered markup",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch015--editablefield-combined-with-a-conflicting-attribute");
 
     public static readonly DiagnosticDescriptor EditableTokenNotPlainIdentifier = new(
         id: "PARCH016",
@@ -123,7 +139,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [EditableField] member with filters or a non-plain expression; the editable render path is selected by attribute so filters would not be applied",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch016--editablefield-token-with-filters-or-complex-expression");
 
     public static readonly DiagnosticDescriptor EditableTokenDuplicated = new(
         id: "PARCH017",
@@ -131,7 +148,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body; the dotted path is the content control's tag and must be unique for extraction",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch017--editablefield-member-referenced-more-than-once-in-the-body");
 
     public static readonly DiagnosticDescriptor EditableTokenInLoop = new(
         id: "PARCH018",
@@ -139,7 +157,8 @@ static class Diagnostics
         messageFormat: "Template '{0}' token '{1}' references an [EditableField] member inside a '{{% for %}}' body; loop iterations would produce duplicate control tags, so the token renders as plain read-only text instead of an editable field",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Warning,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch018--editablefield-token-inside-a-loop");
 
     public static readonly DiagnosticDescriptor RenderAttributeOnStaticMember = new(
         id: "PARCH019",
@@ -147,5 +166,6 @@ static class Diagnostics
         messageFormat: "Member '{0}' is static, so '[{1}]' has no effect; the per-template maps that dispatch it walk instance members only. The value still binds and renders as plain text. Make the member non-static, or drop the attribute.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Warning,
-        isEnabledByDefault: true);
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch019--render-attribute-on-a-static-member-has-no-effect");
 }

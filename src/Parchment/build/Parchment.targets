@@ -1,0 +1,71 @@
+<Project>
+
+  <!--
+    Template authoring for Parchment.
+
+    A template has to reach two consumers that take it by different routes. The source generator
+    reads it through AdditionalFiles — the only channel Roslyn gives a generator, since embedded
+    resources are attached at emit time and never appear in its inputs. The runtime reads it either
+    from disk beside the assembly or out of the assembly manifest.
+
+    Listing one file under two item types satisfies both and is the trap these targets exist to
+    remove: MSBuild is happy with it, but an IDE that models one build action per file can resolve
+    the file to the other identity and hand the generator nothing, producing a PARCH004 that a
+    command-line build cannot reproduce. So each item type below leaves every file with exactly one.
+  -->
+
+  <!--
+    <ParchmentTemplate Include="Templates\report.md" />
+
+    Inspected by the generator and copied beside the assembly, which is what the generated
+    RegisterWith helper expects. CopyToOutputDirectory is set only when the author has not.
+  -->
+  <ItemGroup>
+    <AdditionalFiles Include="@(ParchmentTemplate)">
+      <CopyToOutputDirectory Condition="'%(CopyToOutputDirectory)' == ''">PreserveNewest</CopyToOutputDirectory>
+    </AdditionalFiles>
+  </ItemGroup>
+
+  <!--
+    <ParchmentEmbeddedTemplate Include="Templates\report.md" />
+
+    For a deployment that would rather not carry loose template files. The file itself stays an
+    AdditionalFile — so the generator inspects the real path, and nothing has to have been copied
+    for that to work, including in a design-time build. What gets embedded is a staged copy under
+    obj, which is a different path and therefore a different file as far as any IDE is concerned.
+  -->
+  <ItemGroup>
+    <AdditionalFiles Include="@(ParchmentEmbeddedTemplate)" />
+  </ItemGroup>
+
+  <Target Name="ParchmentStageEmbeddedTemplates"
+          BeforeTargets="PrepareForBuild"
+          Condition="'@(ParchmentEmbeddedTemplate)' != ''">
+    <!-- Resolved here rather than at evaluation: this file is imported before the SDK sets
+         IntermediateOutputPath, so an evaluation-time default would stage into a "Parchment"
+         folder beside the csproj instead of under obj. -->
+    <PropertyGroup>
+      <ParchmentStagedTemplateDir Condition="'$(ParchmentStagedTemplateDir)' == ''">$(IntermediateOutputPath)Parchment\</ParchmentStagedTemplateDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ParchmentStagedTemplate Include="@(ParchmentEmbeddedTemplate)">
+        <Staged>$(ParchmentStagedTemplateDir)%(RelativeDir)%(Filename)%(Extension)</Staged>
+        <!-- The name the resource would have had if embedded in place, so callers that look it up
+             by its usual name are unaffected by the staging. -->
+        <Logical>$(RootNamespace).$([MSBuild]::ValueOrDefault('%(RelativeDir)','').Replace('\','.').Replace('/','.'))%(Filename)%(Extension)</Logical>
+      </ParchmentStagedTemplate>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(ParchmentStagedTemplate)"
+          DestinationFiles="@(ParchmentStagedTemplate->'%(Staged)')"
+          SkipUnchangedFiles="true" />
+
+    <ItemGroup>
+      <EmbeddedResource Include="@(ParchmentStagedTemplate->'%(Staged)')">
+        <LogicalName>%(ParchmentStagedTemplate.Logical)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+</Project>
