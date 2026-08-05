@@ -1899,6 +1899,18 @@ The path in `[ParchmentModel("...")]` wasn't found among the project's `<Additio
 </ItemGroup>
 ```
 
+**Reported by Rider while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it. `AdditionalFiles` is independent of `None` in MSBuild, but Rider feeds source generators from its own project model, and a `<None Remove>` glob covering the template's folder puts the file outside that model — so the generator is handed no additional files at all. Deleting the `<None Remove>` line fixes it. Surviving "Invalidate Caches and Restart" is the tell that this is the cause rather than a stale cache.
+
+Such a line is usually there to stop the SDK's default `None` glob colliding with an `<EmbeddedResource>` for the same file. That collision often does not occur, so removing the line tends to cost nothing — worth confirming with a build.
+
+To check what MSBuild itself resolves:
+
+```
+dotnet msbuild MyProject.csproj -getItem:AdditionalFiles
+```
+
+A correct `FullPath` in that output means the csproj is right and the problem is the IDE's project model.
+
 
 ### `PARCH005` — block tag shares a paragraph
 
