@@ -1,4 +1,5 @@
 using W15 = DocumentFormat.OpenXml.Office2013.Word;
+// ReSharper disable PartialTypeWithSinglePart
 
 public partial class EditableCollectionTests
 {

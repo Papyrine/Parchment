@@ -7,11 +7,13 @@ global using System.Linq;
 global using System.Runtime.CompilerServices;
 global using System.Text;
 global using System.Threading.Tasks;
-
+global using System.Xml.Linq;
 global using DocumentFormat.OpenXml;
 global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 global using Excelsior;
+global using Fluid;
+global using Fluid.Values;
 global using Markdig.Extensions.SmartyPants;
 global using Markdig.Syntax;
 global using Markdig.Syntax.Inlines;

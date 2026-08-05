@@ -3,6 +3,7 @@ using A = DocumentFormat.OpenXml.Drawing;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 // end-snippet
+// ReSharper disable PartialTypeWithSinglePart
 
 public partial class TokenOverrideTests
 {

@@ -1,5 +1,6 @@
 // The two halves meeting: Parchment writes the fields and the entries, Morph lays the document out
 // and says which page each one landed on. Nothing here stubs the pagination.
+// ReSharper disable PartialTypeWithSinglePart
 public partial class MorphPageNumberResolverTests
 {
     [ParchmentBindable]
@@ -8,7 +9,7 @@ public partial class MorphPageNumberResolverTests
         public required IReadOnlyList<string> Sections { get; init; }
     }
 
-    const string Markdown =
+    const string markdown =
         """
         Contents {.TOCHeading}
 
@@ -29,7 +30,7 @@ public partial class MorphPageNumberResolverTests
         {
             PageNumbers = new MorphPageNumberResolver()
         };
-        store.RegisterMarkdownTemplate<ReportModel>(Markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(

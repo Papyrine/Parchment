@@ -1,6 +1,6 @@
-using System.Xml.Linq;
 using CustomProps = DocumentFormat.OpenXml.CustomProperties;
 using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
+// ReSharper disable PartialTypeWithSinglePart
 
 public partial class DocumentPropertiesTests
 {

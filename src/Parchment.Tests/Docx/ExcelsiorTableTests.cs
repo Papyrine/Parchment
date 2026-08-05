@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class ExcelsiorTableTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;

@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class ListHostStyleTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;

@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class StringListTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;

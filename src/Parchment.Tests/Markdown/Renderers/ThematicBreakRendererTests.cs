@@ -1,8 +1,8 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class ThematicBreakRendererTests
 {
     [ParchmentBindable]
     public partial class EmptyModel;
-
 
     [Test]
     public async Task EmitsParagraphWithBottomBorder()

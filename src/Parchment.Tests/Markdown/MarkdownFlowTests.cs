@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class MarkdownFlowTests
 {
     [ParchmentBindable]

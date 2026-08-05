@@ -1,5 +1,6 @@
 using System.Globalization;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
+// ReSharper disable PartialTypeWithSinglePart
 
 public partial class ExtractTests
 {

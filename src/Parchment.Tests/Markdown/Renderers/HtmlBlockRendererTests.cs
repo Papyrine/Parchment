@@ -1,8 +1,8 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class HtmlBlockRendererTests
 {
     [ParchmentBindable]
     public partial class EmptyModel;
-
 
     [Test]
     public async Task CommentBlockEmitsNothing()

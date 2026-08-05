@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 using MarkdigTable = Markdig.Extensions.Tables.Table;
 
 public partial class TableRendererTests

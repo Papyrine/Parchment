@@ -1,8 +1,8 @@
+// ReSharper disable PartialTypeWithSinglePart
 public partial class CodeBlockRendererTests
 {
     [ParchmentBindable]
     public partial class EmptyModel;
-
 
     [Test]
     public async Task EachLineBecomesCodeStyledParagraph()

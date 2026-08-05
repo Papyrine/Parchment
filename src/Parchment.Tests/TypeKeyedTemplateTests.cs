@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 // Registering and rendering is keyed by the model type. There is no name to repeat at
 // registration and at every render, so there is no string for a caller to get wrong — the type
 // says which template to use.

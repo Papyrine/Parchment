@@ -1,5 +1,6 @@
 // Templates authored as Word forms carry their placeholders as legacy FORMTEXT fields rather than
 // {{ tokens }}. Registration rewrites them, so such a template binds like any other docx template.
+// ReSharper disable PartialTypeWithSinglePart
 public partial class FormFieldTests
 {
     [ParchmentBindable]

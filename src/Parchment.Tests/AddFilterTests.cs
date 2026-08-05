@@ -1,5 +1,4 @@
-using Fluid;
-using Fluid.Values;
+// ReSharper disable PartialTypeWithSinglePart
 
 public partial class AddFilterTests
 {

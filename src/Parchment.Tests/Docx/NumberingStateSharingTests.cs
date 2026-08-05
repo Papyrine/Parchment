@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 /// <summary>
 /// One <c>WordNumberingState</c> is allocated per render and shared across every code path that
 /// can introduce list numbering — string-list auto-bullets, [Markdown] content, loop bodies, and
