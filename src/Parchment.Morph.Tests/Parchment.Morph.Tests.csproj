@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
+    <ProjectReference Include="..\Parchment.Morph\Parchment.Morph.csproj" />
+    <!-- Shared with the main suite rather than reimplemented: the fixture that builds a blank
+         style source is the same one every other render test starts from. -->
+    <Compile Include="..\Parchment.Tests\Fixtures\DocxTemplateBuilder.cs" Link="DocxTemplateBuilder.cs" />
+  </ItemGroup>
+</Project>

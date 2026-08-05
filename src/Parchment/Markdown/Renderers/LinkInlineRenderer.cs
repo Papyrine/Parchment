@@ -12,6 +12,10 @@ class LinkInlineRenderer :
         WriteLink(renderer, inline);
     }
 
+    // Shown until Word recalculates a PAGEREF. Any digit would do; "1" is what Word itself caches
+    // for a reference it has not resolved yet.
+    const string PageReferencePlaceholder = "1";
+
     static void WriteLink(OpenXmlMarkdownRenderer renderer, LinkInline inline)
     {
         var url = inline.Url ?? string.Empty;
@@ -21,17 +25,44 @@ class LinkInlineRenderer :
             return;
         }
 
-        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        // A "#name" url addresses somewhere in this document, so it is an anchor on the hyperlink
+        // rather than a relationship to an external target. With no link text there is nothing to
+        // click either, and the only useful thing left to say about a place in the document is which
+        // page it is on — so an empty internal link becomes a PAGEREF instead.
+        if (url[0] == '#')
+        {
+            var bookmark = MarkdownBookmark.Sanitize(url[1..]);
+            if (inline.FirstChild == null)
+            {
+                foreach (var run in WordFields.PageReference(bookmark, PageReferencePlaceholder))
+                {
+                    renderer.AddRun(run);
+                }
 
+                return;
+            }
+
+            WriteHyperlink(renderer, inline, new()
+            {
+                Anchor = bookmark
+            });
+            return;
+        }
+
+        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        WriteHyperlink(renderer, inline, new()
+        {
+            Id = relId
+        });
+    }
+
+    static void WriteHyperlink(OpenXmlMarkdownRenderer renderer, LinkInline inline, Hyperlink hyperlink)
+    {
         var top = renderer.Top;
         var before = top.CurrentRuns.Count;
         renderer.WriteChildren(inline);
         var produced = top.CurrentRuns.Skip(before).ToList();
 
-        var hyperlink = new Hyperlink
-        {
-            Id = relId
-        };
         var styleId = MarkdownStyle.Resolve(inline) ?? "Hyperlink";
         foreach (var run in produced)
         {

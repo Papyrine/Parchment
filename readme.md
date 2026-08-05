@@ -1386,7 +1386,7 @@ Two things markdown does with tabs elsewhere still apply, since they happen befo
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
 
-A Word style is a single name, so the rest of what the syntax can carry has nowhere to map and is ignored: an id (`{#intro}`), key=value properties (`{.Caption width=400}`), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
+An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
 
 Headings and paragraphs take the style as their `ParagraphStyleId`:
 
@@ -1443,6 +1443,77 @@ Use `code`{.Mono} for inline code, and [a link](https://example.com){.Reference}
 A fence's language is not a style: ```` ```csharp ```` keeps `Code`, because Markdig turns the info string into a `language-csharp` class that nobody wrote.
 
 Three places accept the syntax but cannot receive it, because markdown binds the attribute elsewhere: on a thematic break and after a table row it lands on a paragraph, on a table cell it lands on the whole table, and an html block takes none at all. Style the table itself, or the paragraph, instead.
+
+
+### Bookmarks and internal links
+
+An id on a heading or paragraph becomes a Word bookmark wrapping that text, and a link whose target starts with `#` points at it — a real internal link, not a url:
+
+```markdown
+# Summary {#summary}
+
+Detail that refers back to the [summary](#summary).
+```
+
+A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word.
+
+An id and a style can sit on the same block: `Text {#note}{.BOXText}`.
+
+A link with **no text** and a `#` target becomes a page reference instead — the page the bookmark lands on, which only Word can compute:
+
+```markdown
+| Section | Page |
+| --- | --- |
+| [Summary](#summary) | [](#summary) |
+```
+
+Word fills the number in when it updates the field (see below).
+
+
+### Table of contents
+
+A paragraph whose entire content is `[TOC]` becomes a Word table-of-contents field:
+
+```markdown
+Contents {.TOCHeading}
+
+[TOC]{levels=1}
+```
+
+`levels` sets the heading depth to include — `1` lists Heading1 only, and the default is Word's own 3. A style attribute applies to the field's paragraph.
+
+`[TOC]` is the spelling several markdown dialects already use, and markdown itself does nothing with it: with no `(url)` or `[label]` after it, it is the literal text `[TOC]`. So a template that also renders to html degrades to showing the marker rather than breaking, and `[TOC](https://example.com)` is still an ordinary link. Only a paragraph that is *nothing but* the marker is a request for the field.
+
+**Fields carry instructions, not answers.** A table of contents and a page reference both depend on where content lands on a page, which is a product of layout — so by default the rendered docx holds the field, and Word computes the value. Both are emitted dirty, so Word builds the table of contents when the document opens and offers to refresh page references. Until then a placeholder shows in their place, which is what a reader that does not update fields will display.
+
+To fill them in instead, see [Resolving page numbers](#resolving-page-numbers).
+
+
+### Resolving page numbers
+
+Leaving the fields for Word costs the reader a prompt on open, and shows placeholder text until they accept it. Supply a `PageNumbers` resolver and the values are computed as the document is built:
+
+```csharp
+var store = new TemplateStore
+{
+    PageNumbers = new MorphPageNumberResolver()
+};
+```
+
+`MorphPageNumberResolver` ships in the separate `Parchment.Morph` package and lays the document out with [Morph](https://github.com/Papyrine/Morph). Any other engine can be plugged in by implementing the interface, which is the whole surface — Parchment builds the entries, the styles and the links itself, and asks only where each bookmark landed:
+
+```csharp
+public interface IPageNumberResolver
+{
+    Task<IReadOnlyDictionary<string, int>> Resolve(Stream docx, Cancel cancel);
+}
+```
+
+With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything.
+
+**A table of contents changes its own pagination**, which is why the entries are written before anything measures: growing the field from a one-line placeholder to thirty entries pushes every heading below it down a page and would invalidate the numbers already taken. Filling a number into a line that already exists reflows nothing, so one measuring pass is enough.
+
+Two costs are worth knowing. Resolving means laying the document out, so it is a real pass rather than a lookup. And a resolver is only as right as its agreement with Word: an engine that breaks a page one line earlier reports numbers that are wrong and, with nothing left dirty, look authoritative. The fields survive so a reader can still refresh them — but nobody refreshes numbers that look right.
 
 
 ### HTML comments are stripped

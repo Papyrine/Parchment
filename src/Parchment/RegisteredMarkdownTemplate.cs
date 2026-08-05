@@ -4,7 +4,8 @@ class RegisteredMarkdownTemplate(
     byte[] styleSourceBytes,
     IReadOnlyList<PartScopeTree> nonBodyParts,
     IFluidTemplate parsedTemplate,
-    ImagePolicies imagePolicies) :
+    ImagePolicies imagePolicies,
+    IPageNumberResolver? pageNumbers) :
     RegisteredTemplate(name, modelType)
 {
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
@@ -49,6 +50,13 @@ class RegisteredMarkdownTemplate(
                 body.AppendChild(sectPr);
             }
 
+            // Before anything measures the document: a table of contents that grows from a
+            // placeholder to its entries afterwards would move every heading below it.
+            if (pageNumbers != null)
+            {
+                WordFieldResolution.WriteTableOfContents(body);
+            }
+
             await RenderNonBodyParts(doc, mainPart, model, numberingState, cancel);
 
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
@@ -61,6 +69,14 @@ class RegisteredMarkdownTemplate(
             }
 
             doc.Save();
+        }
+
+        // The document is complete, so it can be measured: whatever can paginate it reports where
+        // each bookmark landed and the page numbers are written in, leaving Word nothing to ask
+        // about when the file opens.
+        if (pageNumbers != null)
+        {
+            await WordFieldResolution.Resolve(stream, pageNumbers, cancel);
         }
 
         // A part added during this render — settings here, numbering or images elsewhere — is

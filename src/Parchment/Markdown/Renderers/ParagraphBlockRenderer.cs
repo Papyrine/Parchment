@@ -16,7 +16,19 @@ class ParagraphBlockRenderer :
             };
         }
 
+        if (TableOfContents.TryWrite(renderer, block, properties))
+        {
+            return;
+        }
+
+        var bookmark = MarkdownBookmark.Resolve(block);
+        var bookmarkId = bookmark == null ? null : renderer.AddBookmarkStart(bookmark);
         renderer.WriteLeafInline(block);
+        if (bookmarkId != null)
+        {
+            renderer.AddBookmarkEnd(bookmarkId);
+        }
+
         renderer.FlushParagraph(properties);
     }
 }

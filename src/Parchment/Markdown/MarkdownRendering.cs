@@ -10,7 +10,72 @@ static class MarkdownRendering
         var renderer = new OpenXmlMarkdownRenderer(mainPart, numbering, imagePolicies, headingOffset);
         MarkAlignedPipeTables(markdown, document, renderer);
         renderer.Render(document);
-        return renderer.Drain();
+        var elements = renderer.Drain();
+        RenumberBookmarks(elements);
+        return elements;
+    }
+
+    /// <summary>
+    /// Give every bookmark in the rendered output a distinct id.
+    /// </summary>
+    /// <remarks>
+    /// Two producers emit bookmarks here and neither can see the other's numbering: the markdown
+    /// renderer, for a <c>{#id}</c> generic attribute, and the html converter, for an <c>id</c>
+    /// attribute inside an html block — which restarts at 1 for every block it converts. Left alone
+    /// the ids collide, and Word matches a bookmark's start to its end by id, so a collision closes
+    /// the wrong bookmark. Renumbering in document order costs one walk and makes the result depend
+    /// only on the markdown, which the determinism guarantee needs.
+    /// </remarks>
+    static void RenumberBookmarks(IReadOnlyList<OpenXmlElement> elements)
+    {
+        var open = new Dictionary<string, string>(StringComparer.Ordinal);
+        var next = 0;
+        foreach (var element in elements)
+        {
+            foreach (var bookmark in Bookmarks(element))
+            {
+                if (bookmark is BookmarkStart start)
+                {
+                    var id = start.Id?.Value;
+                    if (id == null)
+                    {
+                        continue;
+                    }
+
+                    var replacement = (++next).ToString(CultureInfo.InvariantCulture);
+                    open[id] = replacement;
+                    start.Id = replacement;
+                }
+                else if (bookmark is BookmarkEnd end)
+                {
+                    var id = end.Id?.Value;
+                    if (id != null &&
+                        open.Remove(id, out var replacement))
+                    {
+                        end.Id = replacement;
+                    }
+                }
+            }
+        }
+    }
+
+    // Bookmark markers in document order, the element itself included — a bookmark can be a block's
+    // own sibling as well as something nested inside it.
+    static IEnumerable<OpenXmlElement> Bookmarks(OpenXmlElement element)
+    {
+        if (element is BookmarkStart or BookmarkEnd)
+        {
+            yield return element;
+            yield break;
+        }
+
+        foreach (var descendant in element.Descendants<OpenXmlElement>())
+        {
+            if (descendant is BookmarkStart or BookmarkEnd)
+            {
+                yield return descendant;
+            }
+        }
     }
 
     static void MarkAlignedPipeTables(string markdown, MarkdownDocument document, OpenXmlMarkdownRenderer renderer)

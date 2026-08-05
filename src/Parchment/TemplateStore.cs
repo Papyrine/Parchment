@@ -18,6 +18,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// </summary>
     public ImagePolicy WebImages { get; init; } = ImagePolicy.AllowAll();
 
+    /// <summary>
+    /// Resolves the page each bookmark falls on, filling in a table of contents and any page
+    /// references as the document is built. Defaults to null, which leaves both for Word to compute
+    /// when the reader accepts its prompt on open.
+    /// </summary>
+    public IPageNumberResolver? PageNumbers { get; init; }
+
     ImagePolicies Policies => new(LocalImages, WebImages);
 
     public void RegisterDocxTemplate<TModel>(string name, string path, ProtectionMode protection = ProtectionMode.WhenEditable)
@@ -139,7 +146,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         bytes = NormalizeStyleSource(bytes);
         var (styleSourceBytes, parts) = ScanNonBodyParts<TModel>(bytes, name);
 
-        var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), styleSourceBytes, parts, template, Policies);
+        var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), styleSourceBytes, parts, template, Policies, PageNumbers);
         templates[name] = registered;
         logger.LogInformation("Registered markdown template {Name} for {ModelType}", name, typeof(TModel).Name);
     }
