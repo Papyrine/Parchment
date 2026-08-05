@@ -43,23 +43,23 @@ class MarkdownReferenceValidator :
         // before the loop variable is introduced.
         Visit(forStatement.Source);
 
-        var elementType = ResolveElementType(forStatement.Source, forStatement.Identifier);
+        var resolved = TryResolveElementType(forStatement.Source, forStatement.Identifier, out var elementType);
 
         var hadScope = scope.TryGetValue(forStatement.Identifier, out var previousScope);
         var hadUntyped = untyped.Contains(forStatement.Identifier);
         var addedForLoop = untyped.Add("forloop");
 
-        if (elementType == null)
+        if (resolved)
+        {
+            untyped.Remove(forStatement.Identifier);
+            scope[forStatement.Identifier] = elementType!;
+        }
+        else
         {
             // Nothing statically known about the source — a range, or a value off an assign. The
             // loop variable still exists, so accept it without checking its members.
             scope.Remove(forStatement.Identifier);
             untyped.Add(forStatement.Identifier);
-        }
-        else
-        {
-            untyped.Remove(forStatement.Identifier);
-            scope[forStatement.Identifier] = elementType;
         }
 
         foreach (var statement in forStatement.Statements)
@@ -144,7 +144,7 @@ class MarkdownReferenceValidator :
     }
 
     /// <summary>
-    /// Element type of whatever the loop iterates, or null when nothing about the source is
+    /// Element type of whatever the loop iterates; false when nothing about the source is
     /// statically known — a range, or a value off an assign.
     /// </summary>
     /// <remarks>
@@ -153,20 +153,21 @@ class MarkdownReferenceValidator :
     /// one used to accept it as untyped, which left the markdown path the only one that would render
     /// `{% for p in Profile %}` over a POCO as nothing at all, silently.
     /// </remarks>
-    Type? ResolveElementType(Expression source, string loopVariable)
+    bool TryResolveElementType(Expression source, string loopVariable, [NotNullWhen(true)] out Type? elementType)
     {
+        elementType = null;
         var refs = IdentifierVisitor.Collect(source);
         if (refs.Count == 0)
         {
-            return null;
+            return false;
         }
 
         if (!TryResolvePathType(refs[0], out var iterableType))
         {
-            return null;
+            return false;
         }
 
-        if (!ModelValidator.TryResolveElementType(iterableType, out var elementType))
+        if (!ModelValidator.TryResolveElementType(iterableType, out elementType))
         {
             throw new ParchmentRegistrationException(
                 templateName,
@@ -175,7 +176,7 @@ class MarkdownReferenceValidator :
                 loopVariable);
         }
 
-        return elementType;
+        return true;
     }
 
     bool TryResolvePathType(IdentifierPath path, [NotNullWhen(true)] out Type? pathType)
