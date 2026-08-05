@@ -12,8 +12,7 @@ static class ModelValidator
         string? partUri,
         string? tokenSource)
     {
-        var currentType = ResolveRoot(modelType, path.Root, scope);
-        if (currentType == null)
+        if (!TryResolveRoot(modelType, path.Root, scope, out var currentType))
         {
             throw new ParchmentRegistrationException(
                 templateName,
@@ -103,25 +102,31 @@ static class ModelValidator
         return memberType != null;
     }
 
-    static Type? ResolveRoot(Type modelType, string name, IReadOnlyDictionary<string, Type>? scope)
+    static bool TryResolveRoot(
+        Type modelType,
+        string name,
+        IReadOnlyDictionary<string, Type>? scope,
+        [NotNullWhen(true)] out Type? rootType)
     {
         if (scope != null &&
             scope.TryGetValue(name, out var scoped))
         {
-            return scoped;
+            rootType = scoped;
+            return true;
         }
 
-        if (TryResolveMember(modelType, name, out var type))
+        if (TryResolveMember(modelType, name, out rootType))
         {
-            return type;
+            return true;
         }
 
         if (MatchesRootIdentifier(modelType, name))
         {
-            return modelType;
+            rootType = modelType;
+            return true;
         }
 
-        return null;
+        return false;
     }
 
     static bool MatchesRootIdentifier(Type modelType, string name) =>
