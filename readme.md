@@ -30,16 +30,26 @@ Parchment supports two complementary template formats:
 
 ## One template per model
 
-A template is registered against its model type and rendered by it — there is no name to repeat at registration and at every render, so there is no string for the compiler to fail to check:
+A template belongs to its model type and is rendered by it. On the recommended [source generator](#source-generator-recommended) path there is nothing to register at all: `[ParchmentModel]` on the model finds the template (and any `.dotx` style document) [by convention](#how-a-template-is-found), embeds it into the generated source, and a module initializer registers it when the assembly loads — so rendering is the whole API:
 
 ```cs
-var store = new TemplateStore();
-store.RegisterMarkdownTemplate<Invoice>(markdown);
+[ParchmentModel]
+public partial class Invoice
+{
+    // ...
+}
 
+var store = new TemplateStore();
 await store.Render(invoice, stream);
 ```
 
-The model type is the whole address. A model has exactly one template; re-registering the same model replaces it. Where two documents genuinely share data, give each its own model type — a thin wrapper class holding the shared data is enough, and it gives the template a type to be found by.
+Registering by hand exists for templates the generator cannot see — content produced at runtime, or a model that cannot be made `partial`:
+
+```cs
+store.RegisterMarkdownTemplate<Invoice>(markdown);
+```
+
+Either way the model type is the whole address — there is no name to repeat at registration and at every render, so there is no string for the compiler to fail to check. A model has exactly one template; re-registering the same model replaces it. Where two documents genuinely share data, give each its own model type — a thin wrapper class holding the shared data is enough, and it gives the template a type to be found by.
 
 
 ## Docx template
