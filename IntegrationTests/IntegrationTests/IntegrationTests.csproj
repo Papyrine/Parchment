@@ -19,4 +19,9 @@
     <AdditionalFiles Include="sg-template.docx" CopyToOutputDirectory="PreserveNewest" />
     <AdditionalFiles Include="sg-template.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Declared the embedded way, so the consumption path for a template that never reaches the
+       output directory is exercised rather than only described. -->
+  <ItemGroup>
+    <ParchmentEmbeddedTemplate Include="sg-embedded.md" />
+  </ItemGroup>
 </Project>
