@@ -45,7 +45,7 @@ static class GeneratorDriver
     }
 
     public static DriverSetup CreateDriver(string userSource, params string[] templateParagraphs) =>
-        CreateDriverWithDocxes(userSource, ("template.docx", BuildDocx(templateParagraphs)));
+        CreateDriverWithDocxes(userSource, new TemplateFile("template.docx", BuildDocx(templateParagraphs)));
 
     /// <summary>
     /// Runs the generator with a template declared the embedded way — Parchment.targets marks such
@@ -58,13 +58,13 @@ static class GeneratorDriver
         byte[] bytes,
         string resourceName)
     {
-        var setup = CreateDriverWithDocxes(userSource, [(fileName, bytes)], resourceName);
+        var setup = CreateDriverWithDocxes(userSource, [new TemplateFile(fileName, bytes)], resourceName);
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
-        params (string FileName, byte[] Bytes)[] docxes) =>
+        params TemplateFile[] docxes) =>
         CreateDriverWithDocxes(userSource, docxes, resourceName: null);
 
     /// <summary>
@@ -77,7 +77,7 @@ static class GeneratorDriver
     /// </remarks>
     public static GeneratorDriverRunResult RunWithModelFile(
         string userSource,
-        params (string FileName, byte[] Bytes)[] files)
+        params TemplateFile[] files)
     {
         var setup = CreateDriverWithDocxes(userSource, files, resourceName: null, modelFileName: "Model.cs");
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
@@ -90,7 +90,7 @@ static class GeneratorDriver
     public static GeneratorDriverRunResult RunInProject(
         string userSource,
         string modelFileName,
-        params (string FileName, byte[] Bytes)[] files)
+        params TemplateFile[] files)
     {
         var setup = CreateDriverWithDocxes(
             userSource,
@@ -103,7 +103,7 @@ static class GeneratorDriver
 
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
-        (string FileName, byte[] Bytes)[] docxes,
+        TemplateFile[] docxes,
         string? resourceName,
         string? modelFileName = null,
         bool withProjectDir = false)
@@ -224,13 +224,13 @@ static class GeneratorDriver
     {
         var setup = CreateDriverWithFiles(
             userSource,
-            (fileName, Encoding.UTF8.GetBytes(markdown)));
+            new TemplateFile(fileName, Encoding.UTF8.GetBytes(markdown)));
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
     public static DriverSetup CreateDriverWithFiles(
         string userSource,
-        params (string FileName, byte[] Bytes)[] files) =>
+        params TemplateFile[] files) =>
         CreateDriverWithDocxes(userSource, files);
 
     public sealed record DriverSetup(

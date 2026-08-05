@@ -246,8 +246,8 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            ("letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            ("invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
+            new TemplateFile("letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            new TemplateFile("invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
@@ -270,7 +270,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            ("template.docx", "not a zip file"u8.ToArray()));
+            new TemplateFile("template.docx", "not a zip file"u8.ToArray()));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -297,7 +297,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            ("template.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
+            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -321,7 +321,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            ("template.docx", GeneratorDriver.BuildDocxBytes("hello")));
+            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytes("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -865,8 +865,8 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            ("first.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            ("second.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
+            new TemplateFile("first.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            new TemplateFile("second.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
 

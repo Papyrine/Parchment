@@ -17,7 +17,7 @@ public class TemplatePathResolutionTests
                   public required string Name { get; init; }
               }
               """,
-            ("report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+            new TemplateFile("report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
 
     static IEnumerable<string> Codes(GeneratorDriverRunResult result) =>
         result.Diagnostics.Select(_ => _.Id);
@@ -74,7 +74,7 @@ public class TemplatePathResolutionTests
             }
             """,
             "Stocktakes/Model.cs",
-            ("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+            new TemplateFile("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
 
         await Assert.That(Generated(result)).Contains("""TemplatePath => "Stocktakes/Templates/report.md";""");
     }
@@ -93,7 +93,7 @@ public class TemplatePathResolutionTests
             }
             """,
             "Stocktakes/Model.cs",
-            ("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+            new TemplateFile("Stocktakes/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
 
         await Assert.That(Generated(result)).Contains("""TemplatePath => "Stocktakes/Templates/report.md";""");
     }
@@ -116,8 +116,8 @@ public class TemplatePathResolutionTests
                 public required string Name { get; init; }
             }
             """,
-            ("Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")),
-            ("Other/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
+            new TemplateFile("Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")),
+            new TemplateFile("Other/Templates/report.md", Encoding.UTF8.GetBytes("Hello {{ Name }}")));
 
         await Assert.That(Codes(result)).Contains("PARCH020");
     }

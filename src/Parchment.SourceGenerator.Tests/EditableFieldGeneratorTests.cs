@@ -251,7 +251,7 @@ public class EditableFieldGeneratorTests
         // renders as a plain read-only mirror. Duplicate detection must be body-scoped.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             editableModel,
-            ("template.docx", GeneratorDriver.BuildDocxBytesWithHeader(
+            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytesWithHeader(
                 bodyParagraphs: ["{{ PurchaseOrder }}"],
                 headerParagraphs: ["PO: {{ PurchaseOrder }}"])));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
