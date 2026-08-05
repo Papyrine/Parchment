@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 namespace ParchmentSample;
 
 #region ReportModel

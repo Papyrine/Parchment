@@ -95,7 +95,7 @@ public class TypeKeyedTemplateTests
 
         using var stream = new MemoryStream();
         var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () => await store.Render(new Receipt { Number = "B-2" }, stream));
+            () => store.Render(new Receipt { Number = "B-2" }, stream));
 
         await Assert.That(exception!.Message).Contains("No template is registered for Receipt");
     }

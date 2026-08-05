@@ -1036,7 +1036,7 @@ public partial class OrderForm
     public required string PurchaseOrder { get; set; }
 }
 ```
-<sup><a href='/src/ParchmentModel/OrderForm.cs#L3-L12' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorProtectionMode' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/OrderForm.cs#L4-L13' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorProtectionMode' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 With `ProtectionMode.None` the fields still render as tagged controls (and still extract); the rest of the document stays editable too.
@@ -1205,7 +1205,7 @@ public class ActionItem
     public required string Detail;
 }
 ```
-<sup><a href='/src/ParchmentModel/Report.cs#L3-L35' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Report.cs#L4-L36' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render it like any other template:
@@ -1799,7 +1799,7 @@ public partial class Invoice
         Subtotal + Tax;
 }
 ```
-<sup><a href='/src/ParchmentModel/Invoice.cs#L3-L25' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorDocxModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Invoice.cs#L4-L26' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorDocxModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 and for the markdown flow:
@@ -1813,7 +1813,7 @@ public partial class ReportContext
     public required Report Report;
 }
 ```
-<sup><a href='/src/ParchmentModel/Report.cs#L4-L10' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorMarkdownModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Report.cs#L5-L11' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorMarkdownModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The attribute is applied directly to the binding model — there is no separate marker / "template" class. Models almost always need Parchment-aware code on them anyway (`[Html]` / `[Markdown]` / `[ExcelsiorTable]` annotations, helper properties shaping values for binding), so the `partial` + Parchment-dependency tax is already paid. See `CLAUDE.md` → "Design decisions" for the full rationale.

@@ -48,7 +48,7 @@ static class GeneratorDriver
     /// </summary>
     public static string ModelTypeName(string userSource)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(
+        var match = Regex.Match(
             userSource,
             @"\[ParchmentModel[^\]]*\]\s*(?:public\s+|internal\s+)*partial\s+(?:record\s+struct|class|record|struct)\s+(\w+)");
         if (!match.Success)
