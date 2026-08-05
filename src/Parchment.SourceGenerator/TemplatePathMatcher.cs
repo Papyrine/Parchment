@@ -90,7 +90,7 @@ static class TemplatePathMatcher
 
             if (segment == ".." &&
                 segments.Count > 0 &&
-                segments[segments.Count - 1] != "..")
+                segments[^1] != "..")
             {
                 segments.RemoveAt(segments.Count - 1);
                 continue;
@@ -99,6 +99,6 @@ static class TemplatePathMatcher
             segments.Add(segment);
         }
 
-        return string.Join("/", segments);
+        return string.Join('/', segments);
     }
 }
