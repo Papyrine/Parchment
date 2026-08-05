@@ -13,6 +13,15 @@ public class TypeKeyedTemplateTests
         public required string Number { get; init; }
     }
 
+    // Deliberately the same simple name as the Invoice above, in a different namespace.
+    public static class Other
+    {
+        public class Invoice
+        {
+            public required string Number { get; init; }
+        }
+    }
+
     static TemplateStore Store()
     {
         var store = new TemplateStore();
@@ -20,15 +29,59 @@ public class TypeKeyedTemplateTests
         return store;
     }
 
+    // Namespaced, so two models sharing a simple name do not both want one default.
     [Test]
-    public async Task RegistersUnderTheModelsName()
+    public async Task RegistersUnderTheModelsNamespacedName()
     {
         var store = Store();
 
-        // The name the generator's TemplateName emits, so a template registered either way is
-        // reachable by the other.
         using var stream = new MemoryStream();
-        await store.Render(nameof(Invoice), new Invoice { Number = "A-1" }, stream);
+        await store.Render(typeof(Invoice).FullName!, new Invoice { Number = "A-1" }, stream);
+
+        await Assert.That(stream.Length).IsGreaterThan(0);
+    }
+
+    // The case the namespaced default exists to prevent: without it both take the name "Invoice"
+    // and the second quietly discards the first.
+    [Test]
+    public async Task ModelsSharingASimpleNameDoNotCollide()
+    {
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Invoice>("# {{ Number }}");
+        store.RegisterMarkdownTemplate<Other.Invoice>("## {{ Number }}");
+
+        using var first = new MemoryStream();
+        using var second = new MemoryStream();
+        await store.Render(new Invoice { Number = "A-1" }, first);
+        await store.Render(new Other.Invoice { Number = "B-2" }, second);
+
+        await Assert.That(first.Length).IsGreaterThan(0);
+        await Assert.That(second.Length).IsGreaterThan(0);
+    }
+
+    // An explicit name can still be claimed twice, so the clash is refused rather than silently
+    // replacing the template already there.
+    [Test]
+    public async Task ReusingAnExplicitNameForAnotherModelIsRefused()
+    {
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Invoice>("shared", "# {{ Number }}");
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<Receipt>("shared", "# {{ Number }}"));
+
+        await Assert.That(exception!.Message).Contains("cannot share it");
+    }
+
+    [Test]
+    public async Task ReregisteringTheSameModelReplacesIt()
+    {
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Invoice>("# first");
+        store.RegisterMarkdownTemplate<Invoice>("# second");
+
+        using var stream = new MemoryStream();
+        await store.Render(new Invoice { Number = "A-1" }, stream);
 
         await Assert.That(stream.Length).IsGreaterThan(0);
     }

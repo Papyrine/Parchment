@@ -1,4 +1,4 @@
-﻿namespace Parchment;
+namespace Parchment;
 
 public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 {
@@ -28,10 +28,36 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     ImagePolicies Policies => new(LocalImages, WebImages);
 
     /// <summary>
-    /// The name a template is registered under when none is given: the model type's own name, which
-    /// is what the source generator's <c>TemplateName</c> also emits.
+    /// The name a template is registered under when none is given: the model type's namespaced
+    /// name.
     /// </summary>
-    static string DefaultName<TModel>() => typeof(TModel).Name;
+    /// <remarks>
+    /// Namespaced rather than the simple name, so two models called the same thing in different
+    /// namespaces do not both want one name. Nothing reads this back — <see cref="NameFor{TModel}"/>
+    /// finds a template by its model type, not by reproducing the default — so the default only has
+    /// to be unique, not memorable.
+    /// </remarks>
+    static string DefaultName<TModel>() => typeof(TModel).FullName ?? typeof(TModel).Name;
+
+    /// <summary>
+    /// Refuses a name already registered for a different model.
+    /// </summary>
+    /// <remarks>
+    /// Registering over an existing name replaces it, which is what re-registering the same model
+    /// means. For a different model it means two templates wanted one name. Left alone, the first
+    /// template is discarded and the loss surfaces later as "no template is registered" for a model
+    /// that plainly was.
+    /// </remarks>
+    void GuardNameClash<TModel>(string name)
+    {
+        if (templates.TryGetValue(name, out var existing) &&
+            existing.ModelType != typeof(TModel))
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"already registered for {existing.ModelType.FullName}. {typeof(TModel).FullName} cannot share it — pass an explicit name for one of them.");
+        }
+    }
 
     /// <summary>
     /// The name the template for <typeparamref name="TModel"/> is registered under.
@@ -86,6 +112,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        GuardNameClash<TModel>(name);
         GuardBindingModel<TModel>(name);
         SharedFluid.RegisterModel(typeof(TModel));
         StaticRenderAttributes.Warn(typeof(TModel), name, logger);
@@ -165,6 +192,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        GuardNameClash<TModel>(name);
         GuardBindingModel<TModel>(name);
         SharedFluid.RegisterModel(typeof(TModel));
         StaticRenderAttributes.Warn(typeof(TModel), name, logger);

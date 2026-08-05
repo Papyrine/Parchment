@@ -30,7 +30,7 @@ Parchment supports two complementary template formats:
 
 ## Naming a template
 
-A template is registered under a name and rendered by it. The name can be left out, in which case it is the model type's own name — the same name the [source generator](#source-generator) emits as `TemplateName`:
+A template is registered under a name and rendered by it. The name can be left out, in which case it is the model type's namespaced name:
 
 ```cs
 var store = new TemplateStore();
@@ -39,7 +39,7 @@ store.RegisterMarkdownTemplate<Invoice>(markdown);
 await store.Render(invoice, stream);
 ```
 
-The type says which template to use, so the string that would otherwise be repeated at registration and at every render — and that the compiler cannot check — is gone.
+The type says which template to use, so the string that would otherwise be repeated at registration and at every render — and that the compiler cannot check — is gone. Nothing has to reproduce the default name: a template is found by its model type, whatever it was registered as, so this works for one registered through the generated `RegisterWith` too.
 
 Pass a name where a model has more than one template:
 
@@ -50,7 +50,7 @@ store.RegisterMarkdownTemplate<Invoice>("detail", detailMarkdown);
 await store.Render("summary", invoice, stream);
 ```
 
-Rendering such a model without a name throws rather than picking one, since which template was found first would depend on registration order.
+Rendering such a model without a name throws rather than picking one, since which template was found first would depend on registration order. Registering a name already held by a different model is refused for the same reason — left alone it discards the template already there, and the loss only shows up later as that model having none.
 
 
 ## Docx template
