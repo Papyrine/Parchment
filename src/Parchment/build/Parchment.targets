@@ -38,6 +38,34 @@
     <AdditionalFiles Include="@(ParchmentEmbeddedTemplate)" />
   </ItemGroup>
 
+  <!--
+    Warns when a template carries a second item type, which is the shape that produces a PARCH004
+    only an IDE can see. Detected here rather than left to the generator because the generator
+    cannot see it: by the time the file has been resolved to its other identity there is nothing in
+    AdditionalFiles to report on, and a command-line build never reproduces it.
+
+    Scoped to template extensions, since another analyzer's additional files are none of Parchment's
+    business. Runs after the staging target, so the embedded item type of a ParchmentEmbeddedTemplate
+    belongs to the staged copy under obj — a different path, and correctly not a match.
+  -->
+  <Target Name="ParchmentWarnOnDualItemTypes"
+          BeforeTargets="CoreCompile"
+          Condition="'@(AdditionalFiles)' != ''">
+    <ItemGroup>
+      <_ParchmentTemplateLike Include="@(AdditionalFiles->'%(FullPath)')"
+                              Condition="'%(Extension)' == '.md' or '%(Extension)' == '.docx' or '%(Extension)' == '.dotx'" />
+      <_ParchmentOtherIdentity Include="@(EmbeddedResource->'%(FullPath)');@(Content->'%(FullPath)')" />
+      <!-- Intersection, the MSBuild way: the candidates, less those that are only candidates. -->
+      <_ParchmentSingleIdentity Include="@(_ParchmentTemplateLike)" Exclude="@(_ParchmentOtherIdentity)" />
+      <_ParchmentDualIdentity Include="@(_ParchmentTemplateLike)" Exclude="@(_ParchmentSingleIdentity)" />
+    </ItemGroup>
+
+    <Warning Condition="'@(_ParchmentDualIdentity)' != ''"
+             Code="PARCH100"
+             File="$(MSBuildProjectFullPath)"
+             Text="Template %(_ParchmentDualIdentity.Filename)%(_ParchmentDualIdentity.Extension) is an AdditionalFile and also an EmbeddedResource or Content item. This build is unaffected, but an IDE that models one build action per file can resolve it to the other identity, hide it from the source generator, and report PARCH004 against a csproj entry that is present. Declare it with &lt;ParchmentTemplate&gt; or &lt;ParchmentEmbeddedTemplate&gt; instead of wiring both by hand." />
+  </Target>
+
   <Target Name="ParchmentStageEmbeddedTemplates"
           BeforeTargets="PrepareForBuild"
           Condition="'@(ParchmentEmbeddedTemplate)' != ''">

@@ -2067,6 +2067,15 @@ public partial class Report
 Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
 
 
+### `PARCH100` — template carries a second item type
+
+**Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--template-file-not-in-additionalfiles) against a csproj entry that is plainly present.
+
+Declaring the template with [`ParchmentTemplate` or `ParchmentEmbeddedTemplate`](#declaring-templates) clears it. The warning does not fire for `ParchmentEmbeddedTemplate`, whose two identities belong to two different files — the template itself and a staged copy under `obj`.
+
+Suppress with `<NoWarn>$(NoWarn);PARCH100</NoWarn>` if a template genuinely needs both, accepting that the IDE may stop inspecting it.
+
+
 ## Model binding limitations
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
