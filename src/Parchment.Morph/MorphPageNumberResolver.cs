@@ -24,8 +24,6 @@ namespace Parchment;
 public class MorphPageNumberResolver(ImageExportOptions? options = null) :
     IPageNumberResolver
 {
-    static readonly SkiaDocumentConverter Converter = new();
-
     // Deterministic rendering by default: the same document must measure the same everywhere, or
     // Parchment's byte-for-byte output guarantee stops holding through this.
     readonly ImageExportOptions options = options ?? new()
@@ -34,5 +32,5 @@ public class MorphPageNumberResolver(ImageExportOptions? options = null) :
     };
 
     public Task<IReadOnlyDictionary<string, int>> Resolve(Stream docx, Cancel cancel) =>
-        Task.FromResult(Converter.GetBookmarkPages(docx, options));
+        Task.FromResult(DocumentConverter.GetBookmarkPages(docx, options));
 }

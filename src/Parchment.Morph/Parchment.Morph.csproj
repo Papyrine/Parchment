@@ -6,7 +6,9 @@
     <Description>Resolves Parchment's table-of-contents and page-reference fields by laying the document out with Morph, so the numbers are in the file before Word opens it.</Description>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Morph.Skia" VersionOverride="1.2.0" />
+    <!-- Core only: pagination lives in the layout engine, so resolving a page number needs no
+         rendering backend and none of its native binaries. -->
+    <PackageReference Include="Morph" />
     <PackageReference Include="Polyfill" PrivateAssets="all" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="SponsorCheck" PrivateAssets="all" />

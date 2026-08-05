@@ -1784,7 +1784,7 @@ public partial class Invoice
     public IReadOnlyList<string> Tags { get; init; } = [];
 
     public decimal Subtotal =>
-        Lines.Sum(x => x.LineTotal);
+        Lines.Sum(_ => _.LineTotal);
 
     public decimal Tax =>
         Math.Round(Subtotal * 0.1m, 2);

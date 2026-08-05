@@ -220,7 +220,7 @@ static class GeneratorDriver
         return tpa
             .Split(Path.PathSeparator)
             .Where(_ => !string.IsNullOrEmpty(_))
-            .Select(_ => (MetadataReference) MetadataReference.CreateFromFile(_))
+            .Select(MetadataReference (_) => MetadataReference.CreateFromFile(_))
             .ToArray();
     }
 

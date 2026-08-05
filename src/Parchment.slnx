@@ -10,6 +10,8 @@
     <File Path="mdsnippets.json" />
   </Folder>
   <Project Path="Parchment/Parchment.csproj" />
+  <Project Path="Parchment.Morph/Parchment.Morph.csproj" />
+  <Project Path="Parchment.Morph.Tests/Parchment.Morph.Tests.csproj" />
   <Project Path="Parchment.SourceGenerator/Parchment.SourceGenerator.csproj" />
   <Project Path="Parchment.SourceGenerator.Tests/Parchment.SourceGenerator.Tests.csproj" />
   <Project Path="Parchment.Tests/Parchment.Tests.csproj" />
