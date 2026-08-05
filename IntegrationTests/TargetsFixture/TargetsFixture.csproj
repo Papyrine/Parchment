@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Built by TargetsTests rather than by the solution, which is why it is absent from
+    IntegrationTests.slnx: it deliberately contains a misconfigured template so the build-time
+    check has something to catch, and a project that warns on every solution build would be noise.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TargetsFixture</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Parchment" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Inspected by the generator, copied beside the assembly. -->
+    <ParchmentTemplate Include="Templates\copied.md" />
+    <!-- Inspected by the generator, embedded from a staged copy. -->
+    <ParchmentEmbeddedTemplate Include="Templates\embedded.md" />
+    <!-- The shape PARCH100 exists to catch: one file, two item types. -->
+    <AdditionalFiles Include="Templates\dual.md" />
+    <EmbeddedResource Include="Templates\dual.md" />
+  </ItemGroup>
+
+</Project>
