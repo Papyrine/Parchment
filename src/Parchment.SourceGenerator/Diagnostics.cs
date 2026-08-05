@@ -168,4 +168,13 @@ static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch019--render-attribute-on-a-static-member-has-no-effect");
+
+    public static readonly DiagnosticDescriptor AmbiguousTemplatePath = new(
+        id: "PARCH020",
+        title: "Template path matches more than one file",
+        messageFormat: "Template path '{0}' matches more than one file: {1}. A path is resolved both against the directory of this file and against the end of every template's path, and here those readings disagree — start the path with './' or '../' to mean this file's directory, or lengthen it to name one template.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch020--template-path-matches-more-than-one-file");
 }

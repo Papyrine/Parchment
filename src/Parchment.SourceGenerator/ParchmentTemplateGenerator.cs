@@ -90,6 +90,11 @@ public sealed class ParchmentTemplateGenerator :
                 syntaxReference.SyntaxTree,
                 syntaxReference.Span);
 
+        var declaringFile = syntaxReference?.SyntaxTree.FilePath;
+        var declaringDirectory = string.IsNullOrEmpty(declaringFile)
+            ? null
+            : System.IO.Path.GetDirectoryName(declaringFile);
+
         var declaringNamespace = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? null
             : typeSymbol.ContainingNamespace.ToDisplayString();
@@ -129,6 +134,7 @@ public sealed class ParchmentTemplateGenerator :
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             path,
+            declaringDirectory,
             protection,
             EquatableLocation.From(rawLocation),
             shape,
@@ -178,6 +184,45 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         return type.TypeKind == TypeKind.Struct ? "struct" : "class";
+    }
+
+    // Nothing matched is PARCH004; more than one is PARCH020, which is reported rather than
+    // resolved by preference — the two readings of a path are equally valid, so a disagreement
+    // between them is the author's to settle, not the generator's to guess.
+    static bool TryResolve<T>(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location,
+        List<T> candidates,
+        Func<T, string> pathOf,
+        [NotNullWhen(true)] out T? matched)
+        where T : class
+    {
+        if (candidates.Count == 0)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.TemplateFileMissing,
+                    location,
+                    target.TemplatePath));
+            matched = null;
+            return false;
+        }
+
+        if (candidates.Count > 1)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.AmbiguousTemplatePath,
+                    location,
+                    target.TemplatePath,
+                    string.Join(", ", candidates.Select(pathOf).Select(TemplatePathMatcher.Normalize))));
+            matched = null;
+            return false;
+        }
+
+        matched = candidates[0];
+        return true;
     }
 
     static DocxData ReadDocx(AdditionalText text, string? resourceName)
@@ -273,26 +318,9 @@ public sealed class ParchmentTemplateGenerator :
         Location location,
         EquatableArray<DocxData> docs)
     {
-        var normalized = target.TemplatePath.Replace('\\', '/');
-
-        DocxData? matched = null;
-        foreach (var doc in docs)
+        var candidates = TemplatePathMatcher.FindAll(docs, static _ => _.Path, target);
+        if (!TryResolve(context, target, location, candidates, static _ => _.Path, out var matched))
         {
-            if (doc.Path.Replace('\\', '/')
-                .EndsWith(normalized, StringComparison.OrdinalIgnoreCase))
-            {
-                matched = doc;
-                break;
-            }
-        }
-
-        if (matched == null)
-        {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.TemplateFileMissing,
-                    location,
-                    target.TemplatePath));
             return;
         }
 
@@ -615,26 +643,9 @@ public sealed class ParchmentTemplateGenerator :
         Location location,
         EquatableArray<MarkdownData> markdowns)
     {
-        var normalized = target.TemplatePath.Replace('\\', '/');
-
-        MarkdownData? matched = null;
-        foreach (var md in markdowns)
+        var candidates = TemplatePathMatcher.FindAll(markdowns, static _ => _.Path, target);
+        if (!TryResolve(context, target, location, candidates, static _ => _.Path, out var matched))
         {
-            if (md.Path.Replace('\\', '/')
-                .EndsWith(normalized, StringComparison.OrdinalIgnoreCase))
-            {
-                matched = md;
-                break;
-            }
-        }
-
-        if (matched == null)
-        {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.TemplateFileMissing,
-                    location,
-                    target.TemplatePath));
             return;
         }
 

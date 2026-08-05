@@ -1860,6 +1860,15 @@ Its `basePath` parameter has no meaning for an embedded template and is ignored;
 
 The staging exists for one reason, and it is the reason to prefer these item types over hand-wiring: **a template should carry exactly one item type**. Listing the same file as both `<AdditionalFiles>` and `<EmbeddedResource>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--template-file-not-in-additionalfiles) that a command-line build cannot reproduce.
 
+#### How a template path is resolved
+
+The path in `[ParchmentModel("...")]` is read two ways, because both are natural to write:
+
+- **Relative to the file the attribute sits in.** A model beside its template says `report.md`; one in `Stocktakes/` says `Templates/report.md`, `./Templates/report.md`, or `../Stocktakes/Templates/report.md` — all the same file.
+- **As the end of a declared template's path.** `Templates/report.md` also matches a template at the project root, which is what a project relies on when its templates sit in one folder while its models are scattered below.
+
+Usually both land on the same file. Where they land on different ones the path is ambiguous, and [`PARCH020`](#parch020--template-path-matches-more-than-one-file) says so rather than picking one. A path starting `./` or `../` states its intent and only ever resolves the first way.
+
 Hand-wiring still works, and is what the item types expand to:
 
 ```xml
@@ -2074,6 +2083,20 @@ public partial class Report
 ```
 
 Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
+
+
+### `PARCH020` — template path matches more than one file
+
+The path in `[ParchmentModel("...")]` is read [two ways](#how-a-template-path-is-resolved), and here they landed on different templates. Rather than pick one, the generator says so — silently preferring a reading would bind the model to a template its author was not looking at.
+
+```
+// Model at Stocktakes/StocktakeModel.cs, with templates at
+//   Stocktakes/Templates/report.md   (relative to this file)
+//   Templates/report.md              (matches the end of the path)
+[ParchmentModel("Templates/report.md")]
+```
+
+Start the path with `./` or `../` to mean this file's directory, or lengthen it until it names one template.
 
 
 ### `PARCH100` — template carries a second item type

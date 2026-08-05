@@ -15,6 +15,7 @@ global using Fluid.Ast;
 global using Fluid.Parser;
 global using Fluid.Values;
 
+global using System.Diagnostics.CodeAnalysis;
 global using Microsoft.CodeAnalysis;
 global using Microsoft.CodeAnalysis.Diagnostics;
 global using Microsoft.CodeAnalysis.CSharp;

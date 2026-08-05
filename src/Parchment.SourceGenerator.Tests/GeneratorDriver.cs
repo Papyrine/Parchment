@@ -67,10 +67,27 @@ static class GeneratorDriver
         params (string FileName, byte[] Bytes)[] docxes) =>
         CreateDriverWithDocxes(userSource, docxes, resourceName: null);
 
+    /// <summary>
+    /// Runs the generator with the model source written to a real path, so a template path relative
+    /// to the file the attribute sits in has a directory to resolve against.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in rather than the default, because giving every compilation a file path would put the
+    /// per-run temp directory into the diagnostic locations that other tests snapshot.
+    /// </remarks>
+    public static GeneratorDriverRunResult RunWithModelFile(
+        string userSource,
+        params (string FileName, byte[] Bytes)[] files)
+    {
+        var setup = CreateDriverWithDocxes(userSource, files, resourceName: null, modelFileName: "Model.cs");
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+    }
+
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         (string FileName, byte[] Bytes)[] docxes,
-        string? resourceName)
+        string? resourceName,
+        string? modelFileName = null)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -80,6 +97,8 @@ static class GeneratorDriver
         foreach (var (name, bytes) in docxes)
         {
             var path = Path.Combine(directory, name);
+            // A template may be given a nested path, so its folder has to exist first.
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, bytes);
             texts.Add(new PathAdditionalText(path));
             paths.Add(path);
@@ -88,7 +107,9 @@ static class GeneratorDriver
         var syntaxTrees = new[]
         {
             CSharpSyntaxTree.ParseText(attributeSource),
-            CSharpSyntaxTree.ParseText(userSource)
+            modelFileName == null
+                ? CSharpSyntaxTree.ParseText(userSource)
+                : CSharpSyntaxTree.ParseText(userSource, path: Path.Combine(directory, modelFileName))
         };
 
         var compilation = CSharpCompilation.Create(
