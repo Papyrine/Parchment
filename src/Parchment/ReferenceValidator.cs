@@ -31,13 +31,10 @@
             case LoopNode loop:
                 var sourceRefs = IdentifierVisitor.Collect(loop.LoopSource);
                 Type? elementType = null;
-                if (sourceRefs.Count > 0)
+                if (sourceRefs.Count > 0 &&
+                    TryResolvePathType(sourceRefs[0], scope, out var iterableType))
                 {
-                    var iterableType = ResolvePathType(sourceRefs[0], scope);
-                    if (iterableType != null)
-                    {
-                        ModelValidator.TryResolveElementType(iterableType, out elementType);
-                    }
+                    ModelValidator.TryResolveElementType(iterableType, out elementType);
                 }
 
                 if (elementType == null)
@@ -75,24 +72,29 @@
         }
     }
 
-    Type? ResolvePathType(IdentifierPath path, Dictionary<string, Type> scope)
+    bool TryResolvePathType(
+        IdentifierPath path,
+        Dictionary<string, Type> scope,
+        [NotNullWhen(true)] out Type? pathType)
     {
+        pathType = null;
         if (!scope.TryGetValue(path.Root, out var current) &&
             !ModelValidator.TryResolveMember(modelType, path.Root, out current))
         {
-            return null;
+            return false;
         }
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
             if (!ModelValidator.TryResolveMember(current, path.Segments[i], out var next))
             {
-                return null;
+                return false;
             }
 
             current = next;
         }
 
-        return current;
+        pathType = current;
+        return true;
     }
 }

@@ -161,8 +161,7 @@ class MarkdownReferenceValidator :
             return null;
         }
 
-        var iterableType = ResolvePathType(refs[0]);
-        if (iterableType == null)
+        if (!TryResolvePathType(refs[0], out var iterableType))
         {
             return null;
         }
@@ -179,29 +178,31 @@ class MarkdownReferenceValidator :
         return elementType;
     }
 
-    Type? ResolvePathType(IdentifierPath path)
+    bool TryResolvePathType(IdentifierPath path, [NotNullWhen(true)] out Type? pathType)
     {
+        pathType = null;
         if (untyped.Contains(path.Root))
         {
-            return null;
+            return false;
         }
 
         if (!scope.TryGetValue(path.Root, out var current) &&
             !ModelValidator.TryResolveMember(modelType, path.Root, out current))
         {
-            return null;
+            return false;
         }
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
             if (!ModelValidator.TryResolveMember(current, path.Segments[i], out var next))
             {
-                return null;
+                return false;
             }
 
             current = next;
         }
 
-        return current;
+        pathType = current;
+        return true;
     }
 }
