@@ -77,19 +77,15 @@
 
     Type? ResolvePathType(IdentifierPath path, Dictionary<string, Type> scope)
     {
-        var rootType = scope.TryGetValue(path.Root, out var scoped)
-            ? scoped
-            : ModelValidator.ResolveMember(modelType, path.Root);
-        if (rootType == null)
+        if (!scope.TryGetValue(path.Root, out var current) &&
+            !ModelValidator.TryResolveMember(modelType, path.Root, out current))
         {
             return null;
         }
 
-        var current = rootType;
         for (var i = 1; i < path.Segments.Count; i++)
         {
-            var next = ModelValidator.ResolveMember(current, path.Segments[i]);
-            if (next == null)
+            if (!ModelValidator.TryResolveMember(current, path.Segments[i], out var next))
             {
                 return null;
             }

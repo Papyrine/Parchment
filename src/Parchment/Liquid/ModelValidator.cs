@@ -26,8 +26,7 @@ static class ModelValidator
         for (var i = 1; i < path.Segments.Count; i++)
         {
             var segment = path.Segments[i];
-            var next = ResolveMember(currentType, segment);
-            if (next == null)
+            if (!TryResolveMember(currentType, segment, out var next))
             {
                 throw new ParchmentRegistrationException(
                     templateName,
@@ -82,20 +81,22 @@ static class ModelValidator
         return null;
     }
 
-    public static Type? ResolveMember(Type type, string name)
+    public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
         var property = type.GetProperty(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
         if (property != null)
         {
-            return property.PropertyType;
+            memberType = property.PropertyType;
+            return true;
         }
 
         var field = type.GetField(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        return field?.FieldType;
+        memberType = field?.FieldType;
+        return memberType != null;
     }
 
     static Type? ResolveRoot(Type modelType, string name, IReadOnlyDictionary<string, Type>? scope)
@@ -106,8 +107,7 @@ static class ModelValidator
             return scoped;
         }
 
-        var type = ResolveMember(modelType, name);
-        if (type != null)
+        if (TryResolveMember(modelType, name, out var type))
         {
             return type;
         }
