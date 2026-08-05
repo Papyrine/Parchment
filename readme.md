@@ -1849,22 +1849,14 @@ Parchment ships an item type for each, so neither has to be wired by hand:
 
 `ParchmentEmbeddedTemplate` leaves the file itself as an `AdditionalFile` and embeds a staged copy from `obj` instead. The resource keeps the name it would have had if embedded in place, so the staging never shows up in the name a caller uses.
 
-**An embedded template is registered from the manifest, not through `RegisterWith`.** The generated helper reads the template from disk, and this item type deliberately puts nothing there, so calling it throws `FileNotFoundException`. Read the resource and register it:
+**`RegisterWith` works either way.** The targets tell the generator which templates are embedded, so the generated helper reads the manifest for those and the disk for the rest — switching a template between the two item types changes nothing at the call site:
 
 ```cs
-static string ReadTemplate()
-{
-    var assembly = typeof(ReportModel).Assembly;
-    using var stream = assembly.GetManifestResourceStream("MyProject.Templates.report.md")!;
-    using var reader = new StreamReader(stream);
-    return reader.ReadToEnd();
-}
-
 var store = new TemplateStore();
-store.RegisterMarkdownTemplate<ReportModel>(ReportModel.TemplateName, ReadTemplate());
+ReportModel.RegisterWith(store);
 ```
 
-`TemplateName` still comes from the generated helper, so the name stays in one place. A docx template is the same shape through `RegisterDocxTemplate<T>(name, stream)`, which takes the manifest stream directly. If `GetManifestResourceStream` returns null, print `GetManifestResourceNames()` — the resource name follows `$(RootNamespace)` and the file's folder path, so a template outside the project root is prefixed accordingly.
+Its `basePath` parameter has no meaning for an embedded template and is ignored; it stays on the signature so the switch does not break callers. Registering by hand still works if the template is wanted from somewhere else entirely — `RegisterMarkdownTemplate<T>(name, markdown, styleSource)` takes the text, and `RegisterDocxTemplate<T>(name, stream)` takes a stream, so a manifest stream can be passed straight in.
 
 The staging exists for one reason, and it is the reason to prefer these item types over hand-wiring: **a template should carry exactly one item type**. Listing the same file as both `<AdditionalFiles>` and `<EmbeddedResource>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--template-file-not-in-additionalfiles) that a command-line build cannot reproduce.
 

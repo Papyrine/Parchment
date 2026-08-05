@@ -35,7 +35,14 @@
     obj, which is a different path and therefore a different file as far as any IDE is concerned.
   -->
   <ItemGroup>
-    <AdditionalFiles Include="@(ParchmentEmbeddedTemplate)" />
+    <AdditionalFiles Include="@(ParchmentEmbeddedTemplate)">
+      <!-- The name the staged copy is embedded under, computed once here and consumed twice: by the
+           staging target below, and by the source generator, which emits a RegisterWith that reads
+           the manifest rather than the disk. Handing the generator the name rather than letting it
+           re-derive one keeps the two from ever disagreeing. -->
+      <ParchmentResourceName>$(RootNamespace).$([MSBuild]::ValueOrDefault('%(RelativeDir)','').Replace('\','.').Replace('/','.'))%(Filename)%(Extension)</ParchmentResourceName>
+    </AdditionalFiles>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ParchmentResourceName" />
   </ItemGroup>
 
   <!--
@@ -76,12 +83,11 @@
       <ParchmentStagedTemplateDir Condition="'$(ParchmentStagedTemplateDir)' == ''">$(IntermediateOutputPath)Parchment\</ParchmentStagedTemplateDir>
     </PropertyGroup>
 
+    <!-- Driven off the AdditionalFiles entries rather than ParchmentEmbeddedTemplate, so the name
+         embedded here is the same one the generator was told about. -->
     <ItemGroup>
-      <ParchmentStagedTemplate Include="@(ParchmentEmbeddedTemplate)">
+      <ParchmentStagedTemplate Include="@(AdditionalFiles)" Condition="'%(AdditionalFiles.ParchmentResourceName)' != ''">
         <Staged>$(ParchmentStagedTemplateDir)%(RelativeDir)%(Filename)%(Extension)</Staged>
-        <!-- The name the resource would have had if embedded in place, so callers that look it up
-             by its usual name are unaffected by the staging. -->
-        <Logical>$(RootNamespace).$([MSBuild]::ValueOrDefault('%(RelativeDir)','').Replace('\','.').Replace('/','.'))%(Filename)%(Extension)</Logical>
       </ParchmentStagedTemplate>
     </ItemGroup>
 
@@ -91,7 +97,7 @@
 
     <ItemGroup>
       <EmbeddedResource Include="@(ParchmentStagedTemplate->'%(Staged)')">
-        <LogicalName>%(ParchmentStagedTemplate.Logical)</LogicalName>
+        <LogicalName>%(ParchmentStagedTemplate.ParchmentResourceName)</LogicalName>
       </EmbeddedResource>
     </ItemGroup>
   </Target>

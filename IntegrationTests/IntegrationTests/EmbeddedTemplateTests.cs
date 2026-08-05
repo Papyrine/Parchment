@@ -52,6 +52,27 @@ public partial class EmbeddedTemplateTests
     public async Task TheTemplateIsNotCopiedBesideTheAssembly() =>
         await Assert.That(File.Exists(Path.Combine(AppContext.BaseDirectory, "sg-embedded.md"))).IsFalse();
 
+    // The whole point of telling the generator which templates are embedded: the same call works
+    // for either item type, so switching one over does not change how it is registered.
+    [Test]
+    public async Task RegisterWithReadsTheManifest()
+    {
+        var store = new TemplateStore();
+        EmbeddedReportModel.RegisterWith(store);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            EmbeddedReportModel.TemplateName,
+            new EmbeddedReportModel
+            {
+                Customer = new() { Name = "Acme" },
+                Lines = [new() { Description = "Widget" }]
+            },
+            stream);
+
+        await Assert.That(stream.Length).IsGreaterThan(0);
+    }
+
     [Test]
     public async Task RegisterFromTheManifestAndRender()
     {
