@@ -85,21 +85,31 @@ static class SharedFluid
     }
 
     /// <summary>
+    /// Whether the source generator registered <paramref name="modelType"/> — its module
+    /// initializer always emits the root type's accessor block, even for a member-less model.
+    /// </summary>
+    public static bool IsModelRegistered(Type modelType) =>
+        registeredTypes.ContainsKey(modelType);
+
+    /// <summary>
     /// Guards that <paramref name="modelType"/> arrived with pre-compiled accessors. There is no
     /// reflection fallback: every binding model is walked at compile time by the source generator,
     /// which emits one <c>DelegateAccessor</c> per member for every reachable type.
     /// </summary>
     public static void EnsureModelRegistered(Type modelType, string name)
     {
-        if (registeredTypes.ContainsKey(modelType))
+        if (IsModelRegistered(modelType))
         {
             return;
         }
 
         throw new ParchmentRegistrationException(
             name,
-            $"Model '{modelType.FullName}' has no pre-compiled Parchment accessors. Mark the class with [ParchmentModel] (template found by convention) or [ParchmentBindable] (template supplied at runtime) and make it partial — the Parchment source generator emits the accessors at compile time.");
+            NotGeneratedMessage(modelType));
     }
+
+    public static string NotGeneratedMessage(Type modelType) =>
+        $"Model '{modelType.FullName}' has no pre-compiled Parchment accessors. Mark the class with [ParchmentModel] (template found by convention) or [ParchmentBindable] (template supplied at runtime) and make it partial — the Parchment source generator emits the accessors at compile time.";
 
     /// <summary>
     /// Source-generator entry point (invoked via `Generated.GeneratedRegistration`).

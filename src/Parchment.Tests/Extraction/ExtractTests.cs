@@ -1,8 +1,45 @@
 using System.Globalization;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 
-public class ExtractTests
+public partial class ExtractTests
 {
+    // Deliberately NOT [ParchmentBindable]: the generator never sees it, so its editable map is
+    // empty for the wrong reason — the guard has to say "not generated", not "no fields".
+    public class NeverGeneratedModel
+    {
+        [EditableField]
+        public string PurchaseOrder { get; set; } = "";
+    }
+
+    [ParchmentBindable]
+    public partial class NoFieldsModel
+    {
+        public string Title { get; set; } = "";
+    }
+
+    [Test]
+    public async Task ExtractingANeverGeneratedModelSaysSo()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        var exception = await Assert.That(
+                () => ParchmentExtractor.Extract<NeverGeneratedModel>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("no pre-compiled Parchment accessors");
+        await Assert.That(exception.Message).Contains("ParchmentBindable");
+    }
+
+    [Test]
+    public async Task ExtractingAModelWithoutEditableFieldsSaysSo()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        var exception = await Assert.That(
+                () => ParchmentExtractor.Extract<NoFieldsModel>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("declares no [EditableField] members");
+    }
+
     [Test]
     public async Task NoEditRoundTrip()
     {
