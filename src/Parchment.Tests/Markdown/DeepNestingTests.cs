@@ -22,10 +22,10 @@ public class DeepNestingTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("quote-list", md, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(md, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("quote-list", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -47,10 +47,10 @@ public class DeepNestingTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("list-quote", md, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(md, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("list-quote", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -75,10 +75,10 @@ public class DeepNestingTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("headings", md, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(md, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("headings", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

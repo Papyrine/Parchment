@@ -23,6 +23,7 @@ class MarkdownValidator
 {
     readonly SourceProductionContext context;
     readonly TargetInfo target;
+    readonly string templatePath;
     readonly Location location;
 
     // Loop variables, bound to the fully qualified name of the element type being iterated.
@@ -33,20 +34,22 @@ class MarkdownValidator
     // validated, but the root is not reported as missing either.
     readonly HashSet<string> untyped = new(StringComparer.Ordinal);
 
-    MarkdownValidator(SourceProductionContext context, TargetInfo target, Location location)
+    MarkdownValidator(SourceProductionContext context, TargetInfo target, string templatePath, Location location)
     {
         this.context = context;
         this.target = target;
+        this.templatePath = templatePath;
         this.location = location;
     }
 
     public static void Validate(
         SourceProductionContext context,
         TargetInfo target,
+        string templatePath,
         Location location,
         IFluidTemplate template)
     {
-        var validator = new MarkdownValidator(context, target, location);
+        var validator = new MarkdownValidator(context, target, templatePath, location);
         validator.WalkStatements(((FluidTemplate) template).Statements);
     }
 
@@ -110,7 +113,7 @@ class MarkdownValidator
                         Diagnostic.Create(
                             Diagnostics.LoopSourceNotEnumerable,
                             location,
-                            target.TemplatePath,
+                            templatePath,
                             sourceText));
                 }
             }
@@ -222,7 +225,7 @@ class MarkdownValidator
                 Diagnostic.Create(
                     Diagnostics.MissingMember,
                     location,
-                    target.TemplatePath,
+                    templatePath,
                     sourceForDiagnostic,
                     string.Join('.', path),
                     target.ModelDisplayName));

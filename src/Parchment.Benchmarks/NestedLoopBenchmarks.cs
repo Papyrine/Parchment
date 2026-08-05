@@ -42,14 +42,14 @@ public class NestedLoopBenchmarks
 
         store = new();
         using var template = BuildTemplate();
-        store.RegisterDocxTemplate<Invoice>("nested", template);
+        store.RegisterDocxTemplate<Invoice>(template);
     }
 
     [Benchmark]
     public async Task RenderNestedLoop()
     {
         using var output = new MemoryStream();
-        await store.Render("nested", model, output);
+        await store.Render(model, output);
     }
 
     static MemoryStream BuildTemplate()

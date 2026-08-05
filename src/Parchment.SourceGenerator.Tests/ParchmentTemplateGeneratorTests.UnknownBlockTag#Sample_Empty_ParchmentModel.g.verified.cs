@@ -6,12 +6,11 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Empty
 {
-  public static string TemplatePath => "template.docx";
-  public static string TemplateName => "Empty";
-
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Empty>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Empty),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

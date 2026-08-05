@@ -77,7 +77,7 @@ public class ExcelsiorTableTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<QuoteWithFieldLines>("field-quote", template);
+        store.RegisterDocxTemplate<QuoteWithFieldLines>(template);
 
         var model = new QuoteWithFieldLines
         {
@@ -100,7 +100,7 @@ public class ExcelsiorTableTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("field-quote", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -121,7 +121,7 @@ public class ExcelsiorTableTests
         using var template = DocxTemplateBuilder.Build("{{ Lines }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<StyledQuote>("styled-quote", template);
+        store.RegisterDocxTemplate<StyledQuote>(template);
 
         var model = new StyledQuote
         {
@@ -137,7 +137,7 @@ public class ExcelsiorTableTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("styled-quote", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -180,7 +180,7 @@ public class ExcelsiorTableTests
         using var template = DocxTemplateBuilder.Build("{{ LinesTable }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<GroupedReport>("grouped-report", template);
+        store.RegisterDocxTemplate<GroupedReport>(template);
 
         var model = new GroupedReport
         {
@@ -196,7 +196,7 @@ public class ExcelsiorTableTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("grouped-report", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -224,7 +224,7 @@ public class ExcelsiorTableTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Order>("nested-order", template);
+        store.RegisterDocxTemplate<Order>(template);
 
         var model = new Order
         {
@@ -249,7 +249,7 @@ public class ExcelsiorTableTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("nested-order", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -269,7 +269,7 @@ public class ExcelsiorTableTests
             """);
 
         var store = new TemplateStore();
-        var exception = await Assert.That(() => store.RegisterDocxTemplate<Quote>("mixed-inline", template))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<Quote>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("must sit alone in its own paragraph");
     }
@@ -289,7 +289,7 @@ public class ExcelsiorTableTests
             """);
 
         var store = new TemplateStore();
-        var exception = await Assert.That(() => store.RegisterDocxTemplate<Quote>("filter-rejected", template))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<Quote>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("plain member-access");
     }
@@ -302,7 +302,7 @@ public class ExcelsiorTableTests
         var templatePath = Path.Combine(ScenarioPath("excelsior-table"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Quote>("excelsior-quote", templatePath);
+        store.RegisterDocxTemplate<Quote>(templatePath);
 
         var model = new Quote
         {
@@ -331,7 +331,7 @@ public class ExcelsiorTableTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("excelsior-quote", model, stream);
+        await store.Render(model, stream);
 
         #endregion
 

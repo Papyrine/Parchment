@@ -1,9 +1,9 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (10,1)-(10,30),
+      Location: : (10,1)-(10,15),
       Message:
-Template 'template.md' could not be read: Failed to parse markdown as a liquid template: Invalid 'for' tag at (1:7)
+Template 'Invoice.md' could not be read: Failed to parse markdown as a liquid template: Invalid 'for' tag at (1:7)
 Source:
 {% for line in Lines | reverse %},
       Severity: Error,

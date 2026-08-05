@@ -81,7 +81,7 @@ public class StringListTests
         using var template = DocxTemplateBuilder.Build("{{ Tags }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PersonWithTagsField>("person-field-tags", template);
+        store.RegisterDocxTemplate<PersonWithTagsField>(template);
 
         var model = new PersonWithTagsField
         {
@@ -90,7 +90,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-field-tags", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -125,7 +125,7 @@ public class StringListTests
         var templatePath = Path.Combine(ScenarioPath("string-list"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Person>("string-list-scenario", templatePath);
+        store.RegisterDocxTemplate<Person>(templatePath);
 
         var model = new Person
         {
@@ -134,7 +134,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("string-list-scenario", model, stream);
+        await store.Render(model, stream);
 
         #endregion
 
@@ -159,7 +159,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Person>("person-tags", template);
+        store.RegisterDocxTemplate<Person>(template);
 
         var model = new Person
         {
@@ -168,7 +168,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-tags", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -179,7 +179,7 @@ public class StringListTests
         using var template = DocxTemplateBuilder.Build("{{ Tags }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PersonWithArray>("person-array", template);
+        store.RegisterDocxTemplate<PersonWithArray>(template);
 
         var model = new PersonWithArray
         {
@@ -188,7 +188,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-array", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -199,7 +199,7 @@ public class StringListTests
         using var template = DocxTemplateBuilder.Build("{{ Tags }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PersonWithList>("person-list", template);
+        store.RegisterDocxTemplate<PersonWithList>(template);
 
         var model = new PersonWithList
         {
@@ -208,7 +208,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-list", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -219,7 +219,7 @@ public class StringListTests
         using var template = DocxTemplateBuilder.Build("{{ Tags }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PersonWithReadOnlyList>("person-rlist", template);
+        store.RegisterDocxTemplate<PersonWithReadOnlyList>(template);
 
         var model = new PersonWithReadOnlyList
         {
@@ -228,7 +228,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-rlist", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -246,7 +246,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PersonWithNullableTags>("person-null", template);
+        store.RegisterDocxTemplate<PersonWithNullableTags>(template);
 
         var model = new PersonWithNullableTags
         {
@@ -255,7 +255,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-null", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -271,7 +271,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Customer>("customer-skills", template);
+        store.RegisterDocxTemplate<Customer>(template);
 
         var model = new Customer
         {
@@ -283,7 +283,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("customer-skills", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -311,7 +311,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<CustomersDoc>("loop-bullet", template);
+        store.RegisterDocxTemplate<CustomersDoc>(template);
 
         var model = new CustomersDoc
         {
@@ -326,7 +326,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("loop-bullet", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -340,7 +340,7 @@ public class StringListTests
         using var template = DocxTemplateBuilder.Build("Prefix {{ Tags }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Person>("string-list-mixed", template);
+        store.RegisterDocxTemplate<Person>(template);
 
         var model = new Person
         {
@@ -349,7 +349,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("string-list-mixed", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -374,7 +374,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoListsDoc>("two-lists", template);
+        store.RegisterDocxTemplate<TwoListsDoc>(template);
 
         var model = new TwoListsDoc
         {
@@ -383,7 +383,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("two-lists", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -421,7 +421,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Person>("person-empty", template);
+        store.RegisterDocxTemplate<Person>(template);
 
         var model = new Person
         {
@@ -430,7 +430,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("person-empty", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -461,7 +461,7 @@ public class StringListTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Person>("string-list-numbered", template);
+        store.RegisterDocxTemplate<Person>(template);
 
         var model = new Person
         {
@@ -470,7 +470,7 @@ public class StringListTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("string-list-numbered", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

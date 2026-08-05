@@ -52,7 +52,7 @@ public class EditableCollectionTests
     [Test]
     public async Task RendersRepeatingSection()
     {
-        using var stream = await Render(template, NewPlan(), "budgets");
+        using var stream = await Render(template, NewPlan());
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var body = doc.MainDocumentPart!.Document!.Body!;
@@ -84,7 +84,7 @@ public class EditableCollectionTests
             Title = "Empty",
             Budgets = []
         };
-        using var stream = await Render(template, model, "budgets-empty");
+        using var stream = await Render(template, model);
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var body = doc.MainDocumentPart!.Document!.Body!;
@@ -102,7 +102,7 @@ public class EditableCollectionTests
     [Test]
     public async Task OutputValidates()
     {
-        using var stream = await Render(template, NewPlan(), "budgets-valid");
+        using var stream = await Render(template, NewPlan());
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
@@ -129,7 +129,7 @@ public class EditableCollectionTests
         using var docx = DocxTemplateBuilder.Build("x");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<NoEditableElementModel>("no-editable-element", docx))
+                () => store.RegisterDocxTemplate<NoEditableElementModel>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("no [EditableField] members");
     }
@@ -137,7 +137,7 @@ public class EditableCollectionTests
     [Test]
     public async Task RoundTripsCollection()
     {
-        using var stream = await Render(template, NewPlan(), "budgets-rt");
+        using var stream = await Render(template, NewPlan());
 
         var model = new BudgetPlan
         {
@@ -163,7 +163,7 @@ public class EditableCollectionTests
     [Test]
     public async Task RoundTripsAfterEditAddRemove()
     {
-        using var stream = await Render(template, NewPlan(), "budgets-edit");
+        using var stream = await Render(template, NewPlan());
 
         // Simulate Word: edit row 0, delete row 1, add a cloned row.
         using (var doc = WordprocessingDocument.Open(stream, true))
@@ -226,14 +226,14 @@ public class EditableCollectionTests
     static string? Tag(SdtElement sdt) =>
         sdt.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value;
 
-    static async Task<MemoryStream> Render<T>(string templateContent, T model, string name)
+    static async Task<MemoryStream> Render<T>(string templateContent, T model)
     {
         using var docx = DocxTemplateBuilder.Build(templateContent);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<T>(name, docx);
+        store.RegisterDocxTemplate<T>(docx);
 
         var stream = new MemoryStream();
-        await store.Render(name, model!, stream);
+        await store.Render(model!, stream);
         stream.Position = 0;
         return stream;
     }

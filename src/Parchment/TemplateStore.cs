@@ -2,8 +2,9 @@ namespace Parchment;
 
 public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 {
-    ConcurrentDictionary<string, RegisteredTemplate> templates = new(StringComparer.Ordinal);
+    ConcurrentDictionary<Type, RegisteredTemplate> templates = new();
     ILogger logger = (ILogger?)logger ?? NullLogger.Instance;
+    System.Threading.Lock materializeLock = new();
 
     /// <summary>
     /// Policy for local-file image sources (<c>file://</c> URIs and filesystem paths) referenced
@@ -27,100 +28,27 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     ImagePolicies Policies => new(LocalImages, WebImages);
 
-    /// <summary>
-    /// The name a template is registered under when none is given: the model type's namespaced
-    /// name.
-    /// </summary>
-    /// <remarks>
-    /// Namespaced rather than the simple name, so two models called the same thing in different
-    /// namespaces do not both want one name. Nothing reads this back — <see cref="NameFor{TModel}"/>
-    /// finds a template by its model type, not by reproducing the default — so the default only has
-    /// to be unique, not memorable.
-    /// </remarks>
-    static string DefaultName<TModel>() => typeof(TModel).FullName ?? typeof(TModel).Name;
-
-    /// <summary>
-    /// Refuses a name already registered for a different model.
-    /// </summary>
-    /// <remarks>
-    /// Registering over an existing name replaces it, which is what re-registering the same model
-    /// means. For a different model it means two templates wanted one name. Left alone, the first
-    /// template is discarded and the loss surfaces later as "no template is registered" for a model
-    /// that plainly was.
-    /// </remarks>
-    void GuardNameClash<TModel>(string name)
-    {
-        if (templates.TryGetValue(name, out var existing) &&
-            existing.ModelType != typeof(TModel))
-        {
-            throw new ParchmentRegistrationException(
-                name,
-                $"already registered for {existing.ModelType.FullName}. {typeof(TModel).FullName} cannot share it — pass an explicit name for one of them.");
-        }
-    }
-
-    /// <summary>
-    /// The name the template for <typeparamref name="TModel"/> is registered under.
-    /// </summary>
-    /// <remarks>
-    /// A model with several templates has no single answer, so the name has to be given rather than
-    /// inferred — the alternative is rendering through whichever registration happened to be found
-    /// first, which would depend on registration order.
-    /// </remarks>
-    string NameFor<TModel>()
-    {
-        var found = new List<string>();
-        foreach (var pair in templates)
-        {
-            if (pair.Value.ModelType == typeof(TModel))
-            {
-                found.Add(pair.Key);
-            }
-        }
-
-        if (found.Count == 1)
-        {
-            return found[0];
-        }
-
-        var name = typeof(TModel).Name;
-        if (found.Count == 0)
-        {
-            throw new ParchmentRenderException(name, $"No template is registered for {name}");
-        }
-
-        found.Sort(StringComparer.Ordinal);
-        throw new ParchmentRenderException(
-            name,
-            $"{found.Count} templates are registered for {name} ({string.Join(", ", found)}); pass the name of the one to use.");
-    }
-
-    public void RegisterDocxTemplate<TModel>(string path, ProtectionMode protection = ProtectionMode.WhenEditable) =>
-        RegisterDocxTemplate<TModel>(DefaultName<TModel>(), path, protection);
-
-    public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
-        RegisterDocxTemplate<TModel>(DefaultName<TModel>(), template, protection);
-
-    public void RegisterDocxTemplate<TModel>(string name, string path, ProtectionMode protection = ProtectionMode.WhenEditable)
+    public void RegisterDocxTemplate<TModel>(string path, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         using var file = File.OpenRead(path);
-        RegisterDocxTemplate<TModel>(name, file, protection);
+        RegisterDocxTemplate(typeof(TModel), file, protection);
     }
 
-    public void RegisterDocxTemplate<TModel>(string name, Stream template, ProtectionMode protection = ProtectionMode.WhenEditable)
+    public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
+        RegisterDocxTemplate(typeof(TModel), template, protection);
+
+    void RegisterDocxTemplate(Type modelType, Stream template, ProtectionMode protection)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var name = modelType.Name;
+        GuardBindingModel(modelType, name);
+        SharedFluid.RegisterModel(modelType);
+        StaticRenderAttributes.Warn(modelType, name, logger);
 
-        GuardNameClash<TModel>(name);
-        GuardBindingModel<TModel>(name);
-        SharedFluid.RegisterModel(typeof(TModel));
-        StaticRenderAttributes.Warn(typeof(TModel), name, logger);
-
-        var excelsiorMap = ExcelsiorTableMap.Build(typeof(TModel), name);
-        var formatMap = FormatMap.Build(typeof(TModel), name);
-        var stringListMap = StringListMap.Build(typeof(TModel));
-        var editableMap = EditableMap.Build(typeof(TModel), name);
+        var excelsiorMap = ExcelsiorTableMap.Build(modelType, name);
+        var formatMap = FormatMap.Build(modelType, name);
+        var stringListMap = StringListMap.Build(modelType);
+        var editableMap = EditableMap.Build(modelType, name);
 
         using var stream = DocxCloner.ToWritableStream(template);
         IReadOnlyList<PartScopeTree> parts;
@@ -146,7 +74,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
 
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
-                var validator = new ReferenceValidator(typeof(TModel), name, uri);
+                var validator = new ReferenceValidator(modelType, name, uri);
                 validator.ValidateTree(tree);
                 ExcelsiorTokenValidator.Validate(classifications, excelsiorMap, name, uri);
                 FormatTokenValidator.Validate(classifications, formatMap, name, uri);
@@ -180,22 +108,37 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, typeof(TModel), canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies);
-        templates[name] = registered;
-        logger.LogInformation("Registered docx template {Name} for {ModelType}", name, typeof(TModel).Name);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies);
+        templates[modelType] = registered;
+        logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
 
     public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
-        RegisterMarkdownTemplate<TModel>(DefaultName<TModel>(), markdown, styleSource);
+        RegisterMarkdownTemplate(typeof(TModel), markdown, ToBytes(styleSource));
 
-    public void RegisterMarkdownTemplate<TModel>(string name, string markdown, Stream? styleSource = null)
+    static byte[]? ToBytes(Stream? styleSource)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (styleSource == null)
+        {
+            return null;
+        }
 
-        GuardNameClash<TModel>(name);
-        GuardBindingModel<TModel>(name);
-        SharedFluid.RegisterModel(typeof(TModel));
-        StaticRenderAttributes.Warn(typeof(TModel), name, logger);
+        if (styleSource is MemoryStream existing)
+        {
+            return existing.ToArray();
+        }
+
+        using var stream = new MemoryStream();
+        styleSource.CopyTo(stream);
+        return stream.ToArray();
+    }
+
+    void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource)
+    {
+        var name = modelType.Name;
+        GuardBindingModel(modelType, name);
+        SharedFluid.RegisterModel(modelType);
+        StaticRenderAttributes.Warn(modelType, name, logger);
 
         if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
         {
@@ -204,30 +147,16 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 $"Failed to parse markdown as a liquid template: {error}");
         }
 
-        MarkdownReferenceValidator.Validate(template, typeof(TModel), name);
+        MarkdownReferenceValidator.Validate(template, modelType, name);
 
-        byte[] bytes;
-        if (styleSource is MemoryStream existingMs)
-        {
-            bytes = existingMs.ToArray();
-        }
-        else if (styleSource != null)
-        {
-            using var stream = new MemoryStream();
-            styleSource.CopyTo(stream);
-            bytes = stream.ToArray();
-        }
-        else
-        {
-            bytes = BlankDocxTemplate;
-        }
+        var bytes = styleSource ?? BlankDocxTemplate;
 
         bytes = NormalizeStyleSource(bytes);
-        var (styleSourceBytes, parts) = ScanNonBodyParts<TModel>(bytes, name);
+        var (styleSourceBytes, parts) = ScanNonBodyParts(modelType, bytes, name);
 
-        var registered = new RegisteredMarkdownTemplate(name, typeof(TModel), styleSourceBytes, parts, template, Policies, PageNumbers);
-        templates[name] = registered;
-        logger.LogInformation("Registered markdown template {Name} for {ModelType}", name, typeof(TModel).Name);
+        var registered = new RegisteredMarkdownTemplate(name, modelType, styleSourceBytes, parts, template, Policies, PageNumbers);
+        templates[modelType] = registered;
+        logger.LogInformation("Registered markdown template for {ModelType}", modelType.Name);
     }
 
     /// <summary>
@@ -243,7 +172,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
     /// again, which is why the rewritten bytes are returned rather than the ones passed in.
     /// </remarks>
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts<TModel>(byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts(Type modelType, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         List<PartScopeTree> parts;
@@ -265,7 +194,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
 
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
-                new ReferenceValidator(typeof(TModel), name, uri).ValidateTree(tree);
+                new ReferenceValidator(modelType, name, uri).ValidateTree(tree);
                 found = true;
             }
 
@@ -318,9 +247,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         return stream.ToArray();
     }
 
-    static void GuardBindingModel<TModel>(string name)
+    static void GuardBindingModel(Type type, string name)
     {
-        var type = typeof(TModel);
         if (type.IsInterface)
         {
             throw new ParchmentRegistrationException(
@@ -393,70 +321,98 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         return stream.ToArray();
     }
 
-    public Task Render(string name, object model, Stream output, Cancel cancel = default) =>
-        Render(name, model, output, null, cancel);
+    public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
+        Render(model, output, null, cancel);
 
     /// <summary>
-    /// Renders the template registered for <typeparamref name="TModel"/>, without naming it.
+    /// Renders the template registered for <typeparamref name="TModel"/> and stamps the document's
+    /// properties. Only the values set on <paramref name="properties"/> are written; each part is
+    /// merged, so properties the template carries of its own survive.
     /// </summary>
     /// <remarks>
-    /// The name is what a caller most easily gets wrong — a string repeated at registration and at
-    /// every render, which the compiler cannot check. Where a model has exactly one template the
-    /// type already identifies it; where it has several, <see cref="Render(string, object, Stream, Cancel)"/>
-    /// is the way to say which.
+    /// The model type is the whole address: a template is registered by its model type, or found
+    /// through the definition the source generator's module initializer stored for it, so there is
+    /// nothing further for the caller to name.
     /// </remarks>
-    public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
-        Render(NameFor<TModel>(), model!, output, null, cancel);
-
-    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
-    public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default) =>
-        Render(NameFor<TModel>(), model!, output, properties, cancel);
-
-    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
-    public Task RenderToFile<TModel>(TModel model, string path, Cancel cancel = default) =>
-        RenderToFile(NameFor<TModel>(), model!, path, null, cancel);
-
-    /// <inheritdoc cref="Render{TModel}(TModel, Stream, Cancel)"/>
-    public Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default) =>
-        RenderToFile(NameFor<TModel>(), model!, path, properties, cancel);
-
-    /// <summary>
-    /// Renders and stamps the document's properties. Only the values set on
-    /// <paramref name="properties"/> are written; each part is merged, so properties the template
-    /// carries of its own survive.
-    /// </summary>
-    public Task Render(string name, object model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
+    public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
     {
-        if (!templates.TryGetValue(name, out var template))
-        {
-            throw new ParchmentRenderException(name, "Template is not registered");
-        }
+        var template = Resolve(typeof(TModel));
 
         if (model == null)
         {
             throw new ParchmentRenderException(
-                name,
+                typeof(TModel).Name,
                 $"Model is null. Template is registered for {template.ModelType.Name}; pass a non-null instance.");
-        }
-
-        if (!template.ModelType.IsInstanceOfType(model))
-        {
-            throw new ParchmentRenderException(
-                name,
-                $"Model type mismatch: registered as {template.ModelType.Name} but received {model.GetType().Name}");
         }
 
         return template.Render(model, output, properties, cancel);
     }
 
-    public Task RenderToFile(string name, object model, string path, Cancel cancel = default) =>
-        RenderToFile(name, model, path, null, cancel);
+    /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    public Task RenderToFile<TModel>(TModel model, string path, Cancel cancel = default) =>
+        RenderToFile(model, path, null, cancel);
 
-    /// <inheritdoc cref="Render(string, object, Stream, WordDocumentProperties, Cancel)"/>
-    public async Task RenderToFile(string name, object model, string path, WordDocumentProperties? properties, Cancel cancel = default)
+    /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
         await using var file = File.Create(path);
-        await Render(name, model, file, properties, cancel).ConfigureAwait(false);
+        await Render(model, file, properties, cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The registered template for <paramref name="modelType"/>, materializing the source
+    /// generator's definition on first use.
+    /// </summary>
+    /// <remarks>
+    /// A definition holds raw content only — the generator's module initializer stores bytes and
+    /// text, and the scan/validate work runs here, once per store, under this store's policies.
+    /// </remarks>
+    RegisteredTemplate Resolve(Type modelType)
+    {
+        // Walk the inheritance chain so a template registered against an abstract base renders a
+        // concrete subclass instance — the documented polymorphic binding surface. Nearest type
+        // wins.
+        for (var type = modelType; type != null && type != typeof(object); type = type.BaseType)
+        {
+            if (templates.TryGetValue(type, out var existing))
+            {
+                return existing;
+            }
+
+            if (GeneratedTemplateDefinitions.TryGet(type, out var definition))
+            {
+                lock (materializeLock)
+                {
+                    if (!templates.TryGetValue(type, out existing))
+                    {
+                        Materialize(type, definition);
+                        existing = templates[type];
+                    }
+                }
+
+                return existing;
+            }
+        }
+
+        throw new ParchmentRenderException(modelType.Name, $"No template is registered for {modelType.Name}");
+    }
+
+    void Materialize(Type modelType, TemplateDefinition definition)
+    {
+        switch (definition)
+        {
+            case DocxTemplateDefinition docx:
+            {
+                using var stream = new MemoryStream(docx.Template, writable: false);
+                RegisterDocxTemplate(modelType, stream, docx.Protection);
+                break;
+            }
+            case MarkdownTemplateDefinition markdown:
+                RegisterMarkdownTemplate(modelType, markdown.Markdown, markdown.StyleSource);
+                break;
+            default:
+                throw new InvalidOperationException($"Unknown template definition: {definition.GetType().Name}");
+        }
     }
 
     public static void AddFilter(string name, FilterDelegate filter) =>

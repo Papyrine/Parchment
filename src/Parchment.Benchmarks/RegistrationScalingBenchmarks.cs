@@ -20,7 +20,7 @@ public class RegistrationScalingBenchmarks
     {
         using var stream = new MemoryStream(templateBytes);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bench", stream);
+        store.RegisterDocxTemplate<Invoice>(stream);
     }
 
     static byte[] BuildTemplate(int tokenParagraphs)

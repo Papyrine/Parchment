@@ -21,14 +21,14 @@ public class MultiPartRenderBenchmarks
 
         store = new();
         using var template = BuildTemplate();
-        store.RegisterDocxTemplate<HeaderFooterModel>("multipart", template);
+        store.RegisterDocxTemplate<HeaderFooterModel>(template);
     }
 
     [Benchmark]
     public async Task RenderMultiPart()
     {
         using var output = new MemoryStream();
-        await store.Render("multipart", model, output);
+        await store.Render(model, output);
     }
 
     static MemoryStream BuildTemplate()

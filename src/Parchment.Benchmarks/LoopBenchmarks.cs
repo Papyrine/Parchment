@@ -35,14 +35,14 @@ public class LoopBenchmarks
 
         store = new();
         using var template = BuildTemplate();
-        store.RegisterDocxTemplate<Invoice>("loop", template);
+        store.RegisterDocxTemplate<Invoice>(template);
     }
 
     [Benchmark]
     public async Task RenderLoop()
     {
         using var output = new MemoryStream();
-        await store.Render("loop", model, output);
+        await store.Render(model, output);
     }
 
     static MemoryStream BuildTemplate()

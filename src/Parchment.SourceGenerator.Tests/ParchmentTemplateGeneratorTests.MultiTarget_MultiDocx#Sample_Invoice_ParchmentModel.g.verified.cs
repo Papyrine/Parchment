@@ -6,18 +6,17 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Invoice
 {
-  public static string TemplatePath => "invoice.docx";
-  public static string TemplateName => "Invoice";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
   {
     new("Total", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Total)),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Invoice>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Invoice),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

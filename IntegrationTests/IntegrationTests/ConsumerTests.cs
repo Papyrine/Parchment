@@ -16,10 +16,10 @@ public class ConsumerTests
     {
         using var template = BuildTemplate();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<InvoiceModel>("invoice", template);
+        store.RegisterDocxTemplate<InvoiceModel>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("invoice", new InvoiceModel
+        await store.Render(new InvoiceModel
         {
             Number = "INT-001",
             Customer = new() { Name = "Acme" }
@@ -33,10 +33,10 @@ public class ConsumerTests
     {
         using var template = BuildLoopTemplate();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<LoopModel>("loop", template);
+        store.RegisterDocxTemplate<LoopModel>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("loop", new LoopModel
+        await store.Render(new LoopModel
         {
             Items = ["alpha", "beta", "gamma"]
         }, stream);

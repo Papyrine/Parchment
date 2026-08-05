@@ -11,13 +11,13 @@ public class ThreadSafetyTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("threading", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         var tasks = Enumerable.Range(0, 20)
             .Select(async _ =>
             {
                 using var stream = new MemoryStream();
-                await store.Render("threading", SampleData.Invoice(), stream);
+                await store.Render(SampleData.Invoice(), stream);
                 return stream.ToArray();
             })
             .ToArray();

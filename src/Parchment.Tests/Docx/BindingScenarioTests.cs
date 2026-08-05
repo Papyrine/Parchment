@@ -20,11 +20,10 @@ public class BindingScenarioTests
         dotx.Position = 0;
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<DotxModel>("dotx", dotx);
+        store.RegisterDocxTemplate<DotxModel>(dotx);
 
         using var output = new MemoryStream();
         await store.Render(
-            "dotx",
             new DotxModel
             {
                 Title = "x"
@@ -54,11 +53,10 @@ public class BindingScenarioTests
     {
         using var template = DocxTemplateBuilder.Build("Title: {{ Title }} — Nested: {{ Nested.Value }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<FieldModel>("field", template);
+        store.RegisterDocxTemplate<FieldModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "field",
             new FieldModel { Title = "T", Nested = new() { Value = "N" } },
             output);
         await Verify(output, "docx");
@@ -85,11 +83,10 @@ public class BindingScenarioTests
         // case is covered by the negative test below.
         using var template = DocxTemplateBuilder.Build("Doc: {{ Title }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<DocumentBase>("polymorphic", template);
+        store.RegisterDocxTemplate<DocumentBase>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "polymorphic",
             new ConcreteReport { Title = "Q1", Body = "ignored" },
             output);
         await Verify(output, "docx");
@@ -104,7 +101,7 @@ public class BindingScenarioTests
         using var template = DocxTemplateBuilder.Build("Doc: {{ Title }} — {{ Body }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<DocumentBase>("polymorphic-bad", template))
+                () => store.RegisterDocxTemplate<DocumentBase>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("Body");
     }
@@ -124,11 +121,10 @@ public class BindingScenarioTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Logo }} — {{ Name }} — {{ Footer }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<StaticHostModel>("statics", template);
+        store.RegisterDocxTemplate<StaticHostModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "statics",
             new StaticHostModel
             {
                 Name = "Q1"
@@ -152,11 +148,10 @@ public class BindingScenarioTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Name }} @ ({{ Origin.X }}, {{ Origin.Y }})");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<ShapeModel>("record-struct", template);
+        store.RegisterDocxTemplate<ShapeModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "record-struct",
             new ShapeModel { Name = "origin", Origin = new(3, 7) },
             output);
         await Verify(output, "docx");
@@ -177,11 +172,11 @@ public class BindingScenarioTests
         // type-mismatch message.
         using var template = DocxTemplateBuilder.Build("{{ Title }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TitledModel>("null-model", template);
+        store.RegisterDocxTemplate<TitledModel>(template);
 
         using var output = new MemoryStream();
         var exception = await Assert.That(
-                () => store.Render("null-model", null!, output))
+                () => store.Render<TitledModel>(null!, output))
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("null");
     }
@@ -217,11 +212,10 @@ public class BindingScenarioTests
             {% endfor %}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<DictionaryHost>("dict-host", template);
+        store.RegisterDocxTemplate<DictionaryHost>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "dict-host",
             new DictionaryHost
             {
                 Products = new Dictionary<string, ProductInfo>

@@ -130,9 +130,9 @@ public class ListBlockRendererTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("list", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
         using var stream = new MemoryStream();
-        await store.Render("list", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

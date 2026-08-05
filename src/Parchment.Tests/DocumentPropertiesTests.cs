@@ -56,11 +56,10 @@ public class DocumentPropertiesTests
     {
         using var template = BuildTemplateWithOwnProperties();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("t", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         var output = new MemoryStream();
         await store.Render(
-            "t",
             new Model
             {
                 Title = "x"
@@ -249,11 +248,10 @@ public class DocumentPropertiesTests
     {
         using var styleSource = BuildTemplateWithOwnProperties();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Model>("md", "# {{ Title }}", styleSource);
+        store.RegisterMarkdownTemplate<Model>("# {{ Title }}", styleSource);
 
         using var output = new MemoryStream();
         await store.Render(
-            "md",
             new Model
             {
                 Title = "x"
@@ -281,7 +279,7 @@ public class DocumentPropertiesTests
     {
         using var template = BuildTemplateWithOwnProperties();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("bill", template);
+        store.RegisterDocxTemplate<Model>(template);
         var model = new Model
         {
             Title = "x"
@@ -291,7 +289,6 @@ public class DocumentPropertiesTests
         #region WordDocumentProperties
 
         await store.Render(
-            "bill",
             model,
             stream,
             new WordDocumentProperties

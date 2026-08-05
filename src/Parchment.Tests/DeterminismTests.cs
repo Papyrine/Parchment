@@ -13,10 +13,10 @@ public class DeterminismTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Number }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("docx-timestamps", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("docx-timestamps", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
 
         await AssertPinnedTimestamps(stream);
@@ -27,10 +27,10 @@ public class DeterminismTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Invoice>("markdown-timestamps", "# {{ Number }}", styleSource);
+        store.RegisterMarkdownTemplate<Invoice>("# {{ Number }}", styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("markdown-timestamps", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
 
         await AssertPinnedTimestamps(stream);
@@ -59,7 +59,7 @@ public class DeterminismTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("determinism", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         var first = await Render(store, SampleData.Invoice());
         var second = await Render(store, SampleData.Invoice());
@@ -70,7 +70,7 @@ public class DeterminismTests
     static async Task<byte[]> Render(TemplateStore store, Invoice model)
     {
         using var stream = new MemoryStream();
-        await store.Render("determinism", model, stream);
+        await store.Render(model, stream);
         return stream.ToArray();
     }
 
@@ -89,7 +89,7 @@ public class DeterminismTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>("editable-determinism", template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>(template);
 
         var first = await RenderEditable(store);
         var second = await RenderEditable(store);
@@ -100,7 +100,7 @@ public class DeterminismTests
     static async Task<byte[]> RenderEditable(TemplateStore store)
     {
         using var stream = new MemoryStream();
-        await store.Render("editable-determinism", EditableFieldTests.NewOrder(), stream);
+        await store.Render(EditableFieldTests.NewOrder(), stream);
         return stream.ToArray();
     }
 
@@ -113,7 +113,7 @@ public class DeterminismTests
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableArticle>("html-editable-determinism", template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableArticle>(template);
 
         var first = await RenderHtmlEditable(store);
         var second = await RenderHtmlEditable(store);
@@ -125,7 +125,6 @@ public class DeterminismTests
     {
         using var stream = new MemoryStream();
         await store.Render(
-            "html-editable-determinism",
             new EditableFieldTests.EditableArticle
             {
                 Title = "T",
@@ -150,7 +149,7 @@ public class DeterminismTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableCollectionTests.BudgetPlan>("collection-determinism", template);
+        store.RegisterDocxTemplate<EditableCollectionTests.BudgetPlan>(template);
 
         var first = await RenderCollection(store);
         var second = await RenderCollection(store);
@@ -162,7 +161,6 @@ public class DeterminismTests
     {
         using var stream = new MemoryStream();
         await store.Render(
-            "collection-determinism",
             new EditableCollectionTests.BudgetPlan
             {
                 Title = "T",

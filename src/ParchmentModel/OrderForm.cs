@@ -1,7 +1,7 @@
 namespace ParchmentSample;
 
 #region GeneratorProtectionMode
-[ParchmentModel("Templates/order-form.docx", Protection = ProtectionMode.None)]
+[ParchmentModel(Protection = ProtectionMode.None)]
 public partial class OrderForm
 {
     public required string Number { get; init; }

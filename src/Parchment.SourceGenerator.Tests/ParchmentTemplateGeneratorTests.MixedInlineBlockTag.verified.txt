@@ -1,8 +1,8 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (10,1)-(10,32),
-      Message: Template 'template.docx' block tag '{% for line in Lines %}' shares a paragraph with other content; block tags must be on their own lines,
+      Location: : (10,1)-(10,15),
+      Message: Template 'Invoice.docx' block tag '{% for line in Lines %}' shares a paragraph with other content; block tags must be on their own lines,
       Severity: Error,
       Descriptor: {
         Id: PARCH005,

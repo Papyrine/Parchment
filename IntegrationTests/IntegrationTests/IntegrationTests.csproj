@@ -12,16 +12,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
-  <!-- SG fixtures: AdditionalFiles makes them visible to the analyzer for compile-time
-       validation; CopyToOutputDirectory makes them available to the generated
-       RegisterWith helper at test time (which reads them from disk). -->
+  <!-- SG fixtures: AdditionalFiles makes them visible to the analyzer, which validates them at
+       compile time and embeds them into the generated source — nothing is copied to the output
+       directory. Each file is named after its model type. -->
   <ItemGroup>
-    <AdditionalFiles Include="sg-template.docx" CopyToOutputDirectory="PreserveNewest" />
-    <AdditionalFiles Include="sg-template.md" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-  <!-- Declared the embedded way, so the consumption path for a template that never reaches the
-       output directory is exercised rather than only described. -->
-  <ItemGroup>
-    <ParchmentEmbeddedTemplate Include="sg-embedded.md" />
+    <AdditionalFiles Include="SgInvoiceModel.docx" />
+    <AdditionalFiles Include="SgReportModel.md" />
+    <AdditionalFiles Include="EmbeddedReportModel.md" />
   </ItemGroup>
 </Project>

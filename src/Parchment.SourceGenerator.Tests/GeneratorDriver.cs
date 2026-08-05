@@ -7,13 +7,6 @@ static class GeneratorDriver
             [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
             public sealed class ParchmentModelAttribute : System.Attribute
             {
-                public ParchmentModelAttribute(string templatePath)
-                {
-                    TemplatePath = templatePath;
-                }
-
-                public string TemplatePath { get; }
-
                 public ProtectionMode Protection { get; set; }
             }
 
@@ -44,59 +37,45 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
+    // The convention names the template after the model type, so the default file name is read
+    // off the [ParchmentModel] target in the source under test.
     public static DriverSetup CreateDriver(string userSource, params string[] templateParagraphs) =>
-        CreateDriverWithDocxes(userSource, new TemplateFile("template.docx", BuildDocx(templateParagraphs)));
+        CreateDriverWithDocxes(userSource, new TemplateFile($"{ModelTypeName(userSource)}.docx", BuildDocx(templateParagraphs)));
 
     /// <summary>
-    /// Runs the generator with a template declared the embedded way — Parchment.targets marks such
-    /// an AdditionalFile with the manifest name its staged copy is embedded under, and the
-    /// generator emits a registration that reads the manifest instead of the disk.
+    /// The name of the first <c>[ParchmentModel]</c>-decorated type in the source under test —
+    /// what the convention will look for a template file to match.
     /// </summary>
-    public static GeneratorDriverRunResult RunEmbedded(
-        string userSource,
-        string fileName,
-        byte[] bytes,
-        string resourceName)
+    public static string ModelTypeName(string userSource)
     {
-        var setup = CreateDriverWithDocxes(userSource, [new TemplateFile(fileName, bytes)], resourceName);
-        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var match = System.Text.RegularExpressions.Regex.Match(
+            userSource,
+            @"\[ParchmentModel[^\]]*\]\s*(?:public\s+|internal\s+)*partial\s+(?:record\s+struct|class|record|struct)\s+(\w+)");
+        if (!match.Success)
+        {
+            throw new InvalidOperationException("No [ParchmentModel] partial type found in the source under test.");
+        }
+
+        return match.Groups[1].Value;
     }
 
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         params TemplateFile[] docxes) =>
-        CreateDriverWithDocxes(userSource, docxes, resourceName: null);
+        CreateDriverWithDocxes(userSource, docxes, modelFileName: null);
 
     /// <summary>
-    /// Runs the generator with the model source written to a real path, so a template path relative
-    /// to the file the attribute sits in has a directory to resolve against.
-    /// </summary>
-    /// <remarks>
-    /// Opt-in rather than the default, because giving every compilation a file path would put the
-    /// per-run temp directory into the diagnostic locations that other tests snapshot.
-    /// </remarks>
-    public static GeneratorDriverRunResult RunWithModelFile(
-        string userSource,
-        params TemplateFile[] files)
-    {
-        var setup = CreateDriverWithDocxes(userSource, files, resourceName: null, modelFileName: "Model.cs");
-        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
-    }
-
-    /// <summary>
-    /// Runs the generator as a real build does — the model on disk under a project directory the
-    /// compiler can see — so the emitted TemplatePath is the one a consumer would get.
+    /// Runs the generator as a real build does — the files under a project directory the compiler
+    /// can see — so diagnostic messages carry project-relative paths.
     /// </summary>
     public static GeneratorDriverRunResult RunInProject(
         string userSource,
-        string modelFileName,
         params TemplateFile[] files)
     {
         var setup = CreateDriverWithDocxes(
             userSource,
             files,
-            resourceName: null,
-            modelFileName: modelFileName,
+            modelFileName: "Model.cs",
             withProjectDir: true);
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
@@ -104,8 +83,7 @@ static class GeneratorDriver
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         TemplateFile[] docxes,
-        string? resourceName,
-        string? modelFileName = null,
+        string? modelFileName,
         bool withProjectDir = false)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
@@ -144,7 +122,7 @@ static class GeneratorDriver
             generators: [new ParchmentTemplateGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
             parseOptions: (CSharpParseOptions) syntaxTrees[0].Options,
-            optionsProvider: resourceName is null && !withProjectDir ? null : new TestOptionsProvider(resourceName, withProjectDir ? directory + Path.DirectorySeparatorChar : null),
+            optionsProvider: withProjectDir ? new TestOptionsProvider(directory + Path.DirectorySeparatorChar) : null,
             driverOptions: new(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 
         return new(driver, compilation, additionalTexts, paths.ToImmutable());
@@ -220,11 +198,11 @@ static class GeneratorDriver
         return new PathAdditionalText(path);
     }
 
-    public static GeneratorDriverRunResult RunMarkdown(string userSource, string markdown, string fileName = "template.md")
+    public static GeneratorDriverRunResult RunMarkdown(string userSource, string markdown, string? fileName = null)
     {
         var setup = CreateDriverWithFiles(
             userSource,
-            new TemplateFile(fileName, Encoding.UTF8.GetBytes(markdown)));
+            new TemplateFile(fileName ?? $"{ModelTypeName(userSource)}.md", Encoding.UTF8.GetBytes(markdown)));
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
@@ -292,32 +270,22 @@ static class GeneratorDriver
             .ToArray();
     }
 
-    // Stands in for what the SDK writes into the generated editorconfig from
-    // CompilerVisibleItemMetadata: every additional file reports the same resource name, which is
-    // all a single-template test needs.
-    // Stands in for what the SDK writes into the generated editorconfig: per-file metadata from
-    // CompilerVisibleItemMetadata, and the project directory as a compiler-visible property.
-    sealed class TestOptionsProvider(string? resourceName, string? projectDir) :
+    // Stands in for what the SDK writes into the generated editorconfig: the project directory as
+    // a compiler-visible property.
+    sealed class TestOptionsProvider(string? projectDir) :
         AnalyzerConfigOptionsProvider
     {
-        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(null, projectDir);
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(projectDir);
 
-        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null, null);
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null);
 
-        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(resourceName, null);
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(null);
 
-        sealed class Options(string? resourceName, string? projectDir) :
+        sealed class Options(string? projectDir) :
             AnalyzerConfigOptions
         {
             public override bool TryGetValue(string key, [NotNullWhen(true)] out string? value)
             {
-                if (resourceName != null &&
-                    key == "build_metadata.AdditionalFiles.ParchmentResourceName")
-                {
-                    value = resourceName;
-                    return true;
-                }
-
                 if (projectDir != null &&
                     key == "build_property.ProjectDir")
                 {
@@ -339,8 +307,8 @@ static class GeneratorDriver
         public override SourceText? GetText(Cancel cancel = default)
         {
             // Mirror Roslyn: text-based AdditionalFiles (.md) are exposed as SourceText so the
-            // SG can use the canonical GetText path. Binary files (.docx) return null and the
-            // SG must read them via Path with stream-based APIs (ZipFile.OpenRead).
+            // SG can use the canonical GetText path. Binary files (.docx / .dotx) return null and
+            // the SG must read them via Path with stream-based APIs.
             if (Path.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
             {
                 return SourceText.From(File.ReadAllText(Path));

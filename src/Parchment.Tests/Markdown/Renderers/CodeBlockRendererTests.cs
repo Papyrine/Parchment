@@ -136,9 +136,9 @@ public class CodeBlockRendererTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("code", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
         using var stream = new MemoryStream();
-        await store.Render("code", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

@@ -6,9 +6,6 @@ using System.Collections.Generic;
 namespace Sample;
 partial record Letter
 {
-  public static string TemplatePath => "template.docx";
-  public static string TemplateName => "Letter";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Letter =
   {
     new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Letter)o).Customer)),
@@ -18,11 +15,13 @@ partial record Letter
     new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Letter), _Accessors_global__Sample_Letter);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Letter>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Letter),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

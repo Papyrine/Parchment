@@ -21,9 +21,9 @@ public class ConditionalTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("conditional", template);
+        store.RegisterDocxTemplate<Invoice>(template);
         using var stream = new MemoryStream();
-        await store.Render("conditional", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -55,10 +55,9 @@ public class ConditionalTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<FlagModel>("else-branch", template);
+        store.RegisterDocxTemplate<FlagModel>(template);
         using var stream = new MemoryStream();
         await store.Render(
-            "else-branch",
             new FlagModel
             {
                 Flag = false,
@@ -290,11 +289,10 @@ public class ConditionalTests
         // own), and tokens inside table cells must still substitute.
         using var template = BuildTemplateWithTableInIf();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<FlagModel>("if-table-kept", template);
+        store.RegisterDocxTemplate<FlagModel>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "if-table-kept",
             new FlagModel
             {
                 Flag = true,
@@ -315,11 +313,10 @@ public class ConditionalTests
     {
         using var template = BuildTemplateWithTableInIf();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<FlagModel>("if-table-removed", template);
+        store.RegisterDocxTemplate<FlagModel>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "if-table-removed",
             new FlagModel
             {
                 Flag = false,
@@ -355,7 +352,7 @@ public class ConditionalTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<FlagModel>("double-else", template))
+                () => store.RegisterDocxTemplate<FlagModel>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("after '{% else %}'");
     }
@@ -382,20 +379,19 @@ public class ConditionalTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<TwoFlagModel>("elsif-after-else", template))
+                () => store.RegisterDocxTemplate<TwoFlagModel>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("after '{% else %}'");
     }
 
     static async Task<List<string>> RenderToTexts<TModel>(
         Stream template,
-        TModel model,
-        [CallerMemberName] string name = "")
+        TModel model)
     {
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TModel>(name, template);
+        store.RegisterDocxTemplate<TModel>(template);
         using var stream = new MemoryStream();
-        await store.Render(name, model!, stream);
+        await store.Render(model!, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -460,10 +456,9 @@ public class ConditionalTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<FlagModel>("no-match-no-else", template);
+        store.RegisterDocxTemplate<FlagModel>(template);
         using var stream = new MemoryStream();
         await store.Render(
-            "no-match-no-else",
             new FlagModel
             {
                 Flag = false,

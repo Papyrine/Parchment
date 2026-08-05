@@ -34,7 +34,7 @@ public class ListHostStyleTests
         var templatePath = Path.Combine(ScenarioPath("list-host-style"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("list-host-style-scenario", templatePath);
+        store.RegisterDocxTemplate<Doc>(templatePath);
 
         var model = new Doc
         {
@@ -43,7 +43,7 @@ public class ListHostStyleTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("list-host-style-scenario", model, stream);
+        await store.Render(model, stream);
 
         var settings = new VerifySettings();
         settings.UseDirectory(ScenarioPath("list-host-style"));

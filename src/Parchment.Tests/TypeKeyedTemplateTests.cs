@@ -1,6 +1,6 @@
-// Registering and rendering without naming the template. The name is the part a caller most easily
-// gets wrong — a string repeated at registration and at every render that the compiler cannot check
-// — and where a model has one template the type already says which it is.
+// Registering and rendering is keyed by the model type. There is no name to repeat at
+// registration and at every render, so there is no string for a caller to get wrong — the type
+// says which template to use.
 public class TypeKeyedTemplateTests
 {
     public class Invoice
@@ -29,20 +29,8 @@ public class TypeKeyedTemplateTests
         return store;
     }
 
-    // Namespaced, so two models sharing a simple name do not both want one default.
-    [Test]
-    public async Task RegistersUnderTheModelsNamespacedName()
-    {
-        var store = Store();
-
-        using var stream = new MemoryStream();
-        await store.Render(typeof(Invoice).FullName!, new Invoice { Number = "A-1" }, stream);
-
-        await Assert.That(stream.Length).IsGreaterThan(0);
-    }
-
-    // The case the namespaced default exists to prevent: without it both take the name "Invoice"
-    // and the second quietly discards the first.
+    // The dictionary is keyed on the Type itself, so two models sharing a simple name cannot
+    // collide.
     [Test]
     public async Task ModelsSharingASimpleNameDoNotCollide()
     {
@@ -59,20 +47,6 @@ public class TypeKeyedTemplateTests
         await Assert.That(second.Length).IsGreaterThan(0);
     }
 
-    // An explicit name can still be claimed twice, so the clash is refused rather than silently
-    // replacing the template already there.
-    [Test]
-    public async Task ReusingAnExplicitNameForAnotherModelIsRefused()
-    {
-        var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Invoice>("shared", "# {{ Number }}");
-
-        var exception = Assert.Throws<ParchmentRegistrationException>(
-            () => store.RegisterMarkdownTemplate<Receipt>("shared", "# {{ Number }}"));
-
-        await Assert.That(exception!.Message).Contains("cannot share it");
-    }
-
     [Test]
     public async Task ReregisteringTheSameModelReplacesIt()
     {
@@ -87,7 +61,7 @@ public class TypeKeyedTemplateTests
     }
 
     [Test]
-    public async Task RendersWithoutNamingTheTemplate()
+    public async Task RendersByModelType()
     {
         var store = Store();
 
@@ -98,7 +72,7 @@ public class TypeKeyedTemplateTests
     }
 
     [Test]
-    public async Task RendersToFileWithoutNamingTheTemplate()
+    public async Task RendersToFileByModelType()
     {
         var store = Store();
         var path = Path.Combine(Path.GetTempPath(), $"parchment-{Guid.NewGuid():N}.docx");
@@ -115,18 +89,6 @@ public class TypeKeyedTemplateTests
     }
 
     [Test]
-    public async Task ExplicitNameStillWins()
-    {
-        var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Invoice>("chosen", "# {{ Number }}");
-
-        using var stream = new MemoryStream();
-        await store.Render(new Invoice { Number = "A-1" }, stream);
-
-        await Assert.That(stream.Length).IsGreaterThan(0);
-    }
-
-    [Test]
     public async Task ModelWithNoTemplateSaysSo()
     {
         var store = Store();
@@ -136,23 +98,5 @@ public class TypeKeyedTemplateTests
             async () => await store.Render(new Receipt { Number = "B-2" }, stream));
 
         await Assert.That(exception!.Message).Contains("No template is registered for Receipt");
-    }
-
-    // Two templates for one model leaves the type saying nothing about which to use. Rendering
-    // through whichever was found first would depend on registration order, so the name is asked
-    // for instead.
-    [Test]
-    public async Task ModelWithSeveralTemplatesAsksForTheName()
-    {
-        var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Invoice>("summary", "# {{ Number }}");
-        store.RegisterMarkdownTemplate<Invoice>("detail", "## {{ Number }}");
-
-        using var stream = new MemoryStream();
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () => await store.Render(new Invoice { Number = "A-1" }, stream));
-
-        await Assert.That(exception!.Message).Contains("2 templates are registered for Invoice");
-        await Assert.That(exception!.Message).Contains("detail, summary");
     }
 }

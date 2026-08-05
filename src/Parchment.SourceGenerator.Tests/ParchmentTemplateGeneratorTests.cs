@@ -11,7 +11,7 @@ public class ParchmentTemplateGeneratorTests
             public string Name { get; set; } = "";
         }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Letter
         {
             public Customer Customer { get; set; } = new();
@@ -29,7 +29,7 @@ public class ParchmentTemplateGeneratorTests
             public string Name { get; set; } = "";
         }
 
-        [ParchmentModel("template.md")]
+        [ParchmentModel]
         public partial class Letter
         {
             public Customer Customer { get; set; } = new();
@@ -50,7 +50,7 @@ public class ParchmentTemplateGeneratorTests
             public string Description { get; set; } = "";
         }
 
-        [ParchmentModel("template.md")]
+        [ParchmentModel]
         public partial class Invoice
         {
             public List<Line> Lines { get; set; } = new();
@@ -102,7 +102,7 @@ public class ParchmentTemplateGeneratorTests
                 public string Description { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public List<Line> Lines { get; set; } = new();
@@ -141,7 +141,7 @@ public class ParchmentTemplateGeneratorTests
                 public string InnerDescription { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Doc
             {
                 public List<OuterLine> Lines { get; set; } = new();
@@ -180,7 +180,7 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Empty;
             """;
         var result = GeneratorDriver.Run(source, "{% foobar %}");
@@ -196,11 +196,39 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("does-not-exist.docx")]
+            [ParchmentModel]
             public partial class Empty;
             """;
-        var result = GeneratorDriver.Run(source, "ignored");
+        // The only AdditionalFile is named after some other type, so the convention finds nothing
+        // for Empty and must emit PARCH004.
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            new TemplateFile("Other.docx", GeneratorDriver.BuildDocxBytes("ignored")));
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
+    }
+
+    [Test]
+    public async Task BothDocxAndMarkdownMatch_Ambiguous()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Empty;
+            """;
+        // Two AdditionalFiles carry the type's name — a docx and an md. The generator reports
+        // rather than picking one.
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")),
+            new TemplateFile("Empty.md", "hello"u8.ToArray()));
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Single().Id).IsEqualTo("PARCH020");
     }
 
     [Test]
@@ -231,13 +259,13 @@ public class ParchmentTemplateGeneratorTests
                 public string Name { get; set; } = "";
             }
 
-            [ParchmentModel("letter.docx")]
+            [ParchmentModel]
             public partial class Letter
             {
                 public Customer Customer { get; set; } = new();
             }
 
-            [ParchmentModel("invoice.docx")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public decimal Total { get; set; }
@@ -246,8 +274,8 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            new TemplateFile("invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
+            new TemplateFile("Letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            new TemplateFile("Invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
@@ -264,13 +292,13 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Empty;
             """;
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("template.docx", "not a zip file"u8.ToArray()));
+            new TemplateFile("Empty.docx", "not a zip file"u8.ToArray()));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -291,13 +319,13 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Empty;
             """;
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
+            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -315,13 +343,13 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Empty;
             """;
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytes("hello")));
+            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -340,7 +368,7 @@ public class ParchmentTemplateGeneratorTests
             public string Description { get; set; } = "";
         }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Invoice
         {
             [ExcelsiorTable]
@@ -390,7 +418,7 @@ public class ParchmentTemplateGeneratorTests
         [System.AttributeUsage(System.AttributeTargets.Property)]
         public sealed class MarkdownAttribute : System.Attribute { }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Doc
         {
             [Html]
@@ -477,7 +505,7 @@ public class ParchmentTemplateGeneratorTests
                 public string Description { get; set; } = "";
             }
 
-            [ParchmentModel("template.md")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public List<Line> Lines { get; set; } = new();
@@ -508,7 +536,7 @@ public class ParchmentTemplateGeneratorTests
                 public string Description { get; set; } = "";
             }
 
-            [ParchmentModel("template.md")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public List<Line> Lines { get; set; } = new();
@@ -633,7 +661,7 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("does-not-exist.md")]
+            [ParchmentModel]
             public partial class Empty;
             """;
         // No additional file added — pipeline must emit PARCH004.
@@ -671,7 +699,7 @@ public class ParchmentTemplateGeneratorTests
 
             public partial class Outer
             {
-                [ParchmentModel("template.docx")]
+                [ParchmentModel]
                 public partial class LetterModel
                 {
                     public Customer Customer { get; set; } = new();
@@ -700,7 +728,7 @@ public class ParchmentTemplateGeneratorTests
             {
                 public partial class Inner
                 {
-                    [ParchmentModel("template.docx")]
+                    [ParchmentModel]
                     public partial class LetterModel
                     {
                         public Customer Customer { get; set; } = new();
@@ -729,7 +757,7 @@ public class ParchmentTemplateGeneratorTests
 
             public class Outer
             {
-                [ParchmentModel("template.docx")]
+                [ParchmentModel]
                 public partial class LetterModel
                 {
                     public Customer Customer { get; set; } = new();
@@ -761,7 +789,7 @@ public class ParchmentTemplateGeneratorTests
 
             public partial record OuterRecord
             {
-                [ParchmentModel("template.docx")]
+                [ParchmentModel]
                 public partial class LetterModel
                 {
                     public Customer Customer { get; set; } = new();
@@ -787,7 +815,7 @@ public class ParchmentTemplateGeneratorTests
                 public string Description { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public List<Line> Lines { get; set; } = new();
@@ -814,7 +842,7 @@ public class ParchmentTemplateGeneratorTests
 
             public static partial class OuterGen
             {
-                [ParchmentModel("template.docx")]
+                [ParchmentModel]
                 public partial class Info
                 {
                     public string Name { get; set; } = "";
@@ -846,7 +874,7 @@ public class ParchmentTemplateGeneratorTests
 
             public static partial class FirstGenerator
             {
-                [ParchmentModel("first.docx")]
+                [ParchmentModel]
                 public partial record Info
                 {
                     public Customer Customer { get; set; } = new();
@@ -855,7 +883,7 @@ public class ParchmentTemplateGeneratorTests
 
             public static partial class SecondGenerator
             {
-                [ParchmentModel("second.docx")]
+                [ParchmentModel]
                 public partial record Info
                 {
                     public Customer Customer { get; set; } = new();
@@ -863,10 +891,11 @@ public class ParchmentTemplateGeneratorTests
             }
             """;
 
+        // Both targets share the simple name Info, so under the convention they bind the same
+        // template file — each gets its own embedded copy.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("first.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            new TemplateFile("second.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
+            new TemplateFile("Info.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
 
@@ -899,7 +928,7 @@ public class ParchmentTemplateGeneratorTests
 
             public record Customer(string Name);
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial record Letter
             {
                 public required Customer Customer { get; init; }
@@ -942,7 +971,7 @@ public class ParchmentTemplateGeneratorTests
                 public List<string> Tags { get; set; } = new();
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public Customer Customer { get; set; } = new();
@@ -984,7 +1013,7 @@ public class ParchmentTemplateGeneratorTests
                 public string Title { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Report : DocumentBase
             {
                 public string Body { get; set; } = "";
@@ -1013,7 +1042,7 @@ public class ParchmentTemplateGeneratorTests
             {
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Report
             {
                 [Html]
@@ -1044,7 +1073,7 @@ public class ParchmentTemplateGeneratorTests
             {
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Report
             {
                 [Html]
@@ -1069,7 +1098,7 @@ public class ParchmentTemplateGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Report
             {
                 public static string Banner { get; set; } = "";

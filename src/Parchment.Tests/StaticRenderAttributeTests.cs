@@ -93,7 +93,7 @@ public class StaticRenderAttributeTests
     {
         var logger = new RecordingLogger();
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
-        new TemplateStore(logger).RegisterDocxTemplate<TModel>("t", template);
+        new TemplateStore(logger).RegisterDocxTemplate<TModel>(template);
         return logger;
     }
 
@@ -160,7 +160,7 @@ public class StaticRenderAttributeTests
     {
         var logger = new RecordingLogger();
         using var styleSource = DocxTemplateBuilder.Build();
-        new TemplateStore(logger).RegisterMarkdownTemplate<StaticHtmlModel>("t", "{{ Body }}", styleSource);
+        new TemplateStore(logger).RegisterMarkdownTemplate<StaticHtmlModel>("{{ Body }}", styleSource);
 
         await Assert.That(logger.Warnings.Count).IsEqualTo(1);
         await Assert.That(logger.Warnings[0]).Contains("StaticHtmlModel.Banner");

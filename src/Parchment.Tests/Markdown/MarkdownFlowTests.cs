@@ -28,11 +28,10 @@ public class MarkdownFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ReportModel>("report", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Title = "Q2 Engineering Review",
@@ -83,12 +82,10 @@ public class MarkdownFlowTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<BriefModel>(
-            "brief",
             markdown,
             styleSource);
 
         await store.Render(
-            "brief",
             new BriefModel
             {
                 Title = "Sprint recap",
@@ -125,12 +122,10 @@ public class MarkdownFlowTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<BriefModel>(
-            "brief-html",
             markdown,
             styleSource);
 
         await store.Render(
-            "brief-html",
             new BriefModel
             {
                 Title = "Release notes",
@@ -175,17 +170,17 @@ public class MarkdownFlowTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TitleModel>("with-comments", withComments, styleSource);
+        store.RegisterMarkdownTemplate<TitleModel>(withComments, styleSource);
         styleSource.Position = 0;
-        store.RegisterMarkdownTemplate<TitleModel>("without-comments", withoutComments, styleSource);
+        store.RegisterMarkdownTemplate<TitleModel>(withoutComments, styleSource);
 
         var model = new TitleModel {Title = "Sample"};
 
         using var withStream = new MemoryStream();
-        await store.Render("with-comments", model, withStream);
+        await store.Render(model, withStream);
 
         using var withoutStream = new MemoryStream();
-        await store.Render("without-comments", model, withoutStream);
+        await store.Render(model, withoutStream);
 
         await Assert.That(withStream.ToArray()).IsEquivalentTo(withoutStream.ToArray());
     }
@@ -207,11 +202,10 @@ public class MarkdownFlowTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "image",
             new ImageModel
             {
                 Caption = "With image"
@@ -241,11 +235,10 @@ public class MarkdownFlowTests
 
             using var styleSource = DocxTemplateBuilder.Build();
             var store = new TemplateStore();
-            store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+            store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
             using var stream = new MemoryStream();
             await store.Render(
-                "image",
                 new ImageModel
                 {
                     Caption = "With image"
@@ -278,11 +271,10 @@ public class MarkdownFlowTests
             {
                 LocalImages = OpenXmlHtml.ImagePolicy.Deny()
             };
-            store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+            store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
             using var stream = new MemoryStream();
             await store.Render(
-                "image",
                 new ImageModel
                 {
                     Caption = "With image"
@@ -314,7 +306,7 @@ public class MarkdownFlowTests
     static void Register(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();
-        new TemplateStore().RegisterMarkdownTemplate<LoopModel>("t", markdown, styleSource);
+        new TemplateStore().RegisterMarkdownTemplate<LoopModel>(markdown, styleSource);
     }
 
     // Leading whitespace control is exactly what a markdown template needs, since markdown ends an
@@ -455,11 +447,10 @@ public class MarkdownFlowTests
     {
         using var dotx = BuildDotx();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TitleModel>("t", "# {{ Title }}", dotx);
+        store.RegisterMarkdownTemplate<TitleModel>("# {{ Title }}", dotx);
 
         using var output = new MemoryStream();
         await store.Render(
-            "t",
             new TitleModel
             {
                 Title = "x"
@@ -486,10 +477,10 @@ public class MarkdownFlowTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TModel>("t", markdown, styleSource);
+        store.RegisterMarkdownTemplate<TModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("t", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

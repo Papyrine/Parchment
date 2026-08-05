@@ -199,11 +199,10 @@ public class ExtractTests
             Email: {{ Customer.ContactEmail }}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableQuote>("extract-nested", template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableQuote>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "extract-nested",
             new EditableFieldTests.EditableQuote
             {
                 Reference = "Q-7",
@@ -341,9 +340,7 @@ public class ExtractTests
         await Assert.That(result.AllExtracted).IsFalse();
     }
 
-    static async Task<MemoryStream> RenderOrder(
-        EditableFieldTests.EditableOrder model,
-        [CallerMemberName] string name = "")
+    static async Task<MemoryStream> RenderOrder(EditableFieldTests.EditableOrder model)
     {
         using var template = DocxTemplateBuilder.Build(
             """
@@ -370,10 +367,10 @@ public class ExtractTests
             {{ Instructions }}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>(name, template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         return stream;
     }

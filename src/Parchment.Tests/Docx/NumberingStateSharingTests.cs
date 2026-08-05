@@ -95,7 +95,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoHtmlDoc>("two-html", template);
+        store.RegisterDocxTemplate<TwoHtmlDoc>(template);
 
         var model = new TwoHtmlDoc
         {
@@ -103,7 +103,7 @@ public class NumberingStateSharingTests
             SecondBody = "<ul><li>b1</li><li>b2</li></ul>"
         };
 
-        await AssertOneSharedBulletAbstract(store, "two-html", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -124,7 +124,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlIfDoc>("html-if", template);
+        store.RegisterDocxTemplate<HtmlIfDoc>(template);
 
         var model = new HtmlIfDoc
         {
@@ -133,7 +133,7 @@ public class NumberingStateSharingTests
             Outer = "<ul><li>o1</li><li>o2</li></ul>"
         };
 
-        await AssertOneSharedBulletAbstract(store, "html-if", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -150,7 +150,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlAndMarkdownDoc>("html-md", template);
+        store.RegisterDocxTemplate<HtmlAndMarkdownDoc>(template);
 
         var model = new HtmlAndMarkdownDoc
         {
@@ -159,7 +159,7 @@ public class NumberingStateSharingTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("html-md", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -190,7 +190,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoMarkdownDoc>("two-md", template);
+        store.RegisterDocxTemplate<TwoMarkdownDoc>(template);
 
         var model = new TwoMarkdownDoc
         {
@@ -198,7 +198,7 @@ public class NumberingStateSharingTests
             SecondBody = "- b1\n- b2"
         };
 
-        await AssertOneSharedBulletAbstract(store, "two-md", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -214,7 +214,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MixedDoc>("mixed", template);
+        store.RegisterDocxTemplate<MixedDoc>(template);
 
         var model = new MixedDoc
         {
@@ -222,7 +222,7 @@ public class NumberingStateSharingTests
             Body = "- m1\n- m2"
         };
 
-        await AssertOneSharedBulletAbstract(store, "mixed", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -245,7 +245,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<GroupsDoc>("loop-share", template);
+        store.RegisterDocxTemplate<GroupsDoc>(template);
 
         var model = new GroupsDoc
         {
@@ -257,7 +257,7 @@ public class NumberingStateSharingTests
             Outer = ["o1", "o2"]
         };
 
-        await AssertOneSharedBulletAbstract(store, "loop-share", model, expectedInstanceCount: 3);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 3);
     }
 
     [Test]
@@ -278,7 +278,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<IfDoc>("if-share", template);
+        store.RegisterDocxTemplate<IfDoc>(template);
 
         var model = new IfDoc
         {
@@ -287,7 +287,7 @@ public class NumberingStateSharingTests
             Outer = ["o1", "o2"]
         };
 
-        await AssertOneSharedBulletAbstract(store, "if-share", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -303,7 +303,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoMarkdownDoc>("two-md-ordered", template);
+        store.RegisterDocxTemplate<TwoMarkdownDoc>(template);
 
         var model = new TwoMarkdownDoc
         {
@@ -312,7 +312,7 @@ public class NumberingStateSharingTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("two-md-ordered", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -334,14 +334,13 @@ public class NumberingStateSharingTests
         await Assert.That(instancesPointingAtOrdered.Count).IsEqualTo(2);
     }
 
-    static async Task AssertOneSharedBulletAbstract(
+    static async Task AssertOneSharedBulletAbstract<TModel>(
         TemplateStore store,
-        string name,
-        object model,
+        TModel model,
         int expectedInstanceCount)
     {
         using var stream = new MemoryStream();
-        await store.Render(name, model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

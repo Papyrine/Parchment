@@ -19,7 +19,7 @@ public class EditableFieldGeneratorTests
             public string? Email { get; set; }
         }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Order
         {
             public string Number { get; set; } = "";
@@ -88,7 +88,7 @@ public class EditableFieldGeneratorTests
             {
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -110,7 +110,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -130,7 +130,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -151,7 +151,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 public string Prefix = "";
@@ -183,7 +183,7 @@ public class EditableFieldGeneratorTests
             {
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -211,7 +211,7 @@ public class EditableFieldGeneratorTests
             {
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -251,7 +251,7 @@ public class EditableFieldGeneratorTests
         // renders as a plain read-only mirror. Duplicate detection must be body-scoped.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             editableModel,
-            new TemplateFile("template.docx", GeneratorDriver.BuildDocxBytesWithHeader(
+            new TemplateFile($"{GeneratorDriver.ModelTypeName(editableModel)}.docx", GeneratorDriver.BuildDocxBytesWithHeader(
                 bodyParagraphs: ["{{ PurchaseOrder }}"],
                 headerParagraphs: ["PO: {{ PurchaseOrder }}"])));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
@@ -274,7 +274,7 @@ public class EditableFieldGeneratorTests
                 public string Description { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -309,7 +309,7 @@ public class EditableFieldGeneratorTests
                 public string Note { get; set; } = "";
             }
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 public List<Line> Lines { get; set; } = new();
@@ -340,7 +340,7 @@ public class EditableFieldGeneratorTests
             public decimal Amount { get; set; }
         }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Order
         {
             [EditableField]
@@ -388,7 +388,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]
@@ -417,7 +417,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.docx", Protection = ProtectionMode.None)]
+            [ParchmentModel(Protection = ProtectionMode.None)]
             public partial class Order
             {
                 [EditableField]
@@ -426,7 +426,7 @@ public class EditableFieldGeneratorTests
             """;
         var result = GeneratorDriver.Run(source, "{{ PurchaseOrder }}");
         var generated = result.Results.Single().GeneratedSources.Single().SourceText.ToString();
-        await Assert.That(generated).Contains("store.RegisterDocxTemplate<global::Sample.Order>(TemplateName, path, global::Parchment.ProtectionMode.None);");
+        await Assert.That(generated).Contains("global::Parchment.ProtectionMode.None);");
     }
 
     [Test]
@@ -440,7 +440,7 @@ public class EditableFieldGeneratorTests
 
             namespace Sample;
 
-            [ParchmentModel("template.md")]
+            [ParchmentModel]
             public partial class Order
             {
                 [EditableField]

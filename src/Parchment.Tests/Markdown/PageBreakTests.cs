@@ -6,10 +6,10 @@ public class PageBreakTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("t", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("t", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

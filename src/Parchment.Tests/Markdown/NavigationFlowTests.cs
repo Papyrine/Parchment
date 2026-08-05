@@ -40,11 +40,10 @@ public class NavigationFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ReportModel>("report", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Sections =

@@ -13,7 +13,7 @@ public class FormFieldTests
         using var template = BuildForm("Title", "placeholder");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("form", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         var text = await Render(store);
 
@@ -27,7 +27,7 @@ public class FormFieldTests
         using var template = BuildForm("Title", "placeholder", type: WordprocessingDocumentType.Template);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("form", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         var text = await Render(store);
 
@@ -40,10 +40,10 @@ public class FormFieldTests
         using var template = BuildForm("Title", "placeholder", bold: true);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("form", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         using var output = new MemoryStream();
-        await store.Render("form", new Model {Title = "bound value"}, output);
+        await store.Render(new Model {Title = "bound value"}, output);
         output.Position = 0;
 
         using var result = WordprocessingDocument.Open(output, false);
@@ -59,7 +59,7 @@ public class FormFieldTests
         using var template = BuildForm("Title", "placeholder", textInput: false);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("form", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         var text = await Render(store);
 
@@ -74,7 +74,7 @@ public class FormFieldTests
         using var template = BuildForm("Due date", "placeholder");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Model>("form", template);
+        store.RegisterDocxTemplate<Model>(template);
 
         var text = await Render(store);
 
@@ -85,7 +85,7 @@ public class FormFieldTests
     static async Task<string> Render(TemplateStore store)
     {
         using var output = new MemoryStream();
-        await store.Render("form", new Model {Title = "bound value"}, output);
+        await store.Render(new Model {Title = "bound value"}, output);
         output.Position = 0;
 
         using var result = WordprocessingDocument.Open(output, false);

@@ -29,14 +29,14 @@ static class Diagnostics
 
     public static readonly DiagnosticDescriptor TemplateFileMissing = new(
         id: "PARCH004",
-        title: "Template file not found in AdditionalFiles",
-        messageFormat: "Template path '{0}' was not found in AdditionalFiles — declare it with <ParchmentTemplate Include=\"...\"/> " +
-                       "(or <ParchmentEmbeddedTemplate> to embed it) in the csproj. If it is already declared and only the IDE " +
+        title: "No template found for model",
+        messageFormat: "Model '{0}' has no template: no AdditionalFile named '{0}.docx' or '{0}.md' was found — declare one with " +
+                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If it is already declared and only the IDE " +
                        "reports this, the file likely carries a second item type that hides it from the IDE's generator host.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        helpLinkUri: "https://github.com/Papyrine/Parchment#parch004--template-file-not-in-additionalfiles");
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch004--no-template-found-for-model");
 
     public static readonly DiagnosticDescriptor MixedInlineBlockTag = new(
         id: "PARCH005",
@@ -169,12 +169,21 @@ static class Diagnostics
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch019--render-attribute-on-a-static-member-has-no-effect");
 
-    public static readonly DiagnosticDescriptor AmbiguousTemplatePath = new(
+    public static readonly DiagnosticDescriptor AmbiguousTemplate = new(
         id: "PARCH020",
-        title: "Template path matches more than one file",
-        messageFormat: "Template path '{0}' matches more than one file: {1}. A path is resolved both against the directory of this file and against the end of every template's path, and here those readings disagree — start the path with './' or '../' to mean this file's directory, or lengthen it to name one template.",
+        title: "Model matches more than one template file",
+        messageFormat: "Model '{0}' matches more than one template file: {1}. A model binds exactly one template named after it — remove or rename the others.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        helpLinkUri: "https://github.com/Papyrine/Parchment#parch020--template-path-matches-more-than-one-file");
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch020--model-matches-more-than-one-template-file");
+
+    public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
+        id: "PARCH021",
+        title: "Model matches more than one style document",
+        messageFormat: "Model '{0}' matches more than one style document: {1}. A markdown template takes at most one '{0}.dotx' — remove or rename the others.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch021--model-matches-more-than-one-style-document");
 }

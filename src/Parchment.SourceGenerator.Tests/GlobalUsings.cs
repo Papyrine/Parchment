@@ -24,3 +24,4 @@ global using Parchment.SourceGenerator;
 global using TUnit.Core;
 
 global using static VerifyTUnit.Verifier;
+global using System.Text.RegularExpressions;

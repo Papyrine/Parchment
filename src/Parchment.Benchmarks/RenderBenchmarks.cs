@@ -17,25 +17,25 @@ public class RenderBenchmarks
 
         docxStore = new();
         using var docxTemplate = new MemoryStream(BuildDocxTemplate());
-        docxStore.RegisterDocxTemplate<Invoice>("docx", docxTemplate);
+        docxStore.RegisterDocxTemplate<Invoice>(docxTemplate);
 
         markdownStore = new();
         using var styleSource = new MemoryStream(BuildStyleSource());
-        markdownStore.RegisterMarkdownTemplate<ReportContext>("md", markdownSource, styleSource);
+        markdownStore.RegisterMarkdownTemplate<ReportContext>(markdownSource, styleSource);
     }
 
     [Benchmark]
     public async Task DocxTemplate()
     {
         using var output = new MemoryStream();
-        await docxStore.Render("docx", docxModel, output);
+        await docxStore.Render(docxModel, output);
     }
 
     [Benchmark]
     public async Task MarkdownTemplate()
     {
         using var output = new MemoryStream();
-        await markdownStore.Render("md", markdownModel, output);
+        await markdownStore.Render(markdownModel, output);
     }
 
     static Invoice BuildInvoice(int lineCount) =>

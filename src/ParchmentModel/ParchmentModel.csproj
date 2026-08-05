@@ -23,12 +23,10 @@
   </Target>
   <ItemGroup>
     <!-- The generator reads templates through AdditionalFiles, so the readme's setup snippet is this
-         project's own build rather than an illustration of one. -->
-    <AdditionalFiles Include="Templates\invoice.docx" />
-    <AdditionalFiles Include="Templates\report.md" />
-    <AdditionalFiles Include="Templates\order-form.docx" />
-    <!-- AdditionalFiles is compile-time only. The emitted RegisterWith resolves the path at run
-         time, so the templates have to be deployed as well - the same pair a consumer needs. -->
-    <Content Include="Templates\**" CopyToOutputDirectory="PreserveNewest" />
+         project's own build rather than an illustration of one. Each template is named after its
+         model type; the embedded copy travels inside the generated source, so nothing is deployed. -->
+    <AdditionalFiles Include="Templates\Invoice.docx" />
+    <AdditionalFiles Include="Templates\ReportContext.md" />
+    <AdditionalFiles Include="Templates\OrderForm.docx" />
   </ItemGroup>
 </Project>

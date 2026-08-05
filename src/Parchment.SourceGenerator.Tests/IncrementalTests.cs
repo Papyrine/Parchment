@@ -11,7 +11,7 @@ public class IncrementalTests
             public string Name { get; set; } = "";
         }
 
-        [ParchmentModel("template.docx")]
+        [ParchmentModel]
         public partial class Letter
         {
             public Customer Customer { get; set; } = new();
@@ -74,11 +74,12 @@ public class IncrementalTests
         await AssertAnyModified(runResult, ParchmentTemplateGenerator.Stages.Combined);
     }
 
-    // Guards against accidental cache misses when Word resaves a docx and writes new bytes
-    // (rsid churn, package metadata) without changing a single paragraph of text. Our
-    // DocxData comparison is paragraph-level, so the downstream stages should stay cached.
+    // The template's bytes are embedded into the generated source, so a resave that changes bytes
+    // without changing a paragraph (rsid churn, package metadata) must re-emit — the embedded
+    // copy would otherwise go stale. This is a deliberate reversal of the old paragraph-level
+    // caching, which was valid only while the runtime read the template from disk.
     [Test]
-    public async Task PipelineCachesWhenDocxRewrittenWithSameParagraphs()
+    public async Task PipelineReRunsWhenDocxRewrittenWithSameParagraphs()
     {
         var setup = GeneratorDriver.CreateDriver(source, "Hello {{ Customer.Name }}!");
         var driver = (CSharpGeneratorDriver) setup.Driver.RunGenerators(setup.Compilation);
@@ -87,10 +88,11 @@ public class IncrementalTests
         driver = (CSharpGeneratorDriver) driver.ReplaceAdditionalText(setup.DocxAdditionalText, rewritten);
         driver = (CSharpGeneratorDriver) driver.RunGenerators(setup.Compilation);
 
+        // OPC packages are not byte-reproducible (relationship ids draw fresh randomness), so the
+        // rewrite always lands new bytes and the docs stage must notice.
         var runResult = driver.GetRunResult().Results.Single();
-        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.DocsCollected);
-        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Combined);
-        await AssertOutputsNotModified(runResult);
+        await AssertAnyModified(runResult, ParchmentTemplateGenerator.Stages.DocsCollected);
+        await AssertAnyModified(runResult, ParchmentTemplateGenerator.Stages.Combined);
     }
 
     static async Task AssertNotModified(GeneratorRunResult runResult, string stageName)

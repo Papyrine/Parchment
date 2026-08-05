@@ -50,11 +50,10 @@ public class PageNumberResolverTests
         {
             PageNumbers = resolver
         };
-        store.RegisterMarkdownTemplate<ReportModel>("report", Markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(Markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Heading = "Delivery"

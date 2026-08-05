@@ -28,11 +28,10 @@ public class MorphPageNumberResolverTests
         {
             PageNumbers = new MorphPageNumberResolver()
         };
-        store.RegisterMarkdownTemplate<ReportModel>("report", Markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(Markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Sections = Enumerable.Range(1, sections).Select(_ => $"Section {_}").ToList()

@@ -1,8 +1,8 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (9,1)-(9,30),
-      Message: Template 'template.md' token '{% assign ... %}' references 'NoSuchThing' which is not a member of 'Letter',
+      Location: : (9,1)-(9,15),
+      Message: Template 'Letter.md' token '{% assign ... %}' references 'NoSuchThing' which is not a member of 'Letter',
       Severity: Error,
       Descriptor: {
         Id: PARCH001,
