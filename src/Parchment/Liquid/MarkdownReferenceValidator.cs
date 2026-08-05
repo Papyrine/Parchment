@@ -167,8 +167,7 @@ class MarkdownReferenceValidator :
             return null;
         }
 
-        var elementType = ModelValidator.TryResolveElementType(iterableType);
-        if (elementType == null)
+        if (!ModelValidator.TryResolveElementType(iterableType, out var elementType))
         {
             throw new ParchmentRegistrationException(
                 templateName,

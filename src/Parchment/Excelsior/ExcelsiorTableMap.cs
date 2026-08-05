@@ -64,8 +64,7 @@ sealed class ExcelsiorTableMap
 
             if (excelsior != null)
             {
-                var elementType = ModelValidator.TryResolveElementType(memberType);
-                if (elementType == null ||
+                if (!ModelValidator.TryResolveElementType(memberType, out var elementType) ||
                     elementType == typeof(char))
                 {
                     throw new ParchmentRegistrationException(

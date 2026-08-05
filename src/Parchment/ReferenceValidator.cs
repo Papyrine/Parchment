@@ -36,7 +36,7 @@
                     var iterableType = ResolvePathType(sourceRefs[0], scope);
                     if (iterableType != null)
                     {
-                        elementType = ModelValidator.TryResolveElementType(iterableType);
+                        ModelValidator.TryResolveElementType(iterableType, out elementType);
                     }
                 }
 

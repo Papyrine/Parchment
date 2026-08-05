@@ -56,11 +56,12 @@ static class ModelValidator
         return $"Identifier '{root}' is not a member of '{modelType.Name}'";
     }
 
-    public static Type? TryResolveElementType(Type enumerableType)
+    public static bool TryResolveElementType(Type enumerableType, [NotNullWhen(true)] out Type? elementType)
     {
         if (enumerableType.IsArray)
         {
-            return enumerableType.GetElementType();
+            elementType = enumerableType.GetElementType();
+            return elementType != null;
         }
 
         foreach (var i in enumerableType.GetInterfaces())
@@ -68,17 +69,20 @@ static class ModelValidator
             if (i.IsGenericType &&
                 i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
-                return i.GetGenericArguments()[0];
+                elementType = i.GetGenericArguments()[0];
+                return true;
             }
         }
 
         if (enumerableType.IsGenericType &&
             enumerableType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
-            return enumerableType.GetGenericArguments()[0];
+            elementType = enumerableType.GetGenericArguments()[0];
+            return true;
         }
 
-        return null;
+        elementType = null;
+        return false;
     }
 
     public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)

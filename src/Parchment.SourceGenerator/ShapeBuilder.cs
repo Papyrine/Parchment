@@ -34,14 +34,11 @@ static class ShapeBuilder
     static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
     {
         string? elementFqn = null;
-        if (type.SpecialType != SpecialType.System_String)
+        if (type.SpecialType != SpecialType.System_String &&
+            ModelSymbolResolver.TryGetElementType(type, out var element))
         {
-            var element = ModelSymbolResolver.TryGetElementType(type);
-            if (element != null)
-            {
-                elementFqn = Fqn(element);
-                Enqueue(element, visited, queue);
-            }
+            elementFqn = Fqn(element);
+            Enqueue(element, visited, queue);
         }
 
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
@@ -77,10 +74,8 @@ static class ShapeBuilder
                     EditableFieldKind? editableKind = null;
                     if (isEditable)
                     {
-                        var collectionElement = memberType.SpecialType == SpecialType.System_String
-                            ? null
-                            : ModelSymbolResolver.TryGetElementType(memberType);
-                        if (collectionElement != null &&
+                        if (memberType.SpecialType != SpecialType.System_String &&
+                            ModelSymbolResolver.TryGetElementType(memberType, out var collectionElement) &&
                             !IsSystemType(collectionElement))
                         {
                             editableCollectionElementFqn = Fqn(collectionElement);
@@ -163,13 +158,11 @@ static class ShapeBuilder
         return (false, false);
     }
 
-    static bool IsEnumerableOfString(ITypeSymbol type)
-    {
-        // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
-        // be `char`, which is correctly rejected here.
-        var element = ModelSymbolResolver.TryGetElementType(type);
-        return element is {SpecialType: SpecialType.System_String};
-    }
+    // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
+    // be `char`, which is correctly rejected here.
+    static bool IsEnumerableOfString(ITypeSymbol type) =>
+        ModelSymbolResolver.TryGetElementType(type, out var element) &&
+        element is {SpecialType: SpecialType.System_String};
 
     static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle)
     {

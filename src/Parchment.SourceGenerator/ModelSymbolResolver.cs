@@ -1,10 +1,11 @@
 static class ModelSymbolResolver
 {
-    public static ITypeSymbol? TryGetElementType(ITypeSymbol type)
+    public static bool TryGetElementType(ITypeSymbol type, [NotNullWhen(true)] out ITypeSymbol? elementType)
     {
         if (type is IArrayTypeSymbol array)
         {
-            return array.ElementType;
+            elementType = array.ElementType;
+            return true;
         }
 
         foreach (var i in type.AllInterfaces)
@@ -12,16 +13,19 @@ static class ModelSymbolResolver
             if (i.IsGenericType &&
                 i.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>")
             {
-                return i.TypeArguments[0];
+                elementType = i.TypeArguments[0];
+                return true;
             }
         }
 
         if (type is INamedTypeSymbol { IsGenericType: true } named &&
             named.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>")
         {
-            return named.TypeArguments[0];
+            elementType = named.TypeArguments[0];
+            return true;
         }
 
-        return null;
+        elementType = null;
+        return false;
     }
 }
