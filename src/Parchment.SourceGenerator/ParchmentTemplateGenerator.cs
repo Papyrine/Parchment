@@ -558,8 +558,9 @@ public sealed class ParchmentTemplateGenerator :
                     var isEditableCollectionLoop = false;
                     if (token is { LoopVariable: not null, References.Count: > 0 })
                     {
-                        var sourceMember = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
-                        isEditableCollectionLoop = sourceMember?.EditableCollectionElementFqn != null;
+                        isEditableCollectionLoop =
+                            ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var sourceMember) &&
+                            sourceMember.EditableCollectionElementFqn != null;
 
                         var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
                         var elementFqn = sourceFqn == null ? null : ShapeResolver.GetElementType(target.Shape, sourceFqn);
@@ -599,8 +600,8 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    var member = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
-                    if (member is null or { IsEditable: false } or { IsStatic: true })
+                    if (!ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var member) ||
+                        member is { IsEditable: false } or { IsStatic: true })
                     {
                         break;
                     }
@@ -946,8 +947,8 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
-        var member = ShapeResolver.ResolveMember(target.Shape, token.References[0], scope);
-        if (member is null or
+        if (!ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var member) ||
+            member is
             {
                 IsHtml: false,
                 IsMarkdown: false
