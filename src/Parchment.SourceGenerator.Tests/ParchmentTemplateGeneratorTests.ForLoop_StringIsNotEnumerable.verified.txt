@@ -7,6 +7,7 @@
       Descriptor: {
         Id: PARCH002,
         Title: Loop source is not enumerable,
+        HelpLink: https://github.com/Papyrine/Parchment#parch002--loop-source-is-not-enumerable,
         MessageFormat: Template '{0}' loop '{1}' source does not resolve to a type implementing IEnumerable<T>,
         Category: Parchment,
         DefaultSeverity: Error,

@@ -47,9 +47,47 @@ static class GeneratorDriver
     public static DriverSetup CreateDriver(string userSource, params string[] templateParagraphs) =>
         CreateDriverWithDocxes(userSource, ("template.docx", BuildDocx(templateParagraphs)));
 
+    /// <summary>
+    /// Runs the generator with a template declared the embedded way — Parchment.targets marks such
+    /// an AdditionalFile with the manifest name its staged copy is embedded under, and the
+    /// generator emits a registration that reads the manifest instead of the disk.
+    /// </summary>
+    public static GeneratorDriverRunResult RunEmbedded(
+        string userSource,
+        string fileName,
+        byte[] bytes,
+        string resourceName)
+    {
+        var setup = CreateDriverWithDocxes(userSource, [(fileName, bytes)], resourceName);
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+    }
+
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
-        params (string FileName, byte[] Bytes)[] docxes)
+        params (string FileName, byte[] Bytes)[] docxes) =>
+        CreateDriverWithDocxes(userSource, docxes, resourceName: null);
+
+    /// <summary>
+    /// Runs the generator with the model source written to a real path, so a template path relative
+    /// to the file the attribute sits in has a directory to resolve against.
+    /// </summary>
+    /// <remarks>
+    /// Opt-in rather than the default, because giving every compilation a file path would put the
+    /// per-run temp directory into the diagnostic locations that other tests snapshot.
+    /// </remarks>
+    public static GeneratorDriverRunResult RunWithModelFile(
+        string userSource,
+        params (string FileName, byte[] Bytes)[] files)
+    {
+        var setup = CreateDriverWithDocxes(userSource, files, resourceName: null, modelFileName: "Model.cs");
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+    }
+
+    public static DriverSetup CreateDriverWithDocxes(
+        string userSource,
+        (string FileName, byte[] Bytes)[] docxes,
+        string? resourceName,
+        string? modelFileName = null)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -59,6 +97,8 @@ static class GeneratorDriver
         foreach (var (name, bytes) in docxes)
         {
             var path = Path.Combine(directory, name);
+            // A template may be given a nested path, so its folder has to exist first.
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, bytes);
             texts.Add(new PathAdditionalText(path));
             paths.Add(path);
@@ -67,7 +107,9 @@ static class GeneratorDriver
         var syntaxTrees = new[]
         {
             CSharpSyntaxTree.ParseText(attributeSource),
-            CSharpSyntaxTree.ParseText(userSource)
+            modelFileName == null
+                ? CSharpSyntaxTree.ParseText(userSource)
+                : CSharpSyntaxTree.ParseText(userSource, path: Path.Combine(directory, modelFileName))
         };
 
         var compilation = CSharpCompilation.Create(
@@ -83,7 +125,7 @@ static class GeneratorDriver
             generators: [new ParchmentTemplateGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
             parseOptions: (CSharpParseOptions) syntaxTrees[0].Options,
-            optionsProvider: null,
+            optionsProvider: resourceName is null ? null : new ResourceNameOptionsProvider(resourceName),
             driverOptions: new(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 
         return new(driver, compilation, additionalTexts, paths.ToImmutable());
@@ -222,6 +264,36 @@ static class GeneratorDriver
             .Where(_ => !string.IsNullOrEmpty(_))
             .Select(MetadataReference (_) => MetadataReference.CreateFromFile(_))
             .ToArray();
+    }
+
+    // Stands in for what the SDK writes into the generated editorconfig from
+    // CompilerVisibleItemMetadata: every additional file reports the same resource name, which is
+    // all a single-template test needs.
+    sealed class ResourceNameOptionsProvider(string resourceName) :
+        AnalyzerConfigOptionsProvider
+    {
+        public override AnalyzerConfigOptions GlobalOptions { get; } = new Options(null);
+
+        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => new Options(null);
+
+        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => new Options(resourceName);
+
+        sealed class Options(string? resourceName) :
+            AnalyzerConfigOptions
+        {
+            public override bool TryGetValue(string key, [NotNullWhen(true)] out string? value)
+            {
+                if (resourceName != null &&
+                    key == "build_metadata.AdditionalFiles.ParchmentResourceName")
+                {
+                    value = resourceName;
+                    return true;
+                }
+
+                value = null;
+                return false;
+            }
+        }
     }
 
     sealed class PathAdditionalText(string path) :

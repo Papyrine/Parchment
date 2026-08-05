@@ -3,4 +3,6 @@ sealed record DocxData(
     EquatableArray<string> Paragraphs,
     EquatableArray<string> BodyParagraphs,
     bool HasRemovePersonalInformation,
-    string? ReadError);
+    string? ReadError,
+    // See MarkdownData.ResourceName.
+    string? ResourceName = null);

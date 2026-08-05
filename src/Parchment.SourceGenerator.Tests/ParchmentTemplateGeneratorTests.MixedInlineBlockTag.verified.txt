@@ -7,6 +7,7 @@
       Descriptor: {
         Id: PARCH005,
         Title: Block tag must sit in its own paragraph,
+        HelpLink: https://github.com/Papyrine/Parchment#parch005--block-tag-shares-a-paragraph,
         MessageFormat: Template '{0}' block tag '{1}' shares a paragraph with other content; block tags must be on their own lines,
         Category: Parchment,
         DefaultSeverity: Error,

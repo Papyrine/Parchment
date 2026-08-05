@@ -1828,14 +1828,56 @@ ReportContext.RegisterWith(store);
 
 The markdown helper has an extra optional `styleSource` parameter that mirrors `RegisterMarkdownTemplate<T>` — pass a brand docx whose page setup, headers/footers, and styles should be inherited by the rendered output.
 
-Add each template to `<AdditionalFiles>` so the generator can find it:
+### Declaring templates
+
+A template has to reach two consumers by different routes. The generator reads it through `AdditionalFiles` — the only channel Roslyn offers, since embedded resources are attached at emit time and never appear in a generator's inputs. The runtime reads it from disk beside the assembly, or out of the assembly manifest.
+
+Parchment ships an item type for each, so neither has to be wired by hand:
 
 ```xml
 <ItemGroup>
-  <AdditionalFiles Include="Templates\invoice.docx" />
-  <AdditionalFiles Include="Templates\report.md" />
+  <!-- Inspected by the generator, and copied beside the assembly for RegisterWith to read. -->
+  <ParchmentTemplate Include="Templates\invoice.docx" />
+  <ParchmentTemplate Include="Templates\report.md" />
+
+  <!-- Inspected by the generator, and embedded in the assembly instead of copied. -->
+  <ParchmentEmbeddedTemplate Include="Templates\letter.md" />
 </ItemGroup>
 ```
+
+`ParchmentTemplate` expands to `<AdditionalFiles>` with `CopyToOutputDirectory=PreserveNewest` — the shape the generated `RegisterWith` helper expects, since it reads the template from disk.
+
+`ParchmentEmbeddedTemplate` leaves the file itself as an `AdditionalFile` and embeds a staged copy from `obj` instead. The resource keeps the name it would have had if embedded in place, so the staging never shows up in the name a caller uses.
+
+**`RegisterWith` works either way.** The targets tell the generator which templates are embedded, so the generated helper reads the manifest for those and the disk for the rest — switching a template between the two item types changes nothing at the call site:
+
+```cs
+var store = new TemplateStore();
+ReportModel.RegisterWith(store);
+```
+
+Its `basePath` parameter has no meaning for an embedded template and is ignored; it stays on the signature so the switch does not break callers. Registering by hand still works if the template is wanted from somewhere else entirely — `RegisterMarkdownTemplate<T>(name, markdown, styleSource)` takes the text, and `RegisterDocxTemplate<T>(name, stream)` takes a stream, so a manifest stream can be passed straight in.
+
+The staging exists for one reason, and it is the reason to prefer these item types over hand-wiring: **a template should carry exactly one item type**. Listing the same file as both `<AdditionalFiles>` and `<EmbeddedResource>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--template-file-not-in-additionalfiles) that a command-line build cannot reproduce.
+
+#### How a template path is resolved
+
+The path in `[ParchmentModel("...")]` is read two ways, because both are natural to write:
+
+- **Relative to the file the attribute sits in.** A model beside its template says `report.md`; one in `Stocktakes/` says `Templates/report.md`, `./Templates/report.md`, or `../Stocktakes/Templates/report.md` — all the same file.
+- **As the end of a declared template's path.** `Templates/report.md` also matches a template at the project root, which is what a project relies on when its templates sit in one folder while its models are scattered below.
+
+Usually both land on the same file. Where they land on different ones the path is ambiguous, and [`PARCH020`](#parch020--template-path-matches-more-than-one-file) says so rather than picking one. A path starting `./` or `../` states its intent and only ever resolves the first way.
+
+Hand-wiring still works, and is what the item types expand to:
+
+```xml
+<AdditionalFiles Include="Templates\report.md">
+  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+</AdditionalFiles>
+```
+
+Read it back from `AppContext.BaseDirectory` rather than the assembly manifest. The copy flows into referencing projects' outputs and into `dotnet publish`, so tests and deployments find the file without a second item type being added. A style-source docx carries no `[ParchmentModel]` path, is therefore not an `AdditionalFile`, and can stay embedded.
 
 The generator emits the following diagnostics. Unless noted, each applies to both flows.
 
@@ -1891,25 +1933,23 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 
 ### `PARCH004` — template file not in `<AdditionalFiles>`
 
-The path in `[ParchmentModel("...")]` wasn't found among the project's `<AdditionalFiles>`. Add the docx to the csproj:
+The path in `[ParchmentModel("...")]` wasn't found among the project's `<AdditionalFiles>`. Declare the template in the csproj — see [Declaring templates](#declaring-templates):
 
 ```xml
 <ItemGroup>
-  <AdditionalFiles Include="Templates\invoice.docx" />
+  <ParchmentTemplate Include="Templates\invoice.docx" />
 </ItemGroup>
 ```
 
-**Reported by Rider while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it. `AdditionalFiles` is independent of `None` in MSBuild, but Rider feeds source generators from its own project model, and a `<None Remove>` glob covering the template's folder puts the file outside that model — so the generator is handed no additional files at all. Deleting the `<None Remove>` line fixes it. Surviving "Invalidate Caches and Restart" is the tell that this is the cause rather than a stale cache.
+**Reported by an IDE while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it, which happens when the template carries a second item type — see [Declaring templates](#declaring-templates), where the fix is to switch to `ParchmentTemplate` or `ParchmentEmbeddedTemplate`. A project reload can flip which identity wins, so the error may clear on reload and return later; that, rather than a stale cache, is the tell.
 
-Such a line is usually there to stop the SDK's default `None` glob colliding with an `<EmbeddedResource>` for the same file. That collision often does not occur, so removing the line tends to cost nothing — worth confirming with a build.
-
-To check what MSBuild itself resolves:
+To confirm which side is at fault:
 
 ```
 dotnet msbuild MyProject.csproj -getItem:AdditionalFiles
 ```
 
-A correct `FullPath` in that output means the csproj is right and the problem is the IDE's project model.
+A correct `FullPath` in that output means the csproj is right and the IDE's project model is the problem.
 
 
 ### `PARCH005` — block tag shares a paragraph
@@ -2043,6 +2083,29 @@ public partial class Report
 ```
 
 Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
+
+
+### `PARCH020` — template path matches more than one file
+
+The path in `[ParchmentModel("...")]` is read [two ways](#how-a-template-path-is-resolved), and here they landed on different templates. Rather than pick one, the generator says so — silently preferring a reading would bind the model to a template its author was not looking at.
+
+```
+// Model at Stocktakes/StocktakeModel.cs, with templates at
+//   Stocktakes/Templates/report.md   (relative to this file)
+//   Templates/report.md              (matches the end of the path)
+[ParchmentModel("Templates/report.md")]
+```
+
+Start the path with `./` or `../` to mean this file's directory, or lengthen it until it names one template.
+
+
+### `PARCH100` — template carries a second item type
+
+**Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--template-file-not-in-additionalfiles) against a csproj entry that is plainly present.
+
+Declaring the template with [`ParchmentTemplate` or `ParchmentEmbeddedTemplate`](#declaring-templates) clears it. The warning does not fire for `ParchmentEmbeddedTemplate`, whose two identities belong to two different files — the template itself and a staged copy under `obj`.
+
+Suppress with `<NoWarn>$(NoWarn);PARCH100</NoWarn>` if a template genuinely needs both, accepting that the IDE may stop inspecting it.
 
 
 ## Model binding limitations

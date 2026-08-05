@@ -7,6 +7,7 @@
       Descriptor: {
         Id: PARCH001,
         Title: Template references an unknown model member,
+        HelpLink: https://github.com/Papyrine/Parchment#parch001--unknown-model-member,
         MessageFormat: Template '{0}' token '{1}' references '{2}' which is not a member of '{3}',
         Category: Parchment,
         DefaultSeverity: Error,

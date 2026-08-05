@@ -13,7 +13,9 @@ global using DocumentFormat.OpenXml;
 global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 
+global using System.Diagnostics.CodeAnalysis;
 global using Microsoft.CodeAnalysis;
+global using Microsoft.CodeAnalysis.Diagnostics;
 global using Microsoft.CodeAnalysis.CSharp;
 global using Microsoft.CodeAnalysis.Text;
 
