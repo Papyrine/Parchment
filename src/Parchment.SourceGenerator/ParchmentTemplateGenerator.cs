@@ -42,21 +42,31 @@ public sealed class ParchmentTemplateGenerator :
             .Select(static (array, _) => new EquatableArray<MarkdownData>(array))
             .WithTrackingName(Stages.MarkdownsCollected);
 
+        // The project directory turns a template's absolute path into the relative one it will
+        // have beside the assembly at runtime.
+        var projectDirectory = context.AnalyzerConfigOptionsProvider
+            .Select(static (options, _) =>
+                options.GlobalOptions.TryGetValue("build_property.ProjectDir", out var directory)
+                    ? directory
+                    : null);
+
         var combined = targets
             .Combine(docs)
             .Combine(markdowns)
+            .Combine(projectDirectory)
             .WithTrackingName(Stages.Combined);
 
         context.RegisterSourceOutput(
             combined,
             static (productionContext, tuple) =>
             {
-                var targetInfos = tuple.Left.Left;
-                var docData = tuple.Left.Right;
-                var markdownData = tuple.Right;
+                var targetInfos = tuple.Left.Left.Left;
+                var docData = tuple.Left.Left.Right;
+                var markdownData = tuple.Left.Right;
+                var projectDir = tuple.Right;
                 foreach (var target in targetInfos)
                 {
-                    Process(productionContext, target, docData, markdownData);
+                    Process(productionContext, target, docData, markdownData, projectDir);
                 }
             });
     }
@@ -225,6 +235,26 @@ public sealed class ParchmentTemplateGenerator :
         return true;
     }
 
+    // Where the template sits relative to the project, which is where CopyToOutputDirectory puts
+    // it beside the assembly. Null when the project directory is unknown or the template lives
+    // outside it — the caller then falls back to the path as written in the attribute.
+    static string? RuntimePath(string templateFullPath, string? projectDirectory)
+    {
+        if (projectDirectory == null)
+        {
+            return null;
+        }
+
+        var project = TemplatePathMatcher.Normalize(projectDirectory);
+        var template = TemplatePathMatcher.Normalize(templateFullPath);
+        if (!template.StartsWith($"{project}/", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return template.Substring(project.Length + 1);
+    }
+
     static DocxData ReadDocx(AdditionalText text, string? resourceName)
     {
         try
@@ -285,7 +315,8 @@ public sealed class ParchmentTemplateGenerator :
         SourceProductionContext context,
         TargetInfo target,
         EquatableArray<DocxData> docs,
-        EquatableArray<MarkdownData> markdowns)
+        EquatableArray<MarkdownData> markdowns,
+        string? projectDirectory)
     {
         var location = target.Location.ToLocation();
 
@@ -305,18 +336,19 @@ public sealed class ParchmentTemplateGenerator :
 
         if (IsMarkdownPath(target.TemplatePath))
         {
-            ProcessMarkdown(context, target, location, markdowns);
+            ProcessMarkdown(context, target, location, markdowns, projectDirectory);
             return;
         }
 
-        ProcessDocx(context, target, location, docs);
+        ProcessDocx(context, target, location, docs, projectDirectory);
     }
 
     static void ProcessDocx(
         SourceProductionContext context,
         TargetInfo target,
         Location location,
-        EquatableArray<DocxData> docs)
+        EquatableArray<DocxData> docs,
+        string? projectDirectory)
     {
         var candidates = TemplatePathMatcher.FindAll(docs, static _ => _.Path, target);
         if (!TryResolve(context, target, location, candidates, static _ => _.Path, out var matched))
@@ -360,7 +392,7 @@ public sealed class ParchmentTemplateGenerator :
             ValidateEditableTokens(context, target, bodyTokens, location);
         }
 
-        EmitRegistration(context, target, GenerateDocxRegistration(target, matched.ResourceName));
+        EmitRegistration(context, target, GenerateDocxRegistration(target, matched.ResourceName, RuntimePath(matched.Path, projectDirectory)));
     }
 
     static bool HasEditableMembers(ModelShape shape)
@@ -641,7 +673,8 @@ public sealed class ParchmentTemplateGenerator :
         SourceProductionContext context,
         TargetInfo target,
         Location location,
-        EquatableArray<MarkdownData> markdowns)
+        EquatableArray<MarkdownData> markdowns,
+        string? projectDirectory)
     {
         var candidates = TemplatePathMatcher.FindAll(markdowns, static _ => _.Path, target);
         if (!TryResolve(context, target, location, candidates, static _ => _.Path, out var matched))
@@ -673,7 +706,7 @@ public sealed class ParchmentTemplateGenerator :
 
         MarkdownValidator.Validate(context, target, location, template);
 
-        EmitRegistration(context, target, GenerateMarkdownRegistration(target, matched.ResourceName));
+        EmitRegistration(context, target, GenerateMarkdownRegistration(target, matched.ResourceName, RuntimePath(matched.Path, projectDirectory)));
     }
 
     static readonly FluidParser markdownParser = new();
@@ -944,9 +977,13 @@ public sealed class ParchmentTemplateGenerator :
     // Each accessor section is emitted on its own physical lines so BuildPartialSource's
     // line-by-line outer indent pass adds the right depth prefix to every line. The blocks
     // already carry inner indentation; outer pass tops them up by depth+1.
-    static (string TemplatePath, string FieldsBlock, string RegistrationsBlock) PrepareCommon(TargetInfo target)
+    static (string TemplatePath, string FieldsBlock, string RegistrationsBlock) PrepareCommon(TargetInfo target, string? runtimePath)
     {
-        var templatePath = SymbolDisplay.FormatLiteral(target.TemplatePath, quote: true);
+        // TemplatePath is where the template sits at RUNTIME, beside the assembly, which is its
+        // location relative to the project — not the path written in the attribute. Those differ as
+        // soon as the attribute is written relative to the file it sits in, and RegisterWith would
+        // otherwise look for the template in a folder that only exists in the source tree.
+        var templatePath = SymbolDisplay.FormatLiteral(runtimePath ?? target.TemplatePath, quote: true);
         var accessors = AccessorEmission.Emit(target.Shape, target.ModelFullyQualifiedName);
         var fieldsBlock = accessors == null ? "" : accessors.FieldsBlock + "\n\n";
         var registrationsBlock = accessors == null ? "" : accessors.RegistrationsBlock + "\n";
@@ -1005,9 +1042,9 @@ public sealed class ParchmentTemplateGenerator :
                      throw new global::System.InvalidOperationException("Template resource '{resourceName}' was not found in the assembly.");
          """;
 
-    static string GenerateDocxRegistration(TargetInfo target, string? resourceName)
+    static string GenerateDocxRegistration(TargetInfo target, string? resourceName, string? runtimePath)
     {
-        var (templatePath, fieldsBlock, registrationsBlock) = PrepareCommon(target);
+        var (templatePath, fieldsBlock, registrationsBlock) = PrepareCommon(target, runtimePath);
         // Emit the protection argument only when it deviates from the default, so pre-existing
         // registrations (and their snapshots) stay byte-identical.
         var protection = target.Protection == ProtectionMode.WhenEditable
@@ -1027,9 +1064,9 @@ public sealed class ParchmentTemplateGenerator :
         return BuildPartialSource(target, body);
     }
 
-    static string GenerateMarkdownRegistration(TargetInfo target, string? resourceName)
+    static string GenerateMarkdownRegistration(TargetInfo target, string? resourceName, string? runtimePath)
     {
-        var (templatePath, fieldsBlock, registrationsBlock) = PrepareCommon(target);
+        var (templatePath, fieldsBlock, registrationsBlock) = PrepareCommon(target, runtimePath);
         var body =
             $$"""
               public static string TemplatePath => {{templatePath}};
