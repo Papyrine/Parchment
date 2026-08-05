@@ -93,7 +93,7 @@ public sealed class ParchmentTemplateGenerator :
         var declaringFile = syntaxReference?.SyntaxTree.FilePath;
         var declaringDirectory = string.IsNullOrEmpty(declaringFile)
             ? null
-            : System.IO.Path.GetDirectoryName(declaringFile);
+            : Path.GetDirectoryName(declaringFile);
 
         var declaringNamespace = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? null
@@ -964,34 +964,37 @@ public sealed class ParchmentTemplateGenerator :
     {
         if (resourceName == null)
         {
-            return $$"""
-                       var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-                       store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, path{{protection}});
-                     """;
+            return
+                $"""
+                   var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+                   store.RegisterDocxTemplate<{target.ModelFullyQualifiedName}>(TemplateName, path{protection});
+                 """;
         }
 
-        return $$"""
-                   using var template = {{ManifestStream(target, resourceName)}}
-                   store.RegisterDocxTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, template{{protection}});
-                 """;
+        return $"""
+                  using var template = {ManifestStream(target, resourceName)}
+                  store.RegisterDocxTemplate<{target.ModelFullyQualifiedName}>(TemplateName, template{protection});
+                """;
     }
 
     static string MarkdownLoad(TargetInfo target, string? resourceName)
     {
         if (resourceName == null)
         {
-            return $$"""
-                       var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-                       var markdown = global::System.IO.File.ReadAllText(path);
-                       store.RegisterMarkdownTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, markdown, styleSource);
-                     """;
+            return
+                $"""
+                    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
+                    var markdown = global::System.IO.File.ReadAllText(path);
+                    store.RegisterMarkdownTemplate<{target.ModelFullyQualifiedName}>(TemplateName, markdown, styleSource);
+                  """;
         }
 
-        return $$"""
-                   using var template = {{ManifestStream(target, resourceName)}}
-                   using var reader = new global::System.IO.StreamReader(template);
-                   store.RegisterMarkdownTemplate<{{target.ModelFullyQualifiedName}}>(TemplateName, reader.ReadToEnd(), styleSource);
-                 """;
+        return
+            $"""
+                using var template = {ManifestStream(target, resourceName)}
+                using var reader = new global::System.IO.StreamReader(template);
+                store.RegisterMarkdownTemplate<{target.ModelFullyQualifiedName}>(TemplateName, reader.ReadToEnd(), styleSource);
+              """;
     }
 
     // Names the missing resource when it is missing, since the alternative is a null-reference from
