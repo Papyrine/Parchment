@@ -562,9 +562,8 @@ public sealed class ParchmentTemplateGenerator :
                             ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var sourceMember) &&
                             sourceMember.EditableCollectionElementFqn != null;
 
-                        var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
-                        var elementFqn = sourceFqn == null ? null : ShapeResolver.GetElementType(target.Shape, sourceFqn);
-                        if (elementFqn != null)
+                        if (ShapeResolver.TryResolve(target.Shape, token.References[0], scope, out var sourceFqn) &&
+                            ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out var elementFqn))
                         {
                             bound = token.LoopVariable;
                             prior = scope.GetValueOrDefault(bound);
@@ -794,8 +793,7 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    var sourceFqn = ShapeResolver.Resolve(target.Shape, token.References[0], scope);
-                    if (sourceFqn == null)
+                    if (!ShapeResolver.TryResolve(target.Shape, token.References[0], scope, out var sourceFqn))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(
@@ -808,8 +806,7 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    var elementFqn = ShapeResolver.GetElementType(target.Shape, sourceFqn);
-                    if (elementFqn == null)
+                    if (!ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out var elementFqn))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(
@@ -981,8 +978,7 @@ public sealed class ParchmentTemplateGenerator :
     {
         foreach (var reference in references)
         {
-            var resolved = ShapeResolver.Resolve(target.Shape, reference, scope);
-            if (resolved != null)
+            if (ShapeResolver.TryResolve(target.Shape, reference, scope, out _))
             {
                 continue;
             }

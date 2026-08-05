@@ -101,22 +101,16 @@ class MarkdownValidator
         // shape is known, so neither the source nor the loop variable can be checked.
         var sourceIsUntyped = sourcePath != null && untyped.Contains(sourcePath[0]);
         if (sourcePath != null &&
-            !sourceIsUntyped)
+            !sourceIsUntyped &&
+            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn) &&
+            !ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
         {
-            var sourceFqn = ShapeResolver.Resolve(target.Shape, sourcePath, scope);
-            if (sourceFqn != null)
-            {
-                elementFqn = ShapeResolver.GetElementType(target.Shape, sourceFqn);
-                if (elementFqn == null)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.LoopSourceNotEnumerable,
-                            location,
-                            templatePath,
-                            sourceText));
-                }
-            }
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.LoopSourceNotEnumerable,
+                    location,
+                    templatePath,
+                    sourceText));
         }
 
         var loopVariable = forStatement.Identifier;
@@ -215,8 +209,7 @@ class MarkdownValidator
                 continue;
             }
 
-            var resolved = ShapeResolver.Resolve(target.Shape, path, scope);
-            if (resolved != null)
+            if (ShapeResolver.TryResolve(target.Shape, path, scope, out _))
             {
                 continue;
             }
