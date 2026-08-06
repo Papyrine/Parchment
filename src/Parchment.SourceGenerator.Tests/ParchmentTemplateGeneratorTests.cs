@@ -203,7 +203,7 @@ public class ParchmentTemplateGeneratorTests
         // for Empty and must emit PARCH004.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Other.docx", GeneratorDriver.BuildDocxBytes("ignored")));
+            new TemplateFile("Other.parchment.docx", GeneratorDriver.BuildDocxBytes("ignored")));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
     }
@@ -224,8 +224,8 @@ public class ParchmentTemplateGeneratorTests
         // rather than picking one.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")),
-            new TemplateFile("Empty.md", "hello"u8.ToArray()));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytes("hello")),
+            new TemplateFile("Empty.parchment.md", "hello"u8.ToArray()));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics.Single().Id).IsEqualTo("PARCH020");
@@ -274,8 +274,8 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            new TemplateFile("Invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
+            new TemplateFile("Letter.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            new TemplateFile("Invoice.parchment.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
@@ -298,7 +298,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", "not a zip file"u8.ToArray()));
+            new TemplateFile("Empty.parchment.docx", "not a zip file"u8.ToArray()));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -325,7 +325,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -349,7 +349,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytes("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -895,7 +895,7 @@ public class ParchmentTemplateGeneratorTests
         // template file — each gets its own embedded copy.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Info.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
+            new TemplateFile("Info.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
 

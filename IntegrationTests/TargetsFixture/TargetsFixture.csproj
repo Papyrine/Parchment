@@ -17,11 +17,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Declared through the item type the package ships; expands to AdditionalFiles. -->
-    <ParchmentTemplate Include="Templates\CopiedModel.md" />
+    <!-- Declared through the item type the package ships; expands to AdditionalFiles. Discovery
+         would have found it anyway, so this covers the declared path staying a no-op rather than
+         a second, duplicate entry. -->
+    <ParchmentTemplate Include="Templates\CopiedModel.parchment.md" />
     <!-- The shape PARCH100 exists to catch: one file, two item types. -->
-    <AdditionalFiles Include="Templates\DualModel.md" />
-    <EmbeddedResource Include="Templates\DualModel.md" />
+    <AdditionalFiles Include="Templates\DualModel.parchment.md" />
+    <EmbeddedResource Include="Templates\DualModel.parchment.md" />
   </ItemGroup>
+
+  <!-- DiscoveredModel.parchment.md carries no entry at all: the package's globs are the only thing
+       that can put it in front of the generator. -->
 
 </Project>

@@ -2,7 +2,7 @@
   Diagnostics: [
     {
       Location: : (9,1)-(9,15),
-      Message: Template 'Letter.md' loop '{% for item in ... %}' source does not resolve to a type implementing IEnumerable<T>,
+      Message: Template 'Letter.parchment.md' loop '{% for item in ... %}' source does not resolve to a type implementing IEnumerable<T>,
       Severity: Error,
       Descriptor: {
         Id: PARCH002,

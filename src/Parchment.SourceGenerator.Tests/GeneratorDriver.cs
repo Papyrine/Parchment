@@ -42,10 +42,10 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
-    // The convention names the template after the model type, so the default file name is read
-    // off the [ParchmentModel] target in the source under test.
+    // The convention names the template after the model type, plus the .parchment marker, so the
+    // default file name is read off the [ParchmentModel] target in the source under test.
     public static DriverSetup CreateDriver(string userSource, params string[] templateParagraphs) =>
-        CreateDriverWithDocxes(userSource, new TemplateFile($"{ModelTypeName(userSource)}.docx", BuildDocx(templateParagraphs)));
+        CreateDriverWithDocxes(userSource, new TemplateFile($"{ModelTypeName(userSource)}.parchment.docx", BuildDocx(templateParagraphs)));
 
     /// <summary>
     /// The name of the first <c>[ParchmentModel]</c>-decorated type in the source under test —
@@ -207,7 +207,7 @@ static class GeneratorDriver
     {
         var setup = CreateDriverWithFiles(
             userSource,
-            new TemplateFile(fileName ?? $"{ModelTypeName(userSource)}.md", Encoding.UTF8.GetBytes(markdown)));
+            new TemplateFile(fileName ?? $"{ModelTypeName(userSource)}.parchment.md", Encoding.UTF8.GetBytes(markdown)));
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 

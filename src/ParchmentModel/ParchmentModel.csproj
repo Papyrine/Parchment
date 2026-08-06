@@ -24,9 +24,11 @@
   <ItemGroup>
     <!-- The generator reads templates through AdditionalFiles, so the readme's setup snippet is this
          project's own build rather than an illustration of one. Each template is named after its
-         model type; the embedded copy travels inside the generated source, so nothing is deployed. -->
-    <AdditionalFiles Include="Templates\Invoice.docx" />
-    <AdditionalFiles Include="Templates\ReportContext.md" />
-    <AdditionalFiles Include="Templates\OrderForm.docx" />
+         model type, plus the .parchment marker; the embedded copy travels inside the generated
+         source, so nothing is deployed. Declared by hand because this project reaches Parchment
+         through a ProjectReference, which does not bring the package's discovery globs with it. -->
+    <AdditionalFiles Include="Templates\Invoice.parchment.docx" />
+    <AdditionalFiles Include="Templates\ReportContext.parchment.md" />
+    <AdditionalFiles Include="Templates\OrderForm.parchment.docx" />
   </ItemGroup>
 </Project>

@@ -25,8 +25,11 @@ public sealed class ParchmentTemplateGenerator :
             .Select(static (array, _) => new EquatableArray<TargetInfo>(array))
             .WithTrackingName(Stages.TargetsCollected);
 
+        // Filtered to the marked files before anything reads them. An unmarked .md AdditionalFile
+        // is some other tool's business, and parsing it as liquid to discover that would be work
+        // repeated every build to reach the same answer.
         var docs = context.AdditionalTextsProvider
-            .Where(static _ => _.Path.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+            .Where(static _ => TemplateConvention.IsDocx(_.Path))
             .Select(static (text, _) => ReadDocx(text))
             .WithTrackingName(Stages.Docs)
             .Collect()
@@ -34,7 +37,7 @@ public sealed class ParchmentTemplateGenerator :
             .WithTrackingName(Stages.DocsCollected);
 
         var markdowns = context.AdditionalTextsProvider
-            .Where(static _ => IsMarkdownPath(_.Path))
+            .Where(static _ => TemplateConvention.IsMarkdown(_.Path))
             .Select(static (text, cancel) => ReadMarkdown(text, cancel))
             .WithTrackingName(Stages.Markdowns)
             .Collect()
@@ -42,7 +45,7 @@ public sealed class ParchmentTemplateGenerator :
             .WithTrackingName(Stages.MarkdownsCollected);
 
         var dotxes = context.AdditionalTextsProvider
-            .Where(static _ => _.Path.EndsWith(".dotx", StringComparison.OrdinalIgnoreCase))
+            .Where(static _ => TemplateConvention.IsStyleDoc(_.Path))
             .Select(static (text, _) => ReadDotx(text))
             .WithTrackingName(Stages.Dotxes)
             .Collect()
@@ -147,9 +150,6 @@ public sealed class ParchmentTemplateGenerator :
 
         return BuildPartialSource(target, body);
     }
-
-    static bool IsMarkdownPath(string path) =>
-        path.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
 
     static TargetInfo? ExtractTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
     {

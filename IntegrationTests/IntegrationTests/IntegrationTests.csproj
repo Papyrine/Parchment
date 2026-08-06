@@ -12,12 +12,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
-  <!-- SG fixtures: AdditionalFiles makes them visible to the analyzer, which validates them at
-       compile time and embeds them into the generated source — nothing is copied to the output
-       directory. Each file is named after its model type. -->
-  <ItemGroup>
-    <AdditionalFiles Include="SgInvoiceModel.docx" />
-    <AdditionalFiles Include="SgReportModel.md" />
-    <AdditionalFiles Include="EmbeddedReportModel.md" />
-  </ItemGroup>
+  <!-- The SG fixtures — SgInvoiceModel.parchment.docx and its siblings — are deliberately absent
+       from this file. The package's globs pick them up by name, the analyzer validates them at
+       compile time and embeds them into the generated source, and nothing is copied to the output
+       directory. A fixture that had to be declared here would not be testing discovery. -->
 </Project>

@@ -2,7 +2,7 @@
   Diagnostics: [
     {
       Location: : (9,1)-(9,15),
-      Message: Template 'Letter.docx' loop '{% for c in Customer.Name %}' source does not resolve to a type implementing IEnumerable<T>,
+      Message: Template 'Letter.parchment.docx' loop '{% for c in Customer.Name %}' source does not resolve to a type implementing IEnumerable<T>,
       Severity: Error,
       Descriptor: {
         Id: PARCH002,

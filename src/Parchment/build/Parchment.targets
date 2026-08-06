@@ -8,14 +8,66 @@
     assembly and nothing is embedded as a manifest resource; the generated module initializer
     carries the template itself.
 
-    <ParchmentTemplate Include="Invoice.docx" />
+    A template names itself: Invoice.parchment.md, Invoice.parchment.docx, Invoice.parchment.dotx.
+    The marker is what makes the glob below safe — a readme, a changelog, or a design note named
+    after a model cannot be mistaken for a template — so a template needs no csproj entry at all.
 
-    declares a template (or a .dotx style document) the convenient way. It maps to AdditionalFiles
-    and nothing else, so an IDE that models one build action per file keeps the file visible to
-    the generator.
+    Set EnableDefaultParchmentTemplates to false to take the globs off and declare every template
+    by hand.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultParchmentTemplates)' != 'false'">
+    <!-- The shared style document is parchment.dotx with no stem, so it needs its own pattern:
+         *.parchment.dotx wants a name and a separating dot in front of the marker. -->
+    <_ParchmentDiscovered Include="**\*.parchment.md;
+                                   **\*.parchment.docx;
+                                   **\*.parchment.dotx;
+                                   **\parchment.dotx"
+                          Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);@(ParchmentTemplate);@(AdditionalFiles)" />
+    <ParchmentTemplate Include="@(_ParchmentDiscovered)" />
+  </ItemGroup>
+
+  <!--
+    <ParchmentTemplate Include="..\Shared\Invoice.parchment.docx" />
+
+    declares a template the globs cannot reach — one outside the project folder, or under a path
+    the default excludes cover. It maps to AdditionalFiles and nothing else, so an IDE that models
+    one build action per file keeps the file visible to the generator. The name still carries the
+    marker: declaring a file says where it is, not what it binds to.
   -->
   <ItemGroup>
     <AdditionalFiles Include="@(ParchmentTemplate)" />
+  </ItemGroup>
+
+  <!--
+    Drops the None identity the SDK's default glob gives a template.
+
+    AdditionalFiles is not one of the item types the default globs exclude, so a template declared
+    only as an AdditionalFile is still swept up as None. That is the same dual identity PARCH100
+    reports, arrived at without the author doing anything — and an IDE that models one build action
+    per file can resolve the template to None, hide it from the generator, and report PARCH004
+    against a csproj entry that is present. Removing the None leaves one build action per file.
+
+    Left silent rather than warned about because it is the default shape of every project: there is
+    nothing for the author to fix. PARCH100 stays for the identities they did write.
+
+    Scoped to AdditionalFiles carrying a template extension, so a readme, a changelog, or another
+    analyzer's additional files keep their None item.
+
+    A hand-written <None Include> on a template is dropped along with the glob's, which is the
+    intended outcome: templates are embedded into the generated source, so a template needs no None
+    item to carry CopyToOutputDirectory or Pack metadata, and keeping one costs the generator the
+    file in the IDE.
+
+    WithMetadataValue rather than a %(Extension) condition: this has to run at evaluation time,
+    where an IDE reads its item list — and metadata batching is a target-only construct. Removing
+    from a target would fix nothing, since a target is exactly what an IDE does not run.
+  -->
+  <ItemGroup Condition="'@(AdditionalFiles)' != ''">
+    <_ParchmentTemplateAdditional Include="@(AdditionalFiles->WithMetadataValue('Extension', '.md'));
+                                           @(AdditionalFiles->WithMetadataValue('Extension', '.docx'));
+                                           @(AdditionalFiles->WithMetadataValue('Extension', '.dotx'))" />
+    <!-- Removing what was never there is a no-op, so no intersection with None is needed. -->
+    <None Remove="@(_ParchmentTemplateAdditional)" />
   </ItemGroup>
 
   <!--
