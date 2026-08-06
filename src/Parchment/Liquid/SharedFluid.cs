@@ -38,15 +38,16 @@ static class SharedFluid
         // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
         // StringValue short-circuits Fluid's default type dispatch (which would have called
         // Enum.ToString() and emitted the raw symbol name).
-        options.ValueConverters.Add(static value =>
-        {
-            if (value is Enum e)
+        options.ValueConverters
+            .Add(static value =>
             {
-                return new StringValue(EnumRender.Render(e));
-            }
+                if (value is Enum e)
+                {
+                    return new StringValue(EnumRender.Render(e));
+                }
 
-            return null;
-        });
+                return null;
+            });
 
         return options;
     }
@@ -55,15 +56,16 @@ static class SharedFluid
     {
         var options = BuildOptions();
         options.MemberAccessStrategy = Options.MemberAccessStrategy;
-        options.ValueConverters.Add(static value =>
-        {
-            if (value is TokenValue token)
+        options.ValueConverters
+            .Add(static value =>
             {
-                return new StringValue(TokenMarkdown.Render(token));
-            }
+                if (value is TokenValue token)
+                {
+                    return new StringValue(TokenMarkdown.Render(token));
+                }
 
-            return null;
-        });
+                return null;
+            });
 
         return options;
     }
