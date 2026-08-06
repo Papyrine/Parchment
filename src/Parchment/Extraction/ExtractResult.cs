@@ -71,7 +71,8 @@ public sealed class ExtractResult<TModel>
             }
             else
             {
-                (unreachable ??= []).Add(entry.DottedPath);
+                unreachable ??= [];
+                unreachable.Add(entry.DottedPath);
             }
         }
 
@@ -90,7 +91,8 @@ public sealed class ExtractResult<TModel>
             }
             else
             {
-                (unreachable ??= []).Add(collection.Entry.DottedPath);
+                unreachable ??= [];
+                unreachable.Add(collection.Entry.DottedPath);
             }
         }
 

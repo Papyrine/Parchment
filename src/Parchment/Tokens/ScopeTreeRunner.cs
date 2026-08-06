@@ -143,7 +143,8 @@ class ScopeTreeRunner(
                 {
                     // Whole host paragraph is the token — queue for replacement after every
                     // other in-paragraph substitution has run.
-                    (soloStructuralTokens ??= []).Add((token, evaluated));
+                    soloStructuralTokens ??= [];
+                    soloStructuralTokens.Add((token, evaluated));
                     continue;
                 }
 
@@ -168,7 +169,8 @@ class ScopeTreeRunner(
 
         if (soloStructuralTokens is { Count: > 0 })
         {
-            (structuralReplacements ??= []).Add(new(host, BuildStructuralReplacements(host, soloStructuralTokens)));
+            structuralReplacements ??= [];
+            structuralReplacements.Add(new(host, BuildStructuralReplacements(host, soloStructuralTokens)));
         }
     }
 
@@ -200,7 +202,8 @@ class ScopeTreeRunner(
                 mainPart,
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
 
-        (structuralReplacements ??= []).Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState, host)));
+        structuralReplacements ??= [];
+        structuralReplacements.Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState, host)));
     }
 
     /// <summary>
@@ -243,7 +246,8 @@ class ScopeTreeRunner(
         // structural replacement so any other in-paragraph substitutions on the same host have
         // already applied to the host's text by the time we replace it.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
-        (structuralReplacements ??= []).Add(new(host, split));
+        structuralReplacements ??= [];
+        structuralReplacements.Add(new(host, split));
         splitQueued = true;
     }
 

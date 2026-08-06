@@ -49,7 +49,8 @@ static class EditableTokenValidator
                     continue;
                 }
 
-                (editableTokens ??= []).Add(token);
+                editableTokens ??= [];
+                editableTokens.Add(token);
             }
 
             if (editableTokens == null)
