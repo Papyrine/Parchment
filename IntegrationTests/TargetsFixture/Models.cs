@@ -14,3 +14,10 @@ public partial class DualModel
 {
     public required string Name { get; init; }
 }
+
+// No csproj entry names this one's template — only the package's globs can find it.
+[ParchmentModel]
+public partial class DiscoveredModel
+{
+    public required string Name { get; init; }
+}

@@ -2,13 +2,13 @@
   Diagnostics: [
     {
       Location: : (4,1)-(4,15),
-      Message: Model 'Empty' has no template: no AdditionalFile named 'Empty.docx' or 'Empty.md' was found — declare one with <ParchmentTemplate Include="..."/> in the csproj. If it is already declared and only the IDE reports this, the file likely carries a second item type that hides it from the IDE's generator host.,
+      Message: Model 'Empty' has no template: nothing is named 'Empty.parchment.docx' or 'Empty.parchment.md'. No templates reached the generator at all. A file with that name is picked up wherever it sits in the project; one outside the project needs <ParchmentTemplate Include="..."/> in the csproj. If the file is there and only the IDE reports this, it likely carries a second item type that hides it from the IDE's generator host.,
       Severity: Error,
       Descriptor: {
         Id: PARCH004,
         Title: No template found for model,
         HelpLink: https://github.com/Papyrine/Parchment#parch004--no-template-found-for-model,
-        MessageFormat: Model '{0}' has no template: no AdditionalFile named '{0}.docx' or '{0}.md' was found — declare one with <ParchmentTemplate Include="..."/> in the csproj. If it is already declared and only the IDE reports this, the file likely carries a second item type that hides it from the IDE's generator host.,
+        MessageFormat: Model '{0}' has no template: nothing is named '{0}.parchment.docx' or '{0}.parchment.md'. {1} A file with that name is picked up wherever it sits in the project; one outside the project needs <ParchmentTemplate Include="..."/> in the csproj. If the file is there and only the IDE reports this, it likely carries a second item type that hides it from the IDE's generator host.,
         Category: Parchment,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

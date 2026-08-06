@@ -30,9 +30,10 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor TemplateFileMissing = new(
         id: "PARCH004",
         title: "No template found for model",
-        messageFormat: "Model '{0}' has no template: no AdditionalFile named '{0}.docx' or '{0}.md' was found — declare one with " +
-                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If it is already declared and only the IDE " +
-                       "reports this, the file likely carries a second item type that hides it from the IDE's generator host.",
+        messageFormat: "Model '{0}' has no template: nothing is named '{0}.parchment.docx' or '{0}.parchment.md'. {1} A file " +
+                       "with that name is picked up wherever it sits in the project; one outside the project needs " +
+                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If the file is there and only the IDE reports " +
+                       "this, it likely carries a second item type that hides it from the IDE's generator host.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -172,7 +173,7 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor AmbiguousTemplate = new(
         id: "PARCH020",
         title: "Model matches more than one template file",
-        messageFormat: "Model '{0}' matches more than one template file: {1}. A model binds exactly one template named after it — remove or rename the others.",
+        messageFormat: "Model '{0}' matches more than one template file: {1}. A model binds exactly one '{0}.parchment.docx' or '{0}.parchment.md' — remove or rename the others.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -199,7 +200,7 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",
-        messageFormat: "Model '{0}' matches more than one style document: {1}. A markdown template takes at most one '{0}.dotx' — remove or rename the others.",
+        messageFormat: "Model '{0}' matches more than one style document: {1}. A markdown template takes at most one '{0}.parchment.dotx' — remove or rename the others.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

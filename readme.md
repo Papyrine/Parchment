@@ -1263,7 +1263,7 @@ The rendered docx (page 1):
 
 ![Markdown template output](/src/Parchment.Tests/UsageTests.Markdown%23page01.verified.png)
 
-The optional `styleSource` is a Word template (`.dotx`) whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used. On the source-generator path the style source is found by [convention](#how-a-style-document-is-found) — `TypeName.dotx`, or the nearest `parchment.dotx` up the directory tree — and embedded with the template.
+The optional `styleSource` is a Word template (`.dotx`) whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used. On the source-generator path the style source is found by [convention](#how-a-style-document-is-found) — `TypeName.parchment.dotx`, or the nearest `parchment.dotx` up the directory tree — and embedded with the template.
 
 The markdown replaces the body and nothing else, so those inherited parts arrive as authored — and their tokens bind against the same model. A `{{ Season }}` in the style source's header, or a `{% if %}` in its footer, works exactly as it would in the docx flow. Only the body-only token kinds are unavailable there: `[ExcelsiorTable]`, `[Format]`, string lists and editable fields are docx-flow features and do not apply to a markdown template's header.
 
@@ -1799,7 +1799,7 @@ Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{
 
 ## Source generator (recommended)
 
-The source generator is the recommended way to register templates. Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator (a) finds the template by convention — the `AdditionalFiles` entry named after the type, `Invoice.docx` or `Invoice.md` — (b) validates the template tokens against the model at compile time, and (c) embeds the template into the generated source together with pre-compiled member accessors — Fluid accessors per reachable type, plus the per-template maps for `[ExcelsiorTable]`, `[Html]` / `[Markdown]`, and `IEnumerable<string>` properties.
+The source generator is the recommended way to register templates. Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator (a) finds the template by convention — the `AdditionalFiles` entry named after the type, `Invoice.parchment.docx` or `Invoice.parchment.md`, which the package globs in on its own — (b) validates the template tokens against the model at compile time, and (c) embeds the template into the generated source together with pre-compiled member accessors — Fluid accessors per reachable type, plus the per-template maps for `[ExcelsiorTable]`, `[Html]` / `[Markdown]`, and `IEnumerable<string>` properties.
 
 **Nothing to register, nothing to deploy.** The generated code carries the template's bytes and registers them from a module initializer when the model's assembly loads; a `TemplateStore` picks the definition up on the model's first render. There is no registration call to write, no template file to copy beside the assembly, and no path to resolve at runtime.
 
@@ -1870,36 +1870,32 @@ await store.Render(SampleData.Invoice(), invoice);
 
 ### Declaring templates
 
-The generator reads templates through `AdditionalFiles` — the only channel Roslyn offers a generator. Declare each template (and any `.dotx` style document) there, named after its model type:
+Nothing to declare. A template names itself — `Invoice.parchment.docx`, `ReportContext.parchment.md`, `Invoice.parchment.dotx` — and the package globs those names into `AdditionalFiles`, which is the only channel Roslyn offers a generator. Adding a template to a project is adding the file.
+
+The marker is what makes that safe. A glob for `*.md` would sweep up every readme, changelog, and design note in the project; a glob for `*.parchment.md` sweeps up templates. So the name is required, not a shorthand — an unmarked file is not a template however it is named or declared.
+
+Discovery covers the project folder. A template outside it, or under a path the SDK's default excludes cover, still needs an entry, and Parchment ships a `ParchmentTemplate` item type for saying so:
 
 ```xml
 <ItemGroup>
-  <AdditionalFiles Include="Templates\Invoice.docx" />
-  <AdditionalFiles Include="Templates\ReportContext.md" />
+  <ParchmentTemplate Include="..\Shared\Invoice.parchment.docx" />
 </ItemGroup>
 ```
 
-Parchment also ships a `ParchmentTemplate` item type that expands to exactly that — use it when a file listing should say what the files are for:
+`ParchmentTemplate` expands to `AdditionalFiles` and nothing else. `<AdditionalFiles>` directly works the same way; the dedicated item type is there so a file listing says what the files are for. Set `EnableDefaultParchmentTemplates` to `false` to take the globs off entirely and declare every template by hand.
 
-```xml
-<ItemGroup>
-  <ParchmentTemplate Include="Templates\Invoice.docx" />
-  <ParchmentTemplate Include="Templates\ReportContext.md" />
-</ItemGroup>
-```
-
-Either way, **a template should carry exactly one item type**. Listing the same file as an `<AdditionalFiles>` entry and also as `<EmbeddedResource>` or `<Content>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--no-template-found-for-model) that a command-line build cannot reproduce. Since the template is embedded into the generated source, the second item type is never needed.
+**A template should carry exactly one item type.** Listing the same file as an `<AdditionalFiles>` entry and also as `<EmbeddedResource>` or `<Content>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--no-template-found-for-model) that a command-line build cannot reproduce. Since the template is embedded into the generated source, the second item type is never needed. A hand-written second identity is reported as `PARCH100`; the `None` item the SDK's default glob adds to every template is removed by the package, so that one needs no attention.
 
 #### How a template is found
 
-There is no path to write. A model named `Invoice` binds the `AdditionalFiles` entry named `Invoice.docx` or `Invoice.md`, wherever it sits in the project. No match is [`PARCH004`](#parch004--no-template-found-for-model); more than one — a docx and an md, or namesakes in different folders — is [`PARCH020`](#parch020--model-matches-more-than-one-template-file).
+There is no path to write. A model named `Invoice` binds the `AdditionalFiles` entry named `Invoice.parchment.docx` or `Invoice.parchment.md`, wherever it sits in the project. No match is [`PARCH004`](#parch004--no-template-found-for-model); more than one — a docx and an md, or namesakes in different folders — is [`PARCH020`](#parch020--model-matches-more-than-one-template-file). An `Invoice.md` with no marker is neither: it is not a candidate, so it cannot bind and cannot collide.
 
 #### How a style document is found
 
-A markdown template's style source is a `.dotx` declared in `AdditionalFiles`, resolved in order:
+A markdown template's style source is a marked `.dotx`, resolved in order:
 
-1. **`Invoice.dotx`** — a style document named after the model type, for a template that needs its own look. More than one is [`PARCH021`](#parch021--model-matches-more-than-one-style-document).
-2. **`parchment.dotx`** — the nearest one walking up the directory tree from the template. A folder of templates shares one look by placing a single `parchment.dotx` beside them (or in any ancestor folder).
+1. **`Invoice.parchment.dotx`** — a style document named after the model type, for a template that needs its own look. More than one is [`PARCH021`](#parch021--model-matches-more-than-one-style-document).
+2. **`parchment.dotx`** — the nearest one walking up the directory tree from the template. A folder of templates shares one look by placing a single `parchment.dotx` beside them (or in any ancestor folder). The shared document is the marker on its own, with no model name in front of it, which is also what keeps it distinct from the style document of a model actually named `Parchment`.
 3. Neither — the markdown renders against a built-in blank document.
 
 The resolved `.dotx` is embedded alongside the markdown and carried through registration as the style source. Docx templates ignore style documents — a docx carries its own styles.
@@ -1958,15 +1954,27 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 
 ### `PARCH004` — no template found for model
 
-No `AdditionalFiles` entry named after the `[ParchmentModel]` type was found — a model named `Invoice` needs an `Invoice.docx` or `Invoice.md`. Declare the template in the csproj — see [Declaring templates](#declaring-templates):
+No `AdditionalFiles` entry named after the `[ParchmentModel]` type was found — a model named `Invoice` needs an `Invoice.parchment.docx` or `Invoice.parchment.md`. A file with that name anywhere in the project folder is picked up on its own, so the usual cause is a missing marker: an `Invoice.md` is a markdown file, not a template. Rename it.
+
+**The message lists every template the generator did see**, which is what says whether this is a naming problem or a plumbing one:
+
+```
+Model 'Invoice' has no template: nothing is named 'Invoice.parchment.docx' or
+'Invoice.parchment.md'. Templates seen: Templates/Order.parchment.docx,
+Templates/Reprot.parchment.md. ...
+```
+
+Names in that list mean the files arrived and one of them is a near-miss — the typo above is the whole diagnosis. `No templates reached the generator at all.` means no template got through, so renaming will not help; look at the item types and the IDE instead.
+
+A template outside the project folder is never discovered and has to be declared — see [Declaring templates](#declaring-templates):
 
 ```xml
 <ItemGroup>
-  <ParchmentTemplate Include="Templates\Invoice.docx" />
+  <ParchmentTemplate Include="..\Shared\Invoice.parchment.docx" />
 </ItemGroup>
 ```
 
-**Reported by an IDE while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it, which happens when the template carries a second item type — see [Declaring templates](#declaring-templates), where the fix is to drop the second item type. A project reload can flip which identity wins, so the error may clear on reload and return later; that, rather than a stale cache, is the tell.
+**Reported by an IDE while `dotnet build` stays clean?** Then the file is there and the IDE is not seeing it, which happens when the template carries a second item type — see [Declaring templates](#declaring-templates), where the fix is to drop the second item type. A project reload can flip which identity wins, so the error may clear on reload and return later; that, rather than a stale cache, is the tell.
 
 To confirm which side is at fault:
 
@@ -1974,7 +1982,7 @@ To confirm which side is at fault:
 dotnet msbuild MyProject.csproj -getItem:AdditionalFiles
 ```
 
-A correct `FullPath` in that output means the csproj is right and the IDE's project model is the problem.
+A correct `FullPath` in that output means the build is right and the IDE's project model is the problem.
 
 
 ### `PARCH005` — block tag shares a paragraph
@@ -2116,17 +2124,17 @@ More than one `AdditionalFiles` entry is [named after the model type](#how-a-tem
 
 ```
 // Model Invoice, with AdditionalFiles
-//   Templates/Invoice.docx
-//   Drafts/Invoice.md
+//   Templates/Invoice.parchment.docx
+//   Drafts/Invoice.parchment.md
 [ParchmentModel]
 ```
 
-Remove or rename the extras until one file carries the type's name.
+Remove or rename the extras until one file carries the type's name. Dropping the `.parchment` marker is enough — an unmarked file is not a candidate.
 
 
 ### `PARCH021` — model matches more than one style document
 
-More than one `.dotx` `AdditionalFiles` entry is named after the model type. A markdown template takes at most one [style document](#how-a-style-document-is-found) — remove or rename the others. (Shared `parchment.dotx` files are exempt: the nearest one up the directory tree wins by design.)
+More than one `.dotx` `AdditionalFiles` entry is named after the model type — an `Invoice.parchment.dotx` in two folders. A markdown template takes at most one [style document](#how-a-style-document-is-found) — remove or rename the others. (Shared `parchment.dotx` files are exempt: the nearest one up the directory tree wins by design.)
 
 
 ### `PARCH022` — `[EditableField]` collection has an unsupported shape

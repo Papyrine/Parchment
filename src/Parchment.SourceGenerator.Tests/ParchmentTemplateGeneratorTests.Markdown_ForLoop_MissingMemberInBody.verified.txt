@@ -2,7 +2,7 @@
   Diagnostics: [
     {
       Location: : (10,1)-(10,15),
-      Message: Template 'Invoice.md' token '{{ ... }}' references 'line.Missing' which is not a member of 'Invoice',
+      Message: Template 'Invoice.parchment.md' token '{{ ... }}' references 'line.Missing' which is not a member of 'Invoice',
       Severity: Error,
       Descriptor: {
         Id: PARCH001,
