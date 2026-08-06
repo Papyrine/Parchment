@@ -138,7 +138,12 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         GuardBindingModel(model, name);
         SharedFluid.EnsureModelRegistered(model, name);
 
-        if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
+        // Excelsior tokens become markers before the source is parsed, so the cached template
+        // carries the markers and a render never has to re-scan the markdown.
+        var excelsiorTables = ExcelsiorTableMap.Build(model);
+        var (rewritten, tablePlaceholders) = MarkdownExcelsiorTables.Rewrite(markdown, excelsiorTables, name);
+
+        if (!SharedFluid.Parser.TryParse(rewritten, out var template, out var error))
         {
             throw new ParchmentRegistrationException(
                 name,
@@ -152,7 +157,16 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         bytes = NormalizeStyleSource(bytes);
         var (styleSourceBytes, parts) = ScanNonBodyParts(model, bytes, name);
 
-        var registered = new RegisteredMarkdownTemplate(name, model, styleSourceBytes, parts, template, Policies, PageNumbers);
+        var registered = new RegisteredMarkdownTemplate(
+            name,
+            model,
+            styleSourceBytes,
+            parts,
+            template,
+            Policies,
+            PageNumbers,
+            excelsiorTables,
+            tablePlaceholders);
         templates[model] = registered;
         logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
     }

@@ -575,6 +575,8 @@ await store.Render(
 
 Mark any collection property on the model with `[ExcelsiorTable]` and the matching `{{ ... }}` substitution is rendered as a fully-formatted Word table by [Excelsior](https://github.com/Papyrine/Excelsior) at render time. Headings, column ordering, formatting, null display, and custom render callbacks all come from Excelsior's `[Column]` attribute on the element type — the same configuration surface used for spreadsheets.
 
+Both flows render the table. A docx template swaps the token's host paragraph for it; a markdown template has no host paragraph at substitution time, so the token is replaced with a marker before the source is parsed and the marker's paragraph becomes the table once the markdown is OpenXML. The rules below apply either way — read "paragraph" as "line" in a markdown template.
+
 Mark the collection on the model:
 
 <!-- snippet: ExcelsiorTableModel -->
@@ -656,7 +658,7 @@ The rendered output:
 
 Rules:
 
-- The substitution must sit alone in its own paragraph — structural table replacement swaps the entire host paragraph, so surrounding text would be discarded. The runtime throws at registration (`ParchmentRegistrationException`) and the source generator emits `PARCH007` if this is violated.
+- The substitution must sit alone in its own block — the table replaces the block, so surrounding text would be discarded. That is its own paragraph in a docx template and its own line in a markdown one. The runtime throws at registration (`ParchmentRegistrationException`) and the source generator emits `PARCH007` if this is violated.
 - The substitution must be a plain member-access expression — filters (`{{ Lines | reverse }}`) and arithmetic are rejected because the Excelsior path walks the model object directly and bypasses Fluid evaluation. Diagnostic `PARCH008` covers this at compile time.
 - Nested paths like `{{ Customer.Lines }}` work — the registration walks the model type recursively at build time, so `[ExcelsiorTable]` can sit on any reachable collection property.
 - Currency and date formatting in the rendered table honor `Excelsior.ValueRenderer.Culture` (defaults to `CultureInfo.CurrentCulture`). Set it once in a module initializer to override the default locale.
@@ -2002,9 +2004,9 @@ prefix {% for line in Lines %}
 The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error.
 
 
-### `PARCH007` — `[ExcelsiorTable]` token not alone in paragraph
+### `PARCH007` — `[ExcelsiorTable]` token not alone in its block
 
-**Docx only.** `[ExcelsiorTable]`-driven structural replacement is wired through the docx flow only; markdown templates ignore the attribute. An `[ExcelsiorTable]` substitution replaces the entire host paragraph with a Word table. If the paragraph contains other text, that text would be discarded. The token must be the only content in its paragraph.
+An `[ExcelsiorTable]` substitution replaces its whole block with a Word table. If the block contains other text, that text would be discarded, so the token must be the only content in it — its own paragraph in a docx template, its own line in a markdown one.
 
 ```
 // Model
@@ -2021,7 +2023,7 @@ Prefix {{ Lines }}
 
 ### `PARCH008` — `[ExcelsiorTable]` token with filters or complex expression
 
-**Docx only.** The Excelsior render path walks the CLR model directly and bypasses Fluid evaluation, so filters and complex expressions would be silently ignored. Only plain member-access (`{{ Lines }}` or `{{ Customer.Lines }}`) is allowed.
+The Excelsior render path walks the CLR model directly and bypasses Fluid evaluation, so filters and complex expressions would be silently ignored. Only plain member-access (`{{ Lines }}` or `{{ Customer.Lines }}`) is allowed. Applies to both flows.
 
 ```
 // Template paragraph — the | reverse filter would be silently dropped

@@ -866,6 +866,73 @@ public sealed class ParchmentTemplateGenerator :
         }
     }
 
+    /// <summary>
+    /// The markdown flow's PARCH007 / PARCH008, which the AST walk cannot reach.
+    /// </summary>
+    /// <remarks>
+    /// An Excelsior token is rewritten to a marker before the source is parsed, so what disqualifies
+    /// one is a property of the line it sits on rather than of the Fluid AST — whether the token is
+    /// the whole line, and whether the expression is a bare path. Both are read off the source here,
+    /// the same way <c>MarkdownExcelsiorTables</c> reads them at registration.
+    ///
+    /// Without this the mistake still gets caught, but not until the store materializes the template
+    /// on the model's first render — a runtime failure for something the build can see.
+    /// </remarks>
+    static void ValidateMarkdownExcelsiorTokens(
+        SourceProductionContext context,
+        TargetInfo target,
+        string templatePath,
+        Location location,
+        string markdown)
+    {
+        foreach (var rawLine in markdown.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            foreach (Match match in markdownToken.Matches(line))
+            {
+                var body = match.Groups["body"].Value.Trim();
+                var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
+                var path = (end < 0 ? body : body[..end]).Replace(" ", "").Replace("\t", "");
+                if (path.Length == 0)
+                {
+                    continue;
+                }
+
+                // Root paths only, matching the map the render looks the table up in: a loop
+                // variable's members are not reachable from the root and fall through to Fluid.
+                if (!ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
+                {
+                    continue;
+                }
+
+                if (match.Value != line)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorTokenNotAlone,
+                            location,
+                            templatePath,
+                            match.Value));
+                    continue;
+                }
+
+                if (body != path)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorTokenNotPlainIdentifier,
+                            location,
+                            templatePath,
+                            match.Value));
+                }
+            }
+        }
+    }
+
+    static readonly Dictionary<string, string> EmptyScope = new();
+
+    static readonly Regex markdownToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
+
     static void ProcessMarkdown(
         SourceProductionContext context,
         TargetInfo target,
@@ -898,6 +965,7 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
+        ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
 
         // The style source: the dotx named after the type when the project carries one, otherwise
         // the nearest parchment.dotx up the directory tree from the template. Neither is required

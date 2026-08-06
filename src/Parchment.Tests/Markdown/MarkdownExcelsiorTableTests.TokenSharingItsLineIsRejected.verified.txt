@@ -1,0 +1,1 @@
+﻿Parchment registration failed for template 'QuoteModel': '{{ Lines }}' renders an [ExcelsiorTable] as a Word table, which replaces the whole block it sits in, so it has to be alone on its line. It currently shares a line with other content: Lines: {{ Lines }}

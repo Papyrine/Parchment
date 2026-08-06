@@ -8,9 +8,14 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
-/// PARCH003 / PARCH005 / PARCH007 / PARCH008 / PARCH010 are docx-specific and not emitted
-/// for markdown — the runtime markdown flow has no concept of paragraph boundaries, no
-/// Excelsior dispatch, and no [Html]/[Markdown] structural replacement.
+/// PARCH003 / PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
+/// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
+/// replacement.
+///
+/// PARCH007 / PARCH008 do apply to markdown, but not from here: an Excelsior token is rewritten
+/// to a marker before the source is parsed, so what disqualifies one is a property of the line it
+/// sits on rather than of this AST. ParchmentTemplateGenerator.ValidateMarkdownExcelsiorTokens
+/// reads them off the source instead.
 /// </summary>
 /// <remarks>
 /// Kept deliberately in step with <c>Parchment.Liquid.MarkdownReferenceValidator</c>, its runtime

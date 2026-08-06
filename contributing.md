@@ -48,7 +48,7 @@ Template is a real `.docx` containing liquid tokens scattered across paragraphs.
 
 ### Flow B — Markdown template (`RegisterMarkdownTemplate<T>` / `Render`)
 
-Whole `.md` source is one Fluid template parsed once. At render:
+Whole `.md` source is one Fluid template parsed once. `[ExcelsiorTable]` tokens are rewritten to markers (`MarkdownExcelsiorTables.Rewrite`) *before* that parse, so the cached template carries markers and a render never re-scans the source; `MarkdownExcelsiorTables.Apply` swaps each marker's paragraph for the built table after Markdig, before the TOC is written and before pagination — a table is taller than the marker it replaces, so every page number after it moves. At render:
 
 1. Render cached `IFluidTemplate` against model → final markdown text.
 2. `Markdig.Markdown.Parse(text, MarkdigPipeline.Pipeline)` → `MarkdownDocument`.

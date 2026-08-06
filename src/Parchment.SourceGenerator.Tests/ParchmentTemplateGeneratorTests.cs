@@ -405,6 +405,47 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
     }
 
+    // The markdown flow rewrites the token to a marker before the source is parsed, so the same two
+    // rules apply there — read off the line rather than off the paragraph. Without these, the
+    // mistake surfaces when the store materializes the template on first render, not at build.
+    [Test]
+    public async Task Markdown_ExcelsiorToken_SharingItsLine_Diagnostic()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "Lines: {{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
+    [Test]
+    public async Task Markdown_ExcelsiorToken_WithFilter_Diagnostic()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "{{ Lines | reverse }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsTrue();
+    }
+
+    [Test]
+    public async Task Markdown_ExcelsiorToken_Clean_NoDiagnostics()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "# Invoice\n\n{{ Lines }}\n");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
+    }
+
+    // A loop variable's members are not reachable from the root model, so the table lookup misses
+    // and the token falls through to Fluid — the same as the docx flow. Not a diagnostic.
+    [Test]
+    public async Task Markdown_ExcelsiorToken_LoopScoped_NoDiagnostics()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            excelsiorModel,
+            "{% for line in Lines %}\n{{ line.Description }}\n{% endfor %}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
+    }
+
     const string formatModel =
         """
         using System.Diagnostics.CodeAnalysis;

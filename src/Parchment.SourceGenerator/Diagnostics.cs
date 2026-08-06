@@ -59,12 +59,12 @@ static class Diagnostics
 
     public static readonly DiagnosticDescriptor ExcelsiorTokenNotAlone = new(
         id: "PARCH007",
-        title: "[ExcelsiorTable] token must sit alone in its own paragraph",
-        messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property but shares its paragraph with other content; structural table replacement would discard the surrounding text",
+        title: "[ExcelsiorTable] token must sit alone in its own block",
+        messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property but shares its block with other content — its paragraph in a docx template, its line in a markdown one; the table replaces the whole block, so the surrounding text would be discarded",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        helpLinkUri: "https://github.com/Papyrine/Parchment#parch007--excelsiortable-token-not-alone-in-paragraph");
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch007--excelsiortable-token-not-alone-in-its-block");
 
     // PARCH009 was previously emitted for `[Html]`/`[Markdown]` tokens that did not sit alone in
     // their paragraph. The runtime now splices inline content in place and splits the host

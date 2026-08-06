@@ -5,7 +5,9 @@ class RegisteredMarkdownTemplate(
     IReadOnlyList<PartScopeTree> nonBodyParts,
     IFluidTemplate parsedTemplate,
     ImagePolicies imagePolicies,
-    IPageNumberResolver? pageNumbers) :
+    IPageNumberResolver? pageNumbers,
+    ExcelsiorTableMap excelsiorTables,
+    IReadOnlyList<MarkdownExcelsiorTables.Placeholder> tablePlaceholders) :
     RegisteredTemplate(name, modelType)
 {
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
@@ -44,6 +46,10 @@ class RegisteredMarkdownTemplate(
             {
                 body.AppendChild(element);
             }
+
+            // Before anything measures or numbers the document: a table is taller than the marker
+            // paragraph it replaces, so every page number after it moves.
+            MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, Name);
 
             if (sectPr != null)
             {
