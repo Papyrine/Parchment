@@ -79,7 +79,8 @@ static class Anchors
                 if (child is BookmarkStart {Name.Value: { } name} start &&
                     name.StartsWith(Prefix, StringComparison.Ordinal))
                 {
-                    (starts ??= []).Add(start);
+                    starts ??= [];
+                    starts.Add(start);
                     var id = start.Id?.Value;
                     if (id != null)
                     {
@@ -90,7 +91,8 @@ static class Anchors
                          ids != null &&
                          ids.Contains(endId))
                 {
-                    (ends ??= []).Add(end);
+                    ends ??= [];
+                    ends.Add(end);
                 }
             }
         }

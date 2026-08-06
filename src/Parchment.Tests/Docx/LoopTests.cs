@@ -1,4 +1,5 @@
-public class LoopTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class LoopTests
 {
     [Test]
     public async Task ParagraphScopeLoop()
@@ -17,10 +18,10 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("loop", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("loop", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -44,10 +45,9 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NestedModel>("nested-loop", template);
+        store.RegisterDocxTemplate<NestedModel>(template);
         using var stream = new MemoryStream();
         await store.Render(
-            "nested-loop",
             new NestedModel
             {
                 Groups =
@@ -69,7 +69,8 @@ public class LoopTests
         await Verify(stream, "docx");
     }
 
-    public class NestedModel
+    [ParchmentBindable]
+    public partial class NestedModel
     {
         public required IReadOnlyList<NestedGroup> Groups { get; init; }
     }
@@ -99,7 +100,7 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("empty-loop", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         var invoice = SampleData.Invoice();
         var emptied = new Invoice
@@ -115,12 +116,13 @@ public class LoopTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("empty-loop", emptied, stream);
+        await store.Render(emptied, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
 
-    public class TripleNestModel
+    [ParchmentBindable]
+    public partial class TripleNestModel
     {
         public required IReadOnlyList<Level1> Sections { get; init; }
     }
@@ -165,7 +167,7 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TripleNestModel>("triple-nest", template);
+        store.RegisterDocxTemplate<TripleNestModel>(template);
 
         var model = new TripleNestModel
         {
@@ -204,12 +206,13 @@ public class LoopTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("triple-nest", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
 
-    public class LeakModel
+    [ParchmentBindable]
+    public partial class LeakModel
     {
         public required string Item { get; init; }
         public required IReadOnlyList<string> Items { get; init; }
@@ -235,11 +238,10 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<LeakModel>("loop-leak", template);
+        store.RegisterDocxTemplate<LeakModel>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "loop-leak",
             new LeakModel { Item = "model-property", Items = ["alpha", "beta"] },
             stream);
         stream.Position = 0;
@@ -256,7 +258,8 @@ public class LoopTests
         await Assert.That(paragraphs).DoesNotContain("After:beta.");
     }
 
-    public class NestedShadowModel
+    [ParchmentBindable]
+    public partial class NestedShadowModel
     {
         public required IReadOnlyList<OuterItem> Outers { get; init; }
     }
@@ -296,11 +299,10 @@ public class LoopTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NestedShadowModel>("loop-shadow", template);
+        store.RegisterDocxTemplate<NestedShadowModel>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "loop-shadow",
             new NestedShadowModel
             {
                 Outers =

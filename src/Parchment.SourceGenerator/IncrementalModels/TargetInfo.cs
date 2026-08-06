@@ -22,11 +22,6 @@ sealed record TargetInfo(
     EquatableArray<EnclosingType> EnclosingTypes,
     string ModelFullyQualifiedName,
     string ModelDisplayName,
-    string TemplatePath,
-    // Directory of the file the attribute was written in, so a template path written relative to
-    // it ("./Templates/report.md") can be resolved against the place its author was looking at.
-    // Null when the syntax has no file path (in-memory compilations).
-    string? DeclaringDirectory,
     ProtectionMode Protection,
     EquatableLocation Location,
     ModelShape Shape,

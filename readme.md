@@ -25,32 +25,37 @@ This project uses [SponsorCheck](https://github.com/SimonCropp/SponsorCheck) to 
 Parchment supports two complementary template formats:
 
 1. **Docx template** — start from a hand-crafted Word document with `{{ field }}` substitution tokens and `{% for %}` / `{% if %}` block tags. Output preserves every detail of the source document.
-2. **Markdown template** — start from a `.md` file with full liquid support. Markdown is parsed by Markdig and rendered into a target docx. Optionally provide a style-source `.docx` whose styles, headers, footers, and section properties are inherited.
+2. **Markdown template** — start from a `.md` file with full liquid support. Markdown is parsed by Markdig and rendered into a target docx. Optionally provide a style-source `.dotx` whose styles, headers, footers, and section properties are inherited.
 
 
-## Naming a template
+## One template per model
 
-A template is registered under a name and rendered by it. The name can be left out, in which case it is the model type's namespaced name:
+A template belongs to its model type and is rendered by it. On the recommended [source generator](#source-generator-recommended) path there is nothing to register at all: `[ParchmentModel]` on the model finds the template (and any `.dotx` style document) [by convention](#how-a-template-is-found), embeds it into the generated source, and a module initializer registers it when the assembly loads — so rendering is the whole API:
 
 ```cs
-var store = new TemplateStore();
-store.RegisterMarkdownTemplate<Invoice>(markdown);
+[ParchmentModel]
+public partial class Invoice
+{
+    // ...
+}
 
+var store = new TemplateStore();
 await store.Render(invoice, stream);
 ```
 
-The type says which template to use, so the string that would otherwise be repeated at registration and at every render — and that the compiler cannot check — is gone. Nothing has to reproduce the default name: a template is found by its model type, whatever it was registered as, so this works for one registered through the generated `RegisterWith` too.
-
-Pass a name where a model has more than one template:
+Registering by hand exists for templates the generator cannot see — content produced at runtime, per-tenant templates, and the like. The model still goes through the generator: mark it `[ParchmentBindable]` and its accessors are pre-compiled with no template bound, ready for whatever template arrives at runtime:
 
 ```cs
-store.RegisterMarkdownTemplate<Invoice>("summary", summaryMarkdown);
-store.RegisterMarkdownTemplate<Invoice>("detail", detailMarkdown);
+[ParchmentBindable]
+public partial class Invoice
+{
+    // ...
+}
 
-await store.Render("summary", invoice, stream);
+store.RegisterMarkdownTemplate<Invoice>(markdown);
 ```
 
-Rendering such a model without a name throws rather than picking one, since which template was found first would depend on registration order. Registering a name already held by a different model is refused for the same reason — left alone it discards the template already there, and the loss only shows up later as that model having none.
+Either way the model type is the whole address — there is no name to repeat at registration and at every render, so there is no string for the compiler to fail to check. A model has exactly one template; re-registering the same model replaces it. Where two documents genuinely share data, give each its own model type — a thin wrapper class holding the shared data is enough, and it gives the template a type to be found by.
 
 
 ## Docx template
@@ -91,10 +96,10 @@ Two kinds are left untouched, because neither can be a substitution site:
 <a id='snippet-Substitution'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<Invoice>("substitution", template);
+store.RegisterDocxTemplate<Invoice>(template);
 
 using var stream = new MemoryStream();
-await store.Render("substitution", SampleData.Invoice(), stream);
+await store.Render(SampleData.Invoice(), stream);
 ```
 <sup><a href='/src/Parchment.Tests/UsageTests.cs#L17-L25' title='Snippet source file'>snippet source</a> | <a href='#snippet-Substitution' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
@@ -183,7 +188,7 @@ using var template = DocxTemplateBuilder.Build(
     {{ Tags | bullet_list }}
     """);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L267-L276' title='Snippet source file'>snippet source</a> | <a href='#snippet-BulletListFilterContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L268-L277' title='Snippet source file'>snippet source</a> | <a href='#snippet-BulletListFilterContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -192,11 +197,11 @@ Render:
 <a id='snippet-BulletListFilterRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<Invoice>("bullet-filter", template);
+store.RegisterDocxTemplate<Invoice>(template);
 using var stream = new MemoryStream();
-await store.Render("bullet-filter", SampleData.Invoice(), stream);
+await store.Render(SampleData.Invoice(), stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L278-L285' title='Snippet source file'>snippet source</a> | <a href='#snippet-BulletListFilterRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L279-L286' title='Snippet source file'>snippet source</a> | <a href='#snippet-BulletListFilterRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `numbered_list` is identical in shape — swap the filter name to produce a decimal-numbered list instead of bullets.
@@ -220,13 +225,14 @@ Model:
 <!-- snippet: MarkdownPropertyModel -->
 <a id='snippet-MarkdownPropertyModel'></a>
 ```cs
-public class NoteModel
+[ParchmentBindable]
+public partial class NoteModel
 {
     public required string Title;
     public required TokenValue Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L9-L17' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L10-L19' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -238,7 +244,7 @@ Content:
 
 {{ Body }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L25-L29' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L27-L31' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -247,9 +253,8 @@ Render:
 <a id='snippet-MarkdownPropertyRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<NoteModel>("markdown-hatch", template);
+store.RegisterDocxTemplate<NoteModel>(template);
 await store.Render(
-    "markdown-hatch",
     new NoteModel
     {
         Title = "Weekly summary",
@@ -266,7 +271,7 @@ await store.Render(
     },
     stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L32-L54' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L34-L55' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -279,13 +284,14 @@ Model:
 <!-- snippet: MarkdownFilterModel -->
 <a id='snippet-MarkdownFilterModel'></a>
 ```cs
-public class ArticleModel
+[ParchmentBindable]
+public partial class ArticleModel
 {
     public required string Heading;
     public required string Content;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L60-L68' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L61-L70' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -297,7 +303,7 @@ Content:
 
 {{ Content | markdown }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L76-L80' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L78-L82' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -306,9 +312,8 @@ Render:
 <a id='snippet-MarkdownFilterRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<ArticleModel>("markdown-filter", template);
+store.RegisterDocxTemplate<ArticleModel>(template);
 await store.Render(
-    "markdown-filter",
     new ArticleModel
     {
         Heading = "Release notes",
@@ -322,7 +327,7 @@ await store.Render(
     },
     stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L83-L102' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L85-L103' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Both approaches produce the same structural replacement — the host paragraph is swapped with the rendered markdown elements when the token is the entire paragraph. If the token shares its paragraph with other text or with sibling tokens, the runtime falls back to inline splicing (single produced paragraph → its runs are extracted and merged into the host) or paragraph splitting (multiple produced blocks → host is split at the token offset and the produced blocks slot between the two halves). See [Inline-aware structural replacement](#inline-aware-structural-replacement) for the full rules.
@@ -334,13 +339,14 @@ Model:
 <!-- snippet: MarkdownTemplatePropertyModel -->
 <a id='snippet-MarkdownTemplatePropertyModel'></a>
 ```cs
-public class BriefModel
+[ParchmentBindable]
+public partial class BriefModel
 {
     public required string Title;
     public required string Details;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L57-L65' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L115-L124' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -352,7 +358,7 @@ Content:
 
 {{ Details }}
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L73-L77' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L132-L136' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -362,12 +368,10 @@ Render:
 ```cs
 var store = new TemplateStore();
 store.RegisterMarkdownTemplate<BriefModel>(
-    "brief",
     markdown,
     styleSource);
 
 await store.Render(
-    "brief",
     new BriefModel
     {
         Title = "Sprint recap",
@@ -383,7 +387,7 @@ await store.Render(
     },
     targetStream);
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L82-L107' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L141-L164' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -396,13 +400,14 @@ Model:
 <!-- snippet: HtmlPropertyModel -->
 <a id='snippet-HtmlPropertyModel'></a>
 ```cs
-public class PostModel
+[ParchmentBindable]
+public partial class PostModel
 {
     public required string Title;
     public required TokenValue Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L159-L167' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L160-L169' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -414,7 +419,7 @@ Content:
 
 {{ Body }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L175-L179' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L177-L181' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -423,9 +428,8 @@ Render:
 <a id='snippet-HtmlPropertyRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<PostModel>("html-hatch", template);
+store.RegisterDocxTemplate<PostModel>(template);
 await store.Render(
-    "html-hatch",
     new PostModel
     {
         Title = "Welcome",
@@ -440,7 +444,7 @@ await store.Render(
     },
     stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L182-L202' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L184-L203' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -453,13 +457,14 @@ Model:
 <!-- snippet: OpenXmlPropertyModel -->
 <a id='snippet-OpenXmlPropertyModel'></a>
 ```cs
-public class ReportModel
+[ParchmentBindable]
+public partial class ReportModel
 {
     public required string Title;
     public required TokenValue Callout;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L208-L216' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L209-L218' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -471,7 +476,7 @@ Content:
 
 {{ Callout }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L224-L228' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L226-L230' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -480,9 +485,8 @@ Render:
 <a id='snippet-OpenXmlPropertyRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<ReportModel>("openxml-hatch", template);
+store.RegisterDocxTemplate<ReportModel>(template);
 await store.Render(
-    "openxml-hatch",
     new ReportModel
     {
         Title = "Status",
@@ -504,7 +508,7 @@ await store.Render(
     },
     stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L231-L258' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L233-L259' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -517,13 +521,14 @@ Model:
 <!-- snippet: MutateModel -->
 <a id='snippet-MutateModel'></a>
 ```cs
-public class StyledModel
+[ParchmentBindable]
+public partial class StyledModel
 {
     public required string Label;
     public required TokenValue Highlight;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L108-L116' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L109-L118' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Content:
@@ -535,7 +540,7 @@ Content:
 
 {{ Highlight }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L124-L128' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L126-L130' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render:
@@ -544,9 +549,8 @@ Render:
 <a id='snippet-MutateRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<StyledModel>("mutate", template);
+store.RegisterDocxTemplate<StyledModel>(template);
 await store.Render(
-    "mutate",
     new StyledModel
     {
         Label = "Before",
@@ -563,7 +567,7 @@ await store.Render(
         })
     }, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L131-L153' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L133-L154' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -576,7 +580,8 @@ Mark the collection on the model:
 <!-- snippet: ExcelsiorTableModel -->
 <a id='snippet-ExcelsiorTableModel'></a>
 ```cs
-public class Quote
+[ParchmentBindable]
+public partial class Quote
 {
     public required string Reference;
 
@@ -596,7 +601,7 @@ public class QuoteLine
     public required decimal UnitPrice;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L12-L34' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L13-L36' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Drop a `{{ Lines }}` substitution into the template on its own line. The template:
@@ -611,7 +616,7 @@ Register and render normally:
 var templatePath = Path.Combine(ScenarioPath("excelsior-table"), "input.docx");
 
 var store = new TemplateStore();
-store.RegisterDocxTemplate<Quote>("excelsior-quote", templatePath);
+store.RegisterDocxTemplate<Quote>(templatePath);
 
 var model = new Quote
 {
@@ -640,9 +645,9 @@ var model = new Quote
 };
 
 using var stream = new MemoryStream();
-await store.Render("excelsior-quote", model, stream);
+await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L300-L336' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L306-L342' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -664,13 +669,14 @@ By default the rendered table uses Excelsior's default cell formatting, which fa
 <!-- snippet: ExcelsiorTableParagraphStyles -->
 <a id='snippet-ExcelsiorTableParagraphStyles'></a>
 ```cs
-public class StyledQuote
+[ParchmentBindable]
+public partial class StyledQuote
 {
     [ExcelsiorTable(HeadingParagraphStyle = "TBLHeading", BodyParagraphStyle = "TBLText")]
     public required IReadOnlyList<QuoteLine> Lines;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L108-L116' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableParagraphStyles' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L112-L121' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableParagraphStyles' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The style ids must exist in the template's styles part. Unlike inline run formatting, a paragraph style reaches **every** cell paragraph — including `IsHtml` and link cells — so the look is consistent across all content. (These map straight onto Excelsior's `WordTableBuilder.HeadingParagraphStyle`/`BodyParagraphStyle`.)
@@ -682,7 +688,8 @@ The style ids must exist in the template's styles part. Unlike inline run format
 <!-- snippet: ExcelsiorTableViaOpenXmlToken -->
 <a id='snippet-ExcelsiorTableViaOpenXmlToken'></a>
 ```cs
-public class GroupedReport
+[ParchmentBindable]
+public partial class GroupedReport
 {
     public required IReadOnlyList<QuoteLine> Lines;
 
@@ -699,7 +706,7 @@ public class GroupedReport
         ]);
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L156-L175' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableViaOpenXmlToken' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L161-L181' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableViaOpenXmlToken' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Reference the property with a solo `{{ LinesTable }}` token (it must sit alone in its paragraph — the same structural-replacement rule as any `OpenXmlToken`). The full `WordTableBuilder` surface is available — `headingStyle`/`bodyStyle` callbacks, per-column `CellStyle`, and the `HeadingParagraphStyle`/`BodyParagraphStyle` shown above. Because the property is evaluated per render, the same pattern inside a `{% for %}` loop produces one table per iteration.
@@ -717,7 +724,7 @@ The attributes are detected by name — Parchment does not ship them. Define the
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 sealed class HtmlAttribute : Attribute;
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L11-L14' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlAttribute' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L12-L15' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlAttribute' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Mark the property:
@@ -725,7 +732,8 @@ Mark the property:
 <!-- snippet: HtmlModel -->
 <a id='snippet-HtmlModel'></a>
 ```cs
-public class HtmlDoc
+[ParchmentBindable]
+public partial class HtmlDoc
 {
     public required string Title;
 
@@ -733,7 +741,7 @@ public class HtmlDoc
     public required string Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L31-L39' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L33-L42' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Drop a `{{ Body }}` substitution into the template on its own line:
@@ -746,7 +754,7 @@ Drop a `{{ Body }}` substitution into the template on its own line:
 var templatePath = Path.Combine(ScenarioPath("html-property"), "input.docx");
 
 var store = new TemplateStore();
-store.RegisterDocxTemplate<HtmlDoc>("html-doc", templatePath);
+store.RegisterDocxTemplate<HtmlDoc>(templatePath);
 
 var model = new HtmlDoc
 {
@@ -755,9 +763,9 @@ var model = new HtmlDoc
 };
 
 using var stream = new MemoryStream();
-await store.Render("html-doc", model, stream);
+await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L97-L111' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L91-L105' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ![Rendered output](/src/Parchment.Tests/Scenarios/html-property/output%23page01.verified.png)
@@ -767,7 +775,8 @@ await store.Render("html-doc", model, stream);
 <!-- snippet: MarkdownModel -->
 <a id='snippet-MarkdownModel'></a>
 ```cs
-public class MarkdownDoc
+[ParchmentBindable]
+public partial class MarkdownDoc
 {
     public required string Title;
 
@@ -775,7 +784,7 @@ public class MarkdownDoc
     public required string Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L41-L49' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L44-L53' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 ![Template before render](/src/Parchment.Tests/Scenarios/markdown-property/input.png)
@@ -787,7 +796,8 @@ As an alternative to defining custom attributes, `[StringSyntax]` from `System.D
 <!-- snippet: StringSyntaxHtmlModel -->
 <a id='snippet-StringSyntaxHtmlModel'></a>
 ```cs
-public class StringSyntaxHtmlDoc
+[ParchmentBindable]
+public partial class StringSyntaxHtmlDoc
 {
     public required string Title;
 
@@ -795,7 +805,7 @@ public class StringSyntaxHtmlDoc
     public required string Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L51-L59' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringSyntaxHtmlModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L55-L64' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringSyntaxHtmlModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 <!-- snippet: StringSyntaxMarkdownModel -->
@@ -809,7 +819,7 @@ public class StringSyntaxMarkdownDoc
     public required string Body;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L61-L69' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringSyntaxMarkdownModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L66-L74' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringSyntaxMarkdownModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Rules:
@@ -841,13 +851,14 @@ Mark the property:
 <!-- snippet: StringListModel -->
 <a id='snippet-StringListModel'></a>
 ```cs
-public class Person
+[ParchmentBindable]
+public partial class Person
 {
     public required string Name;
     public required IEnumerable<string> Tags;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L12-L18' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L13-L20' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Drop a `{{ Tags }}` substitution into the template on its own line:
@@ -862,7 +873,7 @@ Register and render normally:
 var templatePath = Path.Combine(ScenarioPath("string-list"), "input.docx");
 
 var store = new TemplateStore();
-store.RegisterDocxTemplate<Person>("string-list-scenario", templatePath);
+store.RegisterDocxTemplate<Person>(templatePath);
 
 var model = new Person
 {
@@ -871,9 +882,9 @@ var model = new Person
 };
 
 using var stream = new MemoryStream();
-await store.Render("string-list-scenario", model, stream);
+await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L123-L139' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/StringListTests.cs#L133-L149' title='Snippet source file'>snippet source</a> | <a href='#snippet-StringListUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -902,7 +913,8 @@ Model:
 <!-- snippet: EditableFieldsModel -->
 <a id='snippet-EditableFieldsModel'></a>
 ```cs
-public class OrderForm
+[ParchmentBindable]
+public partial class OrderForm
 {
     public required string Number;
 
@@ -926,7 +938,7 @@ public enum OrderStatus
     Accepted
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L13-L37' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L14-L39' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The template ([input.docx](/src/Parchment.Tests/Scenarios/editable-fields/input.docx)):
@@ -941,7 +953,7 @@ Register and render normally:
 var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
 
 var store = new TemplateStore();
-store.RegisterDocxTemplate<OrderForm>("order-form", templatePath);
+store.RegisterDocxTemplate<OrderForm>(templatePath);
 
 var model = new OrderForm
 {
@@ -953,9 +965,9 @@ var model = new OrderForm
 };
 
 using var stream = new MemoryStream();
-await store.Render("order-form", model, stream);
+await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L42-L59' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L44-L61' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output — editable fields as content controls, everything else read-only:
@@ -971,7 +983,7 @@ var result = ParchmentExtractor.Extract<OrderForm>(stream);
 
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L102-L106' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L104-L108' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `ExtractResult.Fields` reports a per-field outcome — `Extracted`, `Empty` (placeholder showing), `Missing` (control deleted, or the document wasn't produced from a template bound to this model), `ParseFailed` (with the raw text for diagnostics), or `Duplicate` — and `AllExtracted` is true when every field read cleanly. `ApplyTo` assigns `Extracted` values and applies `Empty` as null to nullable members only — an `Empty` field targeting a non-nullable member is skipped, preserving whatever value the caller-supplied model already holds (a cleared control can't overwrite a non-nullable member with a default, because there's no null to assign). It validates that every intermediate object on nested paths is non-null *before* mutating anything (throwing `ParchmentExtractionException` otherwise). Extraction needs no `TemplateStore` — controls are matched by tag, so a service that only receives filled-in documents never has to register the template.
@@ -1005,7 +1017,8 @@ A `string` member marked both `[EditableField]` and `[Html]` renders as an **edi
 <!-- snippet: EditableRichTextModel -->
 <a id='snippet-EditableRichTextModel'></a>
 ```cs
-public class EditableArticle
+[ParchmentBindable]
+public partial class EditableArticle
 {
     public required string Title;
 
@@ -1014,7 +1027,7 @@ public class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L925-L934' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L840-L850' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1035,9 +1048,9 @@ Protection is applied at registration whenever the model declares at least one `
 <!-- snippet: ProtectionModeNone -->
 <a id='snippet-ProtectionModeNone'></a>
 ```cs
-store.RegisterDocxTemplate<EditableOrder>("editable-unprotected", template, ProtectionMode.None);
+store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L481-L483' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L485-L487' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:
@@ -1045,7 +1058,7 @@ or via the source-generator attribute:
 <!-- snippet: GeneratorProtectionMode -->
 <a id='snippet-GeneratorProtectionMode'></a>
 ```cs
-[ParchmentModel("Templates/order-form.docx", Protection = ProtectionMode.None)]
+[ParchmentModel(Protection = ProtectionMode.None)]
 public partial class OrderForm
 {
     public required string Number { get; init; }
@@ -1054,7 +1067,7 @@ public partial class OrderForm
     public required string PurchaseOrder { get; set; }
 }
 ```
-<sup><a href='/src/ParchmentModel/OrderForm.cs#L3-L12' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorProtectionMode' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/OrderForm.cs#L4-L13' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorProtectionMode' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 With `ProtectionMode.None` the fields still render as tagged controls (and still extract); the rest of the document stays editable too.
@@ -1108,7 +1121,8 @@ public class Budget
     public required decimal Amount { get; set; }
 }
 
-public class BudgetPlan
+[ParchmentBindable]
+public partial class BudgetPlan
 {
     public required string Title;
 
@@ -1116,7 +1130,7 @@ public class BudgetPlan
     public required List<Budget> Budgets { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L5-L22' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L6-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The template is a plain loop; the loop-variable tokens become the per-row controls:
@@ -1137,7 +1151,7 @@ var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
 // model.Budgets is the edited list - added rows appear, removed rows are gone
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L148-L153' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L129-L134' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
@@ -1193,7 +1207,7 @@ The model the template binds against:
 <!-- snippet: ReportModel -->
 <a id='snippet-ReportModel'></a>
 ```cs
-[ParchmentModel("Templates/report.md")]
+[ParchmentModel]
 public partial class ReportContext
 {
     public required Report Report;
@@ -1223,7 +1237,7 @@ public class ActionItem
     public required string Detail;
 }
 ```
-<sup><a href='/src/ParchmentModel/Report.cs#L3-L35' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Report.cs#L4-L36' title='Snippet source file'>snippet source</a> | <a href='#snippet-ReportModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render it like any other template:
@@ -1236,21 +1250,20 @@ var reportModel = SampleData.Report();
 
 var store = new TemplateStore();
 store.RegisterMarkdownTemplate<ReportContext>(
-    "report",
     markdownSource,
     styleSource: brandDocx);
 
 using var stream = new MemoryStream();
-await store.Render("report", reportModel, stream);
+await store.Render(reportModel, stream);
 ```
-<sup><a href='/src/Parchment.Tests/UsageTests.cs#L91-L105' title='Snippet source file'>snippet source</a> | <a href='#snippet-Markdown' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/UsageTests.cs#L91-L104' title='Snippet source file'>snippet source</a> | <a href='#snippet-Markdown' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered docx (page 1):
 
 ![Markdown template output](/src/Parchment.Tests/UsageTests.Markdown%23page01.verified.png)
 
-The optional `styleSource` is a docx whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used.
+The optional `styleSource` is a Word template (`.dotx`) whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used. On the source-generator path the style source is found by [convention](#how-a-style-document-is-found) — `TypeName.dotx`, or the nearest `parchment.dotx` up the directory tree — and embedded with the template.
 
 The markdown replaces the body and nothing else, so those inherited parts arrive as authored — and their tokens bind against the same model. A `{{ Season }}` in the style source's header, or a `{% if %}` in its footer, works exactly as it would in the docx flow. Only the body-only token kinds are unavailable there: `[ExcelsiorTable]`, `[Format]`, string lists and editable fields are docx-flow features and do not apply to a markdown template's header.
 
@@ -1588,7 +1601,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L597-L605' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L652-L660' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -1607,13 +1620,14 @@ Model:
 <!-- snippet: ImageTokenModel -->
 <a id='snippet-ImageTokenModel'></a>
 ```cs
-public class BrandKit
+[ParchmentBindable]
+public partial class BrandKit
 {
     public required string Title;
     public required TokenValue Logo;
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L291-L299' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L292-L301' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Word's `Drawing` element conflicts with the `DocumentFormat.OpenXml.Drawing` namespace, so namespace aliases keep the construction code readable:
@@ -1637,7 +1651,7 @@ Template content:
 
 {{ Logo }}
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L307-L311' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenContent' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L309-L313' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Render — `context.AddImagePart` returns a relationship ID; the rest is standard OpenXML drawing plumbing (extent in EMUs, blip referencing the rel-id, preset shape geometry):
@@ -1646,9 +1660,8 @@ Render — `context.AddImagePart` returns a relationship ID; the rest is standar
 <a id='snippet-ImageTokenRender'></a>
 ```cs
 var store = new TemplateStore();
-store.RegisterDocxTemplate<BrandKit>("image-token", template);
+store.RegisterDocxTemplate<BrandKit>(template);
 await store.Render(
-    "image-token",
     new BrandKit
     {
         Title = "Brand kit",
@@ -1712,7 +1725,7 @@ await store.Render(
     },
     stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L318-L387' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenRender' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L320-L388' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 
@@ -1724,7 +1737,6 @@ Pass a `WordDocumentProperties` to `Render` or `RenderToFile` to stamp the value
 <a id='snippet-WordDocumentProperties'></a>
 ```cs
 await store.Render(
-    "bill",
     model,
     stream,
     new WordDocumentProperties
@@ -1740,7 +1752,7 @@ await store.Render(
         }
     });
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L291-L310' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L290-L308' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
@@ -1760,7 +1772,7 @@ var properties = new WordDocumentProperties
     Title = "Bill 42"
 };
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L355-L363' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L353-L361' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.
@@ -1770,7 +1782,7 @@ A template that a person has edited carries their editing history — `Creator` 
 
 ## Registration-time validation
 
-Whether registering by hand (`RegisterDocxTemplate<T>(...)`) or through the source generator's `RegisterWith(store)` helper, the template is fully validated against `T` at registration — before any render runs. Missing members, block tags targeting non-enumerable properties, or `[ExcelsiorTable]` tokens that break the solo-in-paragraph / plain-member-access rules throw `ParchmentRegistrationException` immediately. Register templates at app startup and any binding mismatch surfaces there, not on the first render.
+Registering by hand (`RegisterDocxTemplate<T>(...)`) fully validates the template against `T` at registration — before any render runs. Missing members, block tags targeting non-enumerable properties, or `[ExcelsiorTable]` tokens that break the solo-in-paragraph / plain-member-access rules throw `ParchmentRegistrationException` immediately. On the source-generator path the same rules already ran at compile time as PARCH diagnostics, and the store re-validates when it materializes the embedded definition on the model's first render.
 
 Validation covers loop bodies. A loop variable is bound to the element type of whatever it iterates, so a member reached through it is checked like any other:
 
@@ -1787,16 +1799,18 @@ Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{
 
 ## Source generator (recommended)
 
-The source generator is the recommended way to register templates. Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator (a) validates the template tokens against the model at compile time, and (b) emits a `RegisterWith` helper that pre-compiles all the member accessors needed at registration time — Fluid accessors per reachable type, plus the per-template maps for `[ExcelsiorTable]`, `[Html]` / `[Markdown]`, and `IEnumerable<string>` properties.
+The source generator is the recommended way to register templates. Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator (a) finds the template by convention — the `AdditionalFiles` entry named after the type, `Invoice.docx` or `Invoice.md` — (b) validates the template tokens against the model at compile time, and (c) embeds the template into the generated source together with pre-compiled member accessors — Fluid accessors per reachable type, plus the per-template maps for `[ExcelsiorTable]`, `[Html]` / `[Markdown]`, and `IEnumerable<string>` properties.
 
-**No runtime reflection at registration.** Both the model graph walk in `SharedFluid.RegisterTypeGraph` and the dotted-path walks in `ExcelsiorTableMap` / `FormatMap` / `StringListMap` short-circuit when the source generator has already populated their caches. This makes Parchment safe for trimming and NativeAOT scenarios, and matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
+**Nothing to register, nothing to deploy.** The generated code carries the template's bytes and registers them from a module initializer when the model's assembly loads; a `TemplateStore` picks the definition up on the model's first render. There is no registration call to write, no template file to copy beside the assembly, and no path to resolve at runtime.
 
-The model must be `partial` — the generator emits a `RegisterWith` helper onto the same class. Both docx and markdown templates are supported — the generator branches on the path's extension (`.docx` → docx flow, `.md` → markdown flow):
+**No runtime reflection over the model — at all.** The generator emits every member accessor and per-template map at compile time, and there is no reflection fallback: a model that never went through the generator is rejected at registration with a pointer to `[ParchmentModel]` / `[ParchmentBindable]`. This makes Parchment safe for trimming and NativeAOT scenarios, and matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
+
+The model must be `partial` — the generator emits the embedded template and its module initializer onto the same class. Both docx and markdown templates are supported — the generator branches on the matched file's extension (`.docx` → docx flow, `.md` → markdown flow):
 
 <!-- snippet: GeneratorDocxModel -->
 <a id='snippet-GeneratorDocxModel'></a>
 ```cs
-[ParchmentModel("Templates/invoice.docx")]
+[ParchmentModel]
 public partial class Invoice
 {
     public required string Number { get; init; }
@@ -1818,7 +1832,7 @@ public partial class Invoice
         Subtotal + Tax;
 }
 ```
-<sup><a href='/src/ParchmentModel/Invoice.cs#L3-L25' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorDocxModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Invoice.cs#L4-L26' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorDocxModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 and for the markdown flow:
@@ -1826,83 +1840,69 @@ and for the markdown flow:
 <!-- snippet: GeneratorMarkdownModel -->
 <a id='snippet-GeneratorMarkdownModel'></a>
 ```cs
-[ParchmentModel("Templates/report.md")]
+[ParchmentModel]
 public partial class ReportContext
 {
     public required Report Report;
 }
 ```
-<sup><a href='/src/ParchmentModel/Report.cs#L4-L10' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorMarkdownModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/ParchmentModel/Report.cs#L5-L11' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorMarkdownModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The attribute is applied directly to the binding model — there is no separate marker / "template" class. Models almost always need Parchment-aware code on them anyway (`[Html]` / `[Markdown]` / `[ExcelsiorTable]` annotations, helper properties shaping values for binding), so the `partial` + Parchment-dependency tax is already paid. See `CLAUDE.md` → "Design decisions" for the full rationale.
 
-The runtime `TemplateStore.RegisterDocxTemplate<T>(name, path)` / `RegisterMarkdownTemplate<T>(name, markdown)` overloads still exist as an **escape hatch** — use them when the model can't be made `partial` (third-party / generated types), when the model isn't known at compile time, or when one model needs to bind multiple templates. They are reflection-based and not trimming-friendly; the SG path is preferred whenever the model is yours to annotate.
+The runtime `TemplateStore.RegisterDocxTemplate<T>(path)` / `RegisterMarkdownTemplate<T>(markdown)` overloads still exist as an **escape hatch for the template side** — use them when the template isn't known at compile time. The model side always goes through the generator: mark a hand-registered model `[ParchmentBindable]` (see [One template per model](#one-template-per-model)) so its accessors are pre-compiled without binding a template. A model that can't carry the attribute — a third-party or generated type — isn't registrable; wrap it in a thin `partial` model class instead.
 
-In both cases the generator also emits a `RegisterWith(store)` helper so registration is one line at runtime:
+With the module initializer in place, rendering needs no setup at all:
 
-<!-- snippet: GeneratorRegisterWith -->
-<a id='snippet-GeneratorRegisterWith'></a>
+<!-- snippet: GeneratorRender -->
+<a id='snippet-GeneratorRender'></a>
 ```cs
+// No registration call: the generated module initializer stored each model's embedded
+// template when the model assembly loaded, and the store picks it up on first render.
 var store = new TemplateStore();
-Invoice.RegisterWith(store);
-ReportContext.RegisterWith(store);
-```
-<sup><a href='/src/Parchment.Tests/GeneratedRegistrationTests.cs#L9-L15' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorRegisterWith' title='Start of snippet'>anchor</a></sup>
-<!-- endSnippet -->
 
-The markdown helper has an extra optional `styleSource` parameter that mirrors `RegisterMarkdownTemplate<T>` — pass a brand docx whose page setup, headers/footers, and styles should be inherited by the rendered output.
+using var invoice = new MemoryStream();
+await store.Render(SampleData.Invoice(), invoice);
+```
+<sup><a href='/src/Parchment.Tests/GeneratedRegistrationTests.cs#L9-L18' title='Snippet source file'>snippet source</a> | <a href='#snippet-GeneratorRender' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
 
 ### Declaring templates
 
-A template has to reach two consumers by different routes. The generator reads it through `AdditionalFiles` — the only channel Roslyn offers, since embedded resources are attached at emit time and never appear in a generator's inputs. The runtime reads it from disk beside the assembly, or out of the assembly manifest.
-
-Parchment ships an item type for each, so neither has to be wired by hand:
+The generator reads templates through `AdditionalFiles` — the only channel Roslyn offers a generator. Declare each template (and any `.dotx` style document) there, named after its model type:
 
 ```xml
 <ItemGroup>
-  <!-- Inspected by the generator, and copied beside the assembly for RegisterWith to read. -->
-  <ParchmentTemplate Include="Templates\invoice.docx" />
-  <ParchmentTemplate Include="Templates\report.md" />
-
-  <!-- Inspected by the generator, and embedded in the assembly instead of copied. -->
-  <ParchmentEmbeddedTemplate Include="Templates\letter.md" />
+  <AdditionalFiles Include="Templates\Invoice.docx" />
+  <AdditionalFiles Include="Templates\ReportContext.md" />
 </ItemGroup>
 ```
 
-`ParchmentTemplate` expands to `<AdditionalFiles>` with `CopyToOutputDirectory=PreserveNewest` — the shape the generated `RegisterWith` helper expects, since it reads the template from disk.
-
-`ParchmentEmbeddedTemplate` leaves the file itself as an `AdditionalFile` and embeds a staged copy from `obj` instead. The resource keeps the name it would have had if embedded in place, so the staging never shows up in the name a caller uses.
-
-**`RegisterWith` works either way.** The targets tell the generator which templates are embedded, so the generated helper reads the manifest for those and the disk for the rest — switching a template between the two item types changes nothing at the call site:
-
-```cs
-var store = new TemplateStore();
-ReportModel.RegisterWith(store);
-```
-
-Its `basePath` parameter has no meaning for an embedded template and is ignored; it stays on the signature so the switch does not break callers. Registering by hand still works if the template is wanted from somewhere else entirely — `RegisterMarkdownTemplate<T>(name, markdown, styleSource)` takes the text, and `RegisterDocxTemplate<T>(name, stream)` takes a stream, so a manifest stream can be passed straight in.
-
-The staging exists for one reason, and it is the reason to prefer these item types over hand-wiring: **a template should carry exactly one item type**. Listing the same file as both `<AdditionalFiles>` and `<EmbeddedResource>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--template-file-not-in-additionalfiles) that a command-line build cannot reproduce.
-
-#### How a template path is resolved
-
-The path in `[ParchmentModel("...")]` is read two ways, because both are natural to write:
-
-- **Relative to the file the attribute sits in.** A model beside its template says `report.md`; one in `Stocktakes/` says `Templates/report.md`, `./Templates/report.md`, or `../Stocktakes/Templates/report.md` — all the same file.
-- **As the end of a declared template's path.** `Templates/report.md` also matches a template at the project root, which is what a project relies on when its templates sit in one folder while its models are scattered below.
-
-Usually both land on the same file. Where they land on different ones the path is ambiguous, and [`PARCH020`](#parch020--template-path-matches-more-than-one-file) says so rather than picking one. A path starting `./` or `../` states its intent and only ever resolves the first way.
-
-Hand-wiring still works, and is what the item types expand to:
+Parchment also ships a `ParchmentTemplate` item type that expands to exactly that — use it when a file listing should say what the files are for:
 
 ```xml
-<AdditionalFiles Include="Templates\report.md">
-  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-</AdditionalFiles>
+<ItemGroup>
+  <ParchmentTemplate Include="Templates\Invoice.docx" />
+  <ParchmentTemplate Include="Templates\ReportContext.md" />
+</ItemGroup>
 ```
 
-Read it back from `AppContext.BaseDirectory` rather than the assembly manifest. The copy flows into referencing projects' outputs and into `dotnet publish`, so tests and deployments find the file without a second item type being added. A style-source docx carries no `[ParchmentModel]` path, is therefore not an `AdditionalFile`, and can stay embedded.
+Either way, **a template should carry exactly one item type**. Listing the same file as an `<AdditionalFiles>` entry and also as `<EmbeddedResource>` or `<Content>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--no-template-found-for-model) that a command-line build cannot reproduce. Since the template is embedded into the generated source, the second item type is never needed.
+
+#### How a template is found
+
+There is no path to write. A model named `Invoice` binds the `AdditionalFiles` entry named `Invoice.docx` or `Invoice.md`, wherever it sits in the project. No match is [`PARCH004`](#parch004--no-template-found-for-model); more than one — a docx and an md, or namesakes in different folders — is [`PARCH020`](#parch020--model-matches-more-than-one-template-file).
+
+#### How a style document is found
+
+A markdown template's style source is a `.dotx` declared in `AdditionalFiles`, resolved in order:
+
+1. **`Invoice.dotx`** — a style document named after the model type, for a template that needs its own look. More than one is [`PARCH021`](#parch021--model-matches-more-than-one-style-document).
+2. **`parchment.dotx`** — the nearest one walking up the directory tree from the template. A folder of templates shares one look by placing a single `parchment.dotx` beside them (or in any ancestor folder).
+3. Neither — the markdown renders against a built-in blank document.
+
+The resolved `.dotx` is embedded alongside the markdown and carried through registration as the style source. Docx templates ignore style documents — a docx carries its own styles.
 
 The generator emits the following diagnostics. Unless noted, each applies to both flows.
 
@@ -1956,17 +1956,17 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 ```
 
 
-### `PARCH004` — template file not in `<AdditionalFiles>`
+### `PARCH004` — no template found for model
 
-The path in `[ParchmentModel("...")]` wasn't found among the project's `<AdditionalFiles>`. Declare the template in the csproj — see [Declaring templates](#declaring-templates):
+No `AdditionalFiles` entry named after the `[ParchmentModel]` type was found — a model named `Invoice` needs an `Invoice.docx` or `Invoice.md`. Declare the template in the csproj — see [Declaring templates](#declaring-templates):
 
 ```xml
 <ItemGroup>
-  <ParchmentTemplate Include="Templates\invoice.docx" />
+  <ParchmentTemplate Include="Templates\Invoice.docx" />
 </ItemGroup>
 ```
 
-**Reported by an IDE while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it, which happens when the template carries a second item type — see [Declaring templates](#declaring-templates), where the fix is to switch to `ParchmentTemplate` or `ParchmentEmbeddedTemplate`. A project reload can flip which identity wins, so the error may clear on reload and return later; that, rather than a stale cache, is the tell.
+**Reported by an IDE while `dotnet build` stays clean?** Then the entry is present and the IDE is not seeing it, which happens when the template carries a second item type — see [Declaring templates](#declaring-templates), where the fix is to drop the second item type. A project reload can flip which identity wins, so the error may clear on reload and return later; that, rather than a stale cache, is the tell.
 
 To confirm which side is at fault:
 
@@ -2110,25 +2110,40 @@ public partial class Report
 Make the member non-static, or drop the attribute. See the [static-member caveat](#model-binding-limitations).
 
 
-### `PARCH020` — template path matches more than one file
+### `PARCH020` — model matches more than one template file
 
-The path in `[ParchmentModel("...")]` is read [two ways](#how-a-template-path-is-resolved), and here they landed on different templates. Rather than pick one, the generator says so — silently preferring a reading would bind the model to a template its author was not looking at.
+More than one `AdditionalFiles` entry is [named after the model type](#how-a-template-is-found) — a docx and an md, or namesakes in different folders. Rather than pick one, the generator says so — silently preferring one would bind the model to a template its author was not looking at.
 
 ```
-// Model at Stocktakes/StocktakeModel.cs, with templates at
-//   Stocktakes/Templates/report.md   (relative to this file)
-//   Templates/report.md              (matches the end of the path)
-[ParchmentModel("Templates/report.md")]
+// Model Invoice, with AdditionalFiles
+//   Templates/Invoice.docx
+//   Drafts/Invoice.md
+[ParchmentModel]
 ```
 
-Start the path with `./` or `../` to mean this file's directory, or lengthen it until it names one template.
+Remove or rename the extras until one file carries the type's name.
+
+
+### `PARCH021` — model matches more than one style document
+
+More than one `.dotx` `AdditionalFiles` entry is named after the model type. A markdown template takes at most one [style document](#how-a-style-document-is-found) — remove or rename the others. (Shared `parchment.dotx` files are exempt: the nearest one up the directory tree wins by design.)
+
+
+### `PARCH022` — `[EditableField]` collection has an unsupported shape
+
+An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The message names which constraint failed.
+
+
+### `PARCH023` — member carries conflicting format markers
+
+`[Html]` and `[Markdown]` on the same member, or either contradicted by `[StringSyntax]`, is rejected — the markers select the member's rendering, so they have to agree. Pick one.
 
 
 ### `PARCH100` — template carries a second item type
 
-**Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--template-file-not-in-additionalfiles) against a csproj entry that is plainly present.
+**Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.
 
-Declaring the template with [`ParchmentTemplate` or `ParchmentEmbeddedTemplate`](#declaring-templates) clears it. The warning does not fire for `ParchmentEmbeddedTemplate`, whose two identities belong to two different files — the template itself and a staged copy under `obj`.
+The template is embedded into the generated source, so the second item type serves no purpose — declare the file once, as an `AdditionalFiles` (or `ParchmentTemplate`) entry only.
 
 Suppress with `<NoWarn>$(NoWarn);PARCH100</NoWarn>` if a template genuinely needs both, accepting that the IDE may stop inspecting it.
 

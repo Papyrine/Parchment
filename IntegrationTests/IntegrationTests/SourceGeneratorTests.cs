@@ -23,29 +23,29 @@ public class SgLine
 
 public partial class SourceGeneratorTests
 {
-    [ParchmentModel("sg-template.docx")]
+    [ParchmentModel]
     public partial class SgInvoiceModel
     {
         public required string Number { get; init; }
         public required SgCustomer Customer { get; init; }
     }
 
-    [ParchmentModel("sg-template.md")]
+    [ParchmentModel]
     public partial class SgReportModel
     {
         public required SgCustomer Customer { get; init; }
         public required IReadOnlyList<SgLine> Lines { get; init; }
     }
 
+    // No registration call — the generated module initializer stored the embedded template when
+    // this assembly loaded, and the store materializes it on first render.
     [Test]
-    public async Task DocxTemplate_RegisterWithAndRender()
+    public async Task DocxTemplate_RendersFromTheGeneratedDefinition()
     {
         var store = new TemplateStore();
-        SgInvoiceModel.RegisterWith(store, basePath: AppContext.BaseDirectory);
 
         using var stream = new MemoryStream();
         await store.Render(
-            SgInvoiceModel.TemplateName,
             new SgInvoiceModel
             {
                 Number = "SG-001",
@@ -57,14 +57,12 @@ public partial class SourceGeneratorTests
     }
 
     [Test]
-    public async Task MarkdownTemplate_RegisterWithAndRender()
+    public async Task MarkdownTemplate_RendersFromTheGeneratedDefinition()
     {
         var store = new TemplateStore();
-        SgReportModel.RegisterWith(store, basePath: AppContext.BaseDirectory);
 
         using var stream = new MemoryStream();
         await store.Render(
-            SgReportModel.TemplateName,
             new SgReportModel
             {
                 Customer = new() { Name = "Acme" },

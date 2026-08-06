@@ -5,52 +5,40 @@ public class ShapeResolverTests
     [Test]
     public async Task Resolve_RootMember_ReturnsMemberType()
     {
-        var result = ShapeResolver.Resolve(shape, ["Customer"], emptyScope);
+        await Assert.That(ShapeResolver.TryResolve(shape, ["Customer"], emptyScope, out var result)).IsTrue();
         await Assert.That(result).IsEqualTo("global::Sample.Customer");
     }
 
     [Test]
     public async Task Resolve_NestedMember_WalksTypeChain()
     {
-        var result = ShapeResolver.Resolve(shape, ["Customer", "Name"], emptyScope);
+        await Assert.That(ShapeResolver.TryResolve(shape, ["Customer", "Name"], emptyScope, out var result)).IsTrue();
         await Assert.That(result).IsEqualTo("string");
     }
 
     [Test]
     public async Task Resolve_IsCaseInsensitive()
     {
-        var result = ShapeResolver.Resolve(shape, ["customer", "NAME"], emptyScope);
+        await Assert.That(ShapeResolver.TryResolve(shape, ["customer", "NAME"], emptyScope, out var result)).IsTrue();
         await Assert.That(result).IsEqualTo("string");
     }
 
     [Test]
-    public async Task Resolve_UnknownMember_ReturnsNull()
-    {
-        var result = ShapeResolver.Resolve(shape, ["Customer", "DoesNotExist"], emptyScope);
-        await Assert.That(result).IsNull();
-    }
+    public async Task Resolve_UnknownMember_Fails() =>
+        await Assert.That(ShapeResolver.TryResolve(shape, ["Customer", "DoesNotExist"], emptyScope, out _)).IsFalse();
 
     [Test]
-    public async Task Resolve_UnknownRootMember_ReturnsNull()
-    {
-        var result = ShapeResolver.Resolve(shape, ["NotAField"], emptyScope);
-        await Assert.That(result).IsNull();
-    }
+    public async Task Resolve_UnknownRootMember_Fails() =>
+        await Assert.That(ShapeResolver.TryResolve(shape, ["NotAField"], emptyScope, out _)).IsFalse();
 
     [Test]
-    public async Task Resolve_EmptySegments_ReturnsNull()
-    {
-        var result = ShapeResolver.Resolve(shape, [], emptyScope);
-        await Assert.That(result).IsNull();
-    }
+    public async Task Resolve_EmptySegments_Fails() =>
+        await Assert.That(ShapeResolver.TryResolve(shape, [], emptyScope, out _)).IsFalse();
 
+    // "Customer.Name" resolves to string, but string isn't in the shape, so going further fails.
     [Test]
-    public async Task Resolve_TraversingPrimitive_ReturnsNull()
-    {
-        // "Customer.Name" resolves to string, but string isn't in the shape, so going further fails.
-        var result = ShapeResolver.Resolve(shape, ["Customer", "Name", "Length"], emptyScope);
-        await Assert.That(result).IsNull();
-    }
+    public async Task Resolve_TraversingPrimitive_Fails() =>
+        await Assert.That(ShapeResolver.TryResolve(shape, ["Customer", "Name", "Length"], emptyScope, out _)).IsFalse();
 
     [Test]
     public async Task Resolve_ScopedIdentifierShortCircuitsToBoundType()
@@ -62,7 +50,7 @@ public class ShapeResolverTests
             ["item"] = "global::Sample.Customer"
         };
 
-        var result = ShapeResolver.Resolve(shape, ["item", "Name"], scope);
+        await Assert.That(ShapeResolver.TryResolve(shape, ["item", "Name"], scope, out var result)).IsTrue();
         await Assert.That(result).IsEqualTo("string");
     }
 
@@ -74,30 +62,24 @@ public class ShapeResolverTests
             ["item"] = "global::Sample.Customer"
         };
 
-        var result = ShapeResolver.Resolve(shape, ["item"], scope);
+        await Assert.That(ShapeResolver.TryResolve(shape, ["item"], scope, out var result)).IsTrue();
         await Assert.That(result).IsEqualTo("global::Sample.Customer");
     }
 
     [Test]
     public async Task GetElementType_ReturnsConfiguredElement()
     {
-        var element = ShapeResolver.GetElementType(shape, "global::Sample.Invoice");
+        await Assert.That(ShapeResolver.TryGetElementType(shape, "global::Sample.Invoice", out var element)).IsTrue();
         await Assert.That(element).IsEqualTo("global::Sample.LineItem");
     }
 
     [Test]
-    public async Task GetElementType_NonCollectionType_ReturnsNull()
-    {
-        var element = ShapeResolver.GetElementType(shape, "global::Sample.Customer");
-        await Assert.That(element).IsNull();
-    }
+    public async Task GetElementType_NonCollectionType_Fails() =>
+        await Assert.That(ShapeResolver.TryGetElementType(shape, "global::Sample.Customer", out _)).IsFalse();
 
     [Test]
-    public async Task GetElementType_UnknownType_ReturnsNull()
-    {
-        var element = ShapeResolver.GetElementType(shape, "global::Sample.Unknown");
-        await Assert.That(element).IsNull();
-    }
+    public async Task GetElementType_UnknownType_Fails() =>
+        await Assert.That(ShapeResolver.TryGetElementType(shape, "global::Sample.Unknown", out _)).IsFalse();
 
     // ReSharper disable once CollectionNeverUpdated.Local
     static Dictionary<string, string> emptyScope = new(StringComparer.OrdinalIgnoreCase);

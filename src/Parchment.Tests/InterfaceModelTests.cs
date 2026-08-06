@@ -11,7 +11,7 @@ public class InterfaceModelTests
         using var template = DocxTemplateBuilder.Build("{{ Name }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<IModel>("docx-interface", template))
+                () => store.RegisterDocxTemplate<IModel>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("interface");
         await Assert.That(exception.Message).Contains("IModel");
@@ -22,7 +22,7 @@ public class InterfaceModelTests
     {
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterMarkdownTemplate<IModel>("md-interface", "{{ Name }}"))
+                () => store.RegisterMarkdownTemplate<IModel>("{{ Name }}"))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("interface");
         await Assert.That(exception.Message).Contains("IModel");

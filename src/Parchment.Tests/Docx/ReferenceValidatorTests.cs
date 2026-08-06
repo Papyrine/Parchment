@@ -1,6 +1,8 @@
-public class ReferenceValidatorTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class ReferenceValidatorTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Title { get; init; }
         public required Profile Profile { get; init; }
@@ -17,7 +19,8 @@ public class ReferenceValidatorTests
         public required string Sku { get; init; }
     }
 
-    public class SelfRef
+    [ParchmentBindable]
+    public partial class SelfRef
     {
         public required string Name { get; init; }
         public SelfRef? Next { get; init; }
@@ -29,7 +32,7 @@ public class ReferenceValidatorTests
         using var template = DocxTemplateBuilder.Build("{{ Missing }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("missing-root", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("Missing");
     }
@@ -40,7 +43,7 @@ public class ReferenceValidatorTests
         using var template = DocxTemplateBuilder.Build("{{ Profile.DoesNotExist }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("missing-nested", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("DoesNotExist");
     }
@@ -50,7 +53,7 @@ public class ReferenceValidatorTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Profile.DisplayName }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("deep-valid", template);
+        store.RegisterDocxTemplate<Doc>(template);
     }
 
     [Test]
@@ -61,7 +64,7 @@ public class ReferenceValidatorTests
         // the indexer segment and missing typos.
         using var template = DocxTemplateBuilder.Build("{{ Profile['DisplayName'] }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("indexer-valid", template);
+        store.RegisterDocxTemplate<Doc>(template);
     }
 
     [Test]
@@ -70,7 +73,7 @@ public class ReferenceValidatorTests
         using var template = DocxTemplateBuilder.Build("{{ Profile['NoSuchMember'] }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("indexer-missing", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("NoSuchMember");
     }
@@ -81,7 +84,7 @@ public class ReferenceValidatorTests
         using var template = DocxTemplateBuilder.Build("{{ Profile[\"NoSuchMember\"] }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("indexer-missing-dq", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("NoSuchMember");
     }
@@ -94,7 +97,7 @@ public class ReferenceValidatorTests
         using var template = DocxTemplateBuilder.Build("{{ Profile.DisplayName['NoSuchMember'] }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("indexer-mixed", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("NoSuchMember");
     }
@@ -115,7 +118,7 @@ public class ReferenceValidatorTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("loop-scope", template);
+        store.RegisterDocxTemplate<Doc>(template);
     }
 
     [Test]
@@ -132,7 +135,7 @@ public class ReferenceValidatorTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("loop-bad", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("NotARealField");
     }
@@ -143,7 +146,6 @@ public class ReferenceValidatorTests
     [Test]
     public void WhitespaceControlOnBlockTagsIsAccepted()
     {
-        var index = 0;
         foreach (var open in new[] { "{%-", "{%" })
         {
             foreach (var close in new[] { "-%}", "%}" })
@@ -154,7 +156,7 @@ public class ReferenceValidatorTests
                     open + " endfor " + close);
 
                 var store = new TemplateStore();
-                store.RegisterDocxTemplate<Doc>($"ws-{index++}", template);
+                store.RegisterDocxTemplate<Doc>(template);
             }
         }
     }
@@ -176,7 +178,7 @@ public class ReferenceValidatorTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("forloop", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("{% for %}");
         await Assert.That(exception.Message).DoesNotContain("is not a member of");
@@ -197,7 +199,7 @@ public class ReferenceValidatorTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("loop-non-enum", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("does not resolve to an enumerable");
     }
@@ -209,15 +211,17 @@ public class ReferenceValidatorTests
         // discipline must terminate.
         using var template = DocxTemplateBuilder.Build("{{ Name }} {{ Next.Name }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<SelfRef>("self-ref", template);
+        store.RegisterDocxTemplate<SelfRef>(template);
     }
 
-    public class DocumentBase
+    [ParchmentBindable]
+    public partial class DocumentBase
     {
         public required string Title { get; init; }
     }
 
-    public class Report : DocumentBase
+    [ParchmentBindable]
+    public partial class Report : DocumentBase
     {
         public required string Body { get; init; }
     }
@@ -227,7 +231,8 @@ public class ReferenceValidatorTests
         public string Title { get; init; } = "base";
     }
 
-    public class ShadowingReport : ShadowBase
+    [ParchmentBindable]
+    public partial class ShadowingReport : ShadowBase
     {
         public new string Title { get; init; } = "derived";
     }
@@ -237,11 +242,10 @@ public class ReferenceValidatorTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Title }} — {{ Body }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Report>("inherited", template);
+        store.RegisterDocxTemplate<Report>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "inherited",
             new Report { Title = "Q1", Body = "summary" },
             output);
         await Verify(output, "docx");
@@ -254,11 +258,10 @@ public class ReferenceValidatorTests
         // property (not error on collision) and rendering must pick up the derived value.
         using var template = DocxTemplateBuilder.Build("{{ Title }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<ShadowingReport>("shadow", template);
+        store.RegisterDocxTemplate<ShadowingReport>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "shadow",
             new ShadowingReport { Title = "derived" },
             output);
         await Verify(output, "docx");
@@ -278,7 +281,7 @@ public class ReferenceValidatorTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("if-bad", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("Bogus");
     }

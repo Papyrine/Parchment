@@ -34,17 +34,36 @@ static class ShapeBuilder
     static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
     {
         string? elementFqn = null;
-        if (type.SpecialType != SpecialType.System_String)
+        if (type.SpecialType != SpecialType.System_String &&
+            ModelSymbolResolver.TryGetElementType(type, out var element))
         {
-            var element = ModelSymbolResolver.TryGetElementType(type);
-            if (element != null)
-            {
-                elementFqn = Fqn(element);
-                Enqueue(element, visited, queue);
-            }
+            elementFqn = Fqn(element);
+            Enqueue(element, visited, queue);
         }
 
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
+
+        // An array's CLR members (Length, IsFixedSize, Array.MaxLength…) are not binding surface,
+        // and emitting accessors for them produces illegal casts like `string[].MaxLength`.
+        if (type is IArrayTypeSymbol)
+        {
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+        }
+
+        // KeyValuePair<K, V> is a System type but it's the iteration element for every
+        // IDictionary<K, V> reached from the model. Surfacing Key and Value lets `{{ kv.Key }}`
+        // validate and gives the accessor emission something to register, and enqueuing V (and K)
+        // makes user-type values reachable.
+        if (type is INamedTypeSymbol { IsGenericType: true } pair &&
+            pair.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>")
+        {
+            members.Add(new("Key", Fqn(pair.TypeArguments[0])));
+            members.Add(new("Value", Fqn(pair.TypeArguments[1])));
+            Enqueue(pair.TypeArguments[0], visited, queue);
+            Enqueue(pair.TypeArguments[1], visited, queue);
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+        }
+
         if (!IsSystemType(type))
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -64,7 +83,7 @@ static class ShapeBuilder
                     }
 
                     var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle);
-                    var (isHtml, isMarkdown) = DetectFormat(member);
+                    var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -77,10 +96,8 @@ static class ShapeBuilder
                     EditableFieldKind? editableKind = null;
                     if (isEditable)
                     {
-                        var collectionElement = memberType.SpecialType == SpecialType.System_String
-                            ? null
-                            : ModelSymbolResolver.TryGetElementType(memberType);
-                        if (collectionElement != null &&
+                        if (memberType.SpecialType != SpecialType.System_String &&
+                            ModelSymbolResolver.TryGetElementType(memberType, out var collectionElement) &&
                             !IsSystemType(collectionElement))
                         {
                             editableCollectionElementFqn = Fqn(collectionElement);
@@ -97,6 +114,7 @@ static class ShapeBuilder
                         isExcelsior,
                         isHtml,
                         isMarkdown,
+                        formatConflict,
                         isStringList,
                         isStatic,
                         excelsiorHeadingStyle,
@@ -115,10 +133,18 @@ static class ShapeBuilder
             }
         }
 
-        return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type));
     }
 
-    static (bool isHtml, bool isMarkdown) DetectFormat(ISymbol member)
+    static bool HasParameterlessCtor(ITypeSymbol type) =>
+        type is INamedTypeSymbol named &&
+        named.InstanceConstructors.Any(_ => _ is
+        {
+            Parameters.IsEmpty: true,
+            DeclaredAccessibility: Accessibility.Public
+        });
+
+    static (bool isHtml, bool isMarkdown, bool conflict) DetectFormat(ISymbol member)
     {
         var hasHtml = false;
         var hasMarkdown = false;
@@ -150,26 +176,30 @@ static class ShapeBuilder
             }
         }
 
+        // The markers must agree: [Html]+[Markdown], or either contradicted by [StringSyntax], is
+        // PARCH023 — there is no principled winner to pick silently.
+        var conflict = (hasHtml && hasMarkdown) ||
+                       (hasHtml && stringSyntax == "markdown") ||
+                       (hasMarkdown && stringSyntax == "html");
+
         if (hasHtml || stringSyntax == "html")
         {
-            return (true, false);
+            return (true, false, conflict);
         }
 
         if (hasMarkdown || stringSyntax == "markdown")
         {
-            return (false, true);
+            return (false, true, conflict);
         }
 
-        return (false, false);
+        return (false, false, false);
     }
 
-    static bool IsEnumerableOfString(ITypeSymbol type)
-    {
-        // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
-        // be `char`, which is correctly rejected here.
-        var element = ModelSymbolResolver.TryGetElementType(type);
-        return element is {SpecialType: SpecialType.System_String};
-    }
+    // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
+    // be `char`, which is correctly rejected here.
+    static bool IsEnumerableOfString(ITypeSymbol type) =>
+        ModelSymbolResolver.TryGetElementType(type, out var element) &&
+        element is {SpecialType: SpecialType.System_String};
 
     static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle)
     {

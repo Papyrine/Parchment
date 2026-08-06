@@ -1,3 +1,4 @@
+// ReSharper disable PartialTypeWithSinglePart
 /// <summary>
 /// One <c>WordNumberingState</c> is allocated per render and shared across every code path that
 /// can introduce list numbering — string-list auto-bullets, [Markdown] content, loop bodies, and
@@ -9,12 +10,13 @@
 /// duplicate abstracts whose final IDs depended on OOXML SDK save-time reordering — making rendered
 /// docx bytes non-deterministic across runs.
 /// </summary>
-public class NumberingStateSharingTests
+public partial class NumberingStateSharingTests
 {
     [AttributeUsage(AttributeTargets.Property)]
     sealed class MarkdownAttribute : Attribute;
 
-    public class TwoMarkdownDoc
+    [ParchmentBindable]
+    public partial class TwoMarkdownDoc
     {
         [Markdown]
         public required string FirstBody { get; init; }
@@ -23,7 +25,8 @@ public class NumberingStateSharingTests
         public required string SecondBody { get; init; }
     }
 
-    public class MixedDoc
+    [ParchmentBindable]
+    public partial class MixedDoc
     {
         public required IReadOnlyList<string> Tags { get; init; }
 
@@ -31,7 +34,8 @@ public class NumberingStateSharingTests
         public required string Body { get; init; }
     }
 
-    public class GroupsDoc
+    [ParchmentBindable]
+    public partial class GroupsDoc
     {
         public required IReadOnlyList<Group> Groups { get; init; }
         public required IReadOnlyList<string> Outer { get; init; }
@@ -42,7 +46,8 @@ public class NumberingStateSharingTests
         public required IReadOnlyList<string> Items { get; init; }
     }
 
-    public class IfDoc
+    [ParchmentBindable]
+    public partial class IfDoc
     {
         public required bool ShowInner { get; init; }
         public required IReadOnlyList<string> Inner { get; init; }
@@ -52,7 +57,8 @@ public class NumberingStateSharingTests
     [AttributeUsage(AttributeTargets.Property)]
     sealed class HtmlAttribute : Attribute;
 
-    public class TwoHtmlDoc
+    [ParchmentBindable]
+    public partial class TwoHtmlDoc
     {
         [Html]
         public required string FirstBody { get; init; }
@@ -61,7 +67,8 @@ public class NumberingStateSharingTests
         public required string SecondBody { get; init; }
     }
 
-    public class HtmlIfDoc
+    [ParchmentBindable]
+    public partial class HtmlIfDoc
     {
         public required bool ShowInner { get; init; }
 
@@ -72,7 +79,8 @@ public class NumberingStateSharingTests
         public required string Outer { get; init; }
     }
 
-    public class HtmlAndMarkdownDoc
+    [ParchmentBindable]
+    public partial class HtmlAndMarkdownDoc
     {
         [Html]
         public required string HtmlBody { get; init; }
@@ -95,7 +103,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoHtmlDoc>("two-html", template);
+        store.RegisterDocxTemplate<TwoHtmlDoc>(template);
 
         var model = new TwoHtmlDoc
         {
@@ -103,7 +111,7 @@ public class NumberingStateSharingTests
             SecondBody = "<ul><li>b1</li><li>b2</li></ul>"
         };
 
-        await AssertOneSharedBulletAbstract(store, "two-html", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -124,7 +132,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlIfDoc>("html-if", template);
+        store.RegisterDocxTemplate<HtmlIfDoc>(template);
 
         var model = new HtmlIfDoc
         {
@@ -133,7 +141,7 @@ public class NumberingStateSharingTests
             Outer = "<ul><li>o1</li><li>o2</li></ul>"
         };
 
-        await AssertOneSharedBulletAbstract(store, "html-if", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -150,7 +158,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlAndMarkdownDoc>("html-md", template);
+        store.RegisterDocxTemplate<HtmlAndMarkdownDoc>(template);
 
         var model = new HtmlAndMarkdownDoc
         {
@@ -159,7 +167,7 @@ public class NumberingStateSharingTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("html-md", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -190,7 +198,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoMarkdownDoc>("two-md", template);
+        store.RegisterDocxTemplate<TwoMarkdownDoc>(template);
 
         var model = new TwoMarkdownDoc
         {
@@ -198,7 +206,7 @@ public class NumberingStateSharingTests
             SecondBody = "- b1\n- b2"
         };
 
-        await AssertOneSharedBulletAbstract(store, "two-md", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -214,7 +222,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MixedDoc>("mixed", template);
+        store.RegisterDocxTemplate<MixedDoc>(template);
 
         var model = new MixedDoc
         {
@@ -222,7 +230,7 @@ public class NumberingStateSharingTests
             Body = "- m1\n- m2"
         };
 
-        await AssertOneSharedBulletAbstract(store, "mixed", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -245,7 +253,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<GroupsDoc>("loop-share", template);
+        store.RegisterDocxTemplate<GroupsDoc>(template);
 
         var model = new GroupsDoc
         {
@@ -257,7 +265,7 @@ public class NumberingStateSharingTests
             Outer = ["o1", "o2"]
         };
 
-        await AssertOneSharedBulletAbstract(store, "loop-share", model, expectedInstanceCount: 3);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 3);
     }
 
     [Test]
@@ -278,7 +286,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<IfDoc>("if-share", template);
+        store.RegisterDocxTemplate<IfDoc>(template);
 
         var model = new IfDoc
         {
@@ -287,7 +295,7 @@ public class NumberingStateSharingTests
             Outer = ["o1", "o2"]
         };
 
-        await AssertOneSharedBulletAbstract(store, "if-share", model, expectedInstanceCount: 2);
+        await AssertOneSharedBulletAbstract(store, model, expectedInstanceCount: 2);
     }
 
     [Test]
@@ -303,7 +311,7 @@ public class NumberingStateSharingTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoMarkdownDoc>("two-md-ordered", template);
+        store.RegisterDocxTemplate<TwoMarkdownDoc>(template);
 
         var model = new TwoMarkdownDoc
         {
@@ -312,7 +320,7 @@ public class NumberingStateSharingTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("two-md-ordered", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -334,14 +342,13 @@ public class NumberingStateSharingTests
         await Assert.That(instancesPointingAtOrdered.Count).IsEqualTo(2);
     }
 
-    static async Task AssertOneSharedBulletAbstract(
+    static async Task AssertOneSharedBulletAbstract<TModel>(
         TemplateStore store,
-        string name,
-        object model,
+        TModel model,
         int expectedInstanceCount)
     {
         using var stream = new MemoryStream();
-        await store.Render(name, model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

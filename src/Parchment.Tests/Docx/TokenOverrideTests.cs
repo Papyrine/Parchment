@@ -3,12 +3,14 @@ using A = DocumentFormat.OpenXml.Drawing;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 // end-snippet
+// ReSharper disable PartialTypeWithSinglePart
 
-public class TokenOverrideTests
+public partial class TokenOverrideTests
 {
     #region MarkdownPropertyModel
 
-    public class NoteModel
+    [ParchmentBindable]
+    public partial class NoteModel
     {
         public required string Title;
         public required TokenValue Body;
@@ -32,9 +34,8 @@ public class TokenOverrideTests
         #region MarkdownPropertyRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NoteModel>("markdown-hatch", template);
+        store.RegisterDocxTemplate<NoteModel>(template);
         await store.Render(
-            "markdown-hatch",
             new NoteModel
             {
                 Title = "Weekly summary",
@@ -59,7 +60,8 @@ public class TokenOverrideTests
 
     #region MarkdownFilterModel
 
-    public class ArticleModel
+    [ParchmentBindable]
+    public partial class ArticleModel
     {
         public required string Heading;
         public required string Content;
@@ -83,9 +85,8 @@ public class TokenOverrideTests
         #region MarkdownFilterRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<ArticleModel>("markdown-filter", template);
+        store.RegisterDocxTemplate<ArticleModel>(template);
         await store.Render(
-            "markdown-filter",
             new ArticleModel
             {
                 Heading = "Release notes",
@@ -107,7 +108,8 @@ public class TokenOverrideTests
 
     #region MutateModel
 
-    public class StyledModel
+    [ParchmentBindable]
+    public partial class StyledModel
     {
         public required string Label;
         public required TokenValue Highlight;
@@ -131,9 +133,8 @@ public class TokenOverrideTests
         #region MutateRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<StyledModel>("mutate", template);
+        store.RegisterDocxTemplate<StyledModel>(template);
         await store.Render(
-            "mutate",
             new StyledModel
             {
                 Label = "Before",
@@ -158,7 +159,8 @@ public class TokenOverrideTests
 
     #region HtmlPropertyModel
 
-    public class PostModel
+    [ParchmentBindable]
+    public partial class PostModel
     {
         public required string Title;
         public required TokenValue Body;
@@ -182,9 +184,8 @@ public class TokenOverrideTests
         #region HtmlPropertyRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<PostModel>("html-hatch", template);
+        store.RegisterDocxTemplate<PostModel>(template);
         await store.Render(
-            "html-hatch",
             new PostModel
             {
                 Title = "Welcome",
@@ -207,7 +208,8 @@ public class TokenOverrideTests
 
     #region OpenXmlPropertyModel
 
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Title;
         public required TokenValue Callout;
@@ -231,9 +233,8 @@ public class TokenOverrideTests
         #region OpenXmlPropertyRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<ReportModel>("openxml-hatch", template);
+        store.RegisterDocxTemplate<ReportModel>(template);
         await store.Render(
-            "openxml-hatch",
             new ReportModel
             {
                 Title = "Status",
@@ -278,9 +279,9 @@ public class TokenOverrideTests
         #region BulletListFilterRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bullet-filter", template);
+        store.RegisterDocxTemplate<Invoice>(template);
         using var stream = new MemoryStream();
-        await store.Render("bullet-filter", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
 
         #endregion
 
@@ -290,7 +291,8 @@ public class TokenOverrideTests
 
     #region ImageTokenModel
 
-    public class BrandKit
+    [ParchmentBindable]
+    public partial class BrandKit
     {
         public required string Title;
         public required TokenValue Logo;
@@ -318,9 +320,8 @@ public class TokenOverrideTests
         #region ImageTokenRender
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<BrandKit>("image-token", template);
+        store.RegisterDocxTemplate<BrandKit>(template);
         await store.Render(
-            "image-token",
             new BrandKit
             {
                 Title = "Brand kit",

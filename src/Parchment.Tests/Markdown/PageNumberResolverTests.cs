@@ -1,11 +1,13 @@
-public class PageNumberResolverTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class PageNumberResolverTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Heading { get; init; }
     }
 
-    const string Markdown =
+    const string markdown =
         """
         Contents {.TOCHeading}
 
@@ -50,11 +52,10 @@ public class PageNumberResolverTests
         {
             PageNumbers = resolver
         };
-        store.RegisterMarkdownTemplate<ReportModel>("report", Markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Heading = "Delivery"

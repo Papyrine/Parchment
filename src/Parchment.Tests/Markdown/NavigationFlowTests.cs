@@ -1,8 +1,10 @@
+// ReSharper disable PartialTypeWithSinglePart
 // End-to-end cover for the navigation features: what the renderer builds has to survive template
 // binding, style-source cloning and packaging to reach Word as a working field.
-public class NavigationFlowTests
+public partial class NavigationFlowTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required IReadOnlyList<Section> Sections { get; init; }
     }
@@ -40,11 +42,10 @@ public class NavigationFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ReportModel>("report", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Sections =

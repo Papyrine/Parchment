@@ -50,10 +50,12 @@ static class AccessorEmission
         var collectionEntries = new List<(List<string> Path, MemberEntry Member)>();
 
         // Fluid accessors: one block per non-empty type in the shape (System types & enums end
-        // up with 0 members and are skipped).
+        // up with 0 members and are skipped). The root type is always emitted, even member-less —
+        // its registration is what marks the model SG-known to SharedFluid.EnsureModelRegistered.
         foreach (var type in shape.Types)
         {
-            if (type.Members.Count == 0)
+            if (type.Members.Count == 0 &&
+                type.TypeFullyQualifiedName != rootFqn)
             {
                 continue;
             }
@@ -155,15 +157,15 @@ static class AccessorEmission
             }
 
             // A member that is also [EditableField] is claimed by the editable map (rich-content
-            // control that extracts back to HTML), not the read-only format path — mirrors runtime
-            // FormatMap.Build.
-            if (member is {IsHtml: true, IsEditable: false})
+            // control that extracts back to HTML), not the read-only format path. A conflicted
+            // member (PARCH023) is emitted as neither — the diagnostic fails the build.
+            if (member is {IsHtml: true, IsEditable: false, HasFormatConflict: false})
             {
                 formats.Add((nextPath, FormatMapKind.Html));
                 continue;
             }
 
-            if (member is {IsMarkdown: true, IsEditable: false})
+            if (member is {IsMarkdown: true, IsEditable: false, HasFormatConflict: false})
             {
                 formats.Add((nextPath, FormatMapKind.Markdown));
                 continue;
@@ -172,9 +174,15 @@ static class AccessorEmission
             if (member.IsEditable)
             {
                 // An editable collection (POCO element) → repeating section, registered separately.
+                // Invalid shapes (no setter, element without a parameterless ctor or without
+                // editable members) carry an error diagnostic (PARCH014 / PARCH022) — skip them so
+                // the emitted source stays compilable.
                 if (member.EditableCollectionElementFqn != null)
                 {
-                    if (member.HasUsableSetter)
+                    if (member.HasUsableSetter &&
+                        typesByFqn.TryGetValue(member.EditableCollectionElementFqn, out var elementEntry) &&
+                        elementEntry.HasParameterlessCtor &&
+                        HasScalarEditableMember(elementEntry))
                     {
                         collections.Add((nextPath, member));
                     }
@@ -208,6 +216,19 @@ static class AccessorEmission
             WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables, collections);
             visited.Remove(member.TypeFullyQualifiedName);
         }
+    }
+
+    static bool HasScalarEditableMember(TypeEntry type)
+    {
+        foreach (var member in type.Members)
+        {
+            if (member is { IsEditable: true, IsStatic: false, EditableCollectionElementFqn: null })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static void EmitFluidBlocks(
@@ -293,8 +314,15 @@ static class AccessorEmission
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof({rootFqn}), _ExcelsiorTables);");
     }
 
-    static string ToStringLiteral(string? value) =>
-        value == null ? "null" : SymbolDisplay.FormatLiteral(value, quote: true);
+    static string ToStringLiteral(string? value)
+    {
+        if (value == null)
+        {
+            return "null";
+        }
+
+        return SymbolDisplay.FormatLiteral(value, quote: true);
+    }
 
     static void EmitFormatBlock(
         StringBuilder fields,
@@ -455,9 +483,12 @@ static class AccessorEmission
             EmitSetter(fields, rootFqn, path, member);
             fields.Append(", ");
             EmitCanReach(fields, rootFqn, path);
-            fields.Append(", static () => new ");
+            // Activator rather than `new`: an element type with `required` members has no legal
+            // object-creation expression here, and extraction (like the old runtime factory) fills
+            // the members from the document right after construction.
+            fields.Append(", static () => global::System.Activator.CreateInstance(typeof(");
             fields.Append(elementFqn);
-            fields.Append("(), ");
+            fields.Append("))!, ");
             EmitElementFields(fields, elementFqn, typesByFqn);
             fields.Append(", ");
             fields.Append(isArray ? "true" : "false");

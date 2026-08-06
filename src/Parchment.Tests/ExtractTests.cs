@@ -1,8 +1,46 @@
 using System.Globalization;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
+// ReSharper disable PartialTypeWithSinglePart
 
-public class ExtractTests
+public partial class ExtractTests
 {
+    // Deliberately NOT [ParchmentBindable]: the generator never sees it, so its editable map is
+    // empty for the wrong reason — the guard has to say "not generated", not "no fields".
+    public class NeverGeneratedModel
+    {
+        [EditableField]
+        public string PurchaseOrder { get; set; } = "";
+    }
+
+    [ParchmentBindable]
+    public partial class NoFieldsModel
+    {
+        public string Title { get; set; } = "";
+    }
+
+    [Test]
+    public async Task ExtractingANeverGeneratedModelSaysSo()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        var exception = await Assert.That(
+                () => ParchmentExtractor.Extract<NeverGeneratedModel>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("no pre-compiled Parchment accessors");
+        await Assert.That(exception.Message).Contains("ParchmentBindable");
+    }
+
+    [Test]
+    public async Task ExtractingAModelWithoutEditableFieldsSaysSo()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        var exception = await Assert.That(
+                () => ParchmentExtractor.Extract<NoFieldsModel>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("declares no [EditableField] members");
+    }
+
     [Test]
     public async Task NoEditRoundTrip()
     {
@@ -199,11 +237,10 @@ public class ExtractTests
             Email: {{ Customer.ContactEmail }}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableQuote>("extract-nested", template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableQuote>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "extract-nested",
             new EditableFieldTests.EditableQuote
             {
                 Reference = "Q-7",
@@ -341,9 +378,7 @@ public class ExtractTests
         await Assert.That(result.AllExtracted).IsFalse();
     }
 
-    static async Task<MemoryStream> RenderOrder(
-        EditableFieldTests.EditableOrder model,
-        [CallerMemberName] string name = "")
+    static async Task<MemoryStream> RenderOrder(EditableFieldTests.EditableOrder model)
     {
         using var template = DocxTemplateBuilder.Build(
             """
@@ -370,10 +405,10 @@ public class ExtractTests
             {{ Instructions }}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>(name, template);
+        store.RegisterDocxTemplate<EditableFieldTests.EditableOrder>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         return stream;
     }

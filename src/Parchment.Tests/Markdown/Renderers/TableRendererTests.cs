@@ -1,8 +1,10 @@
+// ReSharper disable PartialTypeWithSinglePart
 using MarkdigTable = Markdig.Extensions.Tables.Table;
 
-public class TableRendererTests
+public partial class TableRendererTests
 {
-    public class EmptyModel;
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     // Without tblHeader a table broken across a page break loses its header on every later page.
     [Test]
@@ -562,9 +564,9 @@ public class TableRendererTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("table", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
         using var stream = new MemoryStream();
-        await store.Render("table", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

@@ -1,6 +1,8 @@
-public class HeaderFooterTokenTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class HeaderFooterTokenTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Title { get; init; }
         public required string Author { get; init; }
@@ -17,7 +19,7 @@ public class HeaderFooterTokenTests
             footerText: "Footer by {{ Author }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("hf", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         var model = new Doc
         {
@@ -28,7 +30,7 @@ public class HeaderFooterTokenTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("hf", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -50,7 +52,7 @@ public class HeaderFooterTokenTests
             endnoteText: "Endnote: {{ EndnoteText }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("fn-en", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         var model = new Doc
         {
@@ -61,7 +63,7 @@ public class HeaderFooterTokenTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("fn-en", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -86,7 +88,7 @@ public class HeaderFooterTokenTests
 
         var store = new TemplateStore();
         await Assert.That(
-                () => store.RegisterDocxTemplate<Doc>("bad-header", template))
+                () => store.RegisterDocxTemplate<Doc>(template))
             .Throws<ParchmentRegistrationException>();
     }
 
@@ -102,7 +104,7 @@ public class HeaderFooterTokenTests
             footerText: "Footer by {{ Author }}");
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Doc>("md-hf", "# {{ Title }}", styleSource);
+        store.RegisterMarkdownTemplate<Doc>("# {{ Title }}", styleSource);
 
         var model = new Doc
         {
@@ -113,7 +115,7 @@ public class HeaderFooterTokenTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("md-hf", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -136,11 +138,10 @@ public class HeaderFooterTokenTests
             footerText: "Plain footer");
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Doc>("md-plain", "# {{ Title }}", styleSource);
+        store.RegisterMarkdownTemplate<Doc>("# {{ Title }}", styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "md-plain",
             new Doc
             {
                 Title = "T",

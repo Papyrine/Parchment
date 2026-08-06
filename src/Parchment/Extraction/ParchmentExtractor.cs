@@ -13,11 +13,6 @@ namespace Parchment;
 /// </summary>
 public static class ParchmentExtractor
 {
-    // Extract is called per-document (often per-request); cache the reflection-built map per
-    // model type. The SG-precompiled cache inside EditableMap.Build makes this a double layer on
-    // the SG path, but it also covers the reflection fallback path, which Build alone does not.
-    static ConcurrentDictionary<Type, EditableMap> maps = new();
-
     public static ExtractResult<TModel> Extract<TModel>(string path, CultureInfo? culture = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -29,9 +24,16 @@ public static class ParchmentExtractor
     {
         ArgumentNullException.ThrowIfNull(docx);
 
-        var map = maps.GetOrAdd(typeof(TModel), static type => EditableMap.Build(type, type.Name));
+        // A model the generator never saw yields an empty map too — say that, rather than the
+        // misleading "declares no [EditableField] members" a genuinely field-less model earns.
+        var map = EditableMap.Build(typeof(TModel));
         if (map.IsEmpty)
         {
+            if (!SharedFluid.IsModelRegistered(typeof(TModel)))
+            {
+                throw new ParchmentExtractionException(SharedFluid.NotGeneratedMessage(typeof(TModel)));
+            }
+
             throw new ParchmentExtractionException(
                 $"Model type '{typeof(TModel).Name}' declares no [EditableField] members — there is nothing to extract.");
         }

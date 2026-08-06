@@ -6,9 +6,6 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Order
 {
-  public static string TemplatePath => "template.docx";
-  public static string TemplateName => "Order";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
   {
     new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Lines)),
@@ -20,15 +17,17 @@ partial class Order
   };
   static readonly global::Parchment.Generated.CollectionFieldMapEntry[] _EditableCollections =
   {
-    new("Lines", typeof(global::Sample.Line), (o, v) => { ((global::Sample.Order)o).Lines = (global::System.Collections.Generic.List<global::Sample.Line>)v!; }, static o => true, static () => new global::Sample.Line(), new global::Parchment.Generated.EditableFieldMapEntry[] { new("Note", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), false, o => ((global::Sample.Line)o).Note, (o, v) => { ((global::Sample.Line)o).Note = (string)v!; }, static o => true, false, null), new("Amount", global::Parchment.Generated.EditableFieldKind.Number, typeof(decimal), false, o => ((global::Sample.Line)o).Amount, (o, v) => { ((global::Sample.Line)o).Amount = (decimal)v!; }, static o => true, false, null), }, false),
+    new("Lines", typeof(global::Sample.Line), (o, v) => { ((global::Sample.Order)o).Lines = (global::System.Collections.Generic.List<global::Sample.Line>)v!; }, static o => true, static () => global::System.Activator.CreateInstance(typeof(global::Sample.Line))!, new global::Parchment.Generated.EditableFieldMapEntry[] { new("Note", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), false, o => ((global::Sample.Line)o).Note, (o, v) => { ((global::Sample.Line)o).Note = (string)v!; }, static o => true, false, null), new("Amount", global::Parchment.Generated.EditableFieldKind.Number, typeof(decimal), false, o => ((global::Sample.Line)o).Amount, (o, v) => { ((global::Sample.Line)o).Amount = (decimal)v!; }, static o => true, false, null), }, false),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Line), _Accessors_global__Sample_Line);
     global::Parchment.Generated.GeneratedRegistration.RegisterEditableCollections(typeof(global::Sample.Order), _EditableCollections);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Order>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Order),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

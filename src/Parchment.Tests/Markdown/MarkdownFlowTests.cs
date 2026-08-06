@@ -1,6 +1,8 @@
-public class MarkdownFlowTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class MarkdownFlowTests
 {
-    public class ReportModel
+    [ParchmentBindable]
+    public partial class ReportModel
     {
         public required string Title { get; init; }
         public required string Author { get; init; }
@@ -28,11 +30,10 @@ public class MarkdownFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
 
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ReportModel>("report", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "report",
             new ReportModel
             {
                 Title = "Q2 Engineering Review",
@@ -49,14 +50,72 @@ public class MarkdownFlowTests
         await Verify(stream, "docx");
     }
 
-    public class TitleModel
+    // Registering without a style source falls back to the built-in blank docx. Every other
+    // markdown test supplies one, so this is the only place the built-in package's own styles —
+    // and the part scan over a package that has no non-body parts — are pinned.
+    [Test]
+    public async Task MarkdownWithNoStyleSource()
+    {
+        var markdown =
+            """
+            # {{ Title }}
+
+            by *{{ Author }}*
+
+            ## Key findings
+
+            {% for finding in Findings %}
+            - {{ finding }}
+            {% endfor %}
+
+            > The quarter closed ahead of plan.
+
+            ### Level three
+
+            #### Level four
+
+            ##### Level five
+
+            ###### Level six
+
+            | Area | Status |
+            | --- | --- |
+            | Build | Green |
+            | Tests | Green |
+
+            > Review complete.
+            """;
+
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ReportModel>(markdown);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ReportModel
+            {
+                Title = "Q2 Engineering Review",
+                Author = "Alex Chen",
+                Findings =
+                [
+                    "Build times improved 40%",
+                    "Test flake rate halved"
+                ]
+            },
+            stream);
+        stream.Position = 0;
+        await Verify(stream, "docx");
+    }
+
+    [ParchmentBindable]
+    public partial class TitleModel
     {
         public required string Title { get; init; }
     }
 
     #region MarkdownTemplatePropertyModel
 
-    public class BriefModel
+    [ParchmentBindable]
+    public partial class BriefModel
     {
         public required string Title;
         public required string Details;
@@ -83,12 +142,10 @@ public class MarkdownFlowTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<BriefModel>(
-            "brief",
             markdown,
             styleSource);
 
         await store.Render(
-            "brief",
             new BriefModel
             {
                 Title = "Sprint recap",
@@ -125,12 +182,10 @@ public class MarkdownFlowTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<BriefModel>(
-            "brief-html",
             markdown,
             styleSource);
 
         await store.Render(
-            "brief-html",
             new BriefModel
             {
                 Title = "Release notes",
@@ -175,22 +230,23 @@ public class MarkdownFlowTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TitleModel>("with-comments", withComments, styleSource);
+        store.RegisterMarkdownTemplate<TitleModel>(withComments, styleSource);
         styleSource.Position = 0;
-        store.RegisterMarkdownTemplate<TitleModel>("without-comments", withoutComments, styleSource);
+        store.RegisterMarkdownTemplate<TitleModel>(withoutComments, styleSource);
 
         var model = new TitleModel {Title = "Sample"};
 
         using var withStream = new MemoryStream();
-        await store.Render("with-comments", model, withStream);
+        await store.Render(model, withStream);
 
         using var withoutStream = new MemoryStream();
-        await store.Render("without-comments", model, withoutStream);
+        await store.Render(model, withoutStream);
 
         await Assert.That(withStream.ToArray()).IsEquivalentTo(withoutStream.ToArray());
     }
 
-    public class ImageModel
+    [ParchmentBindable]
+    public partial class ImageModel
     {
         public required string Caption { get; init; }
     }
@@ -207,11 +263,10 @@ public class MarkdownFlowTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+        store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "image",
             new ImageModel
             {
                 Caption = "With image"
@@ -241,11 +296,10 @@ public class MarkdownFlowTests
 
             using var styleSource = DocxTemplateBuilder.Build();
             var store = new TemplateStore();
-            store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+            store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
             using var stream = new MemoryStream();
             await store.Render(
-                "image",
                 new ImageModel
                 {
                     Caption = "With image"
@@ -278,11 +332,10 @@ public class MarkdownFlowTests
             {
                 LocalImages = OpenXmlHtml.ImagePolicy.Deny()
             };
-            store.RegisterMarkdownTemplate<ImageModel>("image", markdown, styleSource);
+            store.RegisterMarkdownTemplate<ImageModel>(markdown, styleSource);
 
             using var stream = new MemoryStream();
             await store.Render(
-                "image",
                 new ImageModel
                 {
                     Caption = "With image"
@@ -301,7 +354,8 @@ public class MarkdownFlowTests
         }
     }
 
-    public class LoopModel
+    [ParchmentBindable]
+    public partial class LoopModel
     {
         public required IReadOnlyList<Row> Rows { get; init; }
     }
@@ -314,7 +368,7 @@ public class MarkdownFlowTests
     static void Register(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();
-        new TemplateStore().RegisterMarkdownTemplate<LoopModel>("t", markdown, styleSource);
+        new TemplateStore().RegisterMarkdownTemplate<LoopModel>(markdown, styleSource);
     }
 
     // Leading whitespace control is exactly what a markdown template needs, since markdown ends an
@@ -455,11 +509,10 @@ public class MarkdownFlowTests
     {
         using var dotx = BuildDotx();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TitleModel>("t", "# {{ Title }}", dotx);
+        store.RegisterMarkdownTemplate<TitleModel>("# {{ Title }}", dotx);
 
         using var output = new MemoryStream();
         await store.Render(
-            "t",
             new TitleModel
             {
                 Title = "x"
@@ -471,12 +524,14 @@ public class MarkdownFlowTests
         await Assert.That(result.DocumentType).IsEqualTo(WordprocessingDocumentType.Document);
     }
 
-    public class ItemsModel
+    [ParchmentBindable]
+public partial class ItemsModel
     {
         public required IReadOnlyList<string> Items { get; init; }
     }
 
-    public class TokenModel
+    [ParchmentBindable]
+public partial class TokenModel
     {
         public required TokenValue Value { get; init; }
     }
@@ -486,10 +541,10 @@ public class MarkdownFlowTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<TModel>("t", markdown, styleSource);
+        store.RegisterMarkdownTemplate<TModel>(markdown, styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("t", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);

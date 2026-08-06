@@ -1,8 +1,8 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (4,1)-(4,32),
-      Message: Template 'template.docx' uses unsupported block tag '{% foobar %}' (supported: for, endfor, if, elsif, else, endif),
+      Location: : (4,1)-(4,15),
+      Message: Template 'Empty.docx' uses unsupported block tag '{% foobar %}' (supported: for, endfor, if, elsif, else, endif),
       Severity: Error,
       Descriptor: {
         Id: PARCH003,

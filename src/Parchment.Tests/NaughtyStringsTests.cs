@@ -1,6 +1,8 @@
-public class NaughtyStringsTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class NaughtyStringsTests
 {
-    public class NaughtyModel
+    [ParchmentBindable]
+    public partial class NaughtyModel
     {
         public required string Single { get; init; }
         public required IReadOnlyList<NaughtyItem> Items { get; init; }
@@ -35,10 +37,10 @@ public class NaughtyStringsTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NaughtyModel>("naughty-docx", template);
+        store.RegisterDocxTemplate<NaughtyModel>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("naughty-docx", BuildModel(), stream);
+        await store.Render(BuildModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -59,12 +61,11 @@ public class NaughtyStringsTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<NaughtyModel>(
-            "naughty-md",
             markdownSource,
             styleSource: styleSource);
 
         using var stream = new MemoryStream();
-        await store.Render("naughty-md", BuildModel(), stream);
+        await store.Render(BuildModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

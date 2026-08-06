@@ -6,9 +6,6 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Order
 {
-  public static string TemplatePath => "template.docx";
-  public static string TemplateName => "Order";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
   {
     new("Number", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Number)),
@@ -44,13 +41,15 @@ partial class Order
     new("Customer.Email", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), true, o => ((global::Sample.Order)o).Customer?.Email, (o, v) => { var p = ((global::Sample.Order)o).Customer; if (p != null) { p.Email = (string?)v; } }, o => ((global::Sample.Order)o).Customer != null, false, null),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Status), _Accessors_global__Sample_Status);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
     global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof(global::Sample.Order), _Editables);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Order>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Order),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

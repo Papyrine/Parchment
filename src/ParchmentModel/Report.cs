@@ -1,8 +1,9 @@
+// ReSharper disable PartialTypeWithSinglePart
 namespace ParchmentSample;
 
 #region ReportModel
 #region GeneratorMarkdownModel
-[ParchmentModel("Templates/report.md")]
+[ParchmentModel]
 public partial class ReportContext
 {
     public required Report Report;

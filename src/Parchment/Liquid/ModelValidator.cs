@@ -12,8 +12,7 @@ static class ModelValidator
         string? partUri,
         string? tokenSource)
     {
-        var currentType = ResolveRoot(modelType, path.Root, scope);
-        if (currentType == null)
+        if (!TryResolveRoot(modelType, path.Root, scope, out var currentType))
         {
             throw new ParchmentRegistrationException(
                 templateName,
@@ -26,8 +25,7 @@ static class ModelValidator
         for (var i = 1; i < path.Segments.Count; i++)
         {
             var segment = path.Segments[i];
-            var next = ResolveMember(currentType, segment);
-            if (next == null)
+            if (!TryResolveMember(currentType, segment, out var next))
             {
                 throw new ParchmentRegistrationException(
                     templateName,
@@ -57,11 +55,12 @@ static class ModelValidator
         return $"Identifier '{root}' is not a member of '{modelType.Name}'";
     }
 
-    public static Type? TryResolveElementType(Type enumerableType)
+    public static bool TryResolveElementType(Type enumerableType, [NotNullWhen(true)] out Type? elementType)
     {
         if (enumerableType.IsArray)
         {
-            return enumerableType.GetElementType();
+            elementType = enumerableType.GetElementType();
+            return elementType != null;
         }
 
         foreach (var i in enumerableType.GetInterfaces())
@@ -69,55 +68,65 @@ static class ModelValidator
             if (i.IsGenericType &&
                 i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
-                return i.GetGenericArguments()[0];
+                elementType = i.GetGenericArguments()[0];
+                return true;
             }
         }
 
         if (enumerableType.IsGenericType &&
             enumerableType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
-            return enumerableType.GetGenericArguments()[0];
+            elementType = enumerableType.GetGenericArguments()[0];
+            return true;
         }
 
-        return null;
+        elementType = null;
+        return false;
     }
 
-    public static Type? ResolveMember(Type type, string name)
+    public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
         var property = type.GetProperty(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
         if (property != null)
         {
-            return property.PropertyType;
+            memberType = property.PropertyType;
+            return true;
         }
 
         var field = type.GetField(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        return field?.FieldType;
+        memberType = field?.FieldType;
+        return memberType != null;
     }
 
-    static Type? ResolveRoot(Type modelType, string name, IReadOnlyDictionary<string, Type>? scope)
+    static bool TryResolveRoot(
+        Type modelType,
+        string name,
+        IReadOnlyDictionary<string, Type>? scope,
+        [NotNullWhen(true)] out Type? rootType)
     {
         if (scope != null &&
             scope.TryGetValue(name, out var scoped))
         {
-            return scoped;
+            rootType = scoped;
+            return true;
         }
 
-        var type = ResolveMember(modelType, name);
-        if (type != null)
+        if (TryResolveMember(modelType, name, out rootType))
         {
-            return type;
+            return true;
         }
 
         if (MatchesRootIdentifier(modelType, name))
         {
-            return modelType;
+            rootType = modelType;
+            return true;
         }
 
-        return null;
+        return false;
     }
 
     static bool MatchesRootIdentifier(Type modelType, string name) =>

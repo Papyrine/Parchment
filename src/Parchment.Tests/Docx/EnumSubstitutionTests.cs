@@ -1,4 +1,5 @@
-public class EnumSubstitutionTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class EnumSubstitutionTests
 {
     [Test]
     public async Task PascalCaseEnum_IsHumanized()
@@ -9,11 +10,10 @@ public class EnumSubstitutionTests
         // displayed text matches what an [ExcelsiorTable] column emits for the same value.
         using var template = DocxTemplateBuilder.Build("Status: {{ Status }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EmploymentModel>("plain-enum", template);
+        store.RegisterDocxTemplate<EmploymentModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "plain-enum",
             new EmploymentModel
             {
                 Status = EmploymentStatus.FullTime
@@ -27,11 +27,10 @@ public class EnumSubstitutionTests
     {
         using var template = DocxTemplateBuilder.Build("Role: {{ Role }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<RoleModel>("display-attr", template);
+        store.RegisterDocxTemplate<RoleModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "display-attr",
             new RoleModel
             {
                 Role = Role.Architect
@@ -45,11 +44,10 @@ public class EnumSubstitutionTests
     {
         using var template = DocxTemplateBuilder.Build("Backup: {{ Backup }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NullableEnumModel>("nullable-some", template);
+        store.RegisterDocxTemplate<NullableEnumModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "nullable-some",
             new NullableEnumModel
             {
                 Backup = EmploymentStatus.PartTime
@@ -63,11 +61,10 @@ public class EnumSubstitutionTests
     {
         using var template = DocxTemplateBuilder.Build("Backup: {{ Backup }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<NullableEnumModel>("nullable-none", template);
+        store.RegisterDocxTemplate<NullableEnumModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "nullable-none",
             new NullableEnumModel
             {
                 Backup = null
@@ -91,11 +88,10 @@ public class EnumSubstitutionTests
 
         using var template = DocxTemplateBuilder.Build("Tier: {{ Tier }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<OverrideModel>("typed-set", template);
+        store.RegisterDocxTemplate<OverrideModel>(template);
 
         using var output = new MemoryStream();
         await store.Render(
-            "typed-set",
             new OverrideModel
             {
                 Tier = OverrideEnum.Bravo
@@ -104,12 +100,14 @@ public class EnumSubstitutionTests
         await Verify(output, "docx");
     }
 
-    public class EmploymentModel
+    [ParchmentBindable]
+    public partial class EmploymentModel
     {
         public required EmploymentStatus Status { get; init; }
     }
 
-    public class NullableEnumModel
+    [ParchmentBindable]
+    public partial class NullableEnumModel
     {
         public required EmploymentStatus? Backup { get; init; }
     }
@@ -121,7 +119,8 @@ public class EnumSubstitutionTests
         Contract
     }
 
-    public class RoleModel
+    [ParchmentBindable]
+    public partial class RoleModel
     {
         public required Role Role { get; init; }
     }
@@ -135,7 +134,8 @@ public class EnumSubstitutionTests
         Developer
     }
 
-    public class OverrideModel
+    [ParchmentBindable]
+    public partial class OverrideModel
     {
         public required OverrideEnum Tier { get; init; }
     }

@@ -1,7 +1,8 @@
-public class HtmlBlockRendererTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class HtmlBlockRendererTests
 {
-    public class EmptyModel;
-
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     [Test]
     public async Task CommentBlockEmitsNothing()
@@ -74,9 +75,9 @@ public class HtmlBlockRendererTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("html", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
         using var stream = new MemoryStream();
-        await store.Render("html", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

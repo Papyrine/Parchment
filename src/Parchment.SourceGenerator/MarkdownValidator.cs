@@ -23,6 +23,7 @@ class MarkdownValidator
 {
     readonly SourceProductionContext context;
     readonly TargetInfo target;
+    readonly string templatePath;
     readonly Location location;
 
     // Loop variables, bound to the fully qualified name of the element type being iterated.
@@ -33,20 +34,22 @@ class MarkdownValidator
     // validated, but the root is not reported as missing either.
     readonly HashSet<string> untyped = new(StringComparer.Ordinal);
 
-    MarkdownValidator(SourceProductionContext context, TargetInfo target, Location location)
+    MarkdownValidator(SourceProductionContext context, TargetInfo target, string templatePath, Location location)
     {
         this.context = context;
         this.target = target;
+        this.templatePath = templatePath;
         this.location = location;
     }
 
     public static void Validate(
         SourceProductionContext context,
         TargetInfo target,
+        string templatePath,
         Location location,
         IFluidTemplate template)
     {
-        var validator = new MarkdownValidator(context, target, location);
+        var validator = new MarkdownValidator(context, target, templatePath, location);
         validator.WalkStatements(((FluidTemplate) template).Statements);
     }
 
@@ -98,22 +101,16 @@ class MarkdownValidator
         // shape is known, so neither the source nor the loop variable can be checked.
         var sourceIsUntyped = sourcePath != null && untyped.Contains(sourcePath[0]);
         if (sourcePath != null &&
-            !sourceIsUntyped)
+            !sourceIsUntyped &&
+            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn) &&
+            !ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
         {
-            var sourceFqn = ShapeResolver.Resolve(target.Shape, sourcePath, scope);
-            if (sourceFqn != null)
-            {
-                elementFqn = ShapeResolver.GetElementType(target.Shape, sourceFqn);
-                if (elementFqn == null)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.LoopSourceNotEnumerable,
-                            location,
-                            target.TemplatePath,
-                            sourceText));
-                }
-            }
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.LoopSourceNotEnumerable,
+                    location,
+                    templatePath,
+                    sourceText));
         }
 
         var loopVariable = forStatement.Identifier;
@@ -212,8 +209,7 @@ class MarkdownValidator
                 continue;
             }
 
-            var resolved = ShapeResolver.Resolve(target.Shape, path, scope);
-            if (resolved != null)
+            if (ShapeResolver.TryResolve(target.Shape, path, scope, out _))
             {
                 continue;
             }
@@ -222,7 +218,7 @@ class MarkdownValidator
                 Diagnostic.Create(
                     Diagnostics.MissingMember,
                     location,
-                    target.TemplatePath,
+                    templatePath,
                     sourceForDiagnostic,
                     string.Join('.', path),
                     target.ModelDisplayName));

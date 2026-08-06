@@ -17,10 +17,10 @@ public class UsageTests
         #region Substitution
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("substitution", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("substitution", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
 
         #endregion
 
@@ -44,10 +44,10 @@ public class UsageTests
         using var wrapped = new BufferedStream(template);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("substitution-buffered", wrapped);
+        store.RegisterDocxTemplate<Invoice>(wrapped);
 
         using var stream = new MemoryStream();
-        await store.Render("substitution-buffered", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -95,12 +95,11 @@ public class UsageTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<ReportContext>(
-            "report",
             markdownSource,
             styleSource: brandDocx);
 
         using var stream = new MemoryStream();
-        await store.Render("report", reportModel, stream);
+        await store.Render(reportModel, stream);
 
         #endregion
 
@@ -124,12 +123,11 @@ public class UsageTests
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<ReportContext>(
-            "report-buffered",
             markdownSource,
             styleSource: wrapped);
 
         using var stream = new MemoryStream();
-        await store.Render("report-buffered", SampleData.Report(), stream);
+        await store.Render(SampleData.Report(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

@@ -4,14 +4,16 @@
 /// </summary>
 static class ShapeResolver
 {
-    public static string? Resolve(
+    public static bool TryResolve(
         ModelShape shape,
         IReadOnlyList<string> segments,
-        IReadOnlyDictionary<string, string> scope)
+        IReadOnlyDictionary<string, string> scope,
+        [NotNullWhen(true)] out string? typeFqn)
     {
+        typeFqn = null;
         if (segments.Count == 0)
         {
-            return null;
+            return false;
         }
 
         string currentFqn;
@@ -32,7 +34,7 @@ static class ShapeResolver
             var entry = FindType(shape, currentFqn);
             if (entry == null)
             {
-                return null;
+                return false;
             }
 
             string? matched = null;
@@ -47,17 +49,21 @@ static class ShapeResolver
 
             if (matched == null)
             {
-                return null;
+                return false;
             }
 
             currentFqn = matched;
         }
 
-        return currentFqn;
+        typeFqn = currentFqn;
+        return true;
     }
 
-    public static string? GetElementType(ModelShape shape, string typeFqn) =>
-        FindType(shape, typeFqn)?.ElementTypeFullyQualifiedName;
+    public static bool TryGetElementType(ModelShape shape, string typeFqn, [NotNullWhen(true)] out string? elementFqn)
+    {
+        elementFqn = FindType(shape, typeFqn)?.ElementTypeFullyQualifiedName;
+        return elementFqn != null;
+    }
 
     /// <summary>
     /// Returns true when the given path (walked from the root model, honoring loop scope) ends at
@@ -121,14 +127,16 @@ static class ShapeResolver
         return false;
     }
 
-    public static MemberEntry? ResolveMember(
+    public static bool TryResolveMember(
         ModelShape shape,
         IReadOnlyList<string> segments,
-        IReadOnlyDictionary<string, string> scope)
+        IReadOnlyDictionary<string, string> scope,
+        [NotNullWhen(true)] out MemberEntry? member)
     {
+        member = null;
         if (segments.Count == 0)
         {
-            return null;
+            return false;
         }
 
         string currentFqn;
@@ -149,33 +157,34 @@ static class ShapeResolver
             var entry = FindType(shape, currentFqn);
             if (entry == null)
             {
-                return null;
+                return false;
             }
 
             MemberEntry? matched = null;
-            foreach (var member in entry.Members)
+            foreach (var candidate in entry.Members)
             {
-                if (string.Equals(member.Name, segments[i], StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(candidate.Name, segments[i], StringComparison.OrdinalIgnoreCase))
                 {
-                    matched = member;
+                    matched = candidate;
                     break;
                 }
             }
 
             if (matched == null)
             {
-                return null;
+                return false;
             }
 
             if (i == segments.Count - 1)
             {
-                return matched;
+                member = matched;
+                return true;
             }
 
             currentFqn = matched.TypeFullyQualifiedName;
         }
 
-        return null;
+        return false;
     }
 
     static TypeEntry? FindType(ModelShape shape, string typeFqn)

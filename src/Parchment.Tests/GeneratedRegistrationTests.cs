@@ -4,22 +4,23 @@
 public class GeneratedRegistrationTests
 {
     [Test]
-    public async Task RegisterWithCoversBothFlows()
+    public async Task GeneratedModuleInitializerCoversBothFlows()
     {
-        #region GeneratorRegisterWith
+        #region GeneratorRender
 
+        // No registration call: the generated module initializer stored each model's embedded
+        // template when the model assembly loaded, and the store picks it up on first render.
         var store = new TemplateStore();
-        Invoice.RegisterWith(store);
-        ReportContext.RegisterWith(store);
+
+        using var invoice = new MemoryStream();
+        await store.Render(SampleData.Invoice(), invoice);
 
         #endregion
 
-        using var invoice = new MemoryStream();
-        await store.Render("Invoice", SampleData.Invoice(), invoice);
         invoice.Position = 0;
 
         using var report = new MemoryStream();
-        await store.Render("ReportContext", SampleData.Report(), report);
+        await store.Render(SampleData.Report(), report);
         report.Position = 0;
 
         await Assert.That(Text(invoice)).Contains("Invoice INV-2026-0042");

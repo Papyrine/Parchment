@@ -2,7 +2,7 @@ namespace Parchment;
 
 /// <summary>
 /// Standard and user-defined document properties — the values Word surfaces in the File &gt; Info
-/// pane and the Advanced Properties dialog. Pass to <see cref="TemplateStore.Render(string, object, Stream, WordDocumentProperties, Cancel)"/>.
+/// pane and the Advanced Properties dialog. Pass to <see cref="TemplateStore.Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>.
 /// </summary>
 /// <remarks>
 /// Every member is optional and only the values that are set are written, so a property left at its

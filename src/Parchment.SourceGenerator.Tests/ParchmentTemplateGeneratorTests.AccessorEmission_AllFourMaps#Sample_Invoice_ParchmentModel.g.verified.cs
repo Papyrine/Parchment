@@ -6,9 +6,6 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Invoice
 {
-  public static string TemplatePath => "template.docx";
-  public static string TemplateName => "Invoice";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
   {
     new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Customer)),
@@ -39,7 +36,8 @@ partial class Invoice
     new("Customer.Tags", o => ((global::Sample.Invoice)o).Customer?.Tags),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
@@ -47,7 +45,8 @@ partial class Invoice
     global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof(global::Sample.Invoice), _ExcelsiorTables);
     global::Parchment.Generated.GeneratedRegistration.RegisterFormat(typeof(global::Sample.Invoice), _Formats);
     global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof(global::Sample.Invoice), _StringLists);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    store.RegisterDocxTemplate<global::Sample.Invoice>(TemplateName, path);
+    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+      typeof(global::Sample.Invoice),
+      global::System.Convert.FromBase64String("scrubbed"));
   }
 }

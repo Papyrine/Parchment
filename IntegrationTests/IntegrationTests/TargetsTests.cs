@@ -63,18 +63,12 @@ public class TargetsTests
     public async Task WarnsForTheTemplateCarryingTwoItemTypes()
     {
         await Assert.That(BuildOutput).Contains("PARCH100");
-        await Assert.That(BuildOutput).Contains("dual.md");
+        await Assert.That(BuildOutput).Contains("DualModel.md");
     }
 
-    // The embedded item type is the one at risk of a false positive: it puts the template in
-    // AdditionalFiles and a staged copy in EmbeddedResource, so a check comparing item types
-    // without comparing paths would flag it.
     [Test]
-    public async Task DoesNotWarnForTemplatesDeclaredWithTheItemTypes()
-    {
-        await Assert.That(BuildOutput).DoesNotContain("copied.md");
-        await Assert.That(BuildOutput).DoesNotContain("embedded.md");
-    }
+    public async Task DoesNotWarnForTemplatesDeclaredWithTheItemType() =>
+        await Assert.That(BuildOutput).DoesNotContain("CopiedModel.md");
 
     // Proves the item types actually reach the generator. Without this the suite would pass on a
     // targets file that declared nothing at all.

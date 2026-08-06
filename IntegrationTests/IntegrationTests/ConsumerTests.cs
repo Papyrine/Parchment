@@ -1,11 +1,12 @@
-public class ConsumerTests
+public partial class ConsumerTests
 {
     public class Customer
     {
         public required string Name { get; init; }
     }
 
-    public class InvoiceModel
+    [ParchmentBindable]
+    public partial class InvoiceModel
     {
         public required string Number { get; init; }
         public required Customer Customer { get; init; }
@@ -16,10 +17,10 @@ public class ConsumerTests
     {
         using var template = BuildTemplate();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<InvoiceModel>("invoice", template);
+        store.RegisterDocxTemplate<InvoiceModel>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("invoice", new InvoiceModel
+        await store.Render(new InvoiceModel
         {
             Number = "INT-001",
             Customer = new() { Name = "Acme" }
@@ -33,10 +34,10 @@ public class ConsumerTests
     {
         using var template = BuildLoopTemplate();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<LoopModel>("loop", template);
+        store.RegisterDocxTemplate<LoopModel>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("loop", new LoopModel
+        await store.Render(new LoopModel
         {
             Items = ["alpha", "beta", "gamma"]
         }, stream);
@@ -44,7 +45,8 @@ public class ConsumerTests
         await Assert.That(stream.Length).IsGreaterThan(0);
     }
 
-    public class LoopModel
+    [ParchmentBindable]
+    public partial class LoopModel
     {
         public required IReadOnlyList<string> Items { get; init; }
     }

@@ -1,9 +1,9 @@
-using Fluid;
-using Fluid.Values;
+// ReSharper disable PartialTypeWithSinglePart
 
-public class AddFilterTests
+public partial class AddFilterTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Body { get; init; }
     }
@@ -25,9 +25,9 @@ public class AddFilterTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<Doc>("md", "{{ Body | add_filter_test_shout }}", styleSource);
+        store.RegisterMarkdownTemplate<Doc>("{{ Body | add_filter_test_shout }}", styleSource);
 
-        await Assert.That(await RenderText(store, "md")).IsEqualTo("QUIET");
+        await Assert.That(await RenderText(store)).IsEqualTo("QUIET");
     }
 
     [Test]
@@ -35,16 +35,15 @@ public class AddFilterTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Body | add_filter_test_shout }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("docx", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
-        await Assert.That(await RenderText(store, "docx")).IsEqualTo("QUIET");
+        await Assert.That(await RenderText(store)).IsEqualTo("QUIET");
     }
 
-    static async Task<string> RenderText(TemplateStore store, string name)
+    static async Task<string> RenderText(TemplateStore store)
     {
         using var stream = new MemoryStream();
         await store.Render(
-            name,
             new Doc
             {
                 Body = "quiet"

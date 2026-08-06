@@ -26,7 +26,7 @@ public class RegistrationBenchmarks
     {
         using var stream = new MemoryStream(templateBytes);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bench", stream);
+        store.RegisterDocxTemplate<Invoice>(stream);
     }
 
     [Benchmark]
@@ -35,20 +35,20 @@ public class RegistrationBenchmarks
         using var ms = new MemoryStream(templateBytes);
         using var buffered = new BufferedStream(ms);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bench", buffered);
+        store.RegisterDocxTemplate<Invoice>(buffered);
     }
 
     [Benchmark]
     public void RegisterFromFilePath()
     {
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bench", templatePath);
+        store.RegisterDocxTemplate<Invoice>(templatePath);
     }
 
     [Benchmark]
     public void RegisterViaSourceGeneratorPath()
     {
-        // Simulates what a SG-emitted RegisterWith does — pre-populates the per-type Fluid
+        // Simulates what a SG-emitted module initializer does — pre-populates the per-type Fluid
         // accessors + the StringList map (for Tags), then calls RegisterDocxTemplate. The
         // runtime's reflection walks short-circuit on the cache hits.
         Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(
@@ -62,7 +62,7 @@ public class RegistrationBenchmarks
 
         using var stream = new MemoryStream(templateBytes);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("bench-sg", stream);
+        store.RegisterDocxTemplate<Invoice>(stream);
     }
 
     static KeyValuePair<string, Fluid.IMemberAccessor>[] invoiceAccessors =

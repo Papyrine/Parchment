@@ -1,7 +1,8 @@
-public class ThematicBreakRendererTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class ThematicBreakRendererTests
 {
-    public class EmptyModel;
-
+    [ParchmentBindable]
+    public partial class EmptyModel;
 
     [Test]
     public async Task EmitsParagraphWithBottomBorder()
@@ -98,9 +99,9 @@ public class ThematicBreakRendererTests
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>("thematic", markdown, styleSource);
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
         using var stream = new MemoryStream();
-        await store.Render("thematic", new EmptyModel(), stream);
+        await store.Render(new EmptyModel(), stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }

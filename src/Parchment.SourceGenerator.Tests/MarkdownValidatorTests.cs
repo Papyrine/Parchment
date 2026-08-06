@@ -12,7 +12,7 @@ public class MarkdownValidatorTests
             public string Region { get; set; } = "";
         }
 
-        [ParchmentModel("template.md")]
+        [ParchmentModel]
         public partial class Letter
         {
             public Customer Customer { get; set; } = new();
@@ -32,7 +32,7 @@ public class MarkdownValidatorTests
             public int Quantity { get; set; }
         }
 
-        [ParchmentModel("template.md")]
+        [ParchmentModel]
         public partial class Invoice
         {
             public List<Line> Lines { get; set; } = new();
@@ -193,7 +193,7 @@ public class MarkdownValidatorTests
                 public List<Line> Lines { get; set; } = new();
             }
 
-            [ParchmentModel("template.md")]
+            [ParchmentModel]
             public partial class Invoice
             {
                 public Owner Customer { get; set; } = new();

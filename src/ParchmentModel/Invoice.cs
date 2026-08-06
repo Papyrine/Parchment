@@ -1,7 +1,8 @@
+// ReSharper disable PartialTypeWithSinglePart
 namespace ParchmentSample;
 
 #region GeneratorDocxModel
-[ParchmentModel("Templates/invoice.docx")]
+[ParchmentModel]
 public partial class Invoice
 {
     public required string Number { get; init; }

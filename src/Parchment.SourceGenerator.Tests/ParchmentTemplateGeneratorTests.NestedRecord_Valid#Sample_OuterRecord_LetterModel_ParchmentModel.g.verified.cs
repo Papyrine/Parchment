@@ -8,9 +8,6 @@ partial record OuterRecord
 {
   partial class LetterModel
   {
-    public static string TemplatePath => "template.docx";
-    public static string TemplateName => "LetterModel";
-
     static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_OuterRecord_LetterModel =
     {
       new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.OuterRecord.LetterModel)o).Customer)),
@@ -20,12 +17,14 @@ partial record OuterRecord
       new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
     };
 
-    public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null)
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitializeParchmentTemplate()
     {
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.OuterRecord.LetterModel), _Accessors_global__Sample_OuterRecord_LetterModel);
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
-      var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-      store.RegisterDocxTemplate<global::Sample.OuterRecord.LetterModel>(TemplateName, path);
+      global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+        typeof(global::Sample.OuterRecord.LetterModel),
+        global::System.Convert.FromBase64String("scrubbed"));
     }
   }
 }

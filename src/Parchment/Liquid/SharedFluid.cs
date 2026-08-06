@@ -25,16 +25,6 @@ static class SharedFluid
 
     static readonly ConcurrentDictionary<Type, bool> registeredTypes = new();
 
-    static readonly MethodInfo registerGenericMethod = typeof(MemberAccessStrategyExtensions)
-        .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .First(_ => _ is
-                    {
-                        Name: "Register",
-                        IsGenericMethodDefinition: true
-                    } &&
-                    _.GetGenericArguments().Length == 1 &&
-                    _.GetParameters().Length == 1);
-
     static TemplateOptions BuildOptions()
     {
         var options = new TemplateOptions
@@ -48,15 +38,16 @@ static class SharedFluid
         // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
         // StringValue short-circuits Fluid's default type dispatch (which would have called
         // Enum.ToString() and emitted the raw symbol name).
-        options.ValueConverters.Add(static value =>
-        {
-            if (value is Enum e)
+        options.ValueConverters
+            .Add(static value =>
             {
-                return new StringValue(EnumRender.Render(e));
-            }
+                if (value is Enum e)
+                {
+                    return new StringValue(EnumRender.Render(e));
+                }
 
-            return null;
-        });
+                return null;
+            });
 
         return options;
     }
@@ -65,15 +56,16 @@ static class SharedFluid
     {
         var options = BuildOptions();
         options.MemberAccessStrategy = Options.MemberAccessStrategy;
-        options.ValueConverters.Add(static value =>
-        {
-            if (value is TokenValue token)
+        options.ValueConverters
+            .Add(static value =>
             {
-                return new StringValue(TokenMarkdown.Render(token));
-            }
+                if (value is TokenValue token)
+                {
+                    return new StringValue(TokenMarkdown.Render(token));
+                }
 
-            return null;
-        });
+                return null;
+            });
 
         return options;
     }
@@ -94,14 +86,37 @@ static class SharedFluid
         MarkdownOptions.Filters.AddFilter(name, filter);
     }
 
-    public static void RegisterModel(Type modelType) =>
-        RegisterTypeGraph(modelType);
+    /// <summary>
+    /// Whether the source generator registered <paramref name="modelType"/> — its module
+    /// initializer always emits the root type's accessor block, even for a member-less model.
+    /// </summary>
+    public static bool IsModelRegistered(Type modelType) =>
+        registeredTypes.ContainsKey(modelType);
+
+    /// <summary>
+    /// Guards that <paramref name="modelType"/> arrived with pre-compiled accessors. There is no
+    /// reflection fallback: every binding model is walked at compile time by the source generator,
+    /// which emits one <c>DelegateAccessor</c> per member for every reachable type.
+    /// </summary>
+    public static void EnsureModelRegistered(Type modelType, string name)
+    {
+        if (IsModelRegistered(modelType))
+        {
+            return;
+        }
+
+        throw new ParchmentRegistrationException(
+            name,
+            NotGeneratedMessage(modelType));
+    }
+
+    public static string NotGeneratedMessage(Type modelType) =>
+        $"Model '{modelType.FullName}' has no pre-compiled Parchment accessors. Mark the class with [ParchmentModel] (template found by convention) or [ParchmentBindable] (template supplied at runtime) and make it partial — the Parchment source generator emits the accessors at compile time.";
 
     /// <summary>
     /// Source-generator entry point (invoked via `Generated.GeneratedRegistration`).
-    /// Registers pre-built accessors for a single type and marks it as visited so the reflection
-    /// walk in <see cref="RegisterTypeGraph"/> short-circuits when the same type is later
-    /// encountered through <see cref="RegisterModel"/>.
+    /// Registers pre-built accessors for a single type and marks it known to
+    /// <see cref="EnsureModelRegistered"/>.
     /// </summary>
     internal static void RegisterPrecompiledAccessors(
         Type type,
@@ -113,146 +128,5 @@ static class SharedFluid
         }
 
         Options.MemberAccessStrategy.Register(type, accessors);
-    }
-
-    static void RegisterTypeGraph(Type? type)
-    {
-        if (type == null ||
-            !ShouldRegister(type))
-        {
-            return;
-        }
-
-        if (!registeredTypes.TryAdd(type, true))
-        {
-            return;
-        }
-
-        // Fluid's MemberAccessStrategyExtensions.Register<T>() walks instance properties only
-        // (and not fields, not static members). Use it for instance properties, then layer
-        // explicit DelegateAccessors on top for everything else: static properties, instance
-        // fields, static fields. PropertyInfo.GetValue / FieldInfo.GetValue ignore the obj
-        // parameter for static members, so a single lambda shape works for both.
-        var generic = registerGenericMethod.MakeGenericMethod(type);
-        generic.Invoke(null, [Options.MemberAccessStrategy]);
-
-        var staticProperties = type.GetProperties(BindingFlags.Public | BindingFlags.Static);
-        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
-
-        var extra = new List<KeyValuePair<string, IMemberAccessor>>(staticProperties.Length + fields.Length);
-        foreach (var property in staticProperties)
-        {
-            if (property.GetIndexParameters().Length > 0)
-            {
-                continue;
-            }
-
-            var captured = property;
-            extra.Add(new(property.Name, new DelegateAccessor((_, _) => captured.GetValue(null))));
-        }
-
-        foreach (var field in fields)
-        {
-            var captured = field;
-            extra.Add(new(field.Name, new DelegateAccessor((instance, _) => captured.GetValue(instance))));
-        }
-
-        if (extra.Count > 0)
-        {
-            Options.MemberAccessStrategy.Register(type, extra);
-        }
-
-        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
-        {
-            if (property.GetIndexParameters().Length > 0)
-            {
-                continue;
-            }
-
-            RegisterTypeGraph(Unwrap(property.PropertyType));
-        }
-
-        foreach (var field in fields)
-        {
-            RegisterTypeGraph(Unwrap(field.FieldType));
-        }
-    }
-
-    static Type Unwrap(Type type)
-    {
-        if (type.IsArray)
-        {
-            return type.GetElementType() ?? type;
-        }
-
-        if (type.IsGenericType &&
-            type.GetGenericTypeDefinition() == typeof(Nullable<>))
-        {
-            return type.GetGenericArguments()[0];
-        }
-
-        // Find the IEnumerable<T> interface and use its T. For Dictionary<K, V> this resolves to
-        // KeyValuePair<K, V> — taking GetGenericArguments()[0] on the type itself would have
-        // returned K instead, silently dropping V's members from the type-graph walk.
-        foreach (var i in type.GetInterfaces())
-        {
-            if (i.IsGenericType &&
-                i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                return i.GetGenericArguments()[0];
-            }
-        }
-
-        if (type.IsGenericType &&
-            type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-        {
-            return type.GetGenericArguments()[0];
-        }
-
-        return type;
-    }
-
-    static bool ShouldRegister(Type type)
-    {
-        if (type.IsPrimitive ||
-            type == typeof(string) ||
-            type == typeof(decimal) ||
-            type == typeof(DateTime) ||
-            type == typeof(DateTimeOffset) ||
-            type == typeof(TimeSpan) ||
-            type == typeof(Date) ||
-            type == typeof(Time) ||
-            type == typeof(Guid))
-        {
-            return false;
-        }
-
-        if (type.IsEnum)
-        {
-            return false;
-        }
-
-        // KeyValuePair<K, V> is in the System namespace but it's the iteration element for every
-        // IDictionary<K, V> reached from the model. Registering it lets `{{ kv.Key }}` and
-        // `{{ kv.Value }}` resolve, and the property-type recursion then visits V (and K) so
-        // user-type values are reachable.
-        if (type.IsGenericType &&
-            type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
-        {
-            return true;
-        }
-
-        if (type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)
-        {
-            return false;
-        }
-
-        return type.IsClass ||
-               type is
-               {
-                   IsValueType: true,
-                   IsPrimitive: false,
-                   IsEnum: false
-               };
     }
 }

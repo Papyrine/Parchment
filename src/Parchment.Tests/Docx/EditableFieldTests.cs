@@ -1,8 +1,9 @@
 using DocumentFormat.OpenXml.Validation;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
+// ReSharper disable PartialTypeWithSinglePart
 
-public class EditableFieldTests
+public partial class EditableFieldTests
 {
     static string ScenarioPath(string scenarioName) =>
         Path.Combine(
@@ -11,7 +12,8 @@ public class EditableFieldTests
             scenarioName);
 
     #region EditableFieldsModel
-    public class OrderForm
+    [ParchmentBindable]
+    public partial class OrderForm
     {
         public required string Number;
 
@@ -43,7 +45,7 @@ public class EditableFieldTests
         var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<OrderForm>("order-form", templatePath);
+        store.RegisterDocxTemplate<OrderForm>(templatePath);
 
         var model = new OrderForm
         {
@@ -55,7 +57,7 @@ public class EditableFieldTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("order-form", model, stream);
+        await store.Render(model, stream);
         #endregion
 
         var settings = new VerifySettings();
@@ -71,7 +73,7 @@ public class EditableFieldTests
     {
         var templatePath = Path.Combine(ScenarioPath("editable-fields"), "input.docx");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<OrderForm>("order-form-roundtrip", templatePath);
+        store.RegisterDocxTemplate<OrderForm>(templatePath);
 
         var model = new OrderForm
         {
@@ -83,7 +85,7 @@ public class EditableFieldTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("order-form-roundtrip", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         // Simulate the user filling in the form in Word.
@@ -141,7 +143,8 @@ public class EditableFieldTests
         Accepted
     }
 
-    public class EditableOrder
+    [ParchmentBindable]
+    public partial class EditableOrder
     {
         public required string Number;
         public required List<string> Tags;
@@ -219,10 +222,10 @@ public class EditableFieldTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableOrder>("editable-all", template);
+        store.RegisterDocxTemplate<EditableOrder>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("editable-all", NewOrder(), stream);
+        await store.Render(NewOrder(), stream);
 
         stream.Position = 0;
         await Verify(stream, "docx");
@@ -294,7 +297,8 @@ public class EditableFieldTests
         await Assert.That(instructions.InnerText).IsEqualTo("Line oneLine two");
     }
 
-    public class PlaceholderKindsModel
+    [ParchmentBindable]
+    public partial class PlaceholderKindsModel
     {
         [EditableField]
         public QuoteStatus? Choice { get; set; }
@@ -317,8 +321,7 @@ public class EditableFieldTests
 
             {{ Text }}
             """,
-            new PlaceholderKindsModel(),
-            "placeholder-kinds");
+            new PlaceholderKindsModel());
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var body = doc.MainDocumentPart!.Document!.Body!;
@@ -338,7 +341,8 @@ public class EditableFieldTests
         InProgress
     }
 
-    public class ReviewModel
+    [ParchmentBindable]
+    public partial class ReviewModel
     {
         [EditableField]
         public ReviewStage Stage { get; set; }
@@ -347,7 +351,7 @@ public class EditableFieldTests
     [Test]
     public async Task DropDownShowsFriendlyEnumLabelsButRoundTripsTheMemberName()
     {
-        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.InProgress }, "enum-friendly");
+        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.InProgress });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var sdt = FindSdt(doc.MainDocumentPart!.Document!.Body!, "Stage");
@@ -372,7 +376,7 @@ public class EditableFieldTests
         // the control text with that item's friendly label ("Under review"), NOT the member name.
         // Extraction must resolve the label back through the w:listItem, so the read value differs from
         // what was rendered — proving it isn't just echoing the rendered member.
-        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.NotYetStarted }, "enum-user-pick");
+        using var stream = await RenderModel("{{ Stage }}", new ReviewModel { Stage = ReviewStage.NotYetStarted });
 
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
@@ -479,11 +483,11 @@ public class EditableFieldTests
         var store = new TemplateStore();
 
         #region ProtectionModeNone
-        store.RegisterDocxTemplate<EditableOrder>("editable-unprotected", template, ProtectionMode.None);
+        store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
         #endregion
 
         using var stream = new MemoryStream();
-        await store.Render("editable-unprotected", NewOrder(), stream);
+        await store.Render(NewOrder(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -499,10 +503,10 @@ public class EditableFieldTests
     {
         using var template = DocxTemplateBuilder.Build("Invoice {{ Number }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Invoice>("no-editable", template);
+        store.RegisterDocxTemplate<Invoice>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("no-editable", SampleData.Invoice(), stream);
+        await store.Render(SampleData.Invoice(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -519,8 +523,7 @@ public class EditableFieldTests
             {
                 Title = "T",
                 Body = "<p>plain</p>"
-            },
-            "html-editable-seeds-numbering");
+            });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var numbering = doc.MainDocumentPart!.NumberingDefinitionsPart?.Numbering;
@@ -556,8 +559,7 @@ public class EditableFieldTests
             {
                 Title = "T",
                 Body = "<p>plain</p>"
-            },
-            "html-editable-seeds-styles");
+            });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var styles = doc.MainDocumentPart!.StyleDefinitionsPart?.Styles;
@@ -573,7 +575,7 @@ public class EditableFieldTests
     [Test]
     public async Task PlainEditableDoesNotSeedStyleDefinitions()
     {
-        using var stream = await RenderStylesStripped("{{ PurchaseOrder }}", NewOrder(), "plain-editable-no-styles");
+        using var stream = await RenderStylesStripped("{{ PurchaseOrder }}", NewOrder());
 
         using var doc = WordprocessingDocument.Open(stream, false);
         // No rich-text field, so nothing to seed — the stripped styles part stays absent.
@@ -582,7 +584,7 @@ public class EditableFieldTests
 
     // Renders after removing the fixture's styles part, so style seeding is observable (the fixture
     // otherwise ships every style the seed would add, making it a no-op).
-    static async Task<MemoryStream> RenderStylesStripped<T>(string templateContent, T model, string name)
+    static async Task<MemoryStream> RenderStylesStripped<T>(string templateContent, T model)
     {
         using var template = DocxTemplateBuilder.Build(templateContent);
         using (var doc = WordprocessingDocument.Open(template, true))
@@ -599,10 +601,10 @@ public class EditableFieldTests
         template.Position = 0;
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<T>(name, template);
+        store.RegisterDocxTemplate<T>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model!, stream);
+        await store.Render(model!, stream);
         stream.Position = 0;
         return stream;
     }
@@ -638,10 +640,10 @@ public class EditableFieldTests
         // must reassemble the token span across runs and keep the surrounding halves.
         using var template = BuildStraddledTemplate();
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableOrder>("editable-straddle", template);
+        store.RegisterDocxTemplate<EditableOrder>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("editable-straddle", NewOrder(), stream);
+        await store.Render(NewOrder(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -660,7 +662,7 @@ public class EditableFieldTests
             Email: {{ Customer.ContactEmail }}
             """);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableQuote>("editable-nested", template);
+        store.RegisterDocxTemplate<EditableQuote>(template);
 
         var model = new EditableQuote
         {
@@ -671,7 +673,7 @@ public class EditableFieldTests
             }
         };
         using var stream = new MemoryStream();
-        await store.Render("editable-nested", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -744,10 +746,10 @@ public class EditableFieldTests
             bodyText: "{{ PurchaseOrder }}",
             headerText: "PO: {{ PurchaseOrder }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableOrder>("editable-header", template);
+        store.RegisterDocxTemplate<EditableOrder>(template);
 
         using var stream = new MemoryStream();
-        await store.Render("editable-header", NewOrder(), stream);
+        await store.Render(NewOrder(), stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -785,7 +787,7 @@ public class EditableFieldTests
         using var template = DocxTemplateBuilder.Build("{{ PurchaseOrder | upcase }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<EditableOrder>("editable-filter", template))
+                () => store.RegisterDocxTemplate<EditableOrder>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("plain member-access");
     }
@@ -801,80 +803,11 @@ public class EditableFieldTests
             """);
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<EditableOrder>("editable-duplicate", template))
+                () => store.RegisterDocxTemplate<EditableOrder>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("more than once");
     }
 
-    public class UnsupportedTypeModel
-    {
-        [EditableField]
-        public List<string> Items { get; set; } = [];
-    }
-
-    [Test]
-    public async Task UnsupportedMemberTypeIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<UnsupportedTypeModel>("editable-unsupported", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("unsupported type");
-    }
-
-    public class NullableBoolModel
-    {
-        [EditableField]
-        public bool? Maybe { get; set; }
-    }
-
-    [Test]
-    public async Task NullableBoolIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<NullableBoolModel>("editable-nullable-bool", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("bool?");
-    }
-
-    public class InitOnlyModel
-    {
-        [EditableField]
-        public string PurchaseOrder { get; init; } = "";
-    }
-
-    [Test]
-    public async Task InitOnlySetterIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<InitOnlyModel>("editable-init-only", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("setter");
-    }
-
-    public class GetOnlyModel
-    {
-        public string Prefix = "x";
-
-        [EditableField]
-        public string Computed => Prefix;
-    }
-
-    [Test]
-    public async Task GetOnlyMemberIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<GetOnlyModel>("editable-get-only", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("setter");
-    }
 
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
     sealed class MarkdownAttribute : Attribute;
@@ -882,27 +815,9 @@ public class EditableFieldTests
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
     sealed class HtmlAttribute : Attribute;
 
-    public class ConflictModel
-    {
-        [EditableField]
-        [Markdown]
-        public string Body { get; set; } = "";
-    }
 
-    [Test]
-    public async Task ConflictingFormatAttributeIsRejected()
-    {
-        // [Markdown] + [EditableField] stays rejected — editable rich text round-trips via [Html]
-        // only (extraction has no OpenXML->Markdown serializer).
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<ConflictModel>("editable-conflict", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("Markdown");
-    }
-
-    public class MixedStructuralModel
+    [ParchmentBindable]
+    public partial class MixedStructuralModel
     {
         [Html]
         public string Body { get; set; } = "";
@@ -917,13 +832,14 @@ public class EditableFieldTests
         using var template = DocxTemplateBuilder.Build("{{ Body }} and {{ PurchaseOrder }}");
         var store = new TemplateStore();
         var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<MixedStructuralModel>("editable-mixed", template))
+                () => store.RegisterDocxTemplate<MixedStructuralModel>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("own paragraph");
     }
 
     #region EditableRichTextModel
-    public class EditableArticle
+    [ParchmentBindable]
+    public partial class EditableArticle
     {
         public required string Title;
 
@@ -933,12 +849,6 @@ public class EditableFieldTests
     }
     #endregion
 
-    public class MarkdownEditableModel
-    {
-        [EditableField]
-        [Markdown]
-        public string Body { get; set; } = "";
-    }
 
     [Test]
     public async Task HtmlEditableRendersUnlockedEditableBlock()
@@ -949,8 +859,7 @@ public class EditableFieldTests
             {
                 Title = "T",
                 Body = "<p>Hello <strong>world</strong></p>"
-            },
-            "html-editable-block");
+            });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var body = doc.MainDocumentPart!.Document!.Body!;
@@ -979,8 +888,7 @@ public class EditableFieldTests
             {
                 Title = "T",
                 Body = "<p>one</p><p>two</p><p>three</p>"
-            },
-            "html-editable-cell");
+            });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var body = doc.MainDocumentPart!.Document!.Body!;
@@ -1017,7 +925,8 @@ public class EditableFieldTests
         await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
     }
 
-    public class RichTextShapes
+    [ParchmentBindable]
+    public partial class RichTextShapes
     {
         [Html]
         [EditableField]
@@ -1040,11 +949,10 @@ public class EditableFieldTests
             "{{ CellHosted }}",
             bodyParagraphText: "{{ BodyHosted }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<RichTextShapes>("html-editable-shapes", template);
+        store.RegisterDocxTemplate<RichTextShapes>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "html-editable-shapes",
             new RichTextShapes
             {
                 BodyHosted = "<p>body intro</p><ul><li>body first</li><li>body second</li></ul>",
@@ -1067,7 +975,6 @@ public class EditableFieldTests
                 Title = "T",
                 Body = "<p>content</p>"
             },
-            "html-editable-cell-shared",
             extraValueCellParagraph: true);
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -1088,15 +995,14 @@ public class EditableFieldTests
         string labelText,
         string valueCellText,
         T model,
-        string name,
         bool extraValueCellParagraph = false)
     {
         using var template = DocxTemplateBuilder.BuildWithTable(labelText, valueCellText, extraValueCellParagraph);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<T>(name, template);
+        store.RegisterDocxTemplate<T>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model!, stream);
+        await store.Render(model!, stream);
         stream.Position = 0;
         return stream;
     }
@@ -1110,8 +1016,7 @@ public class EditableFieldTests
             {
                 Title = "T",
                 Body = "<p>Hello <strong>world</strong></p><ul><li>a</li><li>b</li></ul>"
-            },
-            "html-editable-valid");
+            });
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
@@ -1129,7 +1034,7 @@ public class EditableFieldTests
             Title = "T",
             Body = "<p>Hello <strong>world</strong> and <em>more</em></p><ul><li>one</li><li>two</li></ul>"
         };
-        using var stream = await RenderModel("{{ Body }}", model, "html-editable-roundtrip");
+        using var stream = await RenderModel("{{ Body }}", model);
 
         var result = ParchmentExtractor.Extract<EditableArticle>(stream);
         result.ApplyTo(model);
@@ -1146,7 +1051,7 @@ public class EditableFieldTests
             Title = "T",
             Body = "<p>original</p>"
         };
-        using var stream = await RenderModel("{{ Body }}", model, "html-editable-edited");
+        using var stream = await RenderModel("{{ Body }}", model);
 
         // Simulate the user editing the rich block in Word.
         using (var doc = WordprocessingDocument.Open(stream, true))
@@ -1178,7 +1083,7 @@ public class EditableFieldTests
             Title = "T",
             Body = ""
         };
-        using var stream = await RenderModel("{{ Body }}", model, "html-editable-empty");
+        using var stream = await RenderModel("{{ Body }}", model);
 
         using var doc = WordprocessingDocument.Open(stream, false);
         var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
@@ -1191,18 +1096,9 @@ public class EditableFieldTests
         await Assert.That(field.State).IsEqualTo(FieldState.Empty);
     }
 
-    [Test]
-    public async Task MarkdownEditableIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("x");
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<MarkdownEditableModel>("editable-markdown", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("Markdown");
-    }
 
-    public class EditableQuote
+    [ParchmentBindable]
+    public partial class EditableQuote
     {
         [EditableField]
         public required string Reference { get; set; }
@@ -1216,26 +1112,26 @@ public class EditableFieldTests
         public required string ContactEmail { get; set; }
     }
 
-    static async Task<MemoryStream> Render(string templateContent, object model, [CallerMemberName] string name = "")
+    static async Task<MemoryStream> Render(string templateContent, EditableOrder model)
     {
         using var template = DocxTemplateBuilder.Build(templateContent);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<EditableOrder>(name, template);
+        store.RegisterDocxTemplate<EditableOrder>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         return stream;
     }
 
-    static async Task<MemoryStream> RenderModel<T>(string templateContent, T model, string name)
+    static async Task<MemoryStream> RenderModel<T>(string templateContent, T model)
     {
         using var template = DocxTemplateBuilder.Build(templateContent);
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<T>(name, template);
+        store.RegisterDocxTemplate<T>(template);
 
         var stream = new MemoryStream();
-        await store.Render(name, model!, stream);
+        await store.Render(model!, stream);
         stream.Position = 0;
         return stream;
     }

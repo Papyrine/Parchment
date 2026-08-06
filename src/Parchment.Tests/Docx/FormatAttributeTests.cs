@@ -1,4 +1,5 @@
-public class FormatAttributeTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class FormatAttributeTests
 {
     static string SourcePath([CallerFilePath] string path = "") => path;
 
@@ -19,7 +20,8 @@ public class FormatAttributeTests
     #endregion
 
     #region MarkdownFieldModel
-    public record MarkdownFieldDoc
+    [ParchmentBindable]
+    public partial record MarkdownFieldDoc
     {
         public required string Title;
 
@@ -29,7 +31,8 @@ public class FormatAttributeTests
     #endregion
 
     #region HtmlModel
-    public class HtmlDoc
+    [ParchmentBindable]
+    public partial class HtmlDoc
     {
         public required string Title;
 
@@ -39,7 +42,8 @@ public class FormatAttributeTests
     #endregion
 
     #region MarkdownModel
-    public class MarkdownDoc
+    [ParchmentBindable]
+    public partial class MarkdownDoc
     {
         public required string Title;
 
@@ -49,7 +53,8 @@ public class FormatAttributeTests
     #endregion
 
     #region StringSyntaxHtmlModel
-    public class StringSyntaxHtmlDoc
+    [ParchmentBindable]
+    public partial class StringSyntaxHtmlDoc
     {
         public required string Title;
 
@@ -68,21 +73,10 @@ public class FormatAttributeTests
     }
     #endregion
 
-    public class MismatchDoc
-    {
-        [Html]
-        [StringSyntax("markdown")]
-        public required string Body { get; init; }
-    }
 
-    public class BothDoc
-    {
-        [Html]
-        [Markdown]
-        public required string Body { get; init; }
-    }
 
-    public class TwoHtmlBlockDoc
+    [ParchmentBindable]
+    public partial class TwoHtmlBlockDoc
     {
         [Html]
         public required string A { get; init; }
@@ -98,7 +92,7 @@ public class FormatAttributeTests
         var templatePath = Path.Combine(ScenarioPath("html-property"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlDoc>("html-doc", templatePath);
+        store.RegisterDocxTemplate<HtmlDoc>(templatePath);
 
         var model = new HtmlDoc
         {
@@ -107,7 +101,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("html-doc", model, stream);
+        await store.Render(model, stream);
         #endregion
 
         var settings = new VerifySettings();
@@ -125,7 +119,7 @@ public class FormatAttributeTests
         var templatePath = Path.Combine(ScenarioPath("markdown-property"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownDoc>("markdown-doc", templatePath);
+        store.RegisterDocxTemplate<MarkdownDoc>(templatePath);
 
         var model = new MarkdownDoc
         {
@@ -134,7 +128,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("markdown-doc", model, stream);
+        await store.Render(model, stream);
         #endregion
 
         var settings = new VerifySettings();
@@ -155,7 +149,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownFieldDoc>("md-field", template);
+        store.RegisterDocxTemplate<MarkdownFieldDoc>(template);
 
         var model = new MarkdownFieldDoc
         {
@@ -164,7 +158,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("md-field", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -182,7 +176,7 @@ public class FormatAttributeTests
         var templatePath = Path.Combine(ScenarioPath("markdown-with-html"), "input.docx");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownDoc>("markdown-with-html", templatePath);
+        store.RegisterDocxTemplate<MarkdownDoc>(templatePath);
 
         var model = new MarkdownDoc
         {
@@ -201,7 +195,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("markdown-with-html", model, stream);
+        await store.Render(model, stream);
         #endregion
 
         var settings = new VerifySettings();
@@ -218,7 +212,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<StringSyntaxHtmlDoc>("stringsyntax-html", template);
+        store.RegisterDocxTemplate<StringSyntaxHtmlDoc>(template);
 
         var model = new StringSyntaxHtmlDoc
         {
@@ -227,7 +221,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("stringsyntax-html", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -240,7 +234,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("Prefix {{ Body }} suffix");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlDoc>("inline-non-solo", template);
+        store.RegisterDocxTemplate<HtmlDoc>(template);
 
         var model = new HtmlDoc
         {
@@ -249,7 +243,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("inline-non-solo", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -263,7 +257,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("Prefix {{ Body }} suffix");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<HtmlDoc>("block-non-solo", template);
+        store.RegisterDocxTemplate<HtmlDoc>(template);
 
         var model = new HtmlDoc
         {
@@ -272,7 +266,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("block-non-solo", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -287,7 +281,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("{{ Body }}");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownDoc>("md-nested-html", template);
+        store.RegisterDocxTemplate<MarkdownDoc>(template);
 
         var model = new MarkdownDoc
         {
@@ -302,7 +296,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("md-nested-html", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
 
         using var doc = WordprocessingDocument.Open(stream, false);
@@ -342,7 +336,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("Note: {{ Body }} (end)");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownDoc>("md-inline-non-solo", template);
+        store.RegisterDocxTemplate<MarkdownDoc>(template);
 
         var model = new MarkdownDoc
         {
@@ -351,7 +345,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("md-inline-non-solo", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -362,7 +356,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("Section: {{ Body }} (end)");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<MarkdownDoc>("md-block-non-solo", template);
+        store.RegisterDocxTemplate<MarkdownDoc>(template);
 
         var model = new MarkdownDoc
         {
@@ -371,7 +365,7 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        await store.Render("md-block-non-solo", model, stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
     }
@@ -383,21 +377,9 @@ public class FormatAttributeTests
 
         var store = new TemplateStore();
         var exception = await Assert.That(
-            () => store.RegisterDocxTemplate<HtmlDoc>("filter-format", template))
+            () => store.RegisterDocxTemplate<HtmlDoc>(template))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("plain member-access");
-    }
-
-    [Test]
-    public async Task MismatchedHtmlAndStringSyntaxMarkdownIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("{{ Body }}");
-
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-            () => store.RegisterDocxTemplate<MismatchDoc>("mismatch", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("mismatched");
     }
 
     [Test]
@@ -409,7 +391,7 @@ public class FormatAttributeTests
         using var template = DocxTemplateBuilder.Build("Prefix {{ A }} between {{ B }} suffix");
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<TwoHtmlBlockDoc>("two-block", template);
+        store.RegisterDocxTemplate<TwoHtmlBlockDoc>(template);
 
         var model = new TwoHtmlBlockDoc
         {
@@ -418,21 +400,9 @@ public class FormatAttributeTests
         };
 
         using var stream = new MemoryStream();
-        var exception = await Assert.That(() => store.Render("two-block", model, stream))
+        var exception = await Assert.That(() => store.Render(model, stream))
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
-    }
-
-    [Test]
-    public async Task BothHtmlAndMarkdownIsRejected()
-    {
-        using var template = DocxTemplateBuilder.Build("{{ Body }}");
-
-        var store = new TemplateStore();
-        var exception = await Assert.That(
-            () => store.RegisterDocxTemplate<BothDoc>("both", template))
-            .Throws<ParchmentRegistrationException>();
-        await Assert.That(exception!.Message).Contains("both [Html] and [Markdown]");
     }
 
     static byte[] OnePixelPng() =>
@@ -448,7 +418,7 @@ public class FormatAttributeTests
         {
             using var template = DocxTemplateBuilder.Build("{{ Body }}");
             var store = new TemplateStore();
-            store.RegisterDocxTemplate<HtmlDoc>("html-img", template);
+            store.RegisterDocxTemplate<HtmlDoc>(template);
 
             var model = new HtmlDoc
             {
@@ -457,7 +427,7 @@ public class FormatAttributeTests
             };
 
             using var stream = new MemoryStream();
-            await store.Render("html-img", model, stream);
+            await store.Render(model, stream);
             stream.Position = 0;
 
             using var doc = WordprocessingDocument.Open(stream, false);
@@ -483,7 +453,7 @@ public class FormatAttributeTests
             {
                 LocalImages = OpenXmlHtml.ImagePolicy.Deny()
             };
-            store.RegisterDocxTemplate<HtmlDoc>("html-img", template);
+            store.RegisterDocxTemplate<HtmlDoc>(template);
 
             var model = new HtmlDoc
             {
@@ -492,7 +462,7 @@ public class FormatAttributeTests
             };
 
             using var stream = new MemoryStream();
-            await store.Render("html-img", model, stream);
+            await store.Render(model, stream);
             stream.Position = 0;
 
             using var doc = WordprocessingDocument.Open(stream, false);

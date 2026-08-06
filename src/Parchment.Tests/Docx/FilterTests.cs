@@ -1,6 +1,8 @@
-public class FilterTests
+// ReSharper disable PartialTypeWithSinglePart
+public partial class FilterTests
 {
-    public class Doc
+    [ParchmentBindable]
+    public partial class Doc
     {
         public required string Body { get; init; }
         public required IReadOnlyList<string> Items { get; init; }
@@ -11,11 +13,10 @@ public class FilterTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Body | escape_xml }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("escape-xml", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "escape-xml",
             new Doc
             {
                 Body = "<a>\"hi\" & 'bye' > done</a>",
@@ -34,11 +35,10 @@ public class FilterTests
     {
         using var template = DocxTemplateBuilder.Build("{{ Body | escape_xml }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("escape-xml-benign", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "escape-xml-benign",
             new Doc
             {
                 Body = "no special chars here",
@@ -59,11 +59,10 @@ public class FilterTests
         // FluidValue (escape_xml: StringValue, upcase: StringValue), so the chain works.
         using var template = DocxTemplateBuilder.Build("{{ Body | escape_xml | upcase }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("escape-upcase", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "escape-upcase",
             new Doc
             {
                 Body = "<x>hi & bye</x>",
@@ -93,11 +92,10 @@ public class FilterTests
             """);
 
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("bullet-empty", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "bullet-empty",
             new Doc
             {
                 Body = "",
@@ -121,11 +119,10 @@ public class FilterTests
         // "ListParagraph" default for produced bullet paragraphs.
         using var template = DocxTemplateBuilder.Build("{{ Items | bullet_list }}");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("bullet-default", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "bullet-default",
             new Doc
             {
                 Body = "",
@@ -150,11 +147,10 @@ public class FilterTests
             "{{ Items | bullet_list }}",
             hostStyle: "TBLText");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("bullet-inherit", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "bullet-inherit",
             new Doc
             {
                 Body = "",
@@ -177,11 +173,10 @@ public class FilterTests
             "{{ Items | numbered_list }}",
             hostStyle: "TBLText");
         var store = new TemplateStore();
-        store.RegisterDocxTemplate<Doc>("numbered-inherit", template);
+        store.RegisterDocxTemplate<Doc>(template);
 
         using var stream = new MemoryStream();
         await store.Render(
-            "numbered-inherit",
             new Doc
             {
                 Body = "",

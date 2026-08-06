@@ -6,9 +6,6 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Invoice
 {
-  public static string TemplatePath => "template.md";
-  public static string TemplateName => "Invoice";
-
   static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
   {
     new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Lines)),
@@ -18,12 +15,13 @@ partial class Invoice
     new("Description", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Description)),
   };
 
-  public static void RegisterWith(global::Parchment.TemplateStore store, string? basePath = null, global::System.IO.Stream? styleSource = null)
+  [global::System.Runtime.CompilerServices.ModuleInitializer]
+  internal static void InitializeParchmentTemplate()
   {
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Line), _Accessors_global__Sample_Line);
-    var path = basePath is null ? TemplatePath : global::System.IO.Path.Combine(basePath, TemplatePath);
-    var markdown = global::System.IO.File.ReadAllText(path);
-    store.RegisterMarkdownTemplate<global::Sample.Invoice>(TemplateName, markdown, styleSource);
+    global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
+      typeof(global::Sample.Invoice),
+      "{% assign total = Lines %}\n{% for line in total %}\n- {{ line.Description }}\n{% endfor %}");
   }
 }

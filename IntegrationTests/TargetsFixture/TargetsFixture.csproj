@@ -17,13 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Inspected by the generator, copied beside the assembly. -->
-    <ParchmentTemplate Include="Templates\copied.md" />
-    <!-- Inspected by the generator, embedded from a staged copy. -->
-    <ParchmentEmbeddedTemplate Include="Templates\embedded.md" />
+    <!-- Declared through the item type the package ships; expands to AdditionalFiles. -->
+    <ParchmentTemplate Include="Templates\CopiedModel.md" />
     <!-- The shape PARCH100 exists to catch: one file, two item types. -->
-    <AdditionalFiles Include="Templates\dual.md" />
-    <EmbeddedResource Include="Templates\dual.md" />
+    <AdditionalFiles Include="Templates\DualModel.md" />
+    <EmbeddedResource Include="Templates\DualModel.md" />
   </ItemGroup>
 
 </Project>

@@ -3,46 +3,19 @@
   <!--
     Template authoring for Parchment.
 
-    A template has to reach two consumers that take it by different routes. The source generator
-    reads it through AdditionalFiles — the only channel Roslyn gives a generator, since embedded
-    resources are attached at emit time and never appear in its inputs. The runtime reads it either
-    from disk beside the assembly or out of the assembly manifest.
+    The source generator reads templates through AdditionalFiles — the only channel Roslyn gives a
+    generator — and embeds their content into the generated source. Nothing is copied beside the
+    assembly and nothing is embedded as a manifest resource; the generated module initializer
+    carries the template itself.
 
-    Listing one file under two item types satisfies both and is the trap these targets exist to
-    remove: MSBuild is happy with it, but an IDE that models one build action per file can resolve
-    the file to the other identity and hand the generator nothing, producing a PARCH004 that a
-    command-line build cannot reproduce. So each item type below leaves every file with exactly one.
-  -->
+    <ParchmentTemplate Include="Invoice.docx" />
 
-  <!--
-    <ParchmentTemplate Include="Templates\report.md" />
-
-    Inspected by the generator and copied beside the assembly, which is what the generated
-    RegisterWith helper expects. CopyToOutputDirectory is set only when the author has not.
+    declares a template (or a .dotx style document) the convenient way. It maps to AdditionalFiles
+    and nothing else, so an IDE that models one build action per file keeps the file visible to
+    the generator.
   -->
   <ItemGroup>
-    <AdditionalFiles Include="@(ParchmentTemplate)">
-      <CopyToOutputDirectory Condition="'%(CopyToOutputDirectory)' == ''">PreserveNewest</CopyToOutputDirectory>
-    </AdditionalFiles>
-  </ItemGroup>
-
-  <!--
-    <ParchmentEmbeddedTemplate Include="Templates\report.md" />
-
-    For a deployment that would rather not carry loose template files. The file itself stays an
-    AdditionalFile — so the generator inspects the real path, and nothing has to have been copied
-    for that to work, including in a design-time build. What gets embedded is a staged copy under
-    obj, which is a different path and therefore a different file as far as any IDE is concerned.
-  -->
-  <ItemGroup>
-    <AdditionalFiles Include="@(ParchmentEmbeddedTemplate)">
-      <!-- The name the staged copy is embedded under, computed once here and consumed twice: by the
-           staging target below, and by the source generator, which emits a RegisterWith that reads
-           the manifest rather than the disk. Handing the generator the name rather than letting it
-           re-derive one keeps the two from ever disagreeing. -->
-      <ParchmentResourceName>$(RootNamespace).$([MSBuild]::ValueOrDefault('%(RelativeDir)','').Replace('\','.').Replace('/','.'))%(Filename)%(Extension)</ParchmentResourceName>
-    </AdditionalFiles>
-    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="ParchmentResourceName" />
+    <AdditionalFiles Include="@(ParchmentTemplate)" />
   </ItemGroup>
 
   <!--
@@ -52,8 +25,7 @@
     AdditionalFiles to report on, and a command-line build never reproduces it.
 
     Scoped to template extensions, since another analyzer's additional files are none of Parchment's
-    business. Runs after the staging target, so the embedded item type of a ParchmentEmbeddedTemplate
-    belongs to the staged copy under obj — a different path, and correctly not a match.
+    business.
   -->
   <Target Name="ParchmentWarnOnDualItemTypes"
           BeforeTargets="CoreCompile"
@@ -70,36 +42,7 @@
     <Warning Condition="'@(_ParchmentDualIdentity)' != ''"
              Code="PARCH100"
              File="$(MSBuildProjectFullPath)"
-             Text="Template %(_ParchmentDualIdentity.Filename)%(_ParchmentDualIdentity.Extension) is an AdditionalFile and also an EmbeddedResource or Content item. This build is unaffected, but an IDE that models one build action per file can resolve it to the other identity, hide it from the source generator, and report PARCH004 against a csproj entry that is present. Declare it with &lt;ParchmentTemplate&gt; or &lt;ParchmentEmbeddedTemplate&gt; instead of wiring both by hand." />
-  </Target>
-
-  <Target Name="ParchmentStageEmbeddedTemplates"
-          BeforeTargets="PrepareForBuild"
-          Condition="'@(ParchmentEmbeddedTemplate)' != ''">
-    <!-- Resolved here rather than at evaluation: this file is imported before the SDK sets
-         IntermediateOutputPath, so an evaluation-time default would stage into a "Parchment"
-         folder beside the csproj instead of under obj. -->
-    <PropertyGroup>
-      <ParchmentStagedTemplateDir Condition="'$(ParchmentStagedTemplateDir)' == ''">$(IntermediateOutputPath)Parchment\</ParchmentStagedTemplateDir>
-    </PropertyGroup>
-
-    <!-- Driven off the AdditionalFiles entries rather than ParchmentEmbeddedTemplate, so the name
-         embedded here is the same one the generator was told about. -->
-    <ItemGroup>
-      <ParchmentStagedTemplate Include="@(AdditionalFiles)" Condition="'%(AdditionalFiles.ParchmentResourceName)' != ''">
-        <Staged>$(ParchmentStagedTemplateDir)%(RelativeDir)%(Filename)%(Extension)</Staged>
-      </ParchmentStagedTemplate>
-    </ItemGroup>
-
-    <Copy SourceFiles="@(ParchmentStagedTemplate)"
-          DestinationFiles="@(ParchmentStagedTemplate->'%(Staged)')"
-          SkipUnchangedFiles="true" />
-
-    <ItemGroup>
-      <EmbeddedResource Include="@(ParchmentStagedTemplate->'%(Staged)')">
-        <LogicalName>%(ParchmentStagedTemplate.ParchmentResourceName)</LogicalName>
-      </EmbeddedResource>
-    </ItemGroup>
+             Text="Template %(_ParchmentDualIdentity.Filename)%(_ParchmentDualIdentity.Extension) is an AdditionalFile and also an EmbeddedResource or Content item. This build is unaffected, but an IDE that models one build action per file can resolve it to the other identity, hide it from the source generator, and report PARCH004 against a csproj entry that is present. Templates are embedded into the generated source, so the second item type is also unnecessary — declare the file with &lt;ParchmentTemplate&gt; only." />
   </Target>
 
 </Project>
