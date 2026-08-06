@@ -85,6 +85,29 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
+    /// <summary>
+    /// Strips CR from a markdown template before it is written.
+    /// </summary>
+    /// <remarks>
+    /// A markdown template's text is embedded verbatim into the generated source, newlines escaped,
+    /// so a CRLF template produces "\r\n" in the snapshot — as the two literal characters, which
+    /// git's eol=lf normalization cannot touch. These templates come from raw string literals in
+    /// the test sources, so their newlines are whatever the checkout used, and a working copy that
+    /// picked up CRLF would rewrite every markdown snapshot into a form CI can never match.
+    /// Normalizing here keeps the snapshots a property of the template rather than of the clone.
+    /// </remarks>
+    static byte[] NormalizeNewlines(string name, byte[] bytes)
+    {
+        // Markdown only. A docx is a zip, and stripping bytes out of one would corrupt it.
+        if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        {
+            return bytes;
+        }
+
+        return Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(bytes).Replace("\r\n", "\n"));
+    }
+
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         TemplateFile[] docxes,
@@ -101,7 +124,7 @@ static class GeneratorDriver
             var path = Path.Combine(directory, name);
             // A template may be given a nested path, so its folder has to exist first.
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, bytes);
+            File.WriteAllBytes(path, NormalizeNewlines(name, bytes));
             texts.Add(new PathAdditionalText(path));
             paths.Add(path);
         }

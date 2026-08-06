@@ -22,6 +22,6 @@ partial class Letter
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
     global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
       typeof(global::Sample.Letter),
-      "{% for item in Customer %}\r\nx\r\n{% endfor %}");
+      "{% for item in Customer %}\nx\n{% endfor %}");
   }
 }

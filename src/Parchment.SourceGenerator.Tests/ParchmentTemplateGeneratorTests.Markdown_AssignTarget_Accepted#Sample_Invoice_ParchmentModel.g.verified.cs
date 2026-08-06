@@ -22,6 +22,6 @@ partial class Invoice
     global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Line), _Accessors_global__Sample_Line);
     global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
       typeof(global::Sample.Invoice),
-      "{% assign total = Lines %}\r\n{% for line in total %}\r\n- {{ line.Description }}\r\n{% endfor %}");
+      "{% assign total = Lines %}\n{% for line in total %}\n- {{ line.Description }}\n{% endfor %}");
   }
 }
