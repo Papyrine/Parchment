@@ -18,7 +18,12 @@ static class ExcelsiorTableBridge
     public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
-        return invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle);
+        var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle);
+
+        // Both flows, and every table that comes back through here: a "#name" link means the same
+        // thing wherever the table came from.
+        ExcelsiorInternalLinks.Rewrite(table, mainPart);
+        return table;
     }
 
     public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
