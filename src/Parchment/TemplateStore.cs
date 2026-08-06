@@ -32,7 +32,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         using var file = File.OpenRead(path);
-        RegisterDocxTemplate(typeof(TModel), file, protection);
+        RegisterDocxTemplate<TModel>(file, protection);
     }
 
     public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
@@ -132,11 +132,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         return stream.ToArray();
     }
 
-    void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource)
+    void RegisterMarkdownTemplate(Type model, string markdown, byte[]? styleSource)
     {
-        var name = modelType.Name;
-        GuardBindingModel(modelType, name);
-        SharedFluid.EnsureModelRegistered(modelType, name);
+        var name = model.Name;
+        GuardBindingModel(model, name);
+        SharedFluid.EnsureModelRegistered(model, name);
 
         if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
         {
@@ -145,16 +145,16 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 $"Failed to parse markdown as a liquid template: {error}");
         }
 
-        MarkdownReferenceValidator.Validate(template, modelType, name);
+        MarkdownReferenceValidator.Validate(template, model, name);
 
         var bytes = styleSource ?? BlankDocxTemplate;
 
         bytes = NormalizeStyleSource(bytes);
-        var (styleSourceBytes, parts) = ScanNonBodyParts(modelType, bytes, name);
+        var (styleSourceBytes, parts) = ScanNonBodyParts(model, bytes, name);
 
-        var registered = new RegisteredMarkdownTemplate(name, modelType, styleSourceBytes, parts, template, Policies, PageNumbers);
-        templates[modelType] = registered;
-        logger.LogInformation("Registered markdown template for {ModelType}", modelType.Name);
+        var registered = new RegisteredMarkdownTemplate(name, model, styleSourceBytes, parts, template, Policies, PageNumbers);
+        templates[model] = registered;
+        logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
     }
 
     /// <summary>
@@ -170,7 +170,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
     /// again, which is why the rewritten bytes are returned rather than the ones passed in.
     /// </remarks>
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts(Type modelType, byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         List<PartScopeTree> parts;
@@ -192,7 +192,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
 
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
-                new ReferenceValidator(modelType, name, uri).ValidateTree(tree);
+                new ReferenceValidator(model, name, uri).ValidateTree(tree);
                 found = true;
             }
 
@@ -281,16 +281,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                         }).Parent!);
             for (var i = 1; i <= 6; i++)
             {
-                styles.Append(
-                    new Style
-                    {
-                        Type = StyleValues.Paragraph,
-                        StyleId = $"Heading{i}"
-                    }.AppendChild(
-                        new StyleName
-                        {
-                            Val = $"Heading{i}"
-                        }).Parent!);
+                styles.Append(BuildHeadingStyle(i));
             }
 
             styles.Append(
@@ -303,21 +294,117 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                     {
                         Val = "List Paragraph"
                     }).Parent!);
-            styles.Append(
-                new Style
-                {
-                    Type = StyleValues.Paragraph,
-                    StyleId = "Quote"
-                }.AppendChild(
-                    new StyleName
-                    {
-                        Val = "Quote"
-                    }).Parent!);
+            styles.Append(BuildQuoteStyle());
             stylesPart.Styles = styles;
         }
 
         return stream.ToArray();
     }
+
+    /// <summary>
+    /// Builds one of the blank template's heading styles.
+    /// </summary>
+    /// <remarks>
+    /// A style with only a name renders as body text, so markdown registered without a style source
+    /// produced a document whose headings were indistinguishable from its paragraphs. The formatting
+    /// here is deliberately plain — a real style source overrides all of it — but it has to be
+    /// present for the built-in fallback to read as a document rather than as a wall of text.
+    /// </remarks>
+    static Style BuildHeadingStyle(int level)
+    {
+        // 16pt down to 11pt, in half-points.
+        var size = level switch
+        {
+            1 => 32,
+            2 => 26,
+            3 => 24,
+            4 => 24,
+            5 => 22,
+            _ => 22
+        };
+
+        return new()
+        {
+            Type = StyleValues.Paragraph,
+            StyleId = $"Heading{level}",
+            StyleName = new()
+            {
+                Val = $"Heading{level}"
+            },
+            BasedOn = new()
+            {
+                Val = "Normal"
+            },
+            NextParagraphStyle = new()
+            {
+                Val = "Normal"
+            },
+            PrimaryStyle = new(),
+            StyleParagraphProperties = new(
+                new KeepNext(),
+                new SpacingBetweenLines
+                {
+                    Before = "240",
+                    After = "120"
+                }),
+            StyleRunProperties = new(
+                new Bold(),
+                new Color
+                {
+                    Val = "2F5496"
+                },
+                new FontSize
+                {
+                    Val = size.ToString()
+                },
+                new FontSizeComplexScript
+                {
+                    Val = size.ToString()
+                })
+        };
+    }
+
+    /// <summary>
+    /// Builds the blank template's blockquote style, on the same reasoning as
+    /// <see cref="BuildHeadingStyle"/>.
+    /// </summary>
+    static Style BuildQuoteStyle() =>
+        new()
+        {
+            Type = StyleValues.Paragraph,
+            StyleId = "Quote",
+            StyleName = new()
+            {
+                Val = "Quote"
+            },
+            BasedOn = new()
+            {
+                Val = "Normal"
+            },
+            NextParagraphStyle = new()
+            {
+                Val = "Normal"
+            },
+            PrimaryStyle = new(),
+            StyleParagraphProperties = new(
+                new SpacingBetweenLines
+                {
+                    Before = "200",
+                    After = "200"
+                },
+                // Half an inch of air on both sides, in twentieths of a point.
+                new Indentation
+                {
+                    Left = "720",
+                    Right = "720"
+                }),
+            StyleRunProperties = new(
+                new Italic(),
+                new Color
+                {
+                    Val = "404040"
+                })
+        };
 
     public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
         Render(model, output, null, cancel);

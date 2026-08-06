@@ -50,6 +50,62 @@ public partial class MarkdownFlowTests
         await Verify(stream, "docx");
     }
 
+    // Registering without a style source falls back to the built-in blank docx. Every other
+    // markdown test supplies one, so this is the only place the built-in package's own styles —
+    // and the part scan over a package that has no non-body parts — are pinned.
+    [Test]
+    public async Task MarkdownWithNoStyleSource()
+    {
+        var markdown =
+            """
+            # {{ Title }}
+
+            by *{{ Author }}*
+
+            ## Key findings
+
+            {% for finding in Findings %}
+            - {{ finding }}
+            {% endfor %}
+
+            > The quarter closed ahead of plan.
+
+            ### Level three
+
+            #### Level four
+
+            ##### Level five
+
+            ###### Level six
+
+            | Area | Status |
+            | --- | --- |
+            | Build | Green |
+            | Tests | Green |
+
+            > Review complete.
+            """;
+
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ReportModel>(markdown);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ReportModel
+            {
+                Title = "Q2 Engineering Review",
+                Author = "Alex Chen",
+                Findings =
+                [
+                    "Build times improved 40%",
+                    "Test flake rate halved"
+                ]
+            },
+            stream);
+        stream.Position = 0;
+        await Verify(stream, "docx");
+    }
+
     [ParchmentBindable]
     public partial class TitleModel
     {
