@@ -1956,6 +1956,16 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 
 No `AdditionalFiles` entry named after the `[ParchmentModel]` type was found — a model named `Invoice` needs an `Invoice.parchment.docx` or `Invoice.parchment.md`. A file with that name anywhere in the project folder is picked up on its own, so the usual cause is a missing marker: an `Invoice.md` is a markdown file, not a template. Rename it.
 
+**The message lists every template the generator did see**, which is what says whether this is a naming problem or a plumbing one:
+
+```
+Model 'Invoice' has no template: nothing is named 'Invoice.parchment.docx' or
+'Invoice.parchment.md'. Templates seen: Templates/Order.parchment.docx,
+Templates/Reprot.parchment.md. ...
+```
+
+Names in that list mean the files arrived and one of them is a near-miss — the typo above is the whole diagnosis. `No templates reached the generator at all.` means no template got through, so renaming will not help; look at the item types and the IDE instead.
+
 A template outside the project folder is never discovered and has to be declared — see [Declaring templates](#declaring-templates):
 
 ```xml

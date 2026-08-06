@@ -263,6 +263,47 @@ public sealed class ParchmentTemplateGenerator :
     // Where the file sits relative to the project — the shortest way to name it in a diagnostic.
     // Falls back to the file name when the project directory is unknown or the file lives outside
     // it.
+    /// <summary>
+    /// The templates the generator was handed, for a model that matched none of them.
+    /// </summary>
+    /// <remarks>
+    /// Which of the two failures this is turns entirely on that list. Names in it mean the files
+    /// arrived and the model is looking for one nothing is called — usually a near-miss sitting
+    /// right there in the message. An empty list means no template reached the generator at all,
+    /// which is a build or IDE problem rather than a naming one, and no amount of renaming fixes
+    /// it. The message cannot tell them apart; the list can.
+    /// </remarks>
+    static string DescribeTemplatesSeen(
+        EquatableArray<DocxData> docs,
+        EquatableArray<MarkdownData> markdowns,
+        string? projectDirectory)
+    {
+        var paths = docs.Select(static _ => _.Path)
+            .Concat(markdowns.Select(static _ => _.Path))
+            .Select(_ => DisplayPath(_, projectDirectory))
+            // Ordered rather than left in AdditionalFiles order: the message should read the same
+            // way whatever order the item groups happened to be evaluated in.
+            .OrderBy(static _ => _, StringComparer.Ordinal)
+            .ToList();
+
+        if (paths.Count == 0)
+        {
+            return "No templates reached the generator at all.";
+        }
+
+        if (paths.Count > maxTemplatesListed)
+        {
+            var listed = string.Join(", ", paths.Take(maxTemplatesListed));
+            return $"Templates seen: {listed} (+{paths.Count - maxTemplatesListed} more).";
+        }
+
+        return $"Templates seen: {string.Join(", ", paths)}.";
+    }
+
+    // A project with hundreds of templates would otherwise turn one missing name into a diagnostic
+    // nobody reads to the end of.
+    const int maxTemplatesListed = 10;
+
     static string DisplayPath(string fullPath, string? projectDirectory)
     {
         if (projectDirectory != null)
@@ -382,7 +423,8 @@ public sealed class ParchmentTemplateGenerator :
                 Diagnostic.Create(
                     Diagnostics.TemplateFileMissing,
                     location,
-                    target.DeclaringName));
+                    target.DeclaringName,
+                    DescribeTemplatesSeen(docs, markdowns, projectDirectory)));
             return;
         }
 

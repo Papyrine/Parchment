@@ -30,10 +30,10 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor TemplateFileMissing = new(
         id: "PARCH004",
         title: "No template found for model",
-        messageFormat: "Model '{0}' has no template: no AdditionalFile named '{0}.parchment.docx' or '{0}.parchment.md' was " +
-                       "found. A file with that name is picked up wherever it sits in the project; one outside the project " +
-                       "needs <ParchmentTemplate Include=\"...\"/> in the csproj. If the file is there and only the IDE " +
-                       "reports this, it likely carries a second item type that hides it from the IDE's generator host.",
+        messageFormat: "Model '{0}' has no template: nothing is named '{0}.parchment.docx' or '{0}.parchment.md'. {1} A file " +
+                       "with that name is picked up wherever it sits in the project; one outside the project needs " +
+                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If the file is there and only the IDE reports " +
+                       "this, it likely carries a second item type that hides it from the IDE's generator host.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

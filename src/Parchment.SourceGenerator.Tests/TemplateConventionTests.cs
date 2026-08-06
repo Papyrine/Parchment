@@ -65,6 +65,46 @@ public class TemplateConventionTests
         await Assert.That(Codes(result)).Contains("PARCH004");
     }
 
+    static string Messages(GeneratorDriverRunResult result) =>
+        string.Join("\n", result.Diagnostics.Select(_ => _.GetMessage()));
+
+    // The list is what separates "named wrong" from "nothing arrived", and the near-miss is
+    // usually sitting in it.
+    //
+    // Run through RunInProject so ProjectDir is set and the paths come out project-relative, the
+    // way a real build reports them — a bare file name would not tell two namesakes apart.
+    [Test]
+    public async Task NoMatchNamesTheTemplatesItDidSee()
+    {
+        var result = GeneratorDriver.RunInProject(
+            reportModel,
+            new TemplateFile("Templates/Other.parchment.md", Markdown("Hello")),
+            new TemplateFile("Templates/Reprot.parchment.docx", GeneratorDriver.BuildDocxBytes("typo")));
+
+        await Assert.That(Messages(result)).Contains(
+            "Templates seen: Templates/Other.parchment.md, Templates/Reprot.parchment.docx.");
+    }
+
+    // The other shape: no template reached the generator, which is a build or IDE problem rather
+    // than a naming one. Renaming anything would be wasted effort, so the message says so.
+    [Test]
+    public async Task NoMatchWithNoTemplatesAtAllSaysSo()
+    {
+        var result = Run();
+
+        await Assert.That(Messages(result)).Contains("No templates reached the generator at all.");
+    }
+
+    // An unmarked namesake is not a template, so it must not turn up in the list either — it would
+    // read as "your template is right there" when the fix is to rename it.
+    [Test]
+    public async Task TemplatesSeenExcludesUnmarkedFiles()
+    {
+        var result = Run(new TemplateFile("Docs/Report.md", Markdown("Notes")));
+
+        await Assert.That(Messages(result)).Contains("No templates reached the generator at all.");
+    }
+
     // The marker is the whole reason the package can glob templates in without a csproj entry:
     // an unmarked file is not a template, however it is named and however it is declared.
     [Test]
