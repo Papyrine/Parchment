@@ -293,7 +293,7 @@ static class AccessorEmission
         foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle) in entries)
         {
             fields.Append("  new(\"");
-            fields.Append(string.Join(".", path));
+            fields.AppendJoin('.', path);
             fields.Append("\", typeof(");
             fields.Append(elementFqn);
             fields.Append("), ");
@@ -314,8 +314,15 @@ static class AccessorEmission
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof({rootFqn}), _ExcelsiorTables);");
     }
 
-    static string ToStringLiteral(string? value) =>
-        value == null ? "null" : SymbolDisplay.FormatLiteral(value, quote: true);
+    static string ToStringLiteral(string? value)
+    {
+        if (value == null)
+        {
+            return "null";
+        }
+
+        return SymbolDisplay.FormatLiteral(value, quote: true);
+    }
 
     static void EmitFormatBlock(
         StringBuilder fields,
@@ -337,7 +344,7 @@ static class AccessorEmission
         foreach (var (path, kind) in entries)
         {
             fields.Append("  new(\"");
-            fields.Append(string.Join(".", path));
+            fields.AppendJoin('.', path);
             fields.Append("\", global::Parchment.Generated.FormatMapKind.");
             fields.Append(kind);
             fields.Append(", ");
@@ -374,7 +381,7 @@ static class AccessorEmission
         foreach (var path in entries)
         {
             fields.Append("  new(\"");
-            fields.Append(string.Join(".", path));
+            fields.AppendJoin('.', path);
             fields.Append("\", ");
             EmitGetter(fields, rootFqn, path);
             fields.AppendLine("),");
@@ -425,7 +432,7 @@ static class AccessorEmission
     static void EmitEditableEntry(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member)
     {
         builder.Append("new(\"");
-        builder.Append(string.Join(".", path));
+        builder.AppendJoin('.', path);
         builder.Append("\", global::Parchment.Generated.EditableFieldKind.");
         builder.Append(member.EditableKind!.Value);
         builder.Append(", typeof(");
@@ -469,7 +476,7 @@ static class AccessorEmission
             var isArray = member.TypeFullyQualifiedName.EndsWith("[]", StringComparison.Ordinal);
 
             fields.Append("  new(\"");
-            fields.Append(string.Join(".", path));
+            fields.AppendJoin('.', path);
             fields.Append("\", typeof(");
             fields.Append(elementFqn);
             fields.Append("), ");

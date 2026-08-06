@@ -299,19 +299,26 @@ static class EditableFieldBuilder
         return run;
     }
 
-    static RunProperties ClonePr(RunProperties? sitePr) =>
-        sitePr == null ? new() : (RunProperties)sitePr.CloneNode(true);
+    static RunProperties ClonePr(RunProperties? sitePr)
+    {
+        if (sitePr == null)
+        {
+            return new();
+        }
 
-    static void InsertAfterRunStyle(RunProperties pr, OpenXmlElement element)
+        return (RunProperties)sitePr.CloneNode(true);
+    }
+
+    static void InsertAfterRunStyle(RunProperties properties, OpenXmlElement element)
     {
         // rPr schema order: rStyle first, rFonts immediately after.
-        if (pr.GetFirstChild<RunStyle>() is { } style)
+        if (properties.GetFirstChild<RunStyle>() is { } style)
         {
-            pr.InsertAfter(element, style);
+            properties.InsertAfter(element, style);
         }
         else
         {
-            pr.InsertAt(element, 0);
+            properties.InsertAt(element, 0);
         }
     }
 }

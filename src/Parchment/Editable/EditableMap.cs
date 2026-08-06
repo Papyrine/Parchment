@@ -86,7 +86,7 @@ sealed class EditableMap
         // contribute their half regardless of order.
         precompiledCache.AddOrUpdate(
             modelType,
-            _ => new(dict, EmptyCollections()),
+            _ => new(dict, []),
             (_, existing) => new(dict, existing.collections));
     }
 
@@ -101,7 +101,7 @@ sealed class EditableMap
                 entry.Setter,
                 entry.CanReach,
                 entry.ElementFactory,
-                new(BuildEntryDict(entry.ElementFields), EmptyCollections()),
+                new(BuildEntryDict(entry.ElementFields), []),
                 entry.IsArray);
         }
 
@@ -130,7 +130,4 @@ sealed class EditableMap
 
         return dict;
     }
-
-    static Dictionary<string, CollectionEntry> EmptyCollections() =>
-        new(StringComparer.OrdinalIgnoreCase);
 }

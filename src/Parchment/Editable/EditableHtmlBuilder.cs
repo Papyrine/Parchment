@@ -41,24 +41,27 @@ static class EditableHtmlBuilder
     {
         var id = state.NextId();
 
-        var sdtPr = new SdtProperties();
-        sdtPr.AppendChild(new SdtAlias
-        {
-            Val = entry.Alias
-        });
-        sdtPr.AppendChild(new Tag
-        {
-            Val = entry.DottedPath
-        });
-        sdtPr.AppendChild(new SdtId
-        {
-            Val = id
-        });
+        var properties = new SdtProperties();
+        properties.AppendChild(
+            new SdtAlias
+            {
+                Val = entry.Alias
+            });
+        properties.AppendChild(
+            new Tag
+            {
+                Val = entry.DottedPath
+            });
+        properties.AppendChild(
+            new SdtId
+            {
+                Val = id
+            });
 
         var isPlaceholder = content.Count == 0;
         if (isPlaceholder)
         {
-            sdtPr.AppendChild(new ShowingPlaceholder());
+            properties.AppendChild(new ShowingPlaceholder());
         }
 
         var contentBlock = new SdtContentBlock();
@@ -74,7 +77,7 @@ static class EditableHtmlBuilder
             }
         }
 
-        var sdt = new SdtBlock(sdtPr, contentBlock);
+        var sdt = new SdtBlock(properties, contentBlock);
 
         if (TryGetSoleCell(host, out var cell, out var row))
         {

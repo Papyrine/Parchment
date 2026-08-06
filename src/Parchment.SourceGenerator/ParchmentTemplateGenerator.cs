@@ -633,7 +633,11 @@ public sealed class ParchmentTemplateGenerator :
         var elementDisplay = Display(element.TypeFullyQualifiedName);
         if (!element.HasParameterlessCtor)
         {
-            ReportCollectionInvalid(context, target, location, memberDisplay,
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
                 $"its element type '{elementDisplay}' has no public parameterless constructor — extraction rebuilds the list, so elements must be constructable");
         }
 
@@ -642,7 +646,11 @@ public sealed class ParchmentTemplateGenerator :
         {
             if (elementMember.EditableCollectionElementFqn != null)
             {
-                ReportCollectionInvalid(context, target, location, memberDisplay,
+                ReportCollectionInvalid(
+                    context,
+                    target,
+                    location,
+                    memberDisplay,
                     $"its element type '{elementDisplay}' itself contains an editable collection — nested editable collections are not supported");
             }
             else if (elementMember is { IsEditable: true, IsStatic: false })
@@ -653,7 +661,11 @@ public sealed class ParchmentTemplateGenerator :
 
         if (!hasEditable)
         {
-            ReportCollectionInvalid(context, target, location, memberDisplay,
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
                 $"its element type '{elementDisplay}' has no [EditableField] members — nothing to round-trip");
         }
     }
