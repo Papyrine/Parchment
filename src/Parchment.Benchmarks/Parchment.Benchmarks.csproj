@@ -9,5 +9,19 @@
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment\Parchment.csproj" />
     <ProjectReference Include="..\ParchmentModel\ParchmentModel.csproj" />
+    <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
+  <!-- Same shape as Parchment.Tests.csproj: the shaded generator loads its dependencies as sibling
+       assemblies, so every DLL beside it is handed to Roslyn. Analyzers do not flow transitively
+       through a ProjectReference, so without this a model declared in this project gets no
+       accessors and registering it throws — there is no runtime reflection fallback. Benchmark
+       models that live here carry [ParchmentBindable]; the ones borrowed from ParchmentModel are
+       already generated over there. -->
+  <Target Name="ReferenceShadedGenerator" BeforeTargets="CoreCompile"
+          DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Analyzer Include="..\Parchment.SourceGenerator\bin\$(Configuration)\netstandard2.0\Parchment.SourceGenerator*.dll" />
+    </ItemGroup>
+  </Target>
 </Project>

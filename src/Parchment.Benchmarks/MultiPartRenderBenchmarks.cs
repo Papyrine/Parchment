@@ -4,8 +4,11 @@
 // into a dictionary once. Also covers Fix 3 (compatibilityMode is baked into the registration
 // snapshot, so no per-render settings-part scan) and Fix 5 on every render. The absolute win is
 // small at typical part counts — this mainly guards the multi-part path against regressions.
+// partial because HeaderFooterModel is nested here and carries [ParchmentBindable]: the generator
+// emits its registration helper as a partial declaration, so every enclosing type must be partial
+// too (PARCH011).
 [Config(typeof(BenchmarkConfig))]
-public class MultiPartRenderBenchmarks
+public partial class MultiPartRenderBenchmarks
 {
     TemplateStore store = null!;
     HeaderFooterModel model = null!;
@@ -128,7 +131,10 @@ public class MultiPartRenderBenchmarks
                     Space = SpaceProcessingModeValues.Preserve
                 }));
 
-    public class HeaderFooterModel
+    // [ParchmentBindable] + partial so the generator emits this model's accessors: the template is
+    // built here and supplied as a stream, so there is no compile-time template to name it after.
+    [ParchmentBindable]
+    public partial class HeaderFooterModel
     {
         public required string Title { get; init; }
         public required string Author { get; init; }
