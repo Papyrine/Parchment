@@ -160,7 +160,7 @@ public partial class MarkdownExcelsiorTableTests
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => store.RegisterMarkdownTemplate<QuoteModel>("Lines: {{ Lines }}", styleSource));
 
-        await Verify(exception!.Message);
+        await Verify(exception.Message);
     }
 
     // A filtered expression is not a path the Excelsior getter can walk, so it is refused for the
@@ -174,7 +174,7 @@ public partial class MarkdownExcelsiorTableTests
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => store.RegisterMarkdownTemplate<QuoteModel>("{{ Lines | reverse }}", styleSource));
 
-        await Verify(exception!.Message);
+        await Verify(exception.Message);
     }
 
     // A null collection leaves no marker text behind: the paragraph goes, and no table takes its
