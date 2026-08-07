@@ -192,7 +192,8 @@ static class MarkdownExcelsiorTables
             data,
             mainPart,
             entry.HeadingParagraphStyle,
-            entry.BodyParagraphStyle);
+            entry.BodyParagraphStyle,
+            entry.TableStyle);
 
         parent.InsertBefore(table, host);
 

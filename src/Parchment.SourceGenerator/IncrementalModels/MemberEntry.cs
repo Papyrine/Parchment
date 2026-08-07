@@ -11,6 +11,7 @@ sealed record MemberEntry(
     bool IsStatic = false,
     string? ExcelsiorHeadingParagraphStyle = null,
     string? ExcelsiorBodyParagraphStyle = null,
+    string? ExcelsiorTableStyle = null,
     bool IsEditable = false,
     EditableFieldKind? EditableKind = null,
     bool EditableIsNullable = false,

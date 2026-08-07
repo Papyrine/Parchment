@@ -15,10 +15,10 @@ static class ExcelsiorTableBridge
             IsGenericMethodDefinition: true
         });
 
-    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
+    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
-        var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle);
+        var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle);
 
         // Both flows, and every table that comes back through here: a "#name" link means the same
         // thing wherever the table came from.
@@ -26,7 +26,7 @@ static class ExcelsiorTableBridge
         return table;
     }
 
-    public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle)
+    public static Table BuildTable<TElement>(IEnumerable<TElement> data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle)
     {
         var builder = new WordTableBuilder<TElement>(data);
         if (headingParagraphStyle != null)
@@ -39,15 +39,20 @@ static class ExcelsiorTableBridge
             builder.BodyParagraphStyle(bodyParagraphStyle);
         }
 
+        if (tableStyle != null)
+        {
+            builder.TableStyle(tableStyle);
+        }
+
         return builder.Build(mainPart);
     }
 
     static BuilderInvoker CreateInvoker(Type elementType)
     {
         var method = genericBuildTable.MakeGenericMethod(elementType);
-        return (data, mainPart, headingParagraphStyle, bodyParagraphStyle) =>
-            (Table) method.Invoke(null, [data, mainPart, headingParagraphStyle, bodyParagraphStyle])!;
+        return (data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle) =>
+            (Table) method.Invoke(null, [data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle])!;
     }
 
-    delegate Table BuilderInvoker(object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle);
+    delegate Table BuilderInvoker(object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle);
 }

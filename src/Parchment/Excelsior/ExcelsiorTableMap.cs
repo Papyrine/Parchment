@@ -30,7 +30,7 @@ sealed class ExcelsiorTableMap
         var dict = new Dictionary<string, ExcelsiorTableEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
-            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter, entry.HeadingParagraphStyle, entry.BodyParagraphStyle);
+            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle);
         }
 
         precompiledCache[modelType] = new(dict);
