@@ -664,6 +664,15 @@ Rules:
 - Currency and date formatting in the rendered table honor `Excelsior.ValueRenderer.Culture` (defaults to `CultureInfo.CurrentCulture`). Set it once in a module initializer to override the default locale.
 - Loop-scoped tokens are **not** rendered as tables — the map is keyed on dotted paths from the root model, so `{{ dept.Lines }}` inside `{% for dept in Departments %}` falls through to plain Fluid output. For a per-group table inside a loop (or any table needing styling beyond the options below), build it directly with `OpenXmlToken` + Excelsior's `WordTableBuilder` — see [Loop-scoped or fully-custom tables](#loop-scoped-or-fully-custom-tables) below.
 
+#### Links to somewhere in the document
+
+Excelsior's `Link` type renders a clickable cell. A `#name` target is treated as addressing this document rather than the web, matching what `[text](#name)` means in a markdown template:
+
+- **`new Link("#alpha", "Alpha")`** — a hyperlink anchored to the `alpha` bookmark. Excelsior registers every link as an external relationship, which is right for `https://` and wrong for a fragment, so the relationship is dropped and the anchor set in its place.
+- **`new Link("#alpha", "")`** — no text to click, so the cell becomes a `PAGEREF` field instead: the page the bookmark is on. With a [page number resolver](#page-numbers) configured the number is written in before the file is saved, exactly as it is for an empty markdown link.
+
+That makes a contents table expressible as a model — one column of anchored titles, one of page numbers — instead of as hand-written markdown.
+
 #### Branding the table from template styles
 
 By default the rendered table uses Excelsior's default cell formatting, which falls back to the host document's `Normal` paragraph style. To drive the cell font, size, and spacing from named paragraph styles defined in the template, set `HeadingParagraphStyle` / `BodyParagraphStyle` on the attribute:
