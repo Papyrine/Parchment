@@ -25,4 +25,12 @@ public sealed class ExcelsiorTableAttribute :
     /// <c>WordTableBuilder.BodyParagraphStyle</c>.
     /// </summary>
     public string? BodyParagraphStyle { get; set; }
+
+    /// <summary>
+    /// Optional Word table style id applied to the table, in place of the built-in
+    /// <c>TableGrid</c>. The style must be defined in the host document's styles part — a
+    /// template's own style is the template's to define. Lets a branded template drive the table's
+    /// borders, banding, and cell margins. Maps to <c>WordTableBuilder.TableStyle</c>.
+    /// </summary>
+    public string? TableStyle { get; set; }
 }

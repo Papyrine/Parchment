@@ -43,7 +43,7 @@ static class AccessorEmission
         }
 
         var fluidBlocks = new List<(string FieldName, TypeEntry Type)>();
-        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)>();
+        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
         var editableEntries = new List<(List<string> Path, MemberEntry Member)>();
@@ -111,7 +111,7 @@ static class AccessorEmission
         List<string> path,
         HashSet<string> visited,
         Dictionary<string, TypeEntry> typesByFqn,
-        List<(List<string>, string, string?, string?)> excelsior,
+        List<(List<string>, string, string?, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
         List<(List<string>, MemberEntry)> editables,
@@ -144,7 +144,7 @@ static class AccessorEmission
                 if (typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
                     memberType.ElementTypeFullyQualifiedName != null)
                 {
-                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle));
+                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle, member.ExcelsiorTableStyle));
                 }
 
                 continue;
@@ -277,7 +277,7 @@ static class AccessorEmission
         StringBuilder fields,
         StringBuilder registrations,
         string rootFqn,
-        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)> entries)
+        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle)> entries)
     {
         if (entries.Count == 0)
         {
@@ -290,7 +290,7 @@ static class AccessorEmission
             {
 
             """);
-        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle) in entries)
+        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle, tableStyle) in entries)
         {
             fields.Append("  new(\"");
             fields.AppendJoin('.', path);
@@ -302,6 +302,8 @@ static class AccessorEmission
             fields.Append(ToStringLiteral(headingParagraphStyle));
             fields.Append(", ");
             fields.Append(ToStringLiteral(bodyParagraphStyle));
+            fields.Append(", ");
+            fields.Append(ToStringLiteral(tableStyle));
             fields.AppendLine("),");
         }
 

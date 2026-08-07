@@ -67,6 +67,34 @@ public partial class MarkdownExcelsiorTableTests
         await Verify(stream, "docx");
     }
 
+    [ParchmentBindable]
+    public partial class StyledQuoteModel
+    {
+        [ExcelsiorTable(TableStyle = "LinedColumns")]
+        public required IReadOnlyList<QuoteLine> Lines { get; init; }
+    }
+
+    // The table's own look comes from the host document's styles, the same way the cell text's
+    // does — without this the table falls back to Excelsior's TableGrid and a branded template
+    // gets its fonts but not its borders.
+    [Test]
+    public async Task TableStyleReachesTheTable()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<StyledQuoteModel>("{{ Lines }}", styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(new StyledQuoteModel { Lines = Quote().Lines }, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var table = doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Single();
+        var style = table.GetFirstChild<TableProperties>()!.GetFirstChild<TableStyle>()!;
+
+        await Assert.That(style.Val?.Value).IsEqualTo("LinedColumns");
+    }
+
     // The headings come from [Column], not from the markdown, which is the whole point of moving a
     // table onto the model: the template says where, the model says what.
     [Test]

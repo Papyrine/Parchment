@@ -692,6 +692,15 @@ public partial class StyledQuote
 
 The style ids must exist in the template's styles part. Unlike inline run formatting, a paragraph style reaches **every** cell paragraph — including `IsHtml` and link cells — so the look is consistent across all content. (These map straight onto Excelsior's `WordTableBuilder.HeadingParagraphStyle`/`BodyParagraphStyle`.)
 
+Those two style the text in the cells. `TableStyle` styles the table itself — borders, banding, cell margins — in place of the built-in `TableGrid`:
+
+```cs
+[ExcelsiorTable(TableStyle = "LinedColumns", BodyParagraphStyle = "TBLText")]
+public required IReadOnlyList<QuoteLine> Lines;
+```
+
+All three ids must exist in the template's styles part. `TableGrid` is inserted when a host lacks it, being a Word built-in with a known definition; a template's own style is the template's to define, so a missing one renders unstyled rather than as something invented. (These map straight onto Excelsior's `WordTableBuilder.HeadingParagraphStyle`/`BodyParagraphStyle`/`TableStyle`.)
+
 #### Loop-scoped or fully-custom tables
 
 `[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. The same applies when a table needs styling or grouping beyond what the attribute exposes. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:

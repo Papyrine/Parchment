@@ -82,7 +82,7 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle);
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle);
                     var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
@@ -119,6 +119,7 @@ static class ShapeBuilder
                         isStatic,
                         excelsiorHeadingStyle,
                         excelsiorBodyStyle,
+                        excelsiorTableStyle,
                         isEditable,
                         editableKind,
                         isEditable && editableCollectionElementFqn == null && IsNullableMember(memberType),
@@ -201,10 +202,11 @@ static class ShapeBuilder
         ModelSymbolResolver.TryGetElementType(type, out var element) &&
         element is {SpecialType: SpecialType.System_String};
 
-    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle)
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle)
     {
         headingParagraphStyle = null;
         bodyParagraphStyle = null;
+        tableStyle = null;
         if (excelsiorTableType is null)
         {
             return false;
@@ -233,6 +235,10 @@ static class ShapeBuilder
                 else if (named.Key == "BodyParagraphStyle")
                 {
                     bodyParagraphStyle = value;
+                }
+                else if (named.Key == "TableStyle")
+                {
+                    tableStyle = value;
                 }
             }
 
