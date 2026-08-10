@@ -160,7 +160,7 @@ Loops and conditionals can be nested to arbitrary depth. The outer loop variable
 
 ### Token override hatches
 
-Declare a model property as `TokenValue` and return one of:
+A model property can return any of the following. Type it as the one it returns — `HtmlToken`, `MarkdownToken`, `OpenXmlToken`, `MutateToken` — when that never changes. Type it as their base `TokenValue` only when it does change from one render to the next, which is the one thing the base buys: an implicit conversion from `string`, so the same member can be plain text one time and markup the next.
 
 - A plain `string` (or any value Fluid stringifies) — plain text substitution. This is the default when the property is typed as `string` directly; assigning a string to a `TokenValue` property goes through the same path via the implicit conversion.
 - `new MarkdownToken(string)` — the value is rendered as markdown via Markdig and spliced into the host paragraph.
@@ -168,13 +168,29 @@ Declare a model property as `TokenValue` and return one of:
 - `new OpenXmlToken(Func<IOpenXmlContext, IEnumerable<OpenXmlElement>>)` — the callback emits raw OpenXML elements. Useful for rich tables, generated charts, custom-styled lists.
 - `new MutateToken(Action<Paragraph, IOpenXmlContext>)` — the callback receives the host paragraph and mutates it in place. The token text is cleared before the callback runs. Useful for adding runs with custom formatting, injecting bookmarks, or tweaking paragraph properties while preserving the original paragraph.
 
-These hatches substitute structurally, replacing or mutating the host paragraph, which is something only the docx flow has. A [markdown template](#markdown-template) renders liquid to markdown source first and parses that source afterwards, so there is no host paragraph at substitution time. A `TokenValue` property used there behaves as follows: plain text, `MarkdownToken`, and `HtmlToken` contribute their source (markdown and html are both handled by the markdown parser), while `OpenXmlToken` and `MutateToken` have no source form and throw `ParchmentRenderException`. Reach for `RegisterDocxTemplate` when a token needs to emit OpenXML directly.
+These hatches substitute structurally, replacing or mutating the host paragraph, which is something only the docx flow has. A [markdown template](#markdown-template) renders liquid to markdown source first and parses that source afterwards, so there is no host paragraph at substitution time. There they behave as follows. Plain text is [escaped](#bound-values-are-escaped) like any other bound value. `MarkdownToken` contributes its source, which is what the parser is about to read anyway. `HtmlToken` is held aside and converted once the markdown has been parsed — html written into markdown source would be classified by Markdig rather than converted, which is not the same answer — so it carries the [`| html` rule](#html-filter) that the token be alone in its block. `OpenXmlToken` and `MutateToken` have no source form at all and throw `ParchmentRenderException`. Reach for `RegisterDocxTemplate` when a token needs to emit OpenXML directly.
 
 #### List filters
 
 `bullet_list` and `numbered_list` render an `IEnumerable<string>` property as a real Word list (`<w:numPr>` with a proper numbering definition), not as literal text. The token must sit alone in its paragraph — the host paragraph is replaced with one `<w:p>` per item.
 
 Both filters also work in a [markdown template](#markdown-template), where they emit markdown list source that the renderer then parses — the result is the same Word list. So is `| markdown`, which passes its source straight through to the markdown parser.
+
+There the filter's own markers are syntax but the items are not, so each item is [escaped](#bound-values-are-escaped) while the markers are left alone:
+
+<!-- snippet: ListFilterComparison -->
+<a id='snippet-ListFilterComparison'></a>
+```handlebars
+{{ Items | bullet_list }}
+
+{{ Items | numbered_list }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L161-L165' title='Snippet source file'>snippet source</a> | <a href='#snippet-ListFilterComparison' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+With `Items = ["Totals | and dates", "1. Not a nested list", "**Not bold**"]` — real bullets and real numbering, and an item reading `1.` is an item rather than a list inside a list:
+
+![List filters](/src/Parchment.Tests/Markdown/EscapingTests.DocumentedListFilters.verified.png)
 
 Content:
 
@@ -215,10 +231,12 @@ Escapes `<`, `>`, `&`, `"`, and `'` in a string value. Useful when a token's val
 {{ UserSuppliedComment | escape_xml }}
 ```
 
+In a markdown template this is rarely the right tool: a bare `{{ }}` is [already escaped](#bound-values-are-escaped) against markdown, which covers `<`, `>` and `&` as well. `escape_xml` earns its place only when the template is assembling markup by hand and the value has to be safe inside *that* — the filter opts out of markdown escaping, so its entities survive as entities rather than printing.
+
 
 #### Markdown property
 
-Declare a model property as `TokenValue` and return `new MarkdownToken(...)` to inject rendered markdown at the substitution site:
+Return a `MarkdownToken` from a model property to inject rendered markdown at the substitution site:
 
 Model:
 
@@ -229,7 +247,7 @@ Model:
 public partial class NoteModel
 {
     public required string Title;
-    public required TokenValue Body;
+    public required MarkdownToken Body;
 }
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L10-L19' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyModel' title='Start of snippet'>anchor</a></sup>
@@ -258,7 +276,7 @@ await store.Render(
     new NoteModel
     {
         Title = "Weekly summary",
-        Body = new MarkdownToken(
+        Body = new(
             """
             ## Highlights
 
@@ -273,6 +291,26 @@ await store.Render(
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L34-L55' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownPropertyRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+The same type does the same job in a markdown template, where it is also what exempts the value from [escaping](#bound-values-are-escaped) — a plain `string` on the same model stays text:
+
+<!-- snippet: TokenValueComparison -->
+<a id='snippet-TokenValueComparison'></a>
+```handlebars
+{{ Details }}
+
+{{ Token }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L141-L145' title='Snippet source file'>snippet source</a> | <a href='#snippet-TokenValueComparison' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+With `Details` a `string` and `Token` a `TokenValue` returning a `MarkdownToken`, both holding `**…**`:
+
+![TokenValue in a markdown template](/src/Parchment.Tests/Markdown/EscapingTests.DocumentedTokenValue.verified.png)
+
+**Which type to declare** is covered under [Token override hatches](#token-override-hatches): the concrete type when the format is fixed, `TokenValue` when it varies per render.
+
+When the format is fixed, an [`[Html]` / `[Markdown]` annotation](#html-and-markdown-properties) usually beats both. It says the same thing and leaves the property a plain `string`, so the model stays a DTO that deserializes, binds from a database, and can be handed to code that has never heard of Parchment.
 
 
 #### Markdown filter
@@ -332,7 +370,7 @@ await store.Render(
 
 Both approaches produce the same structural replacement — the host paragraph is swapped with the rendered markdown elements when the token is the entire paragraph. If the token shares its paragraph with other text or with sibling tokens, the runtime falls back to inline splicing (single produced paragraph → its runs are extracted and merged into the host) or paragraph splitting (multiple produced blocks → host is split at the token offset and the produced blocks slot between the two halves). See [Inline-aware structural replacement](#inline-aware-structural-replacement) for the full rules.
 
-**Markdown templates**: Neither `MarkdownToken` nor `| markdown` is needed when using `RegisterMarkdownTemplate`. The entire template is already markdown — a plain `string` property containing markdown syntax is interpolated into the source before Markdig parses it, so formatting works automatically:
+**Markdown templates**: the filter is needed here too. A markdown template's substitutions are escaped — see [Bound values are escaped](#bound-values-are-escaped) — so a plain `string` property containing markdown syntax prints that syntax instead of applying it. `| markdown` is what says the value is source, and a `[Markdown]` annotation or a `MarkdownToken` says the same thing at the model:
 
 Model:
 
@@ -356,7 +394,7 @@ Content:
 ```handlebars
 # {{ Title }}
 
-{{ Details }}
+{{ Details | markdown }}
 ```
 <sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L132-L136' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyContent' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
@@ -390,10 +428,77 @@ await store.Render(
 <sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L141-L164' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownTemplatePropertyUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
+What the filter changes, with the same value bound twice:
+
+<!-- snippet: MarkdownFilterComparison -->
+<a id='snippet-MarkdownFilterComparison'></a>
+```handlebars
+{{ Details }}
+
+{{ Details | markdown }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L84-L88' title='Snippet source file'>snippet source</a> | <a href='#snippet-MarkdownFilterComparison' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+With `Details = "**Bold** and _italic_"`:
+
+![Markdown filter](/src/Parchment.Tests/Markdown/EscapingTests.DocumentedMarkdownFilter.verified.png)
+
+
+#### Html filter
+
+`| html` is the counterpart to `| markdown` — it says a plain `string` property holds HTML source.
+
+Both flows convert the value with the HTML converter, so what comes out is decided by HTML rules. In a docx template it becomes an `HtmlToken` at the substitution site. In a markdown template it cannot be written into the source and left there — source is classified by Markdig, and that is not the same thing: `<span>a *b* c</span>` written into markdown prints the span as literal text and turns `*b*` italic, which is markdown's answer rather than HTML's. So the value is held aside and converted once the markdown has been parsed.
+
+That makes `| html` different from `| raw`, which only turns encoding off and leaves the classifying to Markdig. Use `| raw` when that is what is wanted; use `| html` to say the value is HTML and have it treated as such. An `[Html]` annotation rewrites the token to this filter, so it converts the same way.
+
+**A converted value replaces the block it sits in**, because HTML converts to whole blocks — paragraphs, lists, tables. So in a markdown template the token has to be alone in its block; sharing a paragraph with other text fails the render rather than discarding that text. An `[Html]` member and an [`HtmlToken`](#html-property) convert by the same route, so the rule covers them too. The docx flow has no such restriction — it splices or splits the host paragraph instead, per [Inline-aware structural replacement](#inline-aware-structural-replacement).
+
+
+The same value bound twice, plain and filtered:
+
+<!-- snippet: HtmlFilterComparison -->
+<a id='snippet-HtmlFilterComparison'></a>
+```handlebars
+{{ Details }}
+
+{{ Details | html }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L103-L107' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlFilterComparison' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+With `Details = "<b>Bold</b> and <i>italic</i>"`:
+
+![Html filter](/src/Parchment.Tests/Markdown/EscapingTests.DocumentedHtmlFilter.verified.png)
+
+
+#### `raw` filter
+
+Liquid's own filter. It turns encoding off rather than naming a format, so the value is written into the markdown as-is and Markdig decides what it is. Useful when a value is known-good markdown, or a mix — and the honest choice when the format genuinely varies:
+
+<!-- snippet: RawFilterComparison -->
+<a id='snippet-RawFilterComparison'></a>
+```handlebars
+{{ Details }}
+
+{{ Details | raw }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L122-L126' title='Snippet source file'>snippet source</a> | <a href='#snippet-RawFilterComparison' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+With `Details = "**Bold** and <i>italic</i>"` — the second line renders both, because markdown source and inline html both reach the renderer:
+
+![Raw filter](/src/Parchment.Tests/Markdown/EscapingTests.DocumentedRawFilter.verified.png)
+
+Markdig handles a handful of inline tags itself, which is why `<i>` works above. That is not HTML conversion, though — anything outside that handful is classified by markdown rules or printed literally. When the value is HTML, `| html` is the filter that converts it.
+
+`raw` has no effect in a docx template: nothing is encoded there, and a value only becomes markup by being an `HtmlToken` or `MarkdownToken`.
+
 
 #### Html property
 
-Declare a model property as `TokenValue` and return `new HtmlToken(...)` to convert HTML source to Word elements at the substitution site. Use this when the value arrives as HTML — typically from a CMS, a WYSIWYG editor, or any system that already speaks HTML:
+Return an `HtmlToken` from a model property to convert HTML source to Word elements at the substitution site. Use it when the value arrives as HTML — typically from a CMS, a WYSIWYG editor, or any system that already speaks HTML:
 
 Model:
 
@@ -404,7 +509,7 @@ Model:
 public partial class PostModel
 {
     public required string Title;
-    public required TokenValue Body;
+    public required HtmlToken Body;
 }
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L160-L169' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlPropertyModel' title='Start of snippet'>anchor</a></sup>
@@ -433,7 +538,7 @@ await store.Render(
     new PostModel
     {
         Title = "Welcome",
-        Body = new HtmlToken(
+        Body = new(
             """
             <p>Welcome to the <b>weekly digest</b>.</p>
             <ul>
@@ -461,7 +566,7 @@ Model:
 public partial class ReportModel
 {
     public required string Title;
-    public required TokenValue Callout;
+    public required OpenXmlToken Callout;
 }
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L209-L218' title='Snippet source file'>snippet source</a> | <a href='#snippet-OpenXmlPropertyModel' title='Start of snippet'>anchor</a></sup>
@@ -490,7 +595,7 @@ await store.Render(
     new ReportModel
     {
         Title = "Status",
-        Callout = new OpenXmlToken(_ =>
+        Callout = new(_ =>
         [
             new Paragraph(
                 new Run(
@@ -525,7 +630,7 @@ Model:
 public partial class StyledModel
 {
     public required string Label;
-    public required TokenValue Highlight;
+    public required MutateToken Highlight;
 }
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L109-L118' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateModel' title='Start of snippet'>anchor</a></sup>
@@ -554,7 +659,7 @@ await store.Render(
     new StyledModel
     {
         Label = "Before",
-        Highlight = new MutateToken((paragraph, _) =>
+        Highlight = new((paragraph, _) =>
         {
             paragraph.Append(
                 new Run(
@@ -654,7 +759,7 @@ await store.Render(model, stream);
 
 The rendered output:
 
-![Rendered output](/src/Parchment.Tests/Scenarios/excelsior-table/output%23page01.verified.png)
+![Rendered output](/src/Parchment.Tests/Scenarios/excelsior-table/output.verified.png)
 
 Rules:
 
@@ -669,7 +774,7 @@ Rules:
 Excelsior's `Link` type renders a clickable cell. A `#name` target is treated as addressing this document rather than the web, matching what `[text](#name)` means in a markdown template:
 
 - **`new Link("#alpha", "Alpha")`** — a hyperlink anchored to the `alpha` bookmark. Excelsior registers every link as an external relationship, which is right for `https://` and wrong for a fragment, so the relationship is dropped and the anchor set in its place.
-- **`new Link("#alpha", "")`** — no text to click, so the cell becomes a `PAGEREF` field instead: the page the bookmark is on. With a [page number resolver](#page-numbers) configured the number is written in before the file is saved, exactly as it is for an empty markdown link.
+- **`new Link("#alpha", "")`** — no text to click, so the cell becomes a `PAGEREF` field instead: the page the bookmark is on. With a [page number resolver](#resolving-page-numbers) configured the number is written in before the file is saved, exactly as it is for an empty markdown link.
 
 That makes a contents table expressible as a model — one column of anchored titles, one of page numbers — instead of as hand-written markdown.
 
@@ -736,6 +841,8 @@ Reference the property with a solo `{{ LinesTable }}` token (it must sit alone i
 
 Mark a `string` property with `[Html]` or `[Markdown]` (any attribute named `HtmlAttribute` / `MarkdownAttribute`, or `[StringSyntax("html")]` / `[StringSyntax("markdown")]`) and the matching `{{ ... }}` substitution is rendered as a structurally-replaced block of Word content instead of raw text. Html runs through the `OpenXmlHtml` converter; markdown runs through the same Markdig pipeline used by the full markdown template flow.
 
+**Both flows read the annotation.** A docx template resolves it per token at render time; a markdown template rewrites the token to carry `| html` or `| markdown` at registration, which is what exempts it from [escaping](#bound-values-are-escaped). Either way the format is declared once, on the member, rather than at every site that renders it. The annotation applies to a member reached from the model root — an annotated member of a loop item is not resolved in either flow — and only to a token that is a plain member access, per [`PARCH010`](#parch010--html--markdown-token-with-filters-or-complex-expression). In a markdown template it applies to the body; a style source's header or footer binds substitutions, loops and conditionals only. An `[Html]` member in a markdown template also inherits that filter's rule that the token be alone in its block, since its value replaces the block it converts into.
+
 The attributes are detected by name — Parchment does not ship them. Define them in a consuming project (or use `[StringSyntax("html")]` from `System.Diagnostics.CodeAnalysis`):
 
 <!-- snippet: HtmlAttribute -->
@@ -788,7 +895,7 @@ await store.Render(model, stream);
 <sup><a href='/src/Parchment.Tests/Docx/FormatAttributeTests.cs#L91-L105' title='Snippet source file'>snippet source</a> | <a href='#snippet-HtmlUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-![Rendered output](/src/Parchment.Tests/Scenarios/html-property/output%23page01.verified.png)
+![Rendered output](/src/Parchment.Tests/Scenarios/html-property/output.verified.png)
 
 `[Markdown]` is the same shape — mark the property with a `MarkdownAttribute`-named attribute (or `[StringSyntax("markdown")]`) and the string is parsed as markdown at render time:
 
@@ -809,7 +916,7 @@ public partial class MarkdownDoc
 
 ![Template before render](/src/Parchment.Tests/Scenarios/markdown-property/input.png)
 
-![Rendered output](/src/Parchment.Tests/Scenarios/markdown-property/output%23page01.verified.png)
+![Rendered output](/src/Parchment.Tests/Scenarios/markdown-property/output.verified.png)
 
 As an alternative to defining custom attributes, `[StringSyntax]` from `System.Diagnostics.CodeAnalysis` is equivalent (case-insensitive):
 
@@ -909,7 +1016,7 @@ await store.Render(model, stream);
 
 The rendered output:
 
-![Rendered output](/src/Parchment.Tests/Scenarios/string-list/output%23page01.verified.png)
+![Rendered output](/src/Parchment.Tests/Scenarios/string-list/output.verified.png)
 
 Behavior:
 
@@ -1281,13 +1388,105 @@ await store.Render(reportModel, stream);
 
 The rendered docx (page 1):
 
-![Markdown template output](/src/Parchment.Tests/UsageTests.Markdown%23page01.verified.png)
+![Markdown template output](/src/Parchment.Tests/UsageTests.Markdown%2300.verified.png)
 
 The optional `styleSource` is a Word template (`.dotx`) whose styles, headers, footers, theme, and section properties (page size, margins, header/footer references) are inherited by the output. If omitted, a built-in blank template is used. On the source-generator path the style source is found by [convention](#how-a-style-document-is-found) — `TypeName.parchment.dotx`, or the nearest `parchment.dotx` up the directory tree — and embedded with the template.
 
 The markdown replaces the body and nothing else, so those inherited parts arrive as authored — and their tokens bind against the same model. A `{{ Season }}` in the style source's header, or a `{% if %}` in its footer, works exactly as it would in the docx flow. Only the body-only token kinds are unavailable there: `[ExcelsiorTable]`, `[Format]`, string lists and editable fields are docx-flow features and do not apply to a markdown template's header.
 
 A Word template (`.dotx`/`.dotm`) is accepted as a style source. The style source is cloned and the clone becomes the rendered output, so the package is retyped to a document at registration — otherwise the output would be template-typed and Word would open it as a new unsaved document based on it rather than as the document itself. The same applies to a template passed to `RegisterDocxTemplate`.
+
+
+### Bound values are escaped
+
+A markdown template is assembled as text and then parsed, so without escaping a model value is not data — it is more template. A `|` ends the table cell it was substituted into, a leading `-` turns the paragraph into a bullet, `{.Heading1}` restyles the paragraph around it, and `<b>` is read as html. Every `{{ }}` result is therefore escaped into the markdown rather than becoming part of it.
+
+Template:
+
+<!-- snippet: EscapingTemplate -->
+<a id='snippet-EscapingTemplate'></a>
+```handlebars
+# Feedback
+
+| Reviewer | Comment |
+| --- | --- |
+| {{ Author }} | {{ Comment }} |
+
+{{ Verdict }}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L41-L49' title='Snippet source file'>snippet source</a> | <a href='#snippet-EscapingTemplate' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+Model:
+
+<!-- snippet: EscapingModel -->
+<a id='snippet-EscapingModel'></a>
+```cs
+[ParchmentBindable]
+public partial class FeedbackModel
+{
+    public required string Author;
+
+    // Whatever the reviewer typed. Text, whether or not it happens to read as markdown.
+    public required string Comment;
+
+    // Written by the template's authors rather than by a reviewer, so it is markup.
+    [Markdown]
+    public required string Verdict;
+}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L18-L33' title='Snippet source file'>snippet source</a> | <a href='#snippet-EscapingModel' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+Render:
+
+<!-- snippet: EscapingUsage -->
+<a id='snippet-EscapingUsage'></a>
+```cs
+await store.Render(
+    new FeedbackModel
+    {
+        Author = "A. Okafor",
+        Comment = "Ship it | but **check** the totals\nand the delivery dates",
+        Verdict = "**Approved** with conditions"
+    },
+    stream);
+```
+<sup><a href='/src/Parchment.Tests/Markdown/EscapingTests.cs#L58-L69' title='Snippet source file'>snippet source</a> | <a href='#snippet-EscapingUsage' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+The rendered docx:
+
+![Escaped bound values](/src/Parchment.Tests/Markdown/EscapingTests.Documented.verified.png)
+
+Four things to read off it. The `|` stayed inside the Comment cell rather than opening a third column. `**check**` printed as the reviewer typed it instead of turning bold. The `\n` became a real line break, inside the cell. And `Verdict` — annotated `[Markdown]` — rendered its `**Approved**` bold, because the annotation is the claim that the value is markup.
+
+Escaping is an **output** concern only. Conditions, filter inputs and loop sources see exactly what the model holds, so `{% if Title == "a|b" %}` still matches.
+
+Three ways to say a value *is* markup — one per site, and two that say it once at the model:
+
+| | |
+|---|---|
+| `{{ Value \| markdown }}` / `{{ Value \| html }}` | States what the value is at the site that renders it, and it is parsed as that. See [Markdown filter](#markdown-filter) and [Html filter](#html-filter). |
+| `{{ Value \| raw }}` | Liquid's own filter. Says only "stop encoding", leaving what the value turns out to be up to Markdig — which for HTML is not the same as converting it. See [`raw` filter](#raw-filter). |
+| `[Markdown]` / `[Html]` / `[StringSyntax]` on the member | Read in both flows. The token is rewritten to carry the matching filter at registration, so the annotation is the single place the format is declared. See [Html and Markdown properties](#html-and-markdown-properties). |
+| A `MarkdownToken` / `HtmlToken` member | The type is the claim. Declare it as `TokenValue` instead when the format varies per render — plain text one time, markup the next. See [Markdown property](#markdown-property) and [Html property](#html-property). |
+
+An annotated member reached by a token carrying anything else — a filter, an expression — is escaped like any other value: what the token renders is that filter's output, not the member the annotation describes. This is the rule the docx flow states as [`PARCH010`](#parch010--html--markdown-token-with-filters-or-complex-expression).
+
+`escape_xml`, `bullet_list` and `numbered_list` handle it themselves — the list filters escape each item while keeping their own markers, so an item reading `1. First` is an item and not a nested list.
+
+Quotes and dashes are deliberately *not* escaped, so [smarty pants](#smarty-pants) still applies to bound text. Values landing inside a code span or fence are the one place escaping cannot help: backslash escapes are not processed there, so the escape prints.
+
+The docx flow needs none of this. It substitutes into Word runs rather than into source, so a value there was always the text it is.
+
+#### Line breaks
+
+A newline in a bound value is a line break in the document, in both flows — the `\n` in `Comment` above is why the rendered cell reads across two lines rather than running on. `\r\n` is one break, not two.
+
+The break stays *inside* the host paragraph — a blank line in a value does not start a new one. A new paragraph would leave the value's own style behind and orphan any `{.Style}` attached to the token's paragraph, so multi-line content keeps the formatting the template gave it.
+
+Editable fields are the exception: their values round-trip back out through extraction, so a newline in one stays a newline in the text rather than becoming a break.
 
 
 ### Supported Markdig extensions
@@ -1317,7 +1516,7 @@ Standard `*italic*`, `**bold**`, and `_italic_` work as usual.
 
 Header cells are bold and centered, and the header row carries `<w:tblHeader/>` so it repeats on every page a table spans. Rendered output:
 
-![Pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableEmitsTableWithGridRowsAndHeaderFormatting%23page01.verified.png)
+![Pipe table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.PipeTableEmitsTableWithGridRowsAndHeaderFormatting.verified.png)
 
 Column alignment markers in the header separator row (`:---`, `:---:`, `---:`) are honored for both header and body cells:
 
@@ -1382,7 +1581,7 @@ A cell spanning several columns emits `<w:gridSpan>` and takes the combined widt
 
 Rendered output:
 
-![Grid table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.GridTableEmitsTableWithCorrectStructure%23page01.verified.png)
+![Grid table output](/src/Parchment.Tests/Markdown/Renderers/TableRendererTests.GridTableEmitsTableWithCorrectStructure.verified.png)
 
 #### [Auto links](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/AutoLinks.md)
 
@@ -1412,7 +1611,7 @@ II. items
 
 Each format produces the corresponding Word numbering definition. Rendered output (lower alpha):
 
-![Lower alpha list output](/src/Parchment.Tests/Markdown/Renderers/ListBlockRendererTests.LowerAlphaListUsesLowerLetterFormat%23page01.verified.png)
+![Lower alpha list output](/src/Parchment.Tests/Markdown/Renderers/ListBlockRendererTests.LowerAlphaListUsesLowerLetterFormat.verified.png)
 
 #### [Smarty pants](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/SmartyPantsSpecs.md)
 
@@ -1621,7 +1820,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L652-L660' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L684-L692' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -1644,7 +1843,7 @@ Model:
 public partial class BrandKit
 {
     public required string Title;
-    public required TokenValue Logo;
+    public required OpenXmlToken Logo;
 }
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L292-L301' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImageTokenModel' title='Start of snippet'>anchor</a></sup>
@@ -1685,7 +1884,7 @@ await store.Render(
     new BrandKit
     {
         Title = "Brand kit",
-        Logo = new OpenXmlToken(context =>
+        Logo = new(context =>
         {
             var relId = context.AddImagePart(imageBytes, "image/png");
 

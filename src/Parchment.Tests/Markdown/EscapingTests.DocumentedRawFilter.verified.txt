@@ -1,0 +1,2 @@
+﻿**Bold** and <i>italic</i>
+Bold and italic

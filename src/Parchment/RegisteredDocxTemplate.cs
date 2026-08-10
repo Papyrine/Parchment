@@ -49,6 +49,9 @@ class RegisteredDocxTemplate(
             foreach (var root in partRoots.Values)
             {
                 Anchors.StripAll(root);
+                // Once every substitution in the part has run, so splitting a w:t can no longer
+                // disturb the offsets the substitutions were driven by.
+                LineBreaks.Apply(root);
             }
 
             // compatibilityMode=15 is baked into the registration snapshot (see

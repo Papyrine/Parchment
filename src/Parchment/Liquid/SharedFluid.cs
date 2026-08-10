@@ -61,7 +61,11 @@ static class SharedFluid
             {
                 if (value is TokenValue token)
                 {
-                    return new StringValue(TokenMarkdown.Render(token));
+                    // A TextToken is a plain string wearing a TokenValue coat, so it is escaped
+                    // like any other bound value. A MarkdownToken or HtmlToken is markup the caller
+                    // picked the type to say so — that declaration is what turns MarkdownEncoder
+                    // off for them.
+                    return new StringValue(TokenMarkdown.Render(token), encode: token is TextToken);
                 }
 
                 return null;

@@ -1,0 +1,2 @@
+﻿**Bound as a string**
+Returned as a MarkdownToken
