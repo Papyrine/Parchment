@@ -2366,6 +2366,18 @@ An `[EditableField]` collection renders as a repeating section and extraction re
 `[Html]` and `[Markdown]` on the same member, or either contradicted by `[StringSyntax]`, is rejected — the markers select the member's rendering, so they have to agree. Pick one.
 
 
+### `PARCH024` — `[Html]` / `[Markdown]` member reached through a loop variable
+
+The marker selects a member's rendering, and the runtime resolves one by walking the model from its root — which has no way to address the item a loop is currently on. So `{{ item.Body }}` inside `{% for item in Items %}` would render `Body` as text with its markup visible, whatever the member is annotated with — which is why it fails the build rather than reaching the document.
+
+Two alternatives survive the loop, because both carry the format with the value instead of looking it up by path:
+
+- return an [`HtmlToken` or `MarkdownToken`](#token-override-hatches) from the member
+- apply [`| html` or `| markdown`](#html-filter) at the token
+
+The annotation still works for a member addressed from the root, including a nested one such as `{{ Bill.Purpose }}`.
+
+
 ### `PARCH100` — template carries a second item type
 
 **Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.
