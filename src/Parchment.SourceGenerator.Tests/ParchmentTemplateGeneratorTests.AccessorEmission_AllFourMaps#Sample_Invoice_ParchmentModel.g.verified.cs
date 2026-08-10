@@ -6,47 +6,51 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Invoice
 {
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
+  [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  internal static class ParchmentGeneratedInvoice
   {
-    new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Customer)),
-    new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Lines)),
-    new("Footer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Footer)),
-    new("Notes", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Notes)),
-  };
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
-  {
-    new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
-    new("Tags", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Tags)),
-  };
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Line =
-  {
-    new("Description", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Description)),
-  };
-  static readonly global::Parchment.Generated.ExcelsiorTableMapEntry[] _ExcelsiorTables =
-  {
-    new("Lines", typeof(global::Sample.Line), o => ((global::Sample.Invoice)o).Lines, null, null, null),
-  };
-  static readonly global::Parchment.Generated.FormatMapEntry[] _Formats =
-  {
-    new("Footer", global::Parchment.Generated.FormatMapKind.Html, o => ((global::Sample.Invoice)o).Footer),
-    new("Notes", global::Parchment.Generated.FormatMapKind.Markdown, o => ((global::Sample.Invoice)o).Notes),
-  };
-  static readonly global::Parchment.Generated.StringListMapEntry[] _StringLists =
-  {
-    new("Customer.Tags", o => ((global::Sample.Invoice)o).Customer?.Tags),
-  };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
+    {
+      new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Customer)),
+      new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Lines)),
+      new("Footer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Footer)),
+      new("Notes", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Notes)),
+    };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+    {
+      new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
+      new("Tags", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Tags)),
+    };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Line =
+    {
+      new("Description", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Description)),
+    };
+    static readonly global::Parchment.Generated.ExcelsiorTableMapEntry[] _ExcelsiorTables =
+    {
+      new("Lines", typeof(global::Sample.Line), o => ((global::Sample.Invoice)o).Lines, null, null, null),
+    };
+    static readonly global::Parchment.Generated.FormatMapEntry[] _Formats =
+    {
+      new("Footer", global::Parchment.Generated.FormatMapKind.Html, o => ((global::Sample.Invoice)o).Footer),
+      new("Notes", global::Parchment.Generated.FormatMapKind.Markdown, o => ((global::Sample.Invoice)o).Notes),
+    };
+    static readonly global::Parchment.Generated.StringListMapEntry[] _StringLists =
+    {
+      new("Customer.Tags", o => ((global::Sample.Invoice)o).Customer?.Tags),
+    };
 
-  [global::System.Runtime.CompilerServices.ModuleInitializer]
-  internal static void InitializeParchmentTemplate()
-  {
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Line), _Accessors_global__Sample_Line);
-    global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof(global::Sample.Invoice), _ExcelsiorTables);
-    global::Parchment.Generated.GeneratedRegistration.RegisterFormat(typeof(global::Sample.Invoice), _Formats);
-    global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof(global::Sample.Invoice), _StringLists);
-    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
-      typeof(global::Sample.Invoice),
-      global::System.Convert.FromBase64String("scrubbed"));
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitializeParchmentTemplate()
+    {
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Line), _Accessors_global__Sample_Line);
+      global::Parchment.Generated.GeneratedRegistration.RegisterExcelsiorTable(typeof(global::Sample.Invoice), _ExcelsiorTables);
+      global::Parchment.Generated.GeneratedRegistration.RegisterFormat(typeof(global::Sample.Invoice), _Formats);
+      global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof(global::Sample.Invoice), _StringLists);
+      global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+        typeof(global::Sample.Invoice),
+        global::System.Convert.FromBase64String("scrubbed"));
+    }
   }
 }

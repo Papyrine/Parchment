@@ -1379,6 +1379,22 @@ public sealed class ParchmentTemplateGenerator :
 
         builder.Indent(depth).AppendLine($"partial {target.DeclaringKind} {target.DeclaringName}");
         builder.Indent(depth).AppendLine("{");
+
+        // Everything emitted here lives in a nested type of its own rather than directly in the
+        // model, so [ExcludeFromCodeCoverage] can sit on it. The accessor tables are one
+        // DelegateAccessor lambda per member of every type reachable from the model, and only the
+        // members a template actually binds are ever invoked — counted as covered code they measure
+        // the shape of the model graph rather than how well the consumer is tested, and drag the
+        // total down accordingly. The attribute cannot go on the model's own partial: that would
+        // exclude the consumer's own members too.
+        //
+        // The type name is folded into the nested type's name for the reason the bindable
+        // initializer folds it into the method's: a derived model would otherwise hide the base's
+        // nested type (CS0108). Internal rather than private because a module initializer has to be
+        // reachable from the module, which a private nested type is not.
+        builder.Indent(depth + 1).AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
+        builder.Indent(depth + 1).AppendLine($"internal static class ParchmentGenerated{target.DeclaringName}");
+        builder.Indent(depth + 1).AppendLine("{");
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.TrimEnd('\r');
@@ -1388,10 +1404,11 @@ public sealed class ParchmentTemplateGenerator :
             }
             else
             {
-                builder.Indent(depth + 1).AppendLine(trimmed);
+                builder.Indent(depth + 2).AppendLine(trimmed);
             }
         }
 
+        builder.Indent(depth + 1).AppendLine("}");
         builder.Indent(depth).AppendLine("}");
 
         for (var i = depth - 1; i >= 0; i--)
