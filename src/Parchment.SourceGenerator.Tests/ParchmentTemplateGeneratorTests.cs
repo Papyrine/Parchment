@@ -473,6 +473,66 @@ public class ParchmentTemplateGeneratorTests
         }
         """;
 
+    // The attribute types are deliberately not declared. A source generator sees only the input
+    // compilation, so an attribute another generator emits — StringSyntaxAttributeAnalyzer's [Html]
+    // shortcut, for one — reaches this one as an error symbol named exactly as written: "Html", not
+    // "HtmlAttribute". Matching only the declared spelling dropped the marker without a word, and the
+    // model rendered its html as visible tags.
+    const string generatedMarkerModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            [Html]
+            public string Body { get; set; } = "";
+
+            [Markdown]
+            public string Notes { get; set; } = "";
+        }
+        """;
+
+    // The same model with the markers removed, so the test below pins the marker rather than
+    // something every string member would get.
+    const string unmarkedModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public string Body { get; set; } = "";
+
+            public string Notes { get; set; } = "";
+        }
+        """;
+
+    static string Emitted(GeneratorDriverRunResult result) =>
+        string.Concat(result.Results.SelectMany(_ => _.GeneratedSources).Select(_ => _.SourceText.ToString()));
+
+    [Test]
+    public async Task FormatMarker_FromAnotherGenerator_IsStillHonoured()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(generatedMarkerModel, "{{ Body }}", "{{ Notes }}"));
+
+        await Assert.That(emitted).Contains("new(\"Body\", global::Parchment.Generated.FormatMapKind.Html");
+        await Assert.That(emitted).Contains("new(\"Notes\", global::Parchment.Generated.FormatMapKind.Markdown");
+    }
+
+    [Test]
+    public async Task UnmarkedMembers_EmitNoFormatEntries()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(unmarkedModel, "{{ Body }}", "{{ Notes }}"));
+
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Html");
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Markdown");
+    }
+
     [Test]
     public async Task FormatToken_MixedInline_NoDiagnostic()
     {

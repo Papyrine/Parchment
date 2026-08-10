@@ -158,12 +158,20 @@ static class ShapeBuilder
                 continue;
             }
 
+            // Both spellings, because the name is all there is to go on and it is not always the
+            // declared one. When the attribute type is emitted by another source generator this one
+            // cannot see it — generators all run against the same input compilation — so the symbol
+            // arrives as an error type named exactly as written, "Html" rather than "HtmlAttribute".
+            // Matching only the declared spelling made those markers vanish without a word, which is
+            // how a whole report silently stopped rendering its html. Nothing is lost by accepting
+            // the short form: this has only ever matched on the bare name, never on where the
+            // attribute came from.
             var name = cls.Name;
-            if (name == "HtmlAttribute")
+            if (name is "HtmlAttribute" or "Html")
             {
                 hasHtml = true;
             }
-            else if (name == "MarkdownAttribute")
+            else if (name is "MarkdownAttribute" or "Markdown")
             {
                 hasMarkdown = true;
             }
