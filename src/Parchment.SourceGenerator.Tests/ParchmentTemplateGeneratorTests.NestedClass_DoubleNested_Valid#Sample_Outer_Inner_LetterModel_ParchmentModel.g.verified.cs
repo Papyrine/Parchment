@@ -10,23 +10,27 @@ partial class Outer
   {
     partial class LetterModel
     {
-      static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Outer_Inner_LetterModel =
+      [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+      internal static class ParchmentGeneratedLetterModel
       {
-        new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Outer.Inner.LetterModel)o).Customer)),
-      };
-      static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
-      {
-        new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
-      };
+        static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Outer_Inner_LetterModel =
+        {
+          new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Outer.Inner.LetterModel)o).Customer)),
+        };
+        static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+        {
+          new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
+        };
 
-      [global::System.Runtime.CompilerServices.ModuleInitializer]
-      internal static void InitializeParchmentTemplate()
-      {
-        global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Outer.Inner.LetterModel), _Accessors_global__Sample_Outer_Inner_LetterModel);
-        global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
-        global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
-          typeof(global::Sample.Outer.Inner.LetterModel),
-          global::System.Convert.FromBase64String("scrubbed"));
+        [global::System.Runtime.CompilerServices.ModuleInitializer]
+        internal static void InitializeParchmentTemplate()
+        {
+          global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Outer.Inner.LetterModel), _Accessors_global__Sample_Outer_Inner_LetterModel);
+          global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
+          global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+            typeof(global::Sample.Outer.Inner.LetterModel),
+            global::System.Convert.FromBase64String("scrubbed"));
+        }
       }
     }
   }

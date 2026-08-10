@@ -30,6 +30,39 @@ public class BindableGeneratorTests
         return Verify(result);
     }
 
+    // The accessor tables are one lambda per member of every reachable type, and only the members a
+    // template binds are ever invoked. Left in the model's own partial they would count as covered
+    // code and measure the model graph rather than the consumer's tests — 3150 lines at 63% in one
+    // repo, enough to drop it below its coverage gate. So they go in a nested type that carries the
+    // exclusion, which the model's own partial could not without excluding the consumer's members.
+    [Test]
+    public async Task GeneratedMembersAreExcludedFromCoverage()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentBindable]
+            public partial class Letter
+            {
+                public string Name { get; set; } = "";
+            }
+            """;
+        var setup = GeneratorDriver.CreateDriverWithFiles(source);
+        var emitted = string.Concat(
+            setup.Driver.RunGenerators(setup.Compilation).GetRunResult()
+                .Results.SelectMany(_ => _.GeneratedSources)
+                .Select(_ => _.SourceText.ToString()));
+
+        await Assert.That(emitted).Contains("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
+        await Assert.That(emitted).Contains("internal static class ParchmentGeneratedLetter");
+        // Inside the nested type rather than beside it.
+        await Assert.That(emitted.IndexOf("internal static class ParchmentGeneratedLetter", System.StringComparison.Ordinal))
+            .IsLessThan(emitted.IndexOf("_Accessors_", System.StringComparison.Ordinal));
+    }
+
     // A class carrying both attributes gets one emission: [ParchmentModel] wins, since it already
     // registers the accessors alongside the embedded template.
     [Test]

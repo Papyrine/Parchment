@@ -6,22 +6,26 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Order
 {
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+  [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  internal static class ParchmentGeneratedOrder
   {
-    new("Items", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Items)),
-  };
-  static readonly global::Parchment.Generated.StringListMapEntry[] _StringLists =
-  {
-    new("Items", o => ((global::Sample.Order)o).Items),
-  };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+    {
+      new("Items", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Items)),
+    };
+    static readonly global::Parchment.Generated.StringListMapEntry[] _StringLists =
+    {
+      new("Items", o => ((global::Sample.Order)o).Items),
+    };
 
-  [global::System.Runtime.CompilerServices.ModuleInitializer]
-  internal static void InitializeParchmentTemplate()
-  {
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
-    global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof(global::Sample.Order), _StringLists);
-    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
-      typeof(global::Sample.Order),
-      global::System.Convert.FromBase64String("scrubbed"));
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitializeParchmentTemplate()
+    {
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
+      global::Parchment.Generated.GeneratedRegistration.RegisterStringList(typeof(global::Sample.Order), _StringLists);
+      global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+        typeof(global::Sample.Order),
+        global::System.Convert.FromBase64String("scrubbed"));
+    }
   }
 }
