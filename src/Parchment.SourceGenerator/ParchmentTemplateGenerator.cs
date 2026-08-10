@@ -1226,6 +1226,22 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
+        // Rooted at a loop variable, so the format marker cannot be honoured: the runtime resolves
+        // one by walking the model from its root, which has no way to address the item the current
+        // iteration is on. The value renders as text with its markup showing, and nothing else says
+        // so — see MarkdownFormats and ScopeTreeRunner.TryResolveFormatted.
+        if (scope.ContainsKey(token.References[0][0]))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.FormatMarkerThroughLoopVariable,
+                    location,
+                    templatePath,
+                    token.Source,
+                    member.Name));
+            return;
+        }
+
         if (token.IsPlainIdentifier)
         {
             return;
