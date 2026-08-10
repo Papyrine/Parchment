@@ -7,6 +7,9 @@ sealed record MemberEntry(
     // [Html] + [Markdown] on one member, or either contradicted by [StringSyntax] — reported as
     // PARCH023 and excluded from format-map emission.
     bool HasFormatConflict = false,
+    // [Html]/[Markdown]/[StringSyntax] on a member already typed as a TokenValue — reported as
+    // PARCH025 and excluded from format-map emission, since the type declares the same thing.
+    bool FormatMarkerOnTokenValue = false,
     bool IsStringList = false,
     bool IsStatic = false,
     string? ExcelsiorHeadingParagraphStyle = null,

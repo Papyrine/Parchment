@@ -581,6 +581,16 @@ public sealed class ParchmentTemplateGenerator :
                             memberDisplay));
                 }
 
+                if (member.FormatMarkerOnTokenValue)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.FormatMarkerOnTokenValue,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay));
+                }
+
                 if (!member.IsEditable)
                 {
                     continue;

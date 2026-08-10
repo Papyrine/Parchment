@@ -210,6 +210,18 @@ static class Diagnostics
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch024--html--markdown-member-reached-through-a-loop-variable");
 
+    // The two say the same thing by different means, and applying both applies the conversion twice:
+    // the token becomes a marker, and the marker's own text is then converted, so the marker renders
+    // into the document. Refused rather than picking a winner, for the same reason as PARCH023.
+    public static readonly DiagnosticDescriptor FormatMarkerOnTokenValue = new(
+        id: "PARCH025",
+        title: "Format marker on a member already typed as a token",
+        messageFormat: "Model '{0}' member '{1}' is typed as a TokenValue and also carries [Html]/[Markdown]/[StringSyntax]. The type already selects the rendering, so the marker would apply it a second time — to the placeholder the first one produced, which renders that placeholder into the document. Drop one: keep the type, or keep the marker and type the member as a plain string.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",
