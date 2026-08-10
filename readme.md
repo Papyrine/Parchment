@@ -2378,6 +2378,15 @@ Two alternatives survive the loop, because both carry the format with the value 
 The annotation still works for a member addressed from the root, including a nested one such as `{{ Bill.Purpose }}`.
 
 
+### `PARCH025` — format marker on a member already typed as a token
+
+A member typed `HtmlToken` or `MarkdownToken` already declares its rendering, so an `[Html]` / `[Markdown]` / `[StringSyntax]` marker on the same member says it twice — and both are applied. The type turns the value into a placeholder for conversion after the parse, and the marker then converts that placeholder's own text, so the placeholder is what reaches the document.
+
+Drop one. Keep the type, or keep the marker and leave the member a plain `string`. The marker is the better choice when the format never varies, since it leaves the model a plain DTO — see [Html and Markdown properties](#html-and-markdown-properties).
+
+The marker is fine on the *stored* value beside it. Only the member the template binds carries the rendering.
+
+
 ### `PARCH100` — template carries a second item type
 
 **Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.

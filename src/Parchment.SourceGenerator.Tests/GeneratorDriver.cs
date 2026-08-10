@@ -23,6 +23,21 @@ static class GeneratorDriver
 
             public sealed class TemplateStore { }
 
+            public abstract class TokenValue
+            {
+                public static implicit operator TokenValue(string text) => null!;
+            }
+
+            public class HtmlToken : TokenValue
+            {
+                public HtmlToken(string html) { }
+            }
+
+            public class MarkdownToken : TokenValue
+            {
+                public MarkdownToken(string markdown) { }
+            }
+
             [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
             public sealed class ExcelsiorTableAttribute : System.Attribute { }
 

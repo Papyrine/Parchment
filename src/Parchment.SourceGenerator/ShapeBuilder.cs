@@ -84,6 +84,10 @@ static class ShapeBuilder
 
                     var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle);
                     var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
+                    // A TokenValue-typed member already declares its rendering by type, so a marker
+                    // on top of it is the same claim made twice — and applying both converts the
+                    // placeholder the first one produced. See PARCH025.
+                    var markerOnToken = (isHtml || isMarkdown) && IsTokenValue(memberType);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -115,6 +119,7 @@ static class ShapeBuilder
                         isHtml,
                         isMarkdown,
                         formatConflict,
+                        markerOnToken,
                         isStringList,
                         isStatic,
                         excelsiorHeadingStyle,
@@ -135,6 +140,21 @@ static class ShapeBuilder
         }
 
         return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type));
+    }
+
+    // Walked rather than compared to a referenced symbol: the shape is built from whatever the
+    // consuming compilation has, and the base chain is enough to recognise one of the token types.
+    static bool IsTokenValue(ITypeSymbol type)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (current.ToDisplayString(format) == "global::Parchment.TokenValue")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool HasParameterlessCtor(ITypeSymbol type) =>

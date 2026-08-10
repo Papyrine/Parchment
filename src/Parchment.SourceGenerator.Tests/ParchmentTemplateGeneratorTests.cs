@@ -618,6 +618,64 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
     }
 
+    // A member that declares its rendering twice: once by type, once by marker. Both are applied,
+    // and the second converts the placeholder the first produced — so the placeholder is what lands
+    // in the document.
+    const string markerOnTokenModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            [Html]
+            public HtmlToken Body => new("");
+        }
+        """;
+
+    [Test]
+    public async Task FormatMarkerOnTokenValue_ReportsParch025()
+    {
+        var result = GeneratorDriver.Run(markerOnTokenModel, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsTrue();
+    }
+
+    // The conflicted member is left out of the format map, so nothing applies the marker on top of
+    // the type while the build is failing over it.
+    [Test]
+    public async Task FormatMarkerOnTokenValue_EmitsNoFormatEntry()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(markerOnTokenModel, "{{ Body }}"));
+
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Html");
+    }
+
+    // The type on its own is the supported way to say it, and draws nothing.
+    [Test]
+    public async Task TokenValueWithoutMarker_NoParch025()
+    {
+        var source = markerOnTokenModel.Replace("    [Html]", "    ");
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsFalse();
+    }
+
+    // So is the marker on its own, on a plain string.
+    [Test]
+    public async Task MarkerOnPlainString_NoParch025()
+    {
+        var source = markerOnTokenModel.Replace("public HtmlToken Body => new(\"\");", "public string Body => \"\";");
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsFalse();
+    }
+
     [Test]
     public async Task FormatToken_MixedInline_NoDiagnostic()
     {
