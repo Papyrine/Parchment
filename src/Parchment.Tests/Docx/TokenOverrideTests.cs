@@ -13,7 +13,7 @@ public partial class TokenOverrideTests
     public partial class NoteModel
     {
         public required string Title;
-        public required TokenValue Body;
+        public required MarkdownToken Body;
     }
 
     #endregion
@@ -39,7 +39,7 @@ public partial class TokenOverrideTests
             new NoteModel
             {
                 Title = "Weekly summary",
-                Body = new MarkdownToken(
+                Body = new(
                     """
                     ## Highlights
 
@@ -112,7 +112,7 @@ public partial class TokenOverrideTests
     public partial class StyledModel
     {
         public required string Label;
-        public required TokenValue Highlight;
+        public required MutateToken Highlight;
     }
 
     #endregion
@@ -138,7 +138,7 @@ public partial class TokenOverrideTests
             new StyledModel
             {
                 Label = "Before",
-                Highlight = new MutateToken((paragraph, _) =>
+                Highlight = new((paragraph, _) =>
                 {
                     paragraph.Append(
                         new Run(
@@ -163,7 +163,7 @@ public partial class TokenOverrideTests
     public partial class PostModel
     {
         public required string Title;
-        public required TokenValue Body;
+        public required HtmlToken Body;
     }
 
     #endregion
@@ -189,7 +189,7 @@ public partial class TokenOverrideTests
             new PostModel
             {
                 Title = "Welcome",
-                Body = new HtmlToken(
+                Body = new(
                     """
                     <p>Welcome to the <b>weekly digest</b>.</p>
                     <ul>
@@ -212,7 +212,7 @@ public partial class TokenOverrideTests
     public partial class ReportModel
     {
         public required string Title;
-        public required TokenValue Callout;
+        public required OpenXmlToken Callout;
     }
 
     #endregion
@@ -238,7 +238,7 @@ public partial class TokenOverrideTests
             new ReportModel
             {
                 Title = "Status",
-                Callout = new OpenXmlToken(_ =>
+                Callout = new(_ =>
                 [
                     new Paragraph(
                         new Run(
@@ -295,7 +295,7 @@ public partial class TokenOverrideTests
     public partial class BrandKit
     {
         public required string Title;
-        public required TokenValue Logo;
+        public required OpenXmlToken Logo;
     }
 
     #endregion
@@ -325,7 +325,7 @@ public partial class TokenOverrideTests
             new BrandKit
             {
                 Title = "Brand kit",
-                Logo = new OpenXmlToken(context =>
+                Logo = new(context =>
                 {
                     var relId = context.AddImagePart(imageBytes, "image/png");
 

@@ -143,6 +143,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var excelsiorTables = ExcelsiorTableMap.Build(model);
         var (rewritten, tablePlaceholders) = MarkdownExcelsiorTables.Rewrite(markdown, excelsiorTables, name);
 
+        // [Html] / [Markdown] members become filtered tokens for the same reason, and after the
+        // Excelsior pass so a marked line is already a marker and cannot match as a plain token.
+        rewritten = MarkdownFormats.Rewrite(rewritten, FormatMap.Build(model));
+
         if (!SharedFluid.Parser.TryParse(rewritten, out var template, out var error))
         {
             throw new ParchmentRegistrationException(

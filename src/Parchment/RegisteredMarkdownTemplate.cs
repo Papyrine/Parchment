@@ -14,14 +14,27 @@ class RegisteredMarkdownTemplate(
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
-        try
+
+        // Scoped to the liquid render alone: html reaching this flow is parked rather than written,
+        // and only what runs inside the render can park it. The map is taken off the scope here and
+        // passed explicitly from now on, so the ambient state ends with the render that owns it.
+        IReadOnlyDictionary<string, string> htmlBlocks;
+        using (var scope = MarkdownHtmlBlocks.BeginScope())
         {
-            await parsedTemplate.RenderAsync(writer, NullEncoder.Default, context);
-        }
-        catch (TokenNotRenderableException exception)
-        {
-            // A Fluid value converter cannot see the template name, so it is attached here.
-            throw new ParchmentRenderException(Name, exception.Message);
+            try
+            {
+                // MarkdownEncoder rather than NullEncoder: a bound value is data, so it is escaped
+                // into the markdown being assembled rather than allowed to become part of its
+                // syntax.
+                await parsedTemplate.RenderAsync(writer, MarkdownEncoder.Default, context);
+            }
+            catch (TokenNotRenderableException exception)
+            {
+                // A Fluid value converter cannot see the template name, so it is attached here.
+                throw new ParchmentRenderException(Name, exception.Message);
+            }
+
+            htmlBlocks = scope.Pending;
         }
 
         var markdownText = writer.ToString();
@@ -50,6 +63,9 @@ class RegisteredMarkdownTemplate(
             // Before anything measures or numbers the document: a table is taller than the marker
             // paragraph it replaces, so every page number after it moves.
             MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, Name);
+
+            // Same reason, and the converted html is likewise taller than the marker it replaces.
+            MarkdownHtmlBlocks.Apply(body, htmlBlocks, mainPart, imagePolicies, Name);
 
             if (sectPr != null)
             {
@@ -144,6 +160,9 @@ class RegisteredMarkdownTemplate(
             runner.ApplyStructural();
 
             Anchors.StripAll(root);
+            // A header or footer is a docx part, so its substitutions go through the text-based
+            // path and its line breaks are materialized the same way the docx flow's are.
+            LineBreaks.Apply(root);
         }
     }
 }

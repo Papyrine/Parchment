@@ -132,7 +132,7 @@ public partial class MarkdownFlowTests
             <!-- begin-snippet: MarkdownTemplatePropertyContent(lang=handlebars) -->
             # {{ Title }}
 
-            {{ Details }}
+            {{ Details | markdown }}
             <!-- end-snippet -->
             """;
 
@@ -175,7 +175,7 @@ public partial class MarkdownFlowTests
             """
             # {{ Title }}
 
-            {{ Details }}
+            {{ Details | raw }}
             """;
 
         using var styleSource = DocxTemplateBuilder.Build();
@@ -198,6 +198,38 @@ public partial class MarkdownFlowTests
                     </ul>
                     <blockquote>Ship it.</blockquote>
                     """
+            },
+            targetStream);
+
+        targetStream.Position = 0;
+        await Verify(targetStream, "docx");
+    }
+
+    // The counterpart to the two above: without an opt-out the same values are the text they are,
+    // so markdown syntax and html tags print instead of restructuring the document around them.
+    [Test]
+    public async Task PropertyContentIsEscapedByDefault()
+    {
+        using var targetStream = new MemoryStream();
+        var markdown =
+            """
+            # {{ Title }}
+
+            {{ Details }}
+            """;
+
+        using var styleSource = DocxTemplateBuilder.Build();
+
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<BriefModel>(
+            markdown,
+            styleSource);
+
+        await store.Render(
+            new BriefModel
+            {
+                Title = "Release notes",
+                Details = "## Not a heading, <b>not bold</b>, and | not a new cell",
             },
             targetStream);
 

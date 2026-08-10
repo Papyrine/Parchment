@@ -91,8 +91,28 @@ class OpenXmlMarkdownRenderer :
             paragraph.ParagraphProperties = properties;
         }
 
+        // Markdig hands adjacent text out as separate inlines whenever anything interrupts the
+        // literal — a backslash escape most of all, and MarkdownEncoder emits one for every
+        // punctuation character in a bound value. A run each would triple the run count of ordinary
+        // prose ("on-call" alone becoming two) for no visible difference, so identically-formatted
+        // neighbours are folded back into one.
+        //
+        // Here rather than in AddRun: an inline renderer can still reach back and mutate the runs it
+        // produced after adding them — EmphasisInlineRenderer applies its formatting to everything
+        // written since it started — so a merge at add time would fuse a run into its neighbour
+        // before that formatting landed, and would leave the renderer's index range pointing at the
+        // wrong runs. By the time a paragraph flushes, every inline in it is final.
         foreach (var run in top.CurrentRuns)
         {
+            if (paragraph.LastChild is Run last &&
+                SoleText(last) is { } previous &&
+                SoleText(run) is { } incoming &&
+                SameProperties(last, (Run) run))
+            {
+                previous.Text += incoming.Text;
+                continue;
+            }
+
             paragraph.Append(run);
         }
 
@@ -139,6 +159,52 @@ class OpenXmlMarkdownRenderer :
         }
 
         stack.Peek().CurrentRuns.Add(run);
+    }
+
+    /// <summary>
+    /// The single <c>w:t</c> a run is made of, or null when it is anything else — a bookmark, a
+    /// break, an image, or a run carrying tabs. Only the single-text case can be merged: everything
+    /// else has structure between or around the text that concatenation would lose.
+    /// </summary>
+    static Text? SoleText(OpenXmlElement element)
+    {
+        if (element is not Run run)
+        {
+            return null;
+        }
+
+        Text? text = null;
+        foreach (var child in run.ChildElements)
+        {
+            if (child is RunProperties)
+            {
+                continue;
+            }
+
+            if (text != null ||
+                child is not Text candidate)
+            {
+                return null;
+            }
+
+            text = candidate;
+        }
+
+        return text;
+    }
+
+    static bool SameProperties(Run left, Run right)
+    {
+        var leftProperties = left.RunProperties;
+        var rightProperties = right.RunProperties;
+
+        if (leftProperties == null)
+        {
+            return rightProperties == null;
+        }
+
+        return rightProperties != null &&
+               leftProperties.OuterXml == rightProperties.OuterXml;
     }
 
     internal void PushInlineHtmlFormat(string tagName, Action<RunProperties> apply) =>
