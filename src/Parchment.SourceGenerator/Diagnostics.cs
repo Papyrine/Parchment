@@ -197,6 +197,19 @@ static class Diagnostics
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch023--member-carries-conflicting-format-markers");
 
+    // An error, like every other "this format marker cannot be honoured" case — PARCH010, PARCH023,
+    // PARCH007/008. The document still renders, but it renders the member's markup as visible text,
+    // which is wrong output rather than a lesser rendering. A build that trips this has been
+    // producing wrong documents already; stopping it is the point.
+    public static readonly DiagnosticDescriptor FormatMarkerThroughLoopVariable = new(
+        id: "PARCH024",
+        title: "[Html]/[Markdown] member is reached through a loop variable",
+        messageFormat: "Template '{0}' token '{1}' reaches the [Html]/[Markdown] member '{2}' through a loop variable. The format is resolved by walking the model from its root, which cannot address one iteration's item, so the value would render as text with its markup visible. Return a MarkdownToken or HtmlToken from the member instead, or apply the '| markdown' / '| html' filter at the token.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch024--html--markdown-member-reached-through-a-loop-variable");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",

@@ -533,6 +533,91 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(emitted).DoesNotContain("FormatMapKind.Markdown");
     }
 
+    // A format marker on a loop element. The runtime resolves one by walking the model from its
+    // root, so it cannot address the item an iteration is on — the marker is silently not applied
+    // and the markup shows in the document.
+    const string loopedMarkerModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public class Line
+        {
+            [Html]
+            public string Body { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public List<Line> Lines { get; set; } = new();
+
+            [Html]
+            public string Intro { get; set; } = "";
+        }
+        """;
+
+    [Test]
+    public async Task FormatMarker_ThroughLoopVariable_ReportsParch024()
+    {
+        var result = GeneratorDriver.Run(
+            loopedMarkerModel,
+            "{% for line in Lines %}",
+            "{{ line.Body }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsTrue();
+    }
+
+    // Addressable from the root, so the marker is honoured and nothing is reported.
+    [Test]
+    public async Task FormatMarker_FromRoot_NoParch024()
+    {
+        var result = GeneratorDriver.Run(loopedMarkerModel, "{{ Intro }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
+    // An unmarked member reached the same way is ordinary text — the loop is not what is wrong.
+    [Test]
+    public async Task UnmarkedMember_ThroughLoopVariable_NoParch024()
+    {
+        var source = loopedMarkerModel.Replace("    [Html]", "    ");
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for line in Lines %}",
+            "{{ line.Body }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
+    // The markdown flow reaches the same conclusion by a different route: the rewrite that applies
+    // a marker matches a token path against the map built from the model root, and a loop variable
+    // is not addressable from there.
+    [Test]
+    public async Task FormatMarker_ThroughLoopVariable_ReportsParch024_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            loopedMarkerModel,
+            "{% for line in Lines %}\n{{ line.Body }}\n{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsTrue();
+    }
+
+    [Test]
+    public async Task FormatMarker_FromRoot_NoParch024_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(loopedMarkerModel, "{{ Intro }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
     [Test]
     public async Task FormatToken_MixedInline_NoDiagnostic()
     {
