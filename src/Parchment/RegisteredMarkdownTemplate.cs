@@ -67,6 +67,10 @@ class RegisteredMarkdownTemplate(
             // Same reason, and the converted html is likewise taller than the marker it replaces.
             MarkdownHtmlBlocks.Apply(body, htmlBlocks, mainPart, imagePolicies, Name);
 
+            // Before the trailing section is attached, because the last [SECTION] in the template
+            // is what that section describes — see SectionBreaks.
+            SectionBreaks.Apply(body, sectPr, Name);
+
             if (sectPr != null)
             {
                 body.AppendChild(sectPr);

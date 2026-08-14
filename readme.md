@@ -1643,7 +1643,7 @@ Two things markdown does with tabs elsewhere still apply, since they happen befo
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
 
-An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
+An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents) and `orientation`/`margins` on a [`[SECTION]`](#page-orientation)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
 
 Headings and paragraphs take the style as their `ParagraphStyleId`:
 
@@ -1744,6 +1744,31 @@ Contents {.TOCHeading}
 **Fields carry instructions, not answers.** A table of contents and a page reference both depend on where content lands on a page, which is a product of layout — so by default the rendered docx holds the field, and Word computes the value. Both are emitted dirty, so Word builds the table of contents when the document opens and offers to refresh page references. Until then a placeholder shows in their place, which is what a reader that does not update fields will display.
 
 To fill them in instead, see [Resolving page numbers](#resolving-page-numbers).
+
+
+### Page orientation
+
+A paragraph whose entire content is `[SECTION]` becomes a Word section break, so a document can turn a page sideways for the content that needs it and turn back afterwards:
+
+```markdown
+Portrait to begin with.
+
+[SECTION]{orientation=landscape}
+
+A wide table belongs here.
+
+[SECTION]{orientation=portrait}
+
+And back to portrait.
+```
+
+`orientation` takes `landscape` or `portrait` and is required. `margins` optionally takes the four page edges in twips, in the order css writes them — `[SECTION]{orientation=landscape margins=1134,1418,1134,1418}` — and the header and footer distances stay as the style source set them. Margins that do not parse are ignored and the page keeps the ones it had.
+
+Everything else about the page comes from the [style source](#markdown-template): each section is derived from its `<w:sectPr>`, so headers, footers, page borders and paper size carry into all of them rather than being dropped for the two properties the marker named. Page numbering continues across the breaks — only the first section keeps a `w:pgNumType` start, matching what Word writes when a section break is inserted by hand. A template with no style source has no page setup to derive from, and rendering one throws.
+
+The marker reads as "from here on", which is not how Word stores it: a `<w:sectPr>` inside a paragraph describes the section that *ends* there. That inversion is handled on the way in, so the settings a marker declares apply to what follows it, and the last marker in the template describes the rest of the document.
+
+`[SECTION]` follows `[TOC]` in costing no syntax: with no `(url)` or `[label]` after it, markdown leaves it as the literal text `[SECTION]`, so a template that also renders to html degrades to showing the marker. An `orientation` that is missing or unrecognised is not read as a marker at all and stays that text, which is what makes a typo visible rather than a section break that quietly changes nothing. As with any [generic attribute](#generic-attributes), a marker in a table cell cannot receive one and stays text too.
 
 
 ### Resolving page numbers
