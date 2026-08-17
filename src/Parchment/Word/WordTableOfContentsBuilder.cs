@@ -48,10 +48,14 @@ static partial class WordTableOfContentsBuilder
         var end = source.Elements<Run>()
             .LastOrDefault(_ => _.GetFirstChild<FieldChar>()?.FieldCharType?.Value == FieldCharValues.End);
 
+        // After the entry's properties rather than at the front of it: w:pPr has to stay the
+        // paragraph's first child, and Word discards the whole of it when a run comes first — so the
+        // first entry alone would lose its TOC style and the tab stop its dot leader hangs off.
+        var anchor = entries[0].ParagraphProperties!;
         for (var i = leading.Count - 1; i >= 0; i--)
         {
             leading[i].Remove();
-            entries[0].InsertAt(leading[i], 0);
+            anchor.InsertAfterSelf(leading[i]);
         }
 
         if (end != null)

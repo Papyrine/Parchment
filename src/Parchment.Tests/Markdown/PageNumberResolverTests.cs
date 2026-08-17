@@ -1,4 +1,6 @@
+using DocumentFormat.OpenXml.Validation;
 // ReSharper disable PartialTypeWithSinglePart
+
 public partial class PageNumberResolverTests
 {
     [ParchmentBindable]
@@ -45,7 +47,7 @@ public partial class PageNumberResolverTests
         }
     }
 
-    static async Task<Body> Render(IPageNumberResolver? resolver)
+    static async Task<MemoryStream> RenderStream(IPageNumberResolver? resolver)
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore
@@ -54,7 +56,7 @@ public partial class PageNumberResolverTests
         };
         store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
 
-        using var stream = new MemoryStream();
+        var stream = new MemoryStream();
         await store.Render(
             new ReportModel
             {
@@ -62,6 +64,12 @@ public partial class PageNumberResolverTests
             },
             stream);
         stream.Position = 0;
+        return stream;
+    }
+
+    static async Task<Body> Render(IPageNumberResolver? resolver)
+    {
+        using var stream = await RenderStream(resolver);
         using var doc = WordprocessingDocument.Open(stream, false);
         return (Body)doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
     }
@@ -87,6 +95,25 @@ public partial class PageNumberResolverTests
         var tab = entry.ParagraphProperties.GetFirstChild<Tabs>()!.GetFirstChild<TabStop>()!;
         await Assert.That(tab.Val?.Value).IsEqualTo(TabStopValues.Right);
         await Assert.That(tab.Leader?.Value).IsEqualTo(TabStopLeaderCharValues.Dot);
+    }
+
+    // The field's begin/instruction/separate markers move onto the first entry, and a w:pPr that is
+    // no longer the paragraph's first child is one Word throws away whole: that entry renders as
+    // body text with no dot leader while every entry below it looks right.
+    [Test]
+    public async Task FieldMarkersLandAfterTheFirstEntrysProperties()
+    {
+        using var stream = await RenderStream(new StubResolver());
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var entry = doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .First(_ => _.Elements<Hyperlink>().Any());
+
+        await Assert.That(entry.Descendants<FieldChar>().Any()).IsTrue();
+        await Assert.That(entry.FirstChild).IsTypeOf<ParagraphProperties>();
+
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+        await Assert.That(validator.Validate(doc).Select(_ => $"{_.Description} @ {_.Path?.XPath}")).IsEmpty();
     }
 
     // A heading the author never gave an id still has to be linkable, so it gets one named the way
