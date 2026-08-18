@@ -806,9 +806,31 @@ public required IReadOnlyList<QuoteLine> Lines;
 
 All three ids must exist in the template's styles part. `TableGrid` is inserted when a host lacks it, being a Word built-in with a known definition; a template's own style is the template's to define, so a missing one renders unstyled rather than as something invented. (These map straight onto Excelsior's `WordTableBuilder.HeadingParagraphStyle`/`BodyParagraphStyle`/`TableStyle`.)
 
+An attribute carries constants, and some of what a table needs is code — per-column configuration, merged rows. `Configure` names a static method on the declaring type that receives the builder after the attribute's own settings, so what it sets wins:
+
+<!-- snippet: ExcelsiorTableConfigure -->
+<a id='snippet-ExcelsiorTableConfigure'></a>
+```cs
+[ParchmentBindable]
+public partial class ConfiguredQuoteModel
+{
+    [ExcelsiorTable(Configure = nameof(Configure))]
+    public required IReadOnlyList<QuoteLine> Lines { get; init; }
+
+    // The escape hatch for what the attribute cannot say: it carries constants, and per-column
+    // configuration is code. Called with the builder after the attribute settings are applied.
+    static void Configure(WordTableBuilder<QuoteLine> builder) =>
+        builder.Column(_ => _.Description, _ => _.Heading = "Deliverable");
+}
+```
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownExcelsiorTableTests.cs#L19-L33' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableConfigure' title='Start of snippet'>anchor</a></sup>
+<!-- endSnippet -->
+
+The name is resolved at compile time: the source generator emits a direct call, so a missing method is [`PARCH026`](#parch026--excelsiortable-configure-method-not-found) on the member that named it, and a wrong signature is an ordinary compile error.
+
 #### Loop-scoped or fully-custom tables
 
-`[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. The same applies when a table needs styling or grouping beyond what the attribute exposes. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
+`[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
 
 <!-- snippet: ExcelsiorTableViaOpenXmlToken -->
 <a id='snippet-ExcelsiorTableViaOpenXmlToken'></a>
@@ -2410,6 +2432,21 @@ A member typed `HtmlToken` or `MarkdownToken` already declares its rendering, so
 Drop one. Keep the type, or keep the marker and leave the member a plain `string`. The marker is the better choice when the format never varies, since it leaves the model a plain DTO — see [Html and Markdown properties](#html-and-markdown-properties).
 
 The marker is fine on the *stored* value beside it. Only the member the template binds carries the rendering.
+
+
+### `PARCH026` — `[ExcelsiorTable]` Configure method not found
+
+`Configure` names a static method on the type declaring the member, and the name resolved to nothing there. The generated registration calls the method directly, so left alone this would fail as a compile error inside a generated file — correct, but pointing at code nobody wrote. Reported on the member that named it instead.
+
+Declare the method beside the member and reference it with `nameof`:
+
+```cs
+[ExcelsiorTable(Configure = nameof(ConfigureLines))]
+public List<Line> Lines { get; set; } = new();
+
+static void ConfigureLines(WordTableBuilder<Line> builder) =>
+    ...
+```
 
 
 ### `PARCH100` — template carries a second item type

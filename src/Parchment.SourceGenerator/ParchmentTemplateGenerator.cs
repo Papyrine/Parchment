@@ -1,4 +1,4 @@
-[Generator]
+﻿[Generator]
 public sealed class ParchmentTemplateGenerator :
     IIncrementalGenerator
 {
@@ -569,6 +569,18 @@ public sealed class ParchmentTemplateGenerator :
                     }
 
                     continue;
+                }
+
+                if (member.ExcelsiorConfigureMissing)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorConfigureMissing,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay,
+                            member.ExcelsiorConfigure ?? "",
+                            Display(type.TypeFullyQualifiedName)));
                 }
 
                 if (member.HasFormatConflict)

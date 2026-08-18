@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Renders <c>[ExcelsiorTable]</c> members as Word tables in the markdown flow.
 /// </summary>
 /// <remarks>
@@ -193,7 +193,8 @@ static class MarkdownExcelsiorTables
             mainPart,
             entry.HeadingParagraphStyle,
             entry.BodyParagraphStyle,
-            entry.TableStyle);
+            entry.TableStyle,
+            entry.Configure);
 
         parent.InsertBefore(table, host);
 

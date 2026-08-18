@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Builds a primitive-only <see cref="ModelShape"/> from a live <see cref="INamedTypeSymbol"/>
 /// at extract time. Consuming the shape downstream (instead of the symbol) is what makes the
 /// incremental pipeline actually cacheable.
@@ -82,7 +82,28 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle);
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure);
+                    // Resolved here, where the declaring symbol is at hand: the generated code
+                    // calls the method directly, so the name has to become a qualified target - and
+                    // a name that resolves to no static method becomes the diagnostic instead.
+                    string? excelsiorConfigureCall = null;
+                    var excelsiorConfigureMissing = false;
+                    if (excelsiorConfigure != null)
+                    {
+                        var hasMethod = current.GetMembers(excelsiorConfigure)
+                            .OfType<IMethodSymbol>()
+                            .Any(_ => _.IsStatic && _.Parameters.Length == 1);
+                        if (hasMethod)
+                        {
+                            excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
+                        }
+                        else
+                        {
+                            // The raw name, for the diagnostic to quote.
+                            excelsiorConfigureCall = excelsiorConfigure;
+                            excelsiorConfigureMissing = true;
+                        }
+                    }
                     var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
                     // A TokenValue-typed member already declares its rendering by type, so a marker
                     // on top of it is the same claim made twice — and applying both converts the
@@ -131,7 +152,9 @@ static class ShapeBuilder
                         isEditable && HasUsableSetter(member),
                         editableMultiLine,
                         editableDateFormat,
-                        editableCollectionElementFqn));
+                        editableCollectionElementFqn,
+                        excelsiorConfigureCall,
+                        excelsiorConfigureMissing));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -230,11 +253,12 @@ static class ShapeBuilder
         ModelSymbolResolver.TryGetElementType(type, out var element) &&
         element is {SpecialType: SpecialType.System_String};
 
-    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle)
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure)
     {
         headingParagraphStyle = null;
         bodyParagraphStyle = null;
         tableStyle = null;
+        configure = null;
         if (excelsiorTableType is null)
         {
             return false;
@@ -267,6 +291,10 @@ static class ShapeBuilder
                 else if (named.Key == "TableStyle")
                 {
                     tableStyle = value;
+                }
+                else if (named.Key == "Configure")
+                {
+                    configure = value;
                 }
             }
 

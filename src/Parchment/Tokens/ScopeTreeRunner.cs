@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Walks a cached scope tree against a cloned docx, evaluating substitution tokens and block tags
 /// to produce the final rendered document.
 /// </summary>
@@ -402,7 +402,7 @@ class ScopeTreeRunner(
             return OpenXmlToken.Empty;
         }
 
-        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle)]);
+        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure)]);
     }
 
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)

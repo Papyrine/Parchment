@@ -1,4 +1,4 @@
-public class ParchmentTemplateGeneratorTests
+﻿public class ParchmentTemplateGeneratorTests
 {
     const string letterModelDocx =
         """
@@ -1238,6 +1238,76 @@ public class ParchmentTemplateGeneratorTests
             "{{ Footer }}",
             "{{ Notes }}");
         return Verify(result);
+    }
+
+    [Test]
+    public Task ExcelsiorConfigure_EmitsDirectCall()
+    {
+        // The generated entry closes over the element type and calls the named method directly, so
+        // a wrong signature is an ordinary compile error rather than a render-time failure. The
+        // method takes object here because this compilation does not reference Excelsior - the
+        // typed cast in the emission is what the snapshot pins.
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                [ExcelsiorTable(Configure = nameof(ConfigureLines))]
+                public List<Line> Lines { get; set; } = new();
+
+                internal static void ConfigureLines(object builder)
+                {
+                }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Lines }}");
+        return Verify(result);
+    }
+
+    // The generated code calls the method directly, so an unresolvable name would surface as a
+    // compile error inside a .g.cs file - correct, but pointing at code nobody wrote. Reported on
+    // the member that named it instead, with the emission suppressed so this is the only error.
+    [Test]
+    public async Task ExcelsiorConfigureMissing_Reports()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                [ExcelsiorTable(Configure = "Nope")]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+
+        var error = diagnostics.SingleOrDefault(_ => _.Id == "PARCH026");
+        await Assert.That(error).IsNotNull();
+        await Assert.That(error!.GetMessage()).Contains("Nope");
+        var generated = result.Results.Single().GeneratedSources
+            .Single(_ => _.HintName.Contains("Invoice"));
+        await Assert.That(generated.SourceText.ToString()).DoesNotContain("Nope");
     }
 
     [Test]
