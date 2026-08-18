@@ -1,4 +1,4 @@
-// begin-snippet: ImageTokenAliases
+﻿// begin-snippet: ImageTokenAliases
 using A = DocumentFormat.OpenXml.Drawing;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
@@ -243,11 +243,11 @@ public partial class TokenOverrideTests
                     new Paragraph(
                         new Run(
                             new RunProperties(
+                                new Bold(),
                                 new Color
                                 {
                                     Val = "C00000"
-                                },
-                                new Bold()),
+                                }),
                             new Text("Critical: review required")
                             {
                                 Space = SpaceProcessingModeValues.Preserve

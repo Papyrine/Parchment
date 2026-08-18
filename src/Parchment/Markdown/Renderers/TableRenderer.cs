@@ -1,4 +1,4 @@
-class TableRenderer :
+﻿class TableRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, Markdig.Extensions.Tables.Table>
 {
     // Approximate page-content width budget in dxa (twentieths of a point). When
@@ -113,17 +113,26 @@ class TableRenderer :
                 });
         }
 
+        // Direct formatting beats a table style in Word, so emitting the default borders and cell
+        // margins alongside a tblStyle would silently override the style the caller asked for.
+        // Without a style they are the only thing making the table legible, so they stay.
+        //
+        // Borders and margins are split around the layout because that is the order the schema
+        // declares them - tblBorders, then tblLayout, then tblCellMar - and it does not accept
+        // another, however tolerant Word is of one.
+        var directFormatting = styleId == null;
+        if (directFormatting)
+        {
+            properties.Append(BuildBorders());
+        }
+
         if (hasColumnWidths)
         {
             properties.Append(new TableLayout { Type = TableLayoutValues.Fixed });
         }
 
-        // Direct formatting beats a table style in Word, so emitting the default borders and cell
-        // margins alongside a tblStyle would silently override the style the caller asked for.
-        // Without a style they are the only thing making the table legible, so they stay.
-        if (styleId == null)
+        if (directFormatting)
         {
-            properties.Append(BuildBorders());
             properties.Append(BuildCellMargins());
         }
 
@@ -137,12 +146,12 @@ class TableRenderer :
                 Val = BorderValues.Single,
                 Size = 4
             },
-            new BottomBorder
+            new LeftBorder
             {
                 Val = BorderValues.Single,
                 Size = 4
             },
-            new LeftBorder
+            new BottomBorder
             {
                 Val = BorderValues.Single,
                 Size = 4

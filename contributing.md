@@ -266,6 +266,14 @@ See `readme.md` → "Determinism". Implementation discipline: avoid `w:rsid` ran
 
 `ZipTimestamps` patches only the four DOS time/date bytes in each local header and central directory record — no reordering, no recompression, no content rewrite. **`DeterministicIoPackaging.DeterministicPackage.Convert` was tried here and reverted**: it is built for snapshot normalization and rewrites entry *content*, which for product output loses document data — it normalizes core properties (dropping the template's own `dc:creator` that the document-properties merge exists to preserve) and its png normalizer throws on a minimal 1×1 png. The stable date matches that package's, so archives normalized by either read the same.
 
+### Schema validation (`src/Parchment.Tests/SchemaValidationTests.cs`)
+
+Every checked-in `.verified.docx` is run through `OpenXmlValidator` as its own test case. The render calls are spread across forty test files with no shared harness, so the snapshots — the recorded output of every flow — are what there is to hang the assertion on. Accepting a snapshot is therefore what puts a new document in front of the validator; there is no check at the point of render.
+
+**This is the only thing in the suite that holds output to the schema.** Morph reaches for elements through the OpenXML object model, which finds a child wherever it sits inside its parent, so a document Word refuses still paginates and renders and the page snapshots agree with it. Word is stricter: it discards a whole element it finds out of place. That gap hid three defects at once — a `w:pPr` written after the runs in the first table-of-contents entry (which cost it its style and its dot leader in Word alone), `w:tblBorders` emitting `left` after `bottom`, and nested emphasis appending a second `w:i` to a run that already had one.
+
+Element order is the trap. The OpenXML SDK's `Append` puts a child at the end regardless of where the schema declares it, so anything built by appending needs the sequence kept by hand — see `TableRenderer.BuildTableProperties`, which splits the borders and the cell margins around the table layout for exactly this reason. Where a typed property exists (`RunProperties.RunStyle`, `Paragraph.ParagraphProperties`) assigning through it places the element correctly; prefer that.
+
 ### Scenario directories (`src/Parchment.Tests/Scenarios/`)
 
 Self-contained example folders the readme references for before/after of a feature. One subdirectory per scenario:

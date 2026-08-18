@@ -600,11 +600,11 @@ await store.Render(
             new Paragraph(
                 new Run(
                     new RunProperties(
+                        new Bold(),
                         new Color
                         {
                             Val = "C00000"
-                        },
-                        new Bold()),
+                        }),
                     new Text("Critical: review required")
                     {
                         Space = SpaceProcessingModeValues.Preserve
