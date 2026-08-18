@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Cache of <see cref="ExcelsiorTableAttribute"/>-marked properties reachable from a model type,
 /// keyed by their dotted path from the root (e.g. <c>Customer.Lines</c>). Built once at template
 /// registration time so render-time lookup is a single dictionary hit.
@@ -30,7 +30,7 @@ sealed class ExcelsiorTableMap
         var dict = new Dictionary<string, ExcelsiorTableEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
-            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle);
+            dict[entry.DottedPath] = new(entry.ElementType, entry.Getter, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure);
         }
 
         precompiledCache[modelType] = new(dict);

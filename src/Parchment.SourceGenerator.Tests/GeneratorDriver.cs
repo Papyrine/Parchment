@@ -1,4 +1,4 @@
-static class GeneratorDriver
+﻿static class GeneratorDriver
 {
     const string attributeSource =
         """
@@ -39,7 +39,16 @@ static class GeneratorDriver
             }
 
             [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
-            public sealed class ExcelsiorTableAttribute : System.Attribute { }
+            public sealed class ExcelsiorTableAttribute : System.Attribute
+            {
+                public string? HeadingParagraphStyle { get; set; }
+
+                public string? BodyParagraphStyle { get; set; }
+
+                public string? TableStyle { get; set; }
+
+                public string? Configure { get; set; }
+            }
 
             [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
             public sealed class EditableFieldAttribute : System.Attribute

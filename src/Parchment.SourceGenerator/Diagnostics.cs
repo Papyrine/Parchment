@@ -1,4 +1,4 @@
-static class Diagnostics
+﻿static class Diagnostics
 {
     public static readonly DiagnosticDescriptor MissingMember = new(
         id: "PARCH001",
@@ -221,6 +221,19 @@ static class Diagnostics
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
+
+    // The generated code calls the method directly, so an unresolvable name would otherwise
+    // surface as a compile error inside a .g.cs file - correct, but pointing at code nobody wrote.
+    // This reports it on the member that named it instead, and suppresses the emission so the
+    // diagnostic is the only error rather than the first of a cascade.
+    public static readonly DiagnosticDescriptor ExcelsiorConfigureMissing = new(
+        id: "PARCH026",
+        title: "[ExcelsiorTable] Configure method not found",
+        messageFormat: "Model '{0}' member '{1}' names '{2}' in [ExcelsiorTable(Configure)], which is not a static method on '{3}'. Declare 'static void {2}(WordTableBuilder<TElement> builder)' beside the member, and reference it with nameof.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
 
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",

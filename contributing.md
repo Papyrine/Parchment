@@ -148,6 +148,8 @@ A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered
 
 Runtime and SG enforce same two rules via different mechanisms: runtime inspects Fluid AST directly; SG reads a boolean baked in by `TokenScanner`. Tests: `ExcelsiorTableTests` (runtime) and `ExcelsiorToken_*` (SG).
 
+**`Configure` hook.** The attribute's `Configure` names a static method on the declaring type that receives the `WordTableBuilder<TElement>` after the attribute settings — the escape hatch for what an attribute cannot carry (per-column config, merged rows). The SG resolves it at compile time: `ShapeBuilder` turns the name into a qualified call target (or sets `ExcelsiorConfigureMissing` → `PARCH026`, with emission suppressed so the diagnostic is the only error), and `AccessorEmission` emits `b => Declaring.Method((WordTableBuilder<Element>)b)` into the map entry as an `Action<object>`. No name is resolved at render time — a wrong signature is an ordinary compile error in the generated call. `ExcelsiorTableBridge` invokes it after the attribute styles, so what Configure sets wins. The `GeneratorDriver` stub of the attribute must mirror new attribute properties, or test compilations silently drop the named argument.
+
 ### Html / Markdown property dispatch (`[Html]` / `[Markdown]`)
 
 Parallel to Excelsior but for string properties: a `string`/`string?` property marked with user-defined `HtmlAttribute`/`MarkdownAttribute` (detected by type name — Parchment doesn't ship the attributes) or `[StringSyntax("html")]`/`[StringSyntax("markdown")]` causes its `{{ Property }}` to be structurally replaced. Html runs through `OpenXmlHtml.WordHtmlConverter.ToElements`; markdown runs through the same `MarkdownRendering.Render` used by markdown-template flow.

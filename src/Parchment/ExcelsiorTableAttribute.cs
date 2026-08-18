@@ -1,4 +1,4 @@
-namespace Parchment;
+﻿namespace Parchment;
 
 /// <summary>
 /// Marks a model property or field whose value should be rendered as a Word table by
@@ -33,4 +33,18 @@ public sealed class ExcelsiorTableAttribute :
     /// borders, banding, and cell margins. Maps to <c>WordTableBuilder.TableStyle</c>.
     /// </summary>
     public string? TableStyle { get; set; }
+
+    /// <summary>
+    /// Optional name of a static method on the declaring type - written as <c>nameof(...)</c> -
+    /// that receives the <c>WordTableBuilder&lt;TElement&gt;</c> before the table is built:
+    /// <c>static void Configure(WordTableBuilder&lt;Line&gt; builder)</c>. The escape hatch for
+    /// everything the attribute cannot say - per-column configuration, merged rows - since an
+    /// attribute can only carry constants and the builder is otherwise Parchment's to construct.
+    /// </summary>
+    /// <remarks>
+    /// Resolved at compile time: the source generator emits a direct call, so a missing method is
+    /// PARCH026 rather than a render-time failure, and a wrong signature is an ordinary compile
+    /// error. Runs after the attribute's own settings, so what it sets wins.
+    /// </remarks>
+    public string? Configure { get; set; }
 }

@@ -1,4 +1,4 @@
-// ReSharper disable PartialTypeWithSinglePart
+﻿// ReSharper disable PartialTypeWithSinglePart
 
 /// <summary>
 /// <c>[ExcelsiorTable]</c> in the markdown flow: the token is replaced before the source is parsed
@@ -15,6 +15,22 @@ public partial class MarkdownExcelsiorTableTests
         [ExcelsiorTable]
         public required IReadOnlyList<QuoteLine> Lines { get; init; }
     }
+
+    #region ExcelsiorTableConfigure
+
+    [ParchmentBindable]
+    public partial class ConfiguredQuoteModel
+    {
+        [ExcelsiorTable(Configure = nameof(Configure))]
+        public required IReadOnlyList<QuoteLine> Lines { get; init; }
+
+        // The escape hatch for what the attribute cannot say: it carries constants, and per-column
+        // configuration is code. Called with the builder after the attribute settings are applied.
+        static void Configure(WordTableBuilder<QuoteLine> builder) =>
+            builder.Column(_ => _.Description, _ => _.Heading = "Deliverable");
+    }
+
+    #endregion
 
     public class QuoteLine
     {
@@ -38,6 +54,37 @@ public partial class MarkdownExcelsiorTableTests
                 new() { Description = "Cabling", Quantity = 40, UnitPrice = 35m }
             ]
         };
+
+    // Configure is resolved by the source generator into a direct call, so this passing at all
+    // proves the pipeline: attribute name -> generated delegate -> bridge -> builder.
+    [Test]
+    public async Task ConfigureShapesTheBuilder()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ConfiguredQuoteModel>("{{ Lines }}", styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ConfiguredQuoteModel
+            {
+                Lines = Quote().Lines
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var headings = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<Table>()
+            .Single()
+            .Elements<TableRow>()
+            .First()
+            .Elements<TableCell>()
+            .Select(_ => _.InnerText)
+            .ToList();
+
+        await Assert.That(string.Join(", ", headings)).IsEqualTo("Deliverable, Qty, Unit Price");
+    }
 
     static async Task<MemoryStream> Render(string markdown, QuoteModel? model = null)
     {

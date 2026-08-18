@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Source-generator emission of pre-compiled registration data covering every reachable type
 /// in the model graph. Produces four parallel datasets so the runtime's reflection walks
 /// (<c>SharedFluid.RegisterTypeGraph</c>, <c>ExcelsiorTableMap.WalkType</c>,
@@ -43,7 +43,7 @@ static class AccessorEmission
         }
 
         var fluidBlocks = new List<(string FieldName, TypeEntry Type)>();
-        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle)>();
+        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle, string? ConfigureCall)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
         var editableEntries = new List<(List<string> Path, MemberEntry Member)>();
@@ -111,7 +111,7 @@ static class AccessorEmission
         List<string> path,
         HashSet<string> visited,
         Dictionary<string, TypeEntry> typesByFqn,
-        List<(List<string>, string, string?, string?, string?)> excelsior,
+        List<(List<string>, string, string?, string?, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
         List<(List<string>, MemberEntry)> editables,
@@ -144,7 +144,7 @@ static class AccessorEmission
                 if (typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
                     memberType.ElementTypeFullyQualifiedName != null)
                 {
-                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle, member.ExcelsiorTableStyle));
+                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle, member.ExcelsiorTableStyle, member.ExcelsiorConfigureMissing ? null : member.ExcelsiorConfigure));
                 }
 
                 continue;
@@ -277,7 +277,7 @@ static class AccessorEmission
         StringBuilder fields,
         StringBuilder registrations,
         string rootFqn,
-        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle)> entries)
+        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle, string? ConfigureCall)> entries)
     {
         if (entries.Count == 0)
         {
@@ -290,7 +290,7 @@ static class AccessorEmission
             {
 
             """);
-        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle, tableStyle) in entries)
+        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle, tableStyle, configureCall) in entries)
         {
             fields.Append("  new(\"");
             fields.AppendJoin('.', path);
@@ -304,6 +304,17 @@ static class AccessorEmission
             fields.Append(ToStringLiteral(bodyParagraphStyle));
             fields.Append(", ");
             fields.Append(ToStringLiteral(tableStyle));
+            if (configureCall != null)
+            {
+                // A direct call rather than a name resolved at render time: a wrong signature is an
+                // ordinary compile error here, and the method itself stays reachable by nameof.
+                fields.Append(", b => ");
+                fields.Append(configureCall);
+                fields.Append("((global::Excelsior.WordTableBuilder<");
+                fields.Append(elementFqn);
+                fields.Append(">)b)");
+            }
+
             fields.AppendLine("),");
         }
 
