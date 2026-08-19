@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-
 /// <summary>
 /// Cover for the MSBuild targets the package ships — the globs that discover a template by name,
 /// the item type that declares one they cannot reach, and the warning for a template declared
