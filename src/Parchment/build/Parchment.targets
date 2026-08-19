@@ -39,45 +39,15 @@
   </ItemGroup>
 
   <!--
-    Drops the None identity the SDK's default glob gives a template.
-
-    AdditionalFiles is not one of the item types the default globs exclude, so a template declared
-    only as an AdditionalFile is still swept up as None. That is the same dual identity PARCH100
-    reports, arrived at without the author doing anything — and an IDE that models one build action
-    per file can resolve the template to None, hide it from the generator, and report PARCH004
-    against a csproj entry that is present. Removing the None leaves one build action per file.
-
-    Left silent rather than warned about because it is the default shape of every project: there is
-    nothing for the author to fix. PARCH100 stays for the identities they did write.
-
-    Scoped to AdditionalFiles carrying a template extension, so a readme, a changelog, or another
-    analyzer's additional files keep their None item.
-
-    A hand-written <None Include> on a template is dropped along with the glob's, which is the
-    intended outcome: templates are embedded into the generated source, so a template needs no None
-    item to carry CopyToOutputDirectory or Pack metadata, and keeping one costs the generator the
-    file in the IDE.
-
-    WithMetadataValue rather than a %(Extension) condition: this has to run at evaluation time,
-    where an IDE reads its item list — and metadata batching is a target-only construct. Removing
-    from a target would fix nothing, since a target is exactly what an IDE does not run.
-  -->
-  <ItemGroup Condition="'@(AdditionalFiles)' != ''">
-    <_ParchmentTemplateAdditional Include="@(AdditionalFiles->WithMetadataValue('Extension', '.md'));
-                                           @(AdditionalFiles->WithMetadataValue('Extension', '.docx'));
-                                           @(AdditionalFiles->WithMetadataValue('Extension', '.dotx'))" />
-    <!-- Removing what was never there is a no-op, so no intersection with None is needed. -->
-    <None Remove="@(_ParchmentTemplateAdditional)" />
-  </ItemGroup>
-
-  <!--
     Warns when a template carries a second item type, which is the shape that produces a PARCH004
     only an IDE can see. Detected here rather than left to the generator because the generator
     cannot see it: by the time the file has been resolved to its other identity there is nothing in
     AdditionalFiles to report on, and a command-line build never reproduces it.
 
     Scoped to template extensions, since another analyzer's additional files are none of Parchment's
-    business.
+    business. And scoped to EmbeddedResource and Content: the None item the SDK's default glob gives
+    every template is deliberately not counted — None is never handed to the compiler, so it cannot
+    hide the file from the generator, and it is what keeps a template listed in a solution explorer.
   -->
   <Target Name="ParchmentWarnOnDualItemTypes"
           BeforeTargets="CoreCompile"

@@ -91,23 +91,17 @@ public class TargetsTests
     public async Task EveryTemplateIsVisibleToTheGenerator() =>
         await Assert.That(BuildOutput).DoesNotContain("error PARCH004");
 
-    // AdditionalFiles is not one of the item types the SDK's default globs exclude, so a template
-    // declared only as an AdditionalFile is swept into None as well — the dual identity PARCH100
-    // reports, arrived at without the author writing it, and the shape that costs an IDE the file.
-    // Nothing warns about it because there is nothing for the author to fix; the package drops it.
+    // The SDK's default glob sweeps every template into None as well, and the package leaves that
+    // identity standing: None never reaches the compiler, so it cannot shadow the AdditionalFiles
+    // entry, and it is what keeps a template listed in a solution explorer — an IDE lists project
+    // files through item types like None, and a template stripped of it disappears from the tree.
     [Test]
-    public async Task TemplatesCarryNoNoneIdentity()
+    public async Task TemplatesKeepTheirNoneIdentity()
     {
-        await Assert.That(NoneItems).DoesNotContain("CopiedModel.parchment.md");
-        await Assert.That(NoneItems).DoesNotContain("DualModel.parchment.md");
-        await Assert.That(NoneItems).DoesNotContain("DiscoveredModel.parchment.md");
+        await Assert.That(NoneItems).Contains("CopiedModel.parchment.md");
+        await Assert.That(NoneItems).Contains("DualModel.parchment.md");
+        await Assert.That(NoneItems).Contains("DiscoveredModel.parchment.md");
     }
-
-    // The other half of that: a markdown file that is not a template keeps its None item. Without
-    // this the drop could be removing every .md in the project and still pass.
-    [Test]
-    public async Task LeavesNonTemplateMarkdownAlone() =>
-        await Assert.That(NoneItems).Contains("notes.md");
 
     // The marker earns its keep here: DiscoveredModel.parchment.md carries no csproj entry, so the
     // globs are the only thing that can put it in front of the generator. Its model would fail the
