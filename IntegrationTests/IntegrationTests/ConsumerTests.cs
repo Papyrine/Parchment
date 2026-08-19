@@ -23,7 +23,10 @@ public partial class ConsumerTests
         await store.Render(new InvoiceModel
         {
             Number = "INT-001",
-            Customer = new() { Name = "Acme" }
+            Customer = new()
+            {
+                Name = "Acme"
+            }
         }, stream);
 
         await Assert.That(stream.Length).IsGreaterThan(0);
@@ -57,14 +60,41 @@ public partial class ConsumerTests
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new Document(new Body(
-                new Paragraph(new Run(new Text("{% for item in Items %}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("- {{ item }}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("{% endfor %}") { Space = SpaceProcessingModeValues.Preserve }))));
+            mainPart.Document = new(
+                new Body(
+                    new Paragraph(
+                        new Run(
+                            new Text("{% for item in Items %}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            })),
+                    new Paragraph(
+                        new Run(
+                            new Text("- {{ item }}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            })),
+                    new Paragraph(
+                        new Run(
+                            new Text("{% endfor %}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            }))));
 
             var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
             var styles = new Styles();
-            styles.Append(new Style { Type = StyleValues.Paragraph, StyleId = "Normal", Default = true }.AppendChild(new StyleName { Val = "Normal" }).Parent!);
+            styles.Append(
+                new Style
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "Normal",
+                        Default = true
+                    }
+                    .AppendChild(
+                        new StyleName
+                        {
+                            Val = "Normal"
+                        }).Parent!);
             stylesPart.Styles = styles;
         }
 
@@ -78,13 +108,33 @@ public partial class ConsumerTests
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new Document(new Body(
-                new Paragraph(new Run(new Text("Invoice {{ Number }}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("Customer: {{ Customer.Name }}") { Space = SpaceProcessingModeValues.Preserve }))));
+            mainPart.Document = new(
+                new Body(
+                    new Paragraph(
+                        new Run(new Text("Invoice {{ Number }}")
+                        {
+                            Space = SpaceProcessingModeValues.Preserve
+                        })),
+                    new Paragraph(
+                        new Run(
+                            new Text("Customer: {{ Customer.Name }}")
+                            {
+                                Space = SpaceProcessingModeValues.Preserve
+                            }))));
 
             var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
             var styles = new Styles();
-            styles.Append(new Style { Type = StyleValues.Paragraph, StyleId = "Normal", Default = true }.AppendChild(new StyleName { Val = "Normal" }).Parent!);
+            styles.Append(
+                new Style
+                {
+                    Type = StyleValues.Paragraph,
+                    StyleId = "Normal",
+                    Default = true
+                }.AppendChild(
+                    new StyleName
+                    {
+                        Val = "Normal"
+                    }).Parent!);
             stylesPart.Styles = styles;
         }
 
@@ -106,12 +156,32 @@ public partial class ConsumerTests
         {
             using var doc = WordprocessingDocument.Create(fs, WordprocessingDocumentType.Document);
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new Document(new Body(
-                new Paragraph(new Run(new Text("Hello {{ Customer.Name }}") { Space = SpaceProcessingModeValues.Preserve })),
-                new Paragraph(new Run(new Text("Invoice {{ Number }}") { Space = SpaceProcessingModeValues.Preserve }))));
+            mainPart.Document = new(new Body(
+                new Paragraph(
+                    new Run(
+                        new Text("Hello {{ Customer.Name }}")
+                        {
+                            Space = SpaceProcessingModeValues.Preserve
+                        })),
+                new Paragraph(
+                    new Run(
+                        new Text("Invoice {{ Number }}")
+                        {
+                            Space = SpaceProcessingModeValues.Preserve
+                        }))));
             var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
-            stylesPart.Styles = new Styles(
-                new Style { Type = StyleValues.Paragraph, StyleId = "Normal", Default = true }.AppendChild(new StyleName { Val = "Normal" }).Parent!);
+            stylesPart.Styles = new(
+                new Style
+                    {
+                        Type = StyleValues.Paragraph,
+                        StyleId = "Normal",
+                        Default = true
+                    }
+                    .AppendChild(
+                        new StyleName
+                        {
+                            Val = "Normal"
+                        }).Parent!);
         }
 
         var mdPath = Path.Combine(dir, "sg-template.md");
@@ -126,5 +196,5 @@ public partial class ConsumerTests
             """);
     }
 
-    static string SourcePath([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+    static string SourcePath([CallerFilePath] string path = "") => path;
 }
