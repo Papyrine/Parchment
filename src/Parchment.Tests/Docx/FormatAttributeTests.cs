@@ -1,8 +1,6 @@
 // ReSharper disable PartialTypeWithSinglePart
 public partial class FormatAttributeTests
 {
-    static string SourcePath([CallerFilePath] string path = "") => path;
-
     static string ScenarioPath(string scenarioName) =>
         Path.Combine(
             ProjectFiles.ProjectDirectory,

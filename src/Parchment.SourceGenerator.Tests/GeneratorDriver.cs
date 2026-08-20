@@ -273,14 +273,6 @@
         public string DocxPath => DocxPaths[0];
     }
 
-    static string WriteDocx(string[] paragraphs)
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "template.docx");
-        File.WriteAllBytes(path, BuildDocx(paragraphs));
-        return path;
-    }
 
     static byte[] BuildDocx(string[] paragraphs, bool removePersonalInformation = true)
     {
