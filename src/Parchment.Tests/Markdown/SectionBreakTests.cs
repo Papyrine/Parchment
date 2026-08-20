@@ -4,7 +4,7 @@ public partial class SectionBreakTests
     [ParchmentBindable]
     public partial class EmptyModel;
 
-    const string Template =
+    const string template =
         """
         Portrait to begin with.
 
@@ -20,7 +20,7 @@ public partial class SectionBreakTests
     [Test]
     public async Task EachMarkerBecomesASection()
     {
-        var sections = await Sections(Template);
+        var sections = await Sections(template);
 
         // Two markers and the document-final section.
         await Assert.That(sections.Count).IsEqualTo(3);
@@ -34,7 +34,7 @@ public partial class SectionBreakTests
     [Test]
     public async Task TheDeclaredSettingsLandOnTheSectionAfterTheMarker()
     {
-        var sections = await Sections(Template);
+        var sections = await Sections(template);
         var landscape = sections[1].GetFirstChild<PageSize>()!;
 
         await Assert.That(landscape.Width!.Value).IsEqualTo(8000u);
@@ -46,7 +46,7 @@ public partial class SectionBreakTests
     [Test]
     public async Task SectionsInheritTheStyleSource()
     {
-        var sections = await Sections(Template);
+        var sections = await Sections(template);
 
         foreach (var section in sections)
         {
@@ -83,7 +83,7 @@ public partial class SectionBreakTests
     public async Task OnlyTheFirstSectionRestartsPageNumbering()
     {
         using var styleSource = StyleSourceNumberedFromOne();
-        var sections = await Sections(Template, styleSource);
+        var sections = await Sections(template, styleSource);
 
         await Assert.That(sections[0].GetFirstChild<PageNumberType>()!.Start!.Value).IsEqualTo(1);
         await Assert.That(sections[1].GetFirstChild<PageNumberType>()).IsNull();
@@ -95,7 +95,7 @@ public partial class SectionBreakTests
     [Test]
     public async Task SectionsRenderAtTheirOwnOrientation()
     {
-        using var stream = await Render(Template);
+        using var stream = await Render(template);
         await Verify(stream, "docx");
     }
 
@@ -162,8 +162,7 @@ public partial class SectionBreakTests
         store.RegisterMarkdownTemplate<EmptyModel>("[SECTION]{orientation=landscape}");
 
         using var stream = new MemoryStream();
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () => await store.Render(new EmptyModel(), stream));
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(() => store.Render(new EmptyModel(), stream));
 
         await Assert.That(exception!.Message).Contains("style source");
     }

@@ -92,7 +92,7 @@ static class ShapeBuilder
                     {
                         var hasMethod = current.GetMembers(excelsiorConfigure)
                             .OfType<IMethodSymbol>()
-                            .Any(_ => _.IsStatic && _.Parameters.Length == 1);
+                            .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
                         if (hasMethod)
                         {
                             excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
