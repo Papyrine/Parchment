@@ -1,4 +1,4 @@
-﻿class TableRenderer :
+class TableRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, Markdig.Extensions.Tables.Table>
 {
     // Approximate page-content width budget in dxa (twentieths of a point). When
@@ -338,7 +338,7 @@
             // Through LiteralInlineRenderer so a tab becomes a real <w:tab/>. This fast path built
             // its own run and so was the one place a tab stayed a raw character inside <w:t>, where
             // Word renders it as ordinary whitespace.
-            var run = LiteralInlineRenderer.BuildRun(XmlCharSanitizer.Strip(content).ToString());
+            var run = LiteralInlineRenderer.BuildRun(XmlChars.Strip(content).ToString());
             if (isHeader)
             {
                 run.RunProperties = new();

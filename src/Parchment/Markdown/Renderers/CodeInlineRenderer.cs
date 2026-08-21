@@ -21,7 +21,7 @@ class CodeInlineRenderer :
 
         var run = new Run(
             properties,
-            new Text(XmlCharSanitizer.Strip(inline.ContentSpan).ToString())
+            new Text(XmlChars.Strip(inline.ContentSpan).ToString())
             {
                 Space = SpaceProcessingModeValues.Preserve
             });

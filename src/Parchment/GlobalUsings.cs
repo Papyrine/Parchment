@@ -14,6 +14,9 @@ global using System.Xml;
 global using System.Xml.Linq;
 
 global using DocumentFormat.OpenXml;
+// Only XmlChars is wanted, and OpenXmlKit.Word is deliberately not imported: it owns Paragraph,
+// Run, Table and Style, which are already spoken for here.
+global using XmlChars = OpenXmlKit.XmlChars;
 global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 global using Excelsior;

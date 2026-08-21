@@ -61,7 +61,7 @@ class ParagraphText
         // Marked after the strip, never before: the marker is one of the characters the strip
         // removes, which is what guarantees a marker in the tree came from here and not from a
         // model value. See LineBreaks.
-        var cleaned = LineBreaks.Mark(XmlCharSanitizer.Strip(replacement));
+        var cleaned = LineBreaks.Mark(XmlChars.Strip(replacement));
 
         if (length < 0)
         {

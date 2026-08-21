@@ -245,7 +245,7 @@ static class EditableFieldBuilder
             run.AppendChild((RunProperties)sitePr.CloneNode(true));
         }
 
-        var cleaned = XmlCharSanitizer.Strip(value).ToString();
+        var cleaned = XmlChars.Strip(value).ToString();
         if (multiLine)
         {
             var first = true;

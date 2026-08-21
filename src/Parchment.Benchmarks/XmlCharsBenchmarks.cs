@@ -1,5 +1,5 @@
 [Config(typeof(BenchmarkConfig))]
-public class XmlCharSanitizerBenchmarks
+public class XmlCharsBenchmarks
 {
     string shortAscii = null!;
     string shortUnicodeBmp = null!;
@@ -28,25 +28,25 @@ public class XmlCharSanitizerBenchmarks
 
     [Benchmark]
     public int ShortAscii_FastPath() =>
-        XmlCharSanitizer.Strip(shortAscii).Length;
+        XmlChars.Strip(shortAscii).Length;
 
     [Benchmark]
     public int ShortUnicodeBmp_FastPath() =>
-        XmlCharSanitizer.Strip(shortUnicodeBmp).Length;
+        XmlChars.Strip(shortUnicodeBmp).Length;
 
     [Benchmark]
     public int ShortWithControl_SlowPath() =>
-        XmlCharSanitizer.Strip(shortWithControl).Length;
+        XmlChars.Strip(shortWithControl).Length;
 
     [Benchmark]
     public int LongAscii_FastPath() =>
-        XmlCharSanitizer.Strip(longAscii).Length;
+        XmlChars.Strip(longAscii).Length;
 
     [Benchmark]
     public int LongWithControl_SlowPath() =>
-        XmlCharSanitizer.Strip(longWithControl).Length;
+        XmlChars.Strip(longWithControl).Length;
 
     [Benchmark]
     public int LongWithSurrogatePair_SlowPath() =>
-        XmlCharSanitizer.Strip(longWithSurrogatePair).Length;
+        XmlChars.Strip(longWithSurrogatePair).Length;
 }

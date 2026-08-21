@@ -37,7 +37,7 @@ class CodeBlockRenderer :
                             Ascii = "Consolas",
                             HighAnsi = "Consolas"
                         }),
-                    new Text(XmlCharSanitizer.Strip(line.Slice.AsSpan()).ToString())
+                    new Text(XmlChars.Strip(line.Slice.AsSpan()).ToString())
                     {
                         Space = SpaceProcessingModeValues.Preserve
                     }));

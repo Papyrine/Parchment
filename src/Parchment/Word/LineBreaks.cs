@@ -31,7 +31,7 @@ static class LineBreaks
     /// Stands in for a line break between substitution and <see cref="Apply"/>.
     /// </summary>
     /// <remarks>
-    /// A C0 control that <see cref="XmlCharSanitizer"/> strips, and it is written only after that
+    /// A C0 control that <see cref="OpenXmlKit.XmlChars"/> strips, and it is written only after that
     /// strip has run. So a marker in the tree can only be one Parchment put there — never a
     /// character that arrived in a model value — which is what makes <see cref="Apply"/> safe to
     /// run across a whole part rather than having to track which text came from where.

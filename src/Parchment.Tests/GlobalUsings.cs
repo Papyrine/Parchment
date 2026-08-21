@@ -9,6 +9,7 @@ global using System.Text;
 global using System.Threading.Tasks;
 global using System.Xml.Linq;
 global using DocumentFormat.OpenXml;
+global using XmlChars = OpenXmlKit.XmlChars;
 global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 global using Excelsior;
