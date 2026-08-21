@@ -1,20 +1,26 @@
+using Kit = OpenXmlKit.Word;
+
 /// <summary>
 /// Builds simple docx templates in-memory for test fixtures. The single <c>content</c> string is
 /// split into paragraphs on blank lines — a line consisting only of whitespace separates two
 /// paragraphs. Paragraph text may include liquid tokens.
 /// </summary>
+/// <remarks>
+/// OpenXmlKit supplies the package and the styles; the body content and the section stay raw on
+/// purpose, so what this produces is byte-for-byte what it always did. The build API would have
+/// been an improvement to read and a change to the fixtures — a newline inside a <c>w:t</c> would
+/// become a <c>w:br</c>, a table would gain the trailing paragraph Word wants after one — and a
+/// fixture is the wrong place to accept either.
+/// </remarks>
 static class DocxTemplateBuilder
 {
     public static MemoryStream Build(string content = "")
     {
         var stream = new MemoryStream();
-        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        using (var document = Kit.Document.Create(stream))
         {
-            var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new(new Body());
-            var body = mainPart.Document.Body!;
-
-            AddStyles(mainPart);
+            AddStyles(document.Styles);
+            var body = document.Body.ToOpenXml();
 
             foreach (var text in SplitParagraphs(content))
             {
@@ -91,13 +97,10 @@ static class DocxTemplateBuilder
         string? bodyParagraphText = null)
     {
         var stream = new MemoryStream();
-        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        using (var document = Kit.Document.Create(stream))
         {
-            var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new(new Body());
-            var body = mainPart.Document.Body!;
-
-            AddStyles(mainPart);
+            AddStyles(document.Styles);
+            var body = document.Body.ToOpenXml();
 
             if (bodyParagraphText != null)
             {
@@ -177,38 +180,19 @@ static class DocxTemplateBuilder
     static Paragraph BuildParagraph(string text) =>
         new(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
 
-    static void AddStyles(MainDocumentPart mainPart)
+    // Stubs rather than real definitions: these exist so a template names a style that resolves,
+    // not so it renders like anything.
+    static void AddStyles(Kit.Styles styles)
     {
-        var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
-        var styles = new Styles();
-
-        styles.Append(BuildStyle("Normal", StyleValues.Paragraph, isDefault: true));
+        styles.Add(Kit.StyleKind.Paragraph, "Normal").IsDefault = true;
         for (var i = 1; i <= 6; i++)
         {
-            styles.Append(BuildStyle($"Heading{i}", StyleValues.Paragraph));
+            styles.Add(Kit.StyleKind.Paragraph, $"Heading{i}");
         }
 
-        styles.Append(BuildStyle("ListParagraph", StyleValues.Paragraph));
-        styles.Append(BuildStyle("Quote", StyleValues.Paragraph));
-        styles.Append(BuildStyle("Code", StyleValues.Paragraph));
-        styles.Append(BuildStyle("Hyperlink", StyleValues.Character));
-
-        stylesPart.Styles = styles;
-    }
-
-    static Style BuildStyle(string id, StyleValues type, bool isDefault = false)
-    {
-        var style = new Style
-        {
-            Type = type,
-            StyleId = id
-        };
-        style.Append(new StyleName { Val = id });
-        if (isDefault)
-        {
-            style.Default = true;
-        }
-
-        return style;
+        styles.Add(Kit.StyleKind.Paragraph, "ListParagraph");
+        styles.Add(Kit.StyleKind.Paragraph, "Quote");
+        styles.Add(Kit.StyleKind.Paragraph, "Code");
+        styles.Add(Kit.StyleKind.Character, "Hyperlink");
     }
 }
