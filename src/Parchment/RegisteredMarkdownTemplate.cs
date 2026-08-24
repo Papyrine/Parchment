@@ -15,11 +15,11 @@ class RegisteredMarkdownTemplate(
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
 
-        // Scoped to the liquid render alone: html reaching this flow is parked rather than written,
-        // and only what runs inside the render can park it. The map is taken off the scope here and
+        // Scoped to the liquid render alone: a value with no markdown form is parked rather than
+        // written, and only what runs inside the render can park it. The map is taken off the scope here and
         // passed explicitly from now on, so the ambient state ends with the render that owns it.
-        IReadOnlyDictionary<string, string> htmlBlocks;
-        using (var scope = MarkdownHtmlBlocks.BeginScope())
+        IReadOnlyDictionary<string, TokenValue> tokenBlocks;
+        using (var scope = MarkdownTokenBlocks.BeginScope())
         {
             try
             {
@@ -34,7 +34,7 @@ class RegisteredMarkdownTemplate(
                 throw new ParchmentRenderException(Name, exception.Message);
             }
 
-            htmlBlocks = scope.Pending;
+            tokenBlocks = scope.Pending;
         }
 
         var markdownText = writer.ToString();
@@ -54,6 +54,8 @@ class RegisteredMarkdownTemplate(
 
             cancel.ThrowIfCancellationRequested();
             var numberingState = new WordNumberingState(mainPart);
+            // Lazy because only an OpenXmlToken asks for it, and most renders have none.
+            var bodyStyles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
             var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, headingOffset: 0);
             foreach (var element in elements)
             {
@@ -64,8 +66,9 @@ class RegisteredMarkdownTemplate(
             // paragraph it replaces, so every page number after it moves.
             MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, Name);
 
-            // Same reason, and the converted html is likewise taller than the marker it replaces.
-            MarkdownHtmlBlocks.Apply(body, htmlBlocks, mainPart, imagePolicies, Name);
+            // Same reason, and what a parked token produces is likewise taller than the marker it
+            // replaces.
+            MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, Name);
 
             // Before the trailing section is attached, because the last [SECTION] in the template
             // is what that section describes — see SectionBreaks.

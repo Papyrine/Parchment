@@ -34,13 +34,13 @@ static class Filters
     // The counterpart to `markdown`, and unlike it not a pass-through: markdown source written into
     // a markdown template is already what it will be parsed as, whereas html written there is only
     // html if Markdig happens to agree. So the value is parked and converted after the parse — see
-    // MarkdownHtmlBlocks — which is what makes `| html` mean the same thing in both flows.
+    // MarkdownTokenBlocks — which is what makes `| html` mean the same thing in both flows.
     static ValueTask<FluidValue> Html(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
         var text = input.ToStringValue();
         if (IsMarkdownFlow(context))
         {
-            return new(new Fluid.Values.StringValue(MarkdownHtmlBlocks.Register(text), encode: false));
+            return new(new Fluid.Values.StringValue(MarkdownTokenBlocks.Register(text), encode: false));
         }
 
         return new(new ObjectValue(new HtmlToken(text)));

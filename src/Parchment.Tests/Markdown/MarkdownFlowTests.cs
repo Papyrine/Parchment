@@ -313,9 +313,6 @@ public partial class MarkdownFlowTests
         await Assert.That(main.ImageParts.Any()).IsTrue();
     }
 
-    static byte[] OnePixelPng() =>
-        Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");
 
     [Test]
     public async Task ImageFromLocalFileEmbedsDrawing()
@@ -583,6 +580,19 @@ public partial class TokenModel
         return doc.MainDocumentPart!.Document!.Body!.InnerText;
     }
 
+    static async Task<MemoryStream> Render<TModel>(string markdown, TModel model)
+        where TModel : class
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<TModel>(markdown, styleSource);
+
+        var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+        return stream;
+    }
+
     // These filters build an OpenXmlToken for the docx flow. The markdown flow has no OpenXML to
     // substitute into, so without a markdown-source form the token reached the writer and Fluid
     // wrote "Parchment.OpenXmlToken" into the document.
@@ -661,20 +671,116 @@ public partial class TokenModel
         await Assert.That(text).IsEqualTo("just text");
     }
 
-    // An OpenXmlToken has no markdown form, so it has to fail loudly rather than stringify.
+    // An OpenXmlToken has no markdown form at all, so it is parked against a marker and the
+    // marker's paragraph is swapped for what the delegate emits once Markdig has parsed - the same
+    // route html and [ExcelsiorTable] members take.
     [Test]
-    public async Task OpenXmlTokenPropertyThrowsInMarkdownFlow()
+    public async Task OpenXmlTokenPropertyRendersElements()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(_ => [new Paragraph(new Run(new Text("from openxml")))])
+            });
+        await Assert.That(text).IsEqualTo("from openxml");
+    }
+
+    // The point of the token over html: bytes reach an ImagePart without a base64 detour.
+    [Test]
+    public async Task OpenXmlTokenPropertyCanAddAnImagePart()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(
+                    context =>
+                    {
+                        context.AddImagePart(OnePixelPng(), "image/png");
+                        return [new Paragraph(new Run(new Text("with image")))];
+                    })
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        await Assert.That(doc.MainDocumentPart!.ImageParts.Count()).IsEqualTo(1);
+    }
+
+    // The delegate is handed the paragraph it is replacing, so a token that wants to inherit what
+    // it is standing in for gets the same answer here as it does in the docx flow. Markdig built
+    // this one rather than a template, which is the only difference.
+    [Test]
+    public async Task OpenXmlTokenPropertyIsGivenItsHostParagraph()
+    {
+        Paragraph? host = null;
+        await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(
+                    context =>
+                    {
+                        host = context.HostParagraph;
+                        return [];
+                    })
+            });
+        await Assert.That(host).IsNotNull();
+    }
+
+    [Test]
+    public async Task OpenXmlTokenPropertyRenderingNothingLeavesNothing()
+    {
+        var text = await RenderText(
+            """
+            before
+
+            {{ Value }}
+
+            after
+            """,
+            new TokenModel
+            {
+                Value = new OpenXmlToken(_ => [])
+            });
+        await Assert.That(text).IsEqualTo("beforeafter");
+    }
+
+    // Same refusal html gets, and for the same reason: the token replaces the block it sits in, so
+    // text sharing that block would be discarded rather than kept.
+    [Test]
+    public async Task OpenXmlTokenPropertySharingItsBlockThrows()
+    {
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
+            async () => await RenderText(
+                "leading {{ Value }}",
+                new TokenModel
+                {
+                    Value = new OpenXmlToken(_ => [new Paragraph(new Run(new Text("x")))])
+                }));
+        await Assert.That(exception!.Message).Contains("OpenXmlToken");
+        await Assert.That(exception.Message).Contains("alone in that block");
+    }
+
+    // The one token left with no answer here. It mutates the paragraph a docx template already
+    // had, and markdown has none to hand it until after the parse - by which point the paragraph
+    // is Markdig's, not the template's.
+    [Test]
+    public async Task MutateTokenPropertyThrowsInMarkdownFlow()
     {
         var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
             async () => await RenderText(
                 "{{ Value }}",
                 new TokenModel
                 {
-                    Value = new OpenXmlToken(_ => [])
+                    Value = new MutateToken((_, _) => { })
                 }));
-        await Assert.That(exception!.Message).Contains("OpenXmlToken");
+        await Assert.That(exception!.Message).Contains("MutateToken");
         await Assert.That(exception.Message).Contains("RegisterDocxTemplate");
     }
+
+    static byte[] OnePixelPng() =>
+        Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");
 
     // The policies are OpenXmlHtml's and belong to the store, so they cover every template
     // registered on it rather than being decided per render.
