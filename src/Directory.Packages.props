@@ -33,8 +33,8 @@
     <PackageVersion Include="Verify.TUnit" Version="32.0.0-beta.14" />
     <PackageVersion Include="Verify.DiffPlex" Version="3.3.1" />
     <PackageVersion Include="Verify.OpenXml" Version="1.27.0" />
-    <PackageVersion Include="Morph" Version="1.13.1" />
-    <PackageVersion Include="Morph.Skia" Version="1.13.1" />
+    <PackageVersion Include="Morph" Version="1.13.2" />
+    <PackageVersion Include="Morph.Skia" Version="1.13.2" />
     <PackageVersion Include="Verify.SourceGenerators" Version="2.5.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
