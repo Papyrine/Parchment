@@ -1665,7 +1665,7 @@ Two things markdown does with tabs elsewhere still apply, since they happen befo
 
 Attach a Word style with `{.StyleName}` syntax. The first class attribute wins, and what it becomes depends on what it is attached to — a paragraph style, a character style, or a table style. The name is not checked against the style source, since Word also resolves latent built-in styles that never appear in `styles.xml`.
 
-An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents) and `orientation`/`margins` on a [`[SECTION]`](#page-orientation)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
+An id (`{#intro}`) becomes a Word bookmark — see [Bookmarks and internal links](#bookmarks-and-internal-links). The rest of what the syntax can carry has nowhere to map and is ignored: key=value properties (`{.Caption width=400}`, other than `levels` on a [`[TOC]`](#table-of-contents) and the page setup attributes on a [`[SECTION]`](#page-orientation)), and any class after the first (`{.Caption .Muted}` applies `Caption`). Markdown written for both html and Word therefore renders under Word rather than being rejected.
 
 Headings and paragraphs take the style as their `ParagraphStyleId`:
 
@@ -1784,7 +1784,21 @@ A wide table belongs here.
 And back to portrait.
 ```
 
-`orientation` takes `landscape` or `portrait` and is required. `margins` optionally takes the four page edges in twips, in the order css writes them — `[SECTION]{orientation=landscape margins=1134,1418,1134,1418}` — and the header and footer distances stay as the style source set them. Margins that do not parse are ignored and the page keeps the ones it had.
+`orientation` takes `landscape` or `portrait` and is required. The rest of the page setup is optional, all in twips:
+
+| Attribute | Takes | Sets |
+|-----------|-------|------|
+| `margins` | four values, in the order css writes them | the four page edges |
+| `header`  | one value | the distance from the top of the page to the header |
+| `footer`  | one value | the distance from the bottom of the page to the footer |
+
+```markdown
+[SECTION]{orientation=landscape margins=1134,1418,1134,1418 header=567 footer=567}
+```
+
+The two distances are their own attributes rather than a fifth and sixth margin because they measure something else — where the header and footer sit relative to the page edge, not where the text sits — and because a template moving only the text should not have to restate them. They are the setting to reach for when a page edge will not come in any further: a top margin below the distance the header needs is one Word overrides, pushing the text back down to clear it, so shortening the run of the page means moving the header up as well as the margin in.
+
+Each attribute is read on its own, and a value that does not parse is ignored rather than rejected — a typo costs that one setting, not the section break or the settings beside it. Anything a marker does not name keeps what the style source had, the gutter included. `header` and `footer` are measured from the page edge inwards, so a negative one has nothing it could mean and is ignored; a page edge may legitimately be negative.
 
 Everything else about the page comes from the [style source](#markdown-template): each section is derived from its `<w:sectPr>`, so headers, footers, page borders and paper size carry into all of them rather than being dropped for the two properties the marker named. Page numbering continues across the breaks — only the first section keeps a `w:pgNumType` start, matching what Word writes when a section break is inserted by hand. A template with no style source has no page setup to derive from, and rendering one throws.
 
