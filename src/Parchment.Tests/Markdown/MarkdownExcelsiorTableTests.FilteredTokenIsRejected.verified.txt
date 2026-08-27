@@ -1,1 +1,0 @@
-﻿Parchment registration failed for template 'QuoteModel': '{{ Lines | reverse }}' renders the [ExcelsiorTable] 'Lines' as a Word table, which is built from the model rather than from Fluid's output, so the token has to be a plain member access. Filters and expressions cannot be applied to it.

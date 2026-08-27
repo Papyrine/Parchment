@@ -4,6 +4,7 @@ public static partial class ModuleInitializer
     public static void Init()
     {
         VerifySourceGenerators.Initialize();
+        VerifierSettings.Inline(maxLines: 10, applyMaxLinesToExisting: true);
         VerifierSettings.InitializePlugins();
         // The generator embeds template bytes as base64. The test docxes are rebuilt per run and
         // OPC packages are not byte-reproducible (zip timestamps, relationship ids), so the

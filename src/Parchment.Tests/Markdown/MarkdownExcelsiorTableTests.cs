@@ -207,7 +207,8 @@ public partial class MarkdownExcelsiorTableTests
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => store.RegisterMarkdownTemplate<QuoteModel>("Lines: {{ Lines }}", styleSource));
 
-        await Verify(exception.Message);
+        await Verify(exception.Message)
+            .Snapshot("Parchment registration failed for template 'QuoteModel': '{{ Lines }}' renders an [ExcelsiorTable] as a Word table, which replaces the whole block it sits in, so it has to be alone on its line. It currently shares a line with other content: Lines: {{ Lines }}");
     }
 
     // A filtered expression is not a path the Excelsior getter can walk, so it is refused for the
@@ -221,7 +222,8 @@ public partial class MarkdownExcelsiorTableTests
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => store.RegisterMarkdownTemplate<QuoteModel>("{{ Lines | reverse }}", styleSource));
 
-        await Verify(exception.Message);
+        await Verify(exception.Message)
+            .Snapshot("Parchment registration failed for template 'QuoteModel': '{{ Lines | reverse }}' renders the [ExcelsiorTable] 'Lines' as a Word table, which is built from the model rather than from Fluid's output, so the token has to be a plain member access. Filters and expressions cannot be applied to it.");
     }
 
     // A null collection leaves no marker text behind: the paragraph goes, and no table takes its

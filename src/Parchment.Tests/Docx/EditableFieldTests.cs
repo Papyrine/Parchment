@@ -1040,7 +1040,8 @@ public partial class EditableFieldTests
         result.ApplyTo(model);
 
         await Assert.That(result.AllExtracted).IsTrue();
-        await Verify(model.Body);
+        await Verify(model.Body)
+            .Snapshot("<p>Hello <strong>world</strong> and <em>more</em></p><ul><li>one</li><li>two</li></ul>");
     }
 
     [Test]
