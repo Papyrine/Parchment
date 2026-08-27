@@ -1,6 +1,6 @@
 /// <summary>
 /// Turns a paragraph whose whole content is <c>[SECTION]</c> into a Word section break, so a markdown
-/// template can change page orientation — and margins with it — partway down a document.
+/// template can change page orientation — and the page setup with it — partway down a document.
 /// </summary>
 /// <remarks>
 /// The spelling follows <see cref="TableOfContents"/>: with no <c>(url)</c> or <c>[label]</c> after it,
@@ -75,7 +75,7 @@ static class SectionBreaks
                 Orient = orientation
             });
 
-        if (ResolveMargins(attributes) is { } margins)
+        if (ResolvePageMargin(attributes) is { } margins)
         {
             declared.AppendChild(margins);
         }
@@ -208,46 +208,94 @@ static class SectionBreaks
         return null;
     }
 
-    // margins=top,right,bottom,left in twips, in the order css writes them. Unparseable margins are
-    // ignored rather than rejected, the way an unparseable [TOC] level is: the section break itself
-    // is still what the author asked for, and the page keeps the margins it already had.
-    static PageMargin? ResolveMargins(IEnumerable<KeyValuePair<string, string?>>? attributes)
+    // The page setup a marker can name, all in twips: margins=top,right,bottom,left for the four
+    // page edges, in the order css writes them, and header= and footer= for the distances from the
+    // top and the bottom of the page to the header and the footer. Those two are their own
+    // attributes rather than a fifth and sixth margin because they are a different measurement -
+    // taken from the page edge rather than describing where the text sits - and because a template
+    // that only wants to move the text should not have to restate them.
+    //
+    // Each attribute is read independently, and a value that does not parse is ignored rather than
+    // rejected, the way an unparseable [TOC] level is: a typo costs that one setting rather than
+    // the section break or the settings beside it. Whatever the marker does not name keeps what the
+    // style source had.
+    static PageMargin? ResolvePageMargin(IEnumerable<KeyValuePair<string, string?>>? attributes)
     {
         if (attributes == null)
         {
             return null;
         }
 
+        PageMargin? margin = null;
         foreach (var (key, value) in attributes)
         {
-            if (!string.Equals(key, "margins", StringComparison.OrdinalIgnoreCase) ||
-                value == null)
+            if (value == null)
             {
                 continue;
             }
 
-            var parts = value.Split(',');
-            if (parts.Length != 4)
+            if (string.Equals(key, "margins", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ParseEdges(value) is { } edges)
+                {
+                    margin ??= new();
+                    margin.Top = edges[0];
+                    margin.Right = (uint) edges[1];
+                    margin.Bottom = edges[2];
+                    margin.Left = (uint) edges[3];
+                }
+            }
+            else if (string.Equals(key, "header", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ParseDistance(value) is { } header)
+                {
+                    margin ??= new();
+                    margin.Header = header;
+                }
+            }
+            else if (string.Equals(key, "footer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ParseDistance(value) is { } footer)
+                {
+                    margin ??= new();
+                    margin.Footer = footer;
+                }
+            }
+        }
+
+        return margin;
+    }
+
+    // All four page edges or none of them: a shorter list is as likely to be a mistake as a
+    // shorthand, and there is no css shorthand it could be read as here.
+    static int[]? ParseEdges(string value)
+    {
+        var parts = value.Split(',');
+        if (parts.Length != 4)
+        {
+            return null;
+        }
+
+        var twips = new int[4];
+        for (var index = 0; index < 4; index++)
+        {
+            if (!int.TryParse(parts[index].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out twips[index]))
             {
                 return null;
             }
+        }
 
-            var twips = new int[4];
-            for (var index = 0; index < 4; index++)
-            {
-                if (!int.TryParse(parts[index].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out twips[index]))
-                {
-                    return null;
-                }
-            }
+        return twips;
+    }
 
-            return new()
-            {
-                Top = twips[0],
-                Right = (uint) twips[1],
-                Bottom = twips[2],
-                Left = (uint) twips[3]
-            };
+    // Unsigned, where a page edge is not: Word measures the header and footer distances from the
+    // page edge inwards and has nowhere to put one that starts outside the page, while a negative
+    // margin is a page a header prints into and is a document Word will open.
+    static uint? ParseDistance(string value)
+    {
+        if (uint.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var twips))
+        {
+            return twips;
         }
 
         return null;
@@ -267,12 +315,15 @@ static class SectionBreaks
             }
             else
             {
-                // Only the four page edges: header, footer and gutter distances are the style
-                // source's to set, and a template changing orientation has no opinion on them.
-                target.Top = margins.Top;
-                target.Right = margins.Right;
-                target.Bottom = margins.Bottom;
-                target.Left = margins.Left;
+                // Only what the marker named. Anything it left out keeps the style source's, and so
+                // does the gutter, which no marker can name: a template changing page setup partway
+                // down a document has no opinion on binding.
+                target.Top = margins.Top ?? target.Top;
+                target.Right = margins.Right ?? target.Right;
+                target.Bottom = margins.Bottom ?? target.Bottom;
+                target.Left = margins.Left ?? target.Left;
+                target.Header = margins.Header ?? target.Header;
+                target.Footer = margins.Footer ?? target.Footer;
             }
         }
 

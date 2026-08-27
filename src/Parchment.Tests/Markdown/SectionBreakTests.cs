@@ -73,8 +73,87 @@ public partial class SectionBreakTests
         await Assert.That(margins.Bottom!.Value).IsEqualTo(300);
         await Assert.That(margins.Left!.Value).IsEqualTo(400u);
 
-        // The four page edges are the marker's to set; the header and footer distances are not.
+        // margins= is the four page edges and nothing else. The header and footer distances have
+        // attributes of their own, and a marker that does not name them leaves them alone.
         await Assert.That(margins.Header!.Value).IsEqualTo(720u);
+        await Assert.That(margins.Footer!.Value).IsEqualTo(720u);
+    }
+
+    // The distance from the page edge to the header and footer, which is what decides how much room
+    // is left for the text between them once the page edges have been pulled in.
+    [Test]
+    public async Task HeaderAndFooterOverrideTheStyleSource()
+    {
+        var sections = await Sections(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait margins=400,300,400,300 header=200 footer=150}
+
+            Tighter.
+            """);
+
+        var margins = sections[1].GetFirstChild<PageMargin>()!;
+        await Assert.That(margins.Header!.Value).IsEqualTo(200u);
+        await Assert.That(margins.Footer!.Value).IsEqualTo(150u);
+        await Assert.That(margins.Top!.Value).IsEqualTo(400);
+    }
+
+    // Either distance on its own, with no margins= beside it: a template moving the header up is not
+    // obliged to restate the four page edges to do it.
+    [Test]
+    public async Task HeaderStandsAloneAndLeavesTheRestAsItWas()
+    {
+        var sections = await Sections(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait header=200}
+
+            Header pulled up.
+            """);
+
+        var margins = sections[1].GetFirstChild<PageMargin>()!;
+        await Assert.That(margins.Header!.Value).IsEqualTo(200u);
+        await Assert.That(margins.Footer!.Value).IsEqualTo(720u);
+        await Assert.That(margins.Top!.Value).IsEqualTo(500);
+        await Assert.That(margins.Left!.Value).IsEqualTo(500u);
+    }
+
+    // Read one at a time, so a typo costs the setting it is in and nothing else. The alternative -
+    // dropping the whole marker's page setup - would hide a working header behind a broken footer.
+    [Test]
+    public async Task AnUnparseableDistanceLeavesTheOthersStanding()
+    {
+        var sections = await Sections(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait header=200 footer=close}
+
+            Header pulled up.
+            """);
+
+        var margins = sections[1].GetFirstChild<PageMargin>()!;
+        await Assert.That(margins.Header!.Value).IsEqualTo(200u);
+        await Assert.That(margins.Footer!.Value).IsEqualTo(720u);
+    }
+
+    // Word measures both distances from the page edge inwards, so there is nothing a negative one
+    // could mean. Ignored like any other value that does not parse.
+    [Test]
+    public async Task ANegativeDistanceIsIgnored()
+    {
+        var sections = await Sections(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait header=-200}
+
+            Unchanged.
+            """);
+
+        await Assert.That(sections[1].GetFirstChild<PageMargin>()!.Header!.Value).IsEqualTo(720u);
     }
 
     // Page numbering restarts wherever a section says it starts, so only the first section may keep
