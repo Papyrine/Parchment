@@ -230,6 +230,37 @@ public class StyleAttributeTests
             .ToList();
     }
 
+    // The case the whole feature exists for: a heading whose annotation is styled differently to
+    // the heading text. A {.StyleName} cannot do this - it binds to the whole heading paragraph -
+    // and emphasis would impose bold or italic along with the character style.
+    [Test]
+    public async Task SpanClassStylesPartOfAHeading()
+    {
+        var paragraph = (Paragraph) RendererHarness
+            .RenderMarkdown("### Delivery Goal <span class=\"Heading3-lightChar\">[Required]</span>")
+            .Single();
+
+        await Assert.That(paragraph.ParagraphProperties!.ParagraphStyleId!.Val!.Value).IsEqualTo("Heading3");
+
+        var runs = paragraph.Elements<Run>().ToList();
+        var annotation = runs.Single(_ => _.InnerText.Contains("[Required]"));
+        await Assert.That(annotation.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Heading3-lightChar");
+
+        var heading = runs.Single(_ => _.InnerText.Contains("Delivery Goal"));
+        await Assert.That(heading.RunProperties?.RunStyle).IsNull();
+    }
+
+    [Test]
+    public async Task SpanClassStylesPartOfAParagraph()
+    {
+        var paragraph = (Paragraph) RendererHarness
+            .RenderMarkdown("Plain then <span class=\"Caption\">styled</span> then plain.")
+            .Single();
+
+        var styled = paragraph.Elements<Run>().Single(_ => _.InnerText.Contains("styled"));
+        await Assert.That(styled.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
     static List<string> RenderListStyles(string markdown)
     {
         var renderer = RendererHarness.BuildRenderer();

@@ -1681,6 +1681,14 @@ Emphasis takes it as a character style (`RunStyle`), alongside the emphasis itse
 **Important** {.LeadIn} — the rest of the sentence.
 ```
 
+Emphasis is the only inline markdown that can carry a style, so it is the only one that can be given a character style this way — and it applies its own bold or italic alongside. To style a run of text without that, use `<span class="...">`:
+
+```markdown
+Delivery Goal <span class="Heading3-lightChar">[Required]</span>
+```
+
+The class becomes the `RunStyle` for every run the span encloses, nested spans resolve innermost-first, and a span with no class styles nothing. Only the class is read: an inline `style` attribute is ignored here, unlike a span inside an html *block*, which [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml) renders in full.
+
 A list takes it on its own line, and it applies to every item. A style on an individual item wins over one on the list. Without either, items keep the built-in `ListParagraph`:
 
 ```markdown
