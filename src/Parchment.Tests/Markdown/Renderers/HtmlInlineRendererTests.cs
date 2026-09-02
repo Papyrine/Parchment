@@ -173,6 +173,116 @@ public class HtmlInlineRendererTests
     }
 
     [Test]
+    public async Task SpanClassAppliesCharacterStyleToInterveningRuns()
+    {
+        var run = RenderSpan("<span class=\"Caption\">");
+
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
+    [Test]
+    public async Task SpanClassAcceptsSingleQuotes()
+    {
+        var run = RenderSpan("<span class='Caption'>");
+
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
+    [Test]
+    public async Task SpanClassAcceptsUnquotedValue()
+    {
+        var run = RenderSpan("<span class=Caption>");
+
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
+    [Test]
+    public async Task SpanClassTakesFirstOfSeveral()
+    {
+        var run = RenderSpan("<span class=\"Caption Muted\">");
+
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
+    [Test]
+    public async Task SpanClassIsFoundAfterOtherAttributes()
+    {
+        var run = RenderSpan("<span style=\"font-weight:normal\" class=\"Caption\">");
+
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+    }
+
+    [Test]
+    public async Task SpanIgnoresAttributeMerelyEndingInClass()
+    {
+        var run = RenderSpan("<span data-class=\"Caption\">");
+
+        await Assert.That(run.RunProperties!.RunStyle).IsNull();
+    }
+
+    [Test]
+    public async Task SpanWithoutClassLeavesRunsUnstyled()
+    {
+        var run = RenderSpan("<span>");
+
+        await Assert.That(run.RunProperties!.RunStyle).IsNull();
+    }
+
+    [Test]
+    public async Task SpanClosingTagDoesNotAffectRunsEmittedAfter()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(new HtmlInline("<span class=\"Caption\">"));
+        renderer.AddRun(
+            new Run(new Text("styled") { Space = SpaceProcessingModeValues.Preserve }));
+        renderer.Render(new HtmlInline("</span>"));
+        renderer.AddRun(
+            new Run(new Text("plain") { Space = SpaceProcessingModeValues.Preserve }));
+
+        var runs = renderer.Top.CurrentRuns.Cast<Run>().ToList();
+        await Assert.That(runs[0].RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Caption");
+        await Assert.That(runs[1].RunProperties).IsNull();
+    }
+
+    [Test]
+    public async Task ClasslessSpanCloseDoesNotPopTheFormatAroundIt()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(new HtmlInline("<em>"));
+        renderer.Render(new HtmlInline("<span>"));
+        renderer.Render(new HtmlInline("</span>"));
+        renderer.AddRun(
+            new Run(new Text("still italic") { Space = SpaceProcessingModeValues.Preserve }));
+
+        var run = (Run)renderer.Top.CurrentRuns.Single();
+        await Assert.That(run.RunProperties!.GetFirstChild<Italic>()).IsNotNull();
+    }
+
+    [Test]
+    public async Task InnermostSpanClassWins()
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(new HtmlInline("<span class=\"Outer\">"));
+        renderer.Render(new HtmlInline("<span class=\"Inner\">"));
+        renderer.AddRun(
+            new Run(new Text("nested") { Space = SpaceProcessingModeValues.Preserve }));
+
+        var run = (Run)renderer.Top.CurrentRuns.Single();
+        await Assert.That(run.RunProperties!.RunStyle!.Val!.Value).IsEqualTo("Inner");
+    }
+
+    static Run RenderSpan(string openTag)
+    {
+        var renderer = RendererHarness.BuildRenderer();
+        renderer.Render(new HtmlInline(openTag));
+        renderer.AddRun(
+            new Run(new Text("inside") { Space = SpaceProcessingModeValues.Preserve }));
+        renderer.Render(new HtmlInline("</span>"));
+
+        return (Run)renderer.Top.CurrentRuns.Single();
+    }
+
+    [Test]
     public async Task UnknownTagPassesThroughAsLiteralText()
     {
         var renderer = RendererHarness.BuildRenderer();
