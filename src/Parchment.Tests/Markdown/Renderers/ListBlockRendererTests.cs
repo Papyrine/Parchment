@@ -46,7 +46,7 @@ public partial class ListBlockRendererTests
         var markdown = new StringBuilder();
         for (var depth = 0; depth < 12; depth++)
         {
-            markdown.Append(new string(' ', depth * 2)).Append("- item").Append('\n');
+            markdown.Append(' ', depth * 2).Append("- item").Append('\n');
         }
 
         var paragraphs = RenderList(markdown.ToString());
