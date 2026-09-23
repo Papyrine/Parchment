@@ -1,0 +1,128 @@
+name: release
+
+on:
+  push:
+    tags: ['*']
+
+jobs:
+  publish:
+    # Windows for the same reason build.yml is: the tests rely on the bundled fonts installed below.
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      # Lets the job mint the OIDC token nuget.org trades for a short-lived publishing key.
+      id-token: write
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # SponsorCheck bundles the sponsor list during pack on non-PR builds and needs a
+      # classic PAT (org secret).
+      GitHubToken: ${{ secrets.SPONSOR_CHECK_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install fonts
+        shell: pwsh
+        run: |
+          # Install bundled fonts (direct copy avoids COM Shell hangs on CI).
+          # Each font is validated via System.Drawing before install; corrupt files
+          # (e.g. TTFs mangled by Git CRLF conversion) will fail the build here
+          # rather than surfacing as confusing "font not found" errors at test time.
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          $fontsPath = "src/Fonts"
+          $winFonts = "$env:WINDIR\Fonts"
+          $regKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
+          Write-Host "Font source: $fontsPath"
+          $files = @(Get-ChildItem -Path $fontsPath -Recurse -File |
+              Where-Object { $_.Extension -in '.ttf', '.otf' })
+          Write-Host "Found $($files.Count) font files"
+          if ($files.Count -eq 0)
+          {
+              throw "No font files found in $fontsPath"
+          }
+          foreach ($file in $files)
+          {
+              $pfc = New-Object System.Drawing.Text.PrivateFontCollection
+              try
+              {
+                  $pfc.AddFontFile($file.FullName)
+                  if ($pfc.Families.Count -eq 0 -or [string]::IsNullOrEmpty($pfc.Families[0].Name))
+                  {
+                      throw "Font file '$($file.FullName)' has no family name (likely corrupt — check .gitattributes marks *.ttf/*.otf as binary)"
+                  }
+                  $family = $pfc.Families[0].Name
+              }
+              finally
+              {
+                  $pfc.Dispose()
+              }
+              Write-Host "Installing $($file.Name) (family: '$family')"
+              Copy-Item $file.FullName -Destination $winFonts -Force
+              $fontName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+              $fontType = if ($file.Extension -eq ".otf") { "OpenType" } else { "TrueType" }
+              New-ItemProperty -Path $regKey -Name "$fontName ($fontType)" -Value $file.Name -PropertyType String -Force | Out-Null
+          }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The tag is the version: tag 1.2.3 (or v1.2.3) publishes 1.2.3. The Version in
+      # src/Directory.Build.props is only what local builds get.
+      - name: Resolve the version from the tag
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # Packs as a side effect (GeneratePackageOnBuild) into ./nugets. Only Parchment is
+      # packable there; ParchmentModel, SourceGenerator, Benchmarks and tests are not.
+      - name: Build
+        run: dotnet build src --configuration Release -p:Version=${{ env.version }}
+
+      # Same Version so IntegrationTests' Parchment PackageVersion resolves the nupkg just built.
+      - name: Build integration tests
+        run: dotnet build IntegrationTests --configuration Release -p:Version=${{ env.version }}
+
+      - name: Test Parchment.Tests
+        run: dotnet run --project src/Parchment.Tests --configuration Release --no-build
+
+      - name: Test Parchment.SourceGenerator.Tests
+        run: dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release --no-build
+
+      - name: Run integration tests
+        run: dotnet run --project IntegrationTests/IntegrationTests --configuration Release --no-build
+
+      - name: Upload snapshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: received
+          path: '**/*.received.*'
+          if-no-files-found: ignore
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nugets
+          path: nugets/Parchment.*.nupkg
+          if-no-files-found: error
+
+      # Trusted publishing: no stored API key. nuget.org validates GitHub's OIDC token against the
+      # policy naming this repository and this workflow file, and returns a key good for an hour —
+      # so this stays immediately before the push.
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          # The nuget.org account the trusted publishing policy belongs to.
+          user: SimonCropp
+
+      - name: Push to nuget.org
+        shell: bash
+        run: >
+          dotnet nuget push nugets/Parchment.*.nupkg
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
