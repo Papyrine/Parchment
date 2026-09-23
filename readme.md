@@ -1,6 +1,6 @@
 # <img src="/src/icon.png" height="30px"> Parchment
 
-[![Build status](https://img.shields.io/appveyor/build/SimonCropp/Parchment)](https://ci.appveyor.com/project/SimonCropp/Parchment)
+[![Build status](https://github.com/Papyrine/Parchment/actions/workflows/build.yml/badge.svg)](https://github.com/Papyrine/Parchment/actions/workflows/build.yml)
 [![NuGet Status](https://img.shields.io/nuget/v/Parchment.svg?label=Parchment)](https://www.nuget.org/packages/Parchment/)
 
 Parchment is a Word (.docx) document generation library with two complementary rendering modes. It combines a .NET data model with either a docx template (token replacement, loops, conditionals) or a markdown template (full content rendering), both driven by [liquid](https://shopify.github.io/liquid/) via [Fluid](https://github.com/sebastienros/fluid). Markdown is parsed with [Markdig](https://github.com/xoofx/markdig); HTML chunks are converted via [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml).
