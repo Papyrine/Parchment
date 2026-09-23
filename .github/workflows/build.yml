@@ -1,0 +1,106 @@
+name: build
+
+on:
+  push:
+    # Branches only: tag pushes are handled by release.yml.
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # SponsorCheck bundles the sponsor list during pack on non-PR builds and needs a
+      # classic PAT (org secret). PR builds skip it.
+      GitHubToken: ${{ secrets.SPONSOR_CHECK_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install fonts
+        shell: pwsh
+        run: |
+          # Install bundled fonts (direct copy avoids COM Shell hangs on CI).
+          # Each font is validated via System.Drawing before install; corrupt files
+          # (e.g. TTFs mangled by Git CRLF conversion) will fail the build here
+          # rather than surfacing as confusing "font not found" errors at test time.
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          $fontsPath = "src/Fonts"
+          $winFonts = "$env:WINDIR\Fonts"
+          $regKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
+          Write-Host "Font source: $fontsPath"
+          $files = @(Get-ChildItem -Path $fontsPath -Recurse -File |
+              Where-Object { $_.Extension -in '.ttf', '.otf' })
+          Write-Host "Found $($files.Count) font files"
+          if ($files.Count -eq 0)
+          {
+              throw "No font files found in $fontsPath"
+          }
+          foreach ($file in $files)
+          {
+              $pfc = New-Object System.Drawing.Text.PrivateFontCollection
+              try
+              {
+                  $pfc.AddFontFile($file.FullName)
+                  if ($pfc.Families.Count -eq 0 -or [string]::IsNullOrEmpty($pfc.Families[0].Name))
+                  {
+                      throw "Font file '$($file.FullName)' has no family name (likely corrupt — check .gitattributes marks *.ttf/*.otf as binary)"
+                  }
+                  $family = $pfc.Families[0].Name
+              }
+              finally
+              {
+                  $pfc.Dispose()
+              }
+              Write-Host "Installing $($file.Name) (family: '$family')"
+              Copy-Item $file.FullName -Destination $winFonts -Force
+              $fontName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+              $fontType = if ($file.Extension -eq ".otf") { "OpenType" } else { "TrueType" }
+              New-ItemProperty -Path $regKey -Name "$fontName ($fontType)" -Value $file.Name -PropertyType String -Force | Out-Null
+          }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build src --configuration Release
+
+      - name: Build integration tests
+        run: dotnet build IntegrationTests --configuration Release
+
+      - name: Test Parchment.Tests
+        run: dotnet run --project src/Parchment.Tests --configuration Release --no-build -- --report-trx
+
+      - name: Test Parchment.SourceGenerator.Tests
+        run: dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release --no-build -- --report-trx
+
+      - name: Run integration tests
+        run: dotnet run --project IntegrationTests/IntegrationTests --configuration Release --no-build -- --report-trx
+
+      - name: Upload snapshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: received
+          path: '**/*.received.*'
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/*.trx'
+          if-no-files-found: ignore
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nugets
+          path: nugets/*.nupkg
