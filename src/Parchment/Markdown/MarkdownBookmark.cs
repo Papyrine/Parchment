@@ -58,6 +58,11 @@ static class MarkdownBookmark
             builder.Append('_');
         }
 
-        return builder.Length == 0 ? "_" : builder.ToString();
+        if (builder.Length == 0)
+        {
+            return "_";
+        }
+
+        return builder.ToString();
     }
 }

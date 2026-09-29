@@ -247,7 +247,12 @@ static class OpenXmlHtmlSerializer
             abstractNum?.Elements<Level>().FirstOrDefault())
             ?.NumberingFormat?.Val?.Value;
 
-        return format == NumberFormatValues.Bullet ? "ul" : "ol";
+        if (format == NumberFormatValues.Bullet)
+        {
+            return "ul";
+        }
+
+        return "ol";
     }
 
     static string? HeadingTag(Paragraph paragraph)
@@ -277,7 +282,12 @@ static class OpenXmlHtmlSerializer
         }
 
         var anchor = hyperlink.Anchor?.Value;
-        return anchor == null ? null : "#" + anchor;
+        if (anchor == null)
+        {
+            return null;
+        }
+
+        return "#" + anchor;
     }
 
     static bool IsOn(OnOffType? toggle) =>

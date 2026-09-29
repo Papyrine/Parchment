@@ -64,7 +64,15 @@ sealed class EditableMap
         {
             scoped[$"{loopVariable}.{entry.DottedPath}"] = entry with
             {
-                Getter = _ => item == null ? null : entry.Getter(item),
+                Getter = _ =>
+                {
+                    if (item == null)
+                    {
+                        return null;
+                    }
+
+                    return entry.Getter(item);
+                },
                 CanReach = static _ => true
             };
         }

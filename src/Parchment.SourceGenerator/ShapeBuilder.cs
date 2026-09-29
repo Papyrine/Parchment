@@ -353,7 +353,12 @@ static class ShapeBuilder
 
         if (isHtml)
         {
-            return type.SpecialType == SpecialType.System_String ? EditableFieldKind.Html : null;
+            if (type.SpecialType == SpecialType.System_String)
+            {
+                return EditableFieldKind.Html;
+            }
+
+            return null;
         }
 
         return MapEditableKind(type);
@@ -377,7 +382,12 @@ static class ShapeBuilder
             case SpecialType.System_String:
                 return EditableFieldKind.Text;
             case SpecialType.System_Boolean:
-                return isNullableValue ? null : EditableFieldKind.Checkbox;
+                if (isNullableValue)
+                {
+                    return null;
+                }
+
+                return EditableFieldKind.Checkbox;
             case SpecialType.System_DateTime:
                 return EditableFieldKind.Date;
             case SpecialType.System_Byte:

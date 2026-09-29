@@ -549,8 +549,15 @@ static class AccessorEmission
     // "decimal?" → "decimal" for typeof() — the runtime entry carries the underlying type
     // (nullability travels separately as IsNullable). Char compare instead of EndsWith: the
     // char overload doesn't exist on netstandard2.0.
-    static string StripNullableSuffix(string fqn) =>
-        fqn.Length > 0 && fqn[^1] == '?' ? fqn[..^1] : fqn;
+    static string StripNullableSuffix(string fqn)
+    {
+        if (fqn.Length > 0 && fqn[^1] == '?')
+        {
+            return fqn[..^1];
+        }
+
+        return fqn;
+    }
 
     /// <summary>
     /// Setter shape mirrors runtime <c>EditableMap.BuildSetter</c>: walk to the PARENT object

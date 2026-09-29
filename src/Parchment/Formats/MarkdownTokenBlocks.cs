@@ -174,6 +174,13 @@ static class MarkdownTokenBlocks
             _ => []
         };
 
-    static string Describe(TokenValue token) =>
-        token is HtmlToken ? "| html" : nameof(OpenXmlToken);
+    static string Describe(TokenValue token)
+    {
+        if (token is HtmlToken)
+        {
+            return "| html";
+        }
+
+        return nameof(OpenXmlToken);
+    }
 }

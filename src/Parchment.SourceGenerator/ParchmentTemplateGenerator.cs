@@ -56,9 +56,14 @@ public sealed class ParchmentTemplateGenerator :
         // diagnostic messages.
         var projectDirectory = context.AnalyzerConfigOptionsProvider
             .Select(static (options, _) =>
-                options.GlobalOptions.TryGetValue("build_property.ProjectDir", out var directory)
-                    ? directory
-                    : null);
+            {
+                if (options.GlobalOptions.TryGetValue("build_property.ProjectDir", out var directory))
+                {
+                    return directory;
+                }
+
+                return null;
+            });
 
         var combined = targets
             .Combine(docs)
@@ -254,10 +259,20 @@ public sealed class ParchmentTemplateGenerator :
     {
         if (type.IsRecord)
         {
-            return type.TypeKind == TypeKind.Struct ? "record struct" : "record";
+            if (type.TypeKind == TypeKind.Struct)
+            {
+                return "record struct";
+            }
+
+            return "record";
         }
 
-        return type.TypeKind == TypeKind.Struct ? "struct" : "class";
+        if (type.TypeKind == TypeKind.Struct)
+        {
+            return "struct";
+        }
+
+        return "class";
     }
 
     // Where the file sits relative to the project — the shortest way to name it in a diagnostic.

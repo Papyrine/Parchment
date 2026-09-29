@@ -13,7 +13,15 @@ class WordBookmarkAllocator
 
     public WordBookmarkAllocator(Body body) =>
         next = body.Descendants<BookmarkStart>()
-            .Select(_ => int.TryParse(_.Id?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : 0)
+            .Select(_ =>
+            {
+                if (int.TryParse(_.Id?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+                {
+                    return id;
+                }
+
+                return 0;
+            })
             .DefaultIfEmpty(0)
             .Max();
 

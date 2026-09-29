@@ -286,7 +286,12 @@ class MarkdownValidator
             segments.Add(name);
         }
 
-        return segments.Count == 0 ? null : segments;
+        if (segments.Count == 0)
+        {
+            return null;
+        }
+
+        return segments;
     }
 
     sealed class ExpressionPathCollector :

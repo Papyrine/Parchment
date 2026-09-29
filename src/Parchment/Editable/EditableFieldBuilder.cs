@@ -188,15 +188,25 @@ static class EditableFieldBuilder
     const string dateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
     const string timeFormat = "HH:mm:ss";
 
-    static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture) =>
-        value is DateTimeOffset offset
-            ? offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture)
-            : null;
+    static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture)
+    {
+        if (value is DateTimeOffset offset)
+        {
+            return offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture);
+        }
 
-    static string? FormatTime(EditableEntry entry, object? value, CultureInfo culture) =>
-        value is Time time
-            ? time.ToString(entry.DateFormat ?? timeFormat, culture)
-            : null;
+        return null;
+    }
+
+    static string? FormatTime(EditableEntry entry, object? value, CultureInfo culture)
+    {
+        if (value is Time time)
+        {
+            return time.ToString(entry.DateFormat ?? timeFormat, culture);
+        }
+
+        return null;
+    }
 
     static (OpenXmlElement, Run, bool) BuildTextValue(string? text, RunProperties? sitePr)
     {

@@ -280,7 +280,12 @@ public partial class SectionBreakTests
     {
         var size = section.GetFirstChild<PageSize>()!;
         // Portrait is Word's assumption, so the attribute is only written for landscape.
-        return size.Orient?.Value == PageOrientationValues.Landscape ? "landscape" : "portrait";
+        if (size.Orient?.Value == PageOrientationValues.Landscape)
+        {
+            return "landscape";
+        }
+
+        return "portrait";
     }
 
     static MemoryStream StyleSourceNumberedFromOne()

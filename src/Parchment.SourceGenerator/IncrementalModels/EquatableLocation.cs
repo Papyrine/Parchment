@@ -14,8 +14,13 @@ readonly record struct EquatableLocation(
         return new(mapped.Path, location.SourceSpan, mapped.Span);
     }
 
-    public Location ToLocation() =>
-        FilePath is null
-            ? Location.None
-            : Location.Create(FilePath, TextSpan, LineSpan);
+    public Location ToLocation()
+    {
+        if (FilePath is null)
+        {
+            return Location.None;
+        }
+
+        return Location.Create(FilePath, TextSpan, LineSpan);
+    }
 }
