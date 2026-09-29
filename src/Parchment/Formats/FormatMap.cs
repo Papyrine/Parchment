@@ -34,5 +34,4 @@ sealed class FormatMap
 
         precompiledCache[modelType] = new(dict);
     }
-
 }
