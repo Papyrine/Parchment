@@ -149,9 +149,7 @@ public partial class ConsumerTests
     [Test, Explicit]
     public async Task GenerateSgTemplates()
     {
-        var dir = Path.GetDirectoryName(SourcePath())!;
-
-        var docxPath = Path.Combine(dir, "sg-template.docx");
+        var docxPath = Path.Combine(ProjectFiles.ProjectDirectory, "sg-template.docx");
         await using (var fs = File.Create(docxPath))
         {
             using var doc = WordprocessingDocument.Create(fs, WordprocessingDocumentType.Document);
@@ -184,7 +182,7 @@ public partial class ConsumerTests
                         }).Parent!);
         }
 
-        var mdPath = Path.Combine(dir, "sg-template.md");
+        var mdPath = Path.Combine(ProjectFiles.ProjectDirectory, "sg-template.md");
         await File.WriteAllTextAsync(
             mdPath,
             """
@@ -195,6 +193,4 @@ public partial class ConsumerTests
             {% endfor %}
             """);
     }
-
-    static string SourcePath([CallerFilePath] string path = "") => path;
 }

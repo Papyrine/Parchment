@@ -10,11 +10,13 @@
 /// </remarks>
 public class TargetsTests
 {
-    static string FixtureProject([CallerFilePath] string file = "") =>
-        Path.Combine(
-            Path.GetDirectoryName(Path.GetDirectoryName(file))!,
-            "TargetsFixture",
-            "TargetsFixture.csproj");
+    static string FixtureProject() =>
+        Path.GetFullPath(
+            Path.Combine(
+                ProjectFiles.ProjectDirectory,
+                "..",
+                "TargetsFixture",
+                "TargetsFixture.csproj"));
 
     static string BuildOutput { get; set; } = "";
 
