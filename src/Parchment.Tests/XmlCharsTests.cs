@@ -3,7 +3,7 @@ public class XmlCharsTests
     [Test]
     public async Task Empty_ReturnsEmpty()
     {
-        var result = XmlChars.Strip("").ToString();
+        var result = XmlChars.Strip("");
         await Assert.That(result).IsEqualTo("");
     }
 
@@ -39,7 +39,7 @@ public class XmlCharsTests
     [Test]
     public async Task NullChar_Stripped()
     {
-        var result = XmlChars.Strip("a\0b").ToString();
+        var result = XmlChars.Strip("a\0b");
         await Assert.That(result).IsEqualTo("ab");
     }
 
@@ -63,7 +63,7 @@ public class XmlCharsTests
         }
         builder.Append('d');
 
-        var result = XmlChars.Strip(builder.ToString()).ToString();
+        var result = XmlChars.Strip(builder.ToString());
         await Assert.That(result).IsEqualTo("abcd");
     }
 
@@ -71,21 +71,21 @@ public class XmlCharsTests
     public async Task TabLfCr_Preserved()
     {
         var input = "x\ty\nz\rw";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo(input);
     }
 
     [Test]
     public async Task NonCharacterFFFE_Stripped()
     {
-        var result = XmlChars.Strip("a￾b").ToString();
+        var result = XmlChars.Strip("a￾b");
         await Assert.That(result).IsEqualTo("ab");
     }
 
     [Test]
     public async Task NonCharacterFFFF_Stripped()
     {
-        var result = XmlChars.Strip("a￿b").ToString();
+        var result = XmlChars.Strip("a￿b");
         await Assert.That(result).IsEqualTo("ab");
     }
 
@@ -94,7 +94,7 @@ public class XmlCharsTests
     {
         // 0xFFFD (replacement character) is the upper edge of the second valid BMP range.
         var input = "a�b";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo(input);
     }
 
@@ -116,7 +116,7 @@ public class XmlCharsTests
     public async Task LoneHighSurrogate_Stripped()
     {
         var input = "a\uD83Db"; // high surrogate without a low follower
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo("ab");
     }
 
@@ -124,7 +124,7 @@ public class XmlCharsTests
     public async Task LoneLowSurrogate_Stripped()
     {
         var input = "a\uDE00b"; // low surrogate without a high predecessor
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo("ab");
     }
 
@@ -132,7 +132,7 @@ public class XmlCharsTests
     public async Task HighSurrogateAtEnd_Stripped()
     {
         var input = "abc\uD83D";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo("abc");
     }
 
@@ -142,7 +142,7 @@ public class XmlCharsTests
         // High surrogate followed by a regular BMP char — high is lone (stripped),
         // the BMP char is valid (kept).
         var input = "\uD83Dx";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo("x");
     }
 
@@ -151,7 +151,7 @@ public class XmlCharsTests
     {
         // Two highs in a row: the first is lone (stripped), then the second is also lone (stripped).
         var input = "a\uD83D\uD83Db";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo("ab");
     }
 
@@ -160,7 +160,7 @@ public class XmlCharsTests
     {
         // tab + null + 'A' + lone high surrogate + valid pair + 0xFFFE + 'B'
         var input = "\t\0A\uD83D😀￾B";
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         // Expected: tab + 'A' + valid pair (smile) + 'B'
         await Assert.That(result).IsEqualTo("\tA😀B");
     }
@@ -180,21 +180,21 @@ public class XmlCharsTests
         var prefix = new string('a', 5_000);
         var suffix = new string('b', 5_000);
         var input = prefix + "\0" + suffix;
-        var result = XmlChars.Strip(input).ToString();
+        var result = XmlChars.Strip(input);
         await Assert.That(result).IsEqualTo(prefix + suffix);
     }
 
     [Test]
     public async Task SingleChar_Tab_Preserved()
     {
-        var result = XmlChars.Strip("\t").ToString();
+        var result = XmlChars.Strip("\t");
         await Assert.That(result).IsEqualTo("\t");
     }
 
     [Test]
     public async Task SingleChar_Null_Stripped()
     {
-        var result = XmlChars.Strip("\0").ToString();
+        var result = XmlChars.Strip("\0");
         await Assert.That(result).IsEqualTo("");
     }
 

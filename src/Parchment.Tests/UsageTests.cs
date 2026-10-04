@@ -41,7 +41,7 @@ public class UsageTests
             """);
 
         // Wrap in BufferedStream so the registration hits the non-MemoryStream path
-        using var wrapped = new BufferedStream(template);
+        await using var wrapped = new BufferedStream(template);
 
         var store = new TemplateStore();
         store.RegisterDocxTemplate<Invoice>(wrapped);
@@ -119,7 +119,7 @@ public class UsageTests
 
         using var styleSource = DocxTemplateBuilder.Build();
         // Wrap in BufferedStream so the registration hits the non-MemoryStream path
-        using var wrapped = new BufferedStream(styleSource);
+        await using var wrapped = new BufferedStream(styleSource);
 
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<ReportContext>(

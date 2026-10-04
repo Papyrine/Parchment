@@ -152,7 +152,7 @@ class HtmlInlineRenderer :
         }
     }
 
-    static string? FirstClass(ReadOnlySpan<char> value)
+    static string? FirstClass(CharSpan value)
     {
         if (value.Length == 0)
         {

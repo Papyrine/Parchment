@@ -38,7 +38,7 @@ public class DeterminismTests
 
     static async Task AssertPinnedTimestamps(MemoryStream stream)
     {
-        using var archive = new System.IO.Compression.ZipArchive(stream);
+        await using var archive = new System.IO.Compression.ZipArchive(stream);
         await Assert.That(archive.Entries.Count).IsGreaterThan(0);
         foreach (var entry in archive.Entries)
         {
