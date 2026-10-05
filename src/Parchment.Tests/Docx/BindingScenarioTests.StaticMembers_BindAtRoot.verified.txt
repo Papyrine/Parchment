@@ -1,1 +1,9 @@
-﻿Acme Inc. — Q1 — © 2026
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text: Acme Inc. — Q1 — © 2026
+    }
+  ]
+}

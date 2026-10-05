@@ -1,5 +1,14 @@
-﻿Release notes
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Release notes
 The search feature has landed.
-Closed three regressions
-Halved test flake rate
+• Closed three regressions
+• Halved test flake rate
 Ship it.
+    }
+  ]
+}

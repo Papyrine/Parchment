@@ -1,4 +1,0 @@
-﻿Title: Report
-Heading
-Some bold text.
-End.

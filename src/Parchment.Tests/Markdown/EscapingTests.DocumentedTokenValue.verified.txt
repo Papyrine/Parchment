@@ -1,2 +1,11 @@
-﻿**Bound as a string**
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+**Bound as a string**
 Returned as a MarkdownToken
+    }
+  ]
+}

@@ -1,8 +1,14 @@
-﻿Q2 Engineering Review
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Q2 Engineering Review
 by Alex Chen
 Key findings
-Build times improved 40%
-Test flake rate halved
+• Build times improved 40%
+• Test flake rate halved
 The quarter closed ahead of plan.
 Level three
 Level four
@@ -12,3 +18,6 @@ Area	Status
 Build	Green
 Tests	Green
 Review complete.
+    }
+  ]
+}

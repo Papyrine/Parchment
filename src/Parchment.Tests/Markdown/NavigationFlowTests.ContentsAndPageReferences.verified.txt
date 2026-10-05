@@ -1,4 +1,10 @@
-﻿Contents 
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Contents
 Right-click and choose "Update Field" to build the table of contents.
 Summary
 Section	Page
@@ -8,3 +14,6 @@ Delivery
 Where the work landed.
 Risks
 What could still go wrong.
+    }
+  ]
+}

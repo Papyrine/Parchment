@@ -1,4 +1,38 @@
-﻿undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | False | TRUE | FALSE | None | hasOwnProperty | then | constructor | \ | \\ | 0 | 1 | 1.00 | $1.00 | 1/2 | 1E2 | 1E02 | 1E+02 | -1 | -1.00 | -$1.00 | -1/2 | -1E2 | -1E02 | -1E+02 | 1/0 | 0/0 | -2147483648/-1 | -9223372036854775808/-1 | -0 | -0.0 | +0 | +0.0 | 0.00 | 0..0 | . | 0.0.0 | 0,00 | 0,,0 | , | 0,0,0 | 0.0/0 | 1.0/0.0 | 0.0/0.0 | 1,0/0,0 | 0,0/0,0 | --1 | - | -. | -, | 999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 | NaN | Infinity | -Infinity | INF | 1#INF | -1#IND | 1#QNAN | 1#SNAN | 1#IND | 0x0 | 0xffffffff | 0xffffffffffffffff | 0xabad1dea | 123456789012345678901234567890123456789 | 1,000.00 | 1 000.00 | 1'000.00 | 1,000,000.00 | 1 000 000.00 | 1'000'000.00 | 1.000,00 | 1 000,00 | 1'000,00 | 1.000.000,00 | 1 000 000,00 | 1'000'000,00 | 01000 | 08 | 09 | 2.2250738585072011e-308 | ,./;'[]\-= | <>?:"{}|_+ | !@#$%^&*()`~ |  |  | \t \u0085 ​\u2028\u2029 | ­؀؁؂؃؄؅؜۝܏᠎​‌‍‎‏‪‫‬‭‮⁠⁡⁢⁣⁤⁦⁧⁨⁩⁪⁫⁬⁭⁮⁯﻿￹￺￻𑂽𛲠𛲡𛲢𛲣𝅳𝅴𝅵𝅶𝅷𝅸𝅹𝅺󠀁󠀠󠀡󠀢󠀣󠀤󠀥󠀦󠀧󠀨󠀩󠀪󠀫󠀬󠀭󠀮󠀯󠀰󠀱󠀲󠀳󠀴󠀵󠀶󠀷󠀸󠀹󠀺󠀻󠀼󠀽󠀾󠀿󠁀󠁁󠁂󠁃󠁄󠁅󠁆󠁇󠁈󠁉󠁊󠁋󠁌󠁍󠁎󠁏󠁐󠁑󠁒󠁓󠁔󠁕󠁖󠁗󠁘󠁙󠁚󠁛󠁜󠁝󠁞󠁟󠁠󠁡󠁢󠁣󠁤󠁥󠁦󠁧󠁨󠁩󠁪󠁫󠁬󠁭󠁮󠁯󠁰󠁱󠁲󠁳󠁴󠁵󠁶󠁷󠁸󠁹󠁺󠁻󠁼󠁽󠁾󠁿 | ﻿ |  | Ω≈ç√∫˜µ≤≥÷ | åß∂ƒ©˙∆˚¬…æ | œ∑´®†¥¨ˆøπ“‘ | ¡™£¢∞§¶•ªº–≠ | ¸˛Ç◊ı˜Â¯˘¿ | ÅÍÎÏ˝ÓÔÒÚÆ☃ | Œ„´‰ˇÁ¨ˆØ∏”’ | `⁄€‹›ﬁﬂ‡°·‚—± | ⅛⅜⅝⅞ | ЁЂЃЄЅІЇЈЉЊЋЌЍЎЏАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюя | ٠١٢٣٤٥٦٧٨٩ | ⁰⁴⁵ | ₀₁₂ | ⁰⁴⁵₀₁₂ | ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ | ' | " | '' | "" | '"' | "''''"'" | "'"'"''''" | | | | | 田中さんにあげて下さい | パーティーへ行かないか | 和製漢語 | 部落格 | 사회과학원 어학연구소 | 찦차를 타고 온 펲시맨과 쑛다리 똠방각하 | 社會科學院語學研究所 | 울란바토르 | 𠜎𠜱𠝹𠱓𠱸𠲖𠳏 | 𐐜 𐐔𐐇𐐝𐐀𐐡𐐇𐐓 𐐙𐐊𐐡𐐝𐐓/𐐝𐐇𐐗𐐊𐐤𐐔 𐐒𐐋𐐗 𐐒𐐌 𐐜 𐐡𐐀𐐖𐐇𐐤𐐓𐐝 𐐱𐑂 𐑄 𐐔𐐇𐐝𐐀𐐡𐐇𐐓 𐐏𐐆𐐅𐐤𐐆𐐚𐐊𐐡𐐝𐐆𐐓𐐆 | 表 | ポ | あ | A | 鷗 | Œ | é | Ｂ | 逍 | Ü | ß | ª | ą | ñ | 丂 | 㐀 | 𠀀 | Ⱥ | Ⱦ | ヽ༼ຈل͜ຈ༽ﾉ ヽ༼ຈل͜ຈ༽ﾉ | (｡◕ ∀ ◕｡) | ｀ｨ(´∀｀∩ | __ﾛ(,_,*) | ・(￣∀￣)・:*: | ﾟ･✿ヾ╲(｡◕‿◕｡)╱✿･ﾟ | ,。・:*:・゜’( ☻ ω ☻ )。・:*:・゜’ | (╯°□°）╯︵ ┻━┻) | (ﾉಥ益ಥ）ﾉ﻿ ┻━┻ | ┬─┬ノ( º _ ºノ) | ( ͡° ͜ʖ ͡°) | ¯\_(ツ)_/¯ | 😍 | 👩🏽 | 👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️ | 👾 🙇 💁 🙅 🙆 🙋 🙎 🙍 | 🐵 🙈 🙉 🙊 | ❤️ 💔 💌 💕 💞 💓 💗 💖 💘 💝 💟 💜 💛 💚 💙 | ✋🏿 💪🏿 👐🏿 🙌🏿 👏🏿 🙏🏿 | 👨‍👩‍👦 👨‍👩‍👧‍👦 👨‍👨‍👦 👩‍👩‍👧 👨‍👦 👨‍👧‍👦 👩‍👦 👩‍👧‍👦 | 🚾 🆒 🆓 🆕 🆖 🆗 🆙 🏧 | 0️⃣ 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 | 🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸 | 🇺🇸🇷🇺🇸🇦🇫🇦🇲 | 🇺🇸🇷🇺🇸🇦 | １２３ | ١٢٣ | ثم نفس سقطت وبالتحديد،, جزيرتي باستخدام أن دنو. إذ هنا؟ الستار وتنصيب كان. أهّل ايطاليا، بريطانيا-فرنسا قد أخذ. سليمان، إتفاقية بين ما, يذكر الحدود أي بعد, معاملة بولندا، الإطلاق عل إيو. | בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ | הָיְתָהtestالصفحات التّحول | ﷽ | ﷺ | مُنَاقَشَةُ سُبُلِ اِسْتِخْدَامِ اللُّغَةِ فِي النُّظُمِ الْقَائِمَةِ وَفِيم يَخُصَّ التَّطْبِيقَاتُ الْحاسُوبِيَّةُ، | الكل في المجمو عة (5) | ᚛ᚄᚓᚐᚋᚒᚄ ᚑᚄᚂᚑᚏᚅ᚜ | ᚛ ᚜ | ‪‪test‪ | ‫test‫ | test | test⁠test‫ | ⁦test⁧ | Ṱ̺̺̕o͞ ̷i̲̬͇̪͙n̝̗͕v̟̜̘̦͟o̶̙̰̠kè͚̮̺̪̹̱̤ ̖t̝͕̳̣̻̪͞h̼͓̲̦̳̘̲e͇̣̰̦̬͎ ̢̼̻̱̘h͚͎͙̜̣̲ͅi̦̲̣̰̤v̻͍e̺̭̳̪̰-m̢iͅn̖̺̞̲̯̰d̵̼̟͙̩̼̘̳ ̞̥̱̳̭r̛̗̘e͙p͠r̼̞̻̭̗e̺̠̣͟s̘͇̳͍̝͉e͉̥̯̞̲͚̬͜ǹ̬͎͎̟̖͇̤t͍̬̤͓̼̭͘ͅi̪̱n͠g̴͉ ͏͉ͅc̬̟h͡a̫̻̯͘o̫̟̖͍̙̝͉s̗̦̲.̨̹͈̣ | ̡͓̞ͅI̗̘̦͝n͇͇͙v̮̫ok̲̫̙͈i̖͙̭̹̠̞n̡̻̮̣̺g̲͈͙̭͙̬͎ ̰t͔̦h̞̲e̢̤ ͍̬̲͖f̴̘͕̣è͖ẹ̥̩l͖͔͚i͓͚̦͠n͖͍̗͓̳̮g͍ ̨o͚̪͡f̘̣̬ ̖̘͖̟͙̮c҉͔̫͖͓͇͖ͅh̵̤̣͚͔á̗̼͕ͅo̼̣̥s̱͈̺̖̦̻͢.̛̖̞̠̫̰ | ̗̺͖̹̯͓Ṯ̤͍̥͇͈h̲́e͏͓̼̗̙̼̣͔ ͇̜̱̠͓͍ͅN͕͠e̗̱z̘̝̜̺͙p̤̺̹͍̯͚e̠̻̠͜r̨̤͍̺̖͔̖̖d̠̟̭̬̝͟i̦͖̩͓͔̤a̠̗̬͉̙n͚͜ ̻̞̰͚ͅh̵͉i̳̞v̢͇ḙ͎͟-҉̭̩̼͔m̤̭̫i͕͇̝̦n̗͙ḍ̟ ̯̲͕͞ǫ̟̯̰̲͙̻̝f ̪̰̰̗̖̭̘͘c̦͍̲̞͍̩̙ḥ͚a̮͎̟̙͜ơ̩̹͎s̤.̝̝ ҉Z̡̖̜͖̰̣͉̜a͖̰͙̬͡l̲̫̳͍̩g̡̟̼̱͚̞̬ͅo̗͜.̟ | ̦H̬̤̗̤͝e͜ ̜̥̝̻͍̟́w̕h̖̯͓o̝͙̖͎̱̮ ҉̺̙̞̟͈W̷̼̭a̺̪͍į͈͕̭͙̯̜t̶̼̮s̘͙͖̕ ̠̫̠B̻͍͙͉̳ͅe̵h̵̬͇̫͙i̹͓̳̳̮͎̫̕n͟d̴̪̜̖ ̰͉̩͇͙̲͞ͅT͖̼͓̪͢h͏͓̮̻e̬̝̟ͅ ̤̹̝W͙̞̝͔͇͝ͅa͏͓͔̹̼̣l̴͔̰̤̟͔ḽ̫.͕ | Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮ | ˙ɐnbᴉlɐ ɐuƃɐɯ ǝɹolop ʇǝ ǝɹoqɐl ʇn ʇunpᴉpᴉɔuᴉ ɹodɯǝʇ poɯsnᴉǝ op pǝs 'ʇᴉlǝ ƃuᴉɔsᴉdᴉpɐ ɹnʇǝʇɔǝsuoɔ 'ʇǝɯɐ ʇᴉs ɹolop ɯnsdᴉ ɯǝɹo˥ | 00˙Ɩ$- | Ｔｈｅ ｑｕｉｃｋ ｂｒｏｗｎ ｆｏｘ ｊｕｍｐｓ ｏｖｅｒ ｔｈｅ ｌａｚｙ ｄｏｇ | 𝐓𝐡𝐞 𝐪𝐮𝐢𝐜𝐤 𝐛𝐫𝐨𝐰𝐧 𝐟𝐨𝐱 𝐣𝐮𝐦𝐩𝐬 𝐨𝐯𝐞𝐫 𝐭𝐡𝐞 𝐥𝐚𝐳𝐲 𝐝𝐨𝐠 | 𝕿𝖍𝖊 𝖖𝖚𝖎𝖈𝖐 𝖇𝖗𝖔𝖜𝖓 𝖋𝖔𝖝 𝖏𝖚𝖒𝖕𝖘 𝖔𝖛𝖊𝖗 𝖙𝖍𝖊 𝖑𝖆𝖟𝖞 𝖉𝖔𝖌 | 𝑻𝒉𝒆 𝒒𝒖𝒊𝒄𝒌 𝒃𝒓𝒐𝒘𝒏 𝒇𝒐𝒙 𝒋𝒖𝒎𝒑𝒔 𝒐𝒗𝒆𝒓 𝒕𝒉𝒆 𝒍𝒂𝒛𝒚 𝒅𝒐𝒈 | 𝓣𝓱𝓮 𝓺𝓾𝓲𝓬𝓴 𝓫𝓻𝓸𝔀𝓷 𝓯𝓸𝔁 𝓳𝓾𝓶𝓹𝓼 𝓸𝓿𝓮𝓻 𝓽𝓱𝓮 𝓵𝓪𝔃𝔂 𝓭𝓸𝓰 | 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘 | 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐 | ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢ | | <script>alert('1');</script> | | 
+﻿{
+  PageCount: 47,
+  Pages: [
+    {
+      Number: 1,
+      Text: undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | False | TRUE | FALSE | None | hasOwnProperty | then | constructor | \ | \\ | 0 | 1 | 1.00 | $1.00 | 1/2 | 1E2 | 1E02 | 1E+02 | -1 | -1.00 | - $1.00 | -1/2 | -1E2 | -1E02 | -1E+02 | 1/0 | 0/0 | - 2147483648/-1 | -9223372036854775808/-1 | -0 | -0.0 | +0 | +0.0 | 0.00 | 0..0 | . | 0.0.0 | 0,00 | 0,,0 | , | 0,0,0 | 0.0/0 | 1.0/0.0 | 0.0/0.0 | 1,0/0,0 | 0,0/0,0 | --1 | - | -. | -, | 999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 | NaN | Infinity | -Infinity | INF | 1#INF | -1#IND | 1#QNAN | 1#SNAN | 1#IND | 0x0 | 0xffffffff | 0xffffffffffffffff | 0xabad1dea | 123456789012345678901234567890123456789 | 1,000.00 | 1 000.00 | 1'000.00 | 1,000,000.00 | 1 000 000.00 | 1'000'000.00 | 1.000,00 | 1 000,00 | 1'000,00 | 1.000.000,00 | 1 000 000,00 | 1'000'000,00 | 01000 | 08 | 09 | 2.2250738585072011e-308 | ,./;'[]\-= | <>?:"{}|_+ | !@#$%^&*()`~ |  |  | \t \u0085 ​\u2028\u2029 | ­؀؁؂؃؄؅؜۝܏᠎​‌‍‎‏‪‫‬‭‮⁠⁡⁢⁣⁤⁦⁧⁨⁩⁪⁫⁬⁭⁮⁯﻿￹￺￻𑂽𛲠𛲡𛲢𛲣𝅳𝅴𝅵𝅶𝅷𝅸𝅹𝅺󠀁󠀠󠀡󠀢󠀣󠀤󠀥󠀦󠀧󠀨󠀩󠀪󠀫󠀬󠀭󠀮󠀯󠀰󠀱󠀲󠀳󠀴󠀵󠀶󠀷󠀸󠀹󠀺󠀻󠀼󠀽󠀾󠀿󠁀󠁁󠁂󠁃󠁄󠁅󠁆󠁇󠁈󠁉󠁊󠁋󠁌󠁍󠁎󠁏󠁐󠁑󠁒󠁓󠁔󠁕󠁖󠁗󠁘󠁙󠁚󠁛󠁜󠁝󠁞󠁟󠁠󠁡󠁢󠁣󠁤󠁥󠁦󠁧󠁨󠁩󠁪󠁫󠁬󠁭󠁮󠁯󠁰󠁱󠁲󠁳󠁴󠁵󠁶󠁷󠁸󠁹󠁺󠁻󠁼󠁽󠁾󠁿 | ﻿ |  | Ω≈ç√∫˜µ≤≥÷ | åß∂ƒ©˙∆˚¬…æ | œ∑´®†¥¨ˆøπ“‘ |
+    },
+    {
+      Number: 2,
+      Text: ¡™£¢∞§¶•ªº–≠ | ¸˛Ç◊ı˜Â¯˘¿ | ÅÍÎÏ˝ÓÔÒÚÆ☃ | Œ„´‰ˇÁ¨ˆØ∏”’ | `⁄€‹›ﬁﬂ‡°·‚—± | ⅛⅜⅝⅞ | ЁЂЃЄЅІЇЈЉЊЋЌЍЎЏАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюя | ٠١٢٣٤٥٦٧٨٩ | ⁰⁴⁵ | ₀₁₂ | ⁰⁴⁵₀₁₂ | ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ | ' | " | '' | "" | '"' | "''''"'" | "'"'"''''" | | | | | 田中さんにあげて下さい | パーティーへ行かないか | 和製漢語 | 部落格 | 사회과학원 어학연구소 | 찦차를 타고 온 펲시맨과 쑛다리 똠방각하 | 社會科學院語學研究所 | 울란바토르 | 𠜎𠜱𠝹𠱓𠱸𠲖𠳏 | 𐐜 𐐔𐐇𐐝𐐀𐐡𐐇𐐓 𐐙𐐊𐐡𐐝𐐓/𐐝𐐇𐐗𐐊𐐤𐐔 𐐒𐐋𐐗 𐐒𐐌 𐐜 𐐡𐐀𐐖𐐇𐐤𐐓𐐝 𐐱𐑂 𐑄 𐐔𐐇𐐝𐐀𐐡𐐇𐐓 𐐏𐐆𐐅𐐤𐐆𐐚𐐊𐐡𐐝𐐆𐐓𐐆 | 表 | ポ | あ | A | 鷗 | Œ | é | Ｂ | 逍 | Ü | ß | ª | ą | ñ | 丂 | 㐀 | 𠀀 | Ⱥ | Ⱦ | ヽ༼ຈل͜ຈ༽ﾉ ヽ༼ຈل͜ຈ༽ﾉ | (｡◕ ∀ ◕｡) | ｀ｨ(´∀｀∩ | __ﾛ(,_,*) | ・(￣∀￣)・:*: | ﾟ･✿ヾ╲(｡◕‿◕｡)╱✿･ﾟ | ,。・:*:・゜’( ☻ ω ☻ )。・:*:・゜’ | (╯°□°）╯︵ ┻━┻) | (ﾉಥ益ಥ）ﾉ﻿ ┻━┻ | ┬─┬ノ( º _ ºノ) | ( ͡° ͜ʖ ͡°) | ¯\_(ツ)_/¯ | 😍 | 👩🏽 | 👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️ | 👾 🙇 💁 🙅 🙆 🙋 🙎 🙍 | 🐵 🙈 🙉 🙊 | ❤️ 💔 💌 💕 💞 💓 💗 💖 💘 💝 💟 💜 💛 💚 💙 | ✋🏿 💪🏿 👐🏿 🙌🏿 👏🏿 🙏🏿 | 👨‍👩‍👦 👨‍👩‍👧‍👦 👨‍👨‍👦 👩‍👩‍👧 👨‍👦 👨‍👧‍👦 👩‍👦 👩‍👧‍👦 | 🚾 🆒 🆓 🆕 🆖 🆗 🆙 🏧 | 0️⃣ 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 | 🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸 | 🇺🇸🇷🇺🇸🇦🇫🇦🇲 | 🇺🇸🇷🇺🇸🇦 | １２３ | ١٢٣ | ثم نفس سقطت وبالتحديد،, جزيرتي باستخدام أن دنو. إذ هنا؟ الستار وتنصيب كان. أهّل ايطاليا، بريطانيا-
+    },
+    {
+      Number: 3,
+      Text: فرنسا قد أخذ. سليمان، إتفاقية بين ما, يذكر الحدود أي بعد, معاملة بولندا، الإطلاق عل إيو. | בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ | הָיְתָהtestالصفحات التّحول | ﷽ | ﷺ | مُنَاقَشَةُ سُبُلِ اِسْتِخْدَامِ اللُّغَةِ فِي النُّظُمِ الْقَائِمَةِ وَفِيم يَخُصَّ التَّطْبِيقَاتُ الْحاسُوبِيَّةُ، | الكل في المجمو عة (5) | ᚛ᚄᚓᚐᚋᚒᚄ ᚑᚄᚂᚑᚏᚅ᚜ | ᚛ ᚜ | ‪‪test‪ | ‫test‫ | test | test⁠test‫ | ⁦test⁧ | Ṱ̺̺̕o͞ ̷i̲̬͇̪͙n̝̗͕v̟̜̘̦͟o̶̙̰̠kè͚̮̺̪̹̱̤ ̖t̝͕̳̣̻̪͞h̼͓̲̦̳̘̲e͇̣̰̦̬͎ ̢̼̻̱̘h͚͎͙̜̣̲ͅi̦̲̣̰̤v̻͍e̺̭̳̪̰-m̢iͅn̖̺̞̲̯̰d̵̼̟͙̩̼̘̳ ̞̥̱̳̭r̛̗̘e͙p͠r̼̞̻̭̗e̺̠̣͟s̘͇̳͍̝͉e͉̥̯̞̲͚̬͜ǹ̬͎͎̟̖͇̤t͍̬̤͓̼̭͘ͅi̪̱n͠g̴͉ ͏͉ͅc̬̟h͡a̫̻̯͘o̫̟̖͍̙̝͉s̗̦̲.̨̹͈̣ | ̡͓̞ͅI̗̘̦͝n͇͇͙v̮̫ok̲̫̙͈i̖͙̭̹̠̞n̡̻̮̣̺g̲͈͙̭͙̬͎ ̰t͔̦h̞̲e̢̤ ͍̬̲͖f̴̘͕̣è͖ẹ̥̩l͖͔͚i͓͚̦͠n͖͍̗͓̳̮g͍ ̨o͚̪͡f̘̣̬ ̖̘͖̟͙̮c҉͔̫͖͓͇͖ͅh̵̤̣͚͔á̗̼͕ͅo̼̣̥s̱͈̺̖̦̻͢.̛̖̞̠̫̰ | ̗̺͖̹̯͓Ṯ̤͍̥͇͈h̲́e͏͓̼̗̙̼̣͔ ͇̜̱̠͓͍ͅN͕͠e̗̱z̘̝̜̺͙p̤̺̹͍̯͚e̠̻̠͜r̨̤͍̺̖͔̖̖d̠̟̭̬̝͟i̦͖̩͓͔̤a̠̗̬͉̙n͚͜ ̻̞̰͚ͅh̵͉i̳̞v̢͇ḙ͎͟-҉̭̩̼͔m̤̭̫i͕͇̝̦n̗͙ḍ̟ ̯̲͕͞ǫ̟̯̰̲͙̻̝f ̪̰̰̗̖̭̘͘c̦͍̲̞͍̩̙ḥ͚a̮͎̟̙͜ơ̩̹͎s̤.̝̝ ҉Z̡̖̜͖̰̣͉̜a͖̰͙̬͡l̲̫̳͍̩g̡̟̼̱͚̞̬ͅo̗͜.̟ | ̦H̬̤̗̤͝e͜ ̜̥̝̻͍̟́w̕h̖̯͓o̝͙̖͎̱̮ ҉̺̙̞̟͈W̷̼̭a̺̪͍į͈͕̭͙̯̜t̶̼̮s̘͙͖̕ ̠̫̠B̻͍͙͉̳ͅe̵h̵̬͇̫͙i̹͓̳̳̮͎̫̕n͟d̴̪̜̖ ̰͉̩͇͙̲͞ͅT͖̼͓̪͢h͏͓̮̻e̬̝̟ͅ ̤̹̝W͙̞̝͔͇͝ͅa͏͓͔̹̼̣l̴͔̰̤̟͔ḽ̫.͕ | Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮ | ˙ɐnbᴉlɐ ɐuƃɐɯ ǝɹolop ʇǝ ǝɹoqɐl ʇn ʇunpᴉpᴉɔuᴉ ɹodɯǝʇ poɯsnᴉǝ op pǝs 'ʇᴉlǝ ƃuᴉɔsᴉdᴉpɐ ɹnʇǝʇɔǝsuoɔ 'ʇǝɯɐ ʇᴉs ɹolop ɯnsdᴉ ɯǝɹo˥ | 00˙Ɩ$- | Ｔｈｅ ｑｕｉｃｋ ｂｒｏｗｎ ｆｏｘ ｊｕｍｐｓ ｏｖｅｒ ｔｈｅ ｌａｚｙ ｄｏｇ | 𝐓𝐡𝐞 𝐪𝐮𝐢𝐜𝐤 𝐛𝐫𝐨𝐰𝐧 𝐟𝐨𝐱 𝐣𝐮𝐦𝐩𝐬 𝐨𝐯𝐞𝐫 𝐭𝐡𝐞 𝐥𝐚𝐳𝐲 𝐝𝐨𝐠 | 𝕿𝖍𝖊 𝖖𝖚𝖎𝖈𝖐 𝖇𝖗𝖔𝖜𝖓 𝖋𝖔𝖝 𝖏𝖚𝖒𝖕𝖘 𝖔𝖛𝖊𝖗 𝖙𝖍𝖊 𝖑𝖆𝖟𝖞 𝖉𝖔𝖌 | 𝑻𝒉𝒆 𝒒𝒖𝒊𝒄𝒌 𝒃𝒓𝒐𝒘𝒏 𝒇𝒐𝒙 𝒋𝒖𝒎𝒑𝒔 𝒐𝒗𝒆𝒓 𝒕𝒉𝒆 𝒍𝒂𝒛𝒚 𝒅𝒐𝒈 | 𝓣𝓱𝓮 𝓺𝓾𝓲𝓬𝓴 𝓫𝓻𝓸𝔀𝓷 𝓯𝓸𝔁 𝓳𝓾𝓶𝓹𝓼 𝓸𝓿𝓮𝓻 𝓽𝓱𝓮 𝓵𝓪𝔃𝔂 𝓭𝓸𝓰 | 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘 | 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐 | ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢ | |
+    },
+    {
+      Number: 4,
+      Text:
+<script>alert('1');</script> | |
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+DEF | ABC
+    },
+    {
+      Number: 5,
+      Text:
 DEF | ABC
 DEF | ABC
 DEF | ABC
@@ -13,24 +47,29 @@ DEF | ABC
 DEF | ABC
 DEF | ABC
 DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | ABC
-DEF | test (\x0Bjavascript:javascript:alert(61)) | test (\x0Fjavascript:javascript:alert(62)) | test (\xC2\xA0javascript:javascript:alert(63)) | test (\x05javascript:javascript:alert(64)) | test (\xE1\xA0\x8Ejavascript:javascript:alert(65)) | test (\x18javascript:javascript:alert(66)) | test (\x11javascript:javascript:alert(67)) | test (\xE2\x80\x88javascript:javascript:alert(68)) | test (\xE2\x80\x89javascript:javascript:alert(69)) | test (\xE2\x80\x80javascript:javascript:alert(70)) | test (\x17javascript:javascript:alert(71)) | test (\x03javascript:javascript:alert(72)) | test (\x0Ejavascript:javascript:alert(73)) | test (\x1Ajavascript:javascript:alert(74)) | test (\x00javascript:javascript:alert(75)) | test (\x10javascript:javascript:alert(76)) | test (\xE2\x80\x82javascript:javascript:alert(77)) | test (\x20javascript:javascript:alert(78)) | test (\x13javascript:javascript:alert(79)) | test (\x09javascript:javascript:alert(80)) | test (\xE2\x80\x8Ajavascript:javascript:alert(81)) | test (\x14javascript:javascript:alert(82)) | test (\x19javascript:javascript:alert(83)) | test (\xE2\x80\xAFjavascript:javascript:alert(84)) | test (\x1Fjavascript:javascript:alert(85)) | test (\xE2\x80\x81javascript:javascript:alert(86)) | test (\x1Djavascript:javascript:alert(87)) | test (\xE2\x80\x87javascript:javascript:alert(88)) | test (\x07javascript:javascript:alert(89)) | test (\xE1\x9A\x80javascript:javascript:alert(90)) | test (\xE2\x80\x83javascript:javascript:alert(91)) | test (\x04javascript:javascript:alert(92)) | test (\x01javascript:javascript:alert(93)) | test (\x08javascript:javascript:alert(94)) | test (\xE2\x80\x84javascript:javascript:alert(95)) | test (\xE2\x80\x86javascript:javascript:alert(96)) | test (\xE3\x80\x80javascript:javascript:alert(97)) | test (\x12javascript:javascript:alert(98)) | test (\x0Djavascript:javascript:alert(99)) | test (\x0Ajavascript:javascript:alert(100)) | test (\x0Cjavascript:javascript:alert(101)) | test (\x15javascript:javascript:alert(102)) | test (\xE2\x80\xA8javascript:javascript:alert(103)) | test (\x16javascript:javascript:alert(104)) | test (\x02javascript:javascript:alert(105)) | test (\x1Bjavascript:javascript:alert(106)) | test (\x06javascript:javascript:alert(107)) | test (\xE2\x80\xA9javascript:javascript:alert(108)) | test (\xE2\x80\x85javascript:javascript:alert(109)) | test (\x1Ejavascript:javascript:alert(110)) | test (\xE2\x81\x9Fjavascript:javascript:alert(111)) | test (\x1Cjavascript:javascript:alert(112)) | test (javascript\x00:javascript:alert(113)) | test (javascript\x3A:javascript:alert(114)) | test (javascript\x09:javascript:alert(115)) | test (javascript\x0D:javascript:alert(116)) | test (javascript\x0A:javascript:alert(117)) | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | XXX (javascript:javascript:alert(199)) | | | 
+DEF | test (\x0Bjavascript:javascript:alert(61)) | test (\x0Fjavascript:javascript:alert(62)) | test
+    },
+    {
+      Number: 6,
+      Text: (\xC2\xA0javascript:javascript:alert(63)) | test (\x05javascript:javascript:alert(64)) | test (\xE1\xA0\x8Ejavascript:javascript:alert(65)) | test (\x18javascript:javascript:alert(66)) | test (\x11javascript:javascript:alert(67)) | test (\xE2\x80\x88javascript:javascript:alert(68)) | test (\xE2\x80\x89javascript:javascript:alert(69)) | test (\xE2\x80\x80javascript:javascript:alert(70)) | test (\x17javascript:javascript:alert(71)) | test (\x03javascript:javascript:alert(72)) | test (\x0Ejavascript:javascript:alert(73)) | test (\x1Ajavascript:javascript:alert(74)) | test (\x00javascript:javascript:alert(75)) | test (\x10javascript:javascript:alert(76)) | test (\xE2\x80\x82javascript:javascript:alert(77)) | test (\x20javascript:javascript:alert(78)) | test (\x13javascript:javascript:alert(79)) | test (\x09javascript:javascript:alert(80)) | test (\xE2\x80\x8Ajavascript:javascript:alert(81)) | test (\x14javascript:javascript:alert(82)) | test (\x19javascript:javascript:alert(83)) | test (\xE2\x80\xAFjavascript:javascript:alert(84)) | test (\x1Fjavascript:javascript:alert(85)) | test
+    },
+    {
+      Number: 7,
+      Text: (\xE2\x80\x81javascript:javascript:alert(86)) | test (\x1Djavascript:javascript:alert(87)) | test (\xE2\x80\x87javascript:javascript:alert(88)) | test (\x07javascript:javascript:alert(89)) | test (\xE1\x9A\x80javascript:javascript:alert(90)) | test (\xE2\x80\x83javascript:javascript:alert(91)) | test (\x04javascript:javascript:alert(92)) | test (\x01javascript:javascript:alert(93)) | test (\x08javascript:javascript:alert(94)) | test (\xE2\x80\x84javascript:javascript:alert(95)) | test (\xE2\x80\x86javascript:javascript:alert(96)) | test (\xE3\x80\x80javascript:javascript:alert(97)) | test (\x12javascript:javascript:alert(98)) | test (\x0Djavascript:javascript:alert(99)) | test (\x0Ajavascript:javascript:alert(100)) | test (\x0Cjavascript:javascript:alert(101)) | test (\x15javascript:javascript:alert(102)) | test (\xE2\x80\xA8javascript:javascript:alert(103)) | test (\x16javascript:javascript:alert(104)) | test (\x02javascript:javascript:alert(105)) | test (\x1Bjavascript:javascript:alert(106)) | test (\x06javascript:javascript:alert(107)) | test (\xE2\x80\xA9javascript:javascript:alert(108)) | test
+    },
+    {
+      Number: 8,
+      Text:
+(\xE2\x80\x85javascript:javascript:alert(109)) | test (\x1Ejavascript:javascript:alert(110)) | test (\xE2\x81\x9Fjavascript:javascript:alert(111)) | test (\x1Cjavascript:javascript:alert(112)) | test (javascript\x00:javascript:alert(113)) | test (javascript\x3A:javascript:alert(114)) | test (javascript\x09:javascript:alert(115)) | test (javascript\x0D:javascript:alert(116)) | test (javascript\x0A:javascript:alert(117)) | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | `"'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | "`'> | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | | XXX (javascript:javascript:alert(199)) | | |
 undefined
 undef
 null
 NULL
 (null)
+    },
+    {
+      Number: 9,
+      Text:
 nil
 NIL
 true
@@ -46,6 +85,10 @@ constructor
 \
 \\
 0
+    },
+    {
+      Number: 10,
+      Text:
 1
 1.00
 $1.00
@@ -61,6 +104,10 @@ $1.00
 -1E02
 -1E+02
 1/0
+    },
+    {
+      Number: 11,
+      Text:
 0/0
 -2147483648/-1
 -9223372036854775808/-1
@@ -76,6 +123,10 @@ $1.00
 0,,0
 ,
 0,0,0
+    },
+    {
+      Number: 12,
+      Text:
 0.0/0
 1.0/0.0
 0.0/0.0
@@ -91,6 +142,10 @@ Infinity
 -Infinity
 INF
 1#INF
+    },
+    {
+      Number: 13,
+      Text:
 -1#IND
 1#QNAN
 1#SNAN
@@ -106,6 +161,10 @@ INF
 1,000,000.00
 1 000 000.00
 1'000'000.00
+    },
+    {
+      Number: 14,
+      Text:
 1.000,00
 1 000,00
 1'000,00
@@ -121,7 +180,11 @@ INF
 !@#$%^&*()`~
 
 
-\t \u0085 ​\u2028\u2029 
+    },
+    {
+      Number: 15,
+      Text:
+\t \u0085 ​\u2028\u2029
 ­؀؁؂؃؄؅؜۝܏᠎​‌‍‎‏‪‫‬‭‮⁠⁡⁢⁣⁤⁦⁧⁨⁩⁪⁫⁬⁭⁮⁯﻿￹￺￻𑂽𛲠𛲡𛲢𛲣𝅳𝅴𝅵𝅶𝅷𝅸𝅹𝅺󠀁󠀠󠀡󠀢󠀣󠀤󠀥󠀦󠀧󠀨󠀩󠀪󠀫󠀬󠀭󠀮󠀯󠀰󠀱󠀲󠀳󠀴󠀵󠀶󠀷󠀸󠀹󠀺󠀻󠀼󠀽󠀾󠀿󠁀󠁁󠁂󠁃󠁄󠁅󠁆󠁇󠁈󠁉󠁊󠁋󠁌󠁍󠁎󠁏󠁐󠁑󠁒󠁓󠁔󠁕󠁖󠁗󠁘󠁙󠁚󠁛󠁜󠁝󠁞󠁟󠁠󠁡󠁢󠁣󠁤󠁥󠁦󠁧󠁨󠁩󠁪󠁫󠁬󠁭󠁮󠁯󠁰󠁱󠁲󠁳󠁴󠁵󠁶󠁷󠁸󠁹󠁺󠁻󠁼󠁽󠁾󠁿
 ﻿
 Ω≈ç√∫˜µ≤≥÷
@@ -135,6 +198,10 @@ INF
 ⅛⅜⅝⅞
 ЁЂЃЄЅІЇЈЉЊЋЌЍЎЏАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюя
 ٠١٢٣٤٥٦٧٨٩
+    },
+    {
+      Number: 16,
+      Text:
 ⁰⁴⁵
 ₀₁₂
 ⁰⁴⁵₀₁₂
@@ -146,6 +213,10 @@ INF
 '"'
 "''''"'"
 "'"'"''''"
+    },
+    {
+      Number: 17,
+      Text:
 田中さんにあげて下さい
 パーティーへ行かないか
 和製漢語
@@ -160,6 +231,10 @@ INF
 ポ
 あ
 A
+    },
+    {
+      Number: 18,
+      Text:
 鷗
 Œ
 é
@@ -175,6 +250,10 @@ A
 𠀀
 Ⱥ
 Ⱦ
+    },
+    {
+      Number: 19,
+      Text:
 ヽ༼ຈل͜ຈ༽ﾉ ヽ༼ຈل͜ຈ༽ﾉ
 (｡◕ ∀ ◕｡)
 ｀ｨ(´∀｀∩
@@ -190,6 +269,10 @@ __ﾛ(,_,*)
 😍
 👩🏽
 👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️
+    },
+    {
+      Number: 20,
+      Text:
 👾 🙇 💁 🙅 🙆 🙋 🙎 🙍
 🐵 🙈 🙉 🙊
 ❤️ 💔 💌 💕 💞 💓 💗 💖 💘 💝 💟 💜 💛 💚 💙
@@ -203,6 +286,10 @@ __ﾛ(,_,*)
 １２３
 ١٢٣
 ثم نفس سقطت وبالتحديد،, جزيرتي باستخدام أن دنو. إذ هنا؟ الستار وتنصيب كان. أهّل ايطاليا، بريطانيا-فرنسا قد أخذ. سليمان، إتفاقية بين ما, يذكر الحدود أي بعد, معاملة بولندا، الإطلاق عل إيو.
+    },
+    {
+      Number: 21,
+      Text:
 בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ
 הָיְתָהtestالصفحات التّحول
 ﷽
@@ -213,11 +300,15 @@ __ﾛ(,_,*)
 ᚛ ᚜
 ‪‪test‪
 ‫test‫
- test 
+test
 test⁠test‫
 ⁦test⁧
 Ṱ̺̺̕o͞ ̷i̲̬͇̪͙n̝̗͕v̟̜̘̦͟o̶̙̰̠kè͚̮̺̪̹̱̤ ̖t̝͕̳̣̻̪͞h̼͓̲̦̳̘̲e͇̣̰̦̬͎ ̢̼̻̱̘h͚͎͙̜̣̲ͅi̦̲̣̰̤v̻͍e̺̭̳̪̰-m̢iͅn̖̺̞̲̯̰d̵̼̟͙̩̼̘̳ ̞̥̱̳̭r̛̗̘e͙p͠r̼̞̻̭̗e̺̠̣͟s̘͇̳͍̝͉e͉̥̯̞̲͚̬͜ǹ̬͎͎̟̖͇̤t͍̬̤͓̼̭͘ͅi̪̱n͠g̴͉ ͏͉ͅc̬̟h͡a̫̻̯͘o̫̟̖͍̙̝͉s̗̦̲.̨̹͈̣
 ̡͓̞ͅI̗̘̦͝n͇͇͙v̮̫ok̲̫̙͈i̖͙̭̹̠̞n̡̻̮̣̺g̲͈͙̭͙̬͎ ̰t͔̦h̞̲e̢̤ ͍̬̲͖f̴̘͕̣è͖ẹ̥̩l͖͔͚i͓͚̦͠n͖͍̗͓̳̮g͍ ̨o͚̪͡f̘̣̬ ̖̘͖̟͙̮c҉͔̫͖͓͇͖ͅh̵̤̣͚͔á̗̼͕ͅo̼̣̥s̱͈̺̖̦̻͢.̛̖̞̠̫̰
+    },
+    {
+      Number: 22,
+      Text:
 ̗̺͖̹̯͓Ṯ̤͍̥͇͈h̲́e͏͓̼̗̙̼̣͔ ͇̜̱̠͓͍ͅN͕͠e̗̱z̘̝̜̺͙p̤̺̹͍̯͚e̠̻̠͜r̨̤͍̺̖͔̖̖d̠̟̭̬̝͟i̦͖̩͓͔̤a̠̗̬͉̙n͚͜ ̻̞̰͚ͅh̵͉i̳̞v̢͇ḙ͎͟-҉̭̩̼͔m̤̭̫i͕͇̝̦n̗͙ḍ̟ ̯̲͕͞ǫ̟̯̰̲͙̻̝f ̪̰̰̗̖̭̘͘c̦͍̲̞͍̩̙ḥ͚a̮͎̟̙͜ơ̩̹͎s̤.̝̝ ҉Z̡̖̜͖̰̣͉̜a͖̰͙̬͡l̲̫̳͍̩g̡̟̼̱͚̞̬ͅo̗͜.̟
 ̦H̬̤̗̤͝e͜ ̜̥̝̻͍̟́w̕h̖̯͓o̝͙̖͎̱̮ ҉̺̙̞̟͈W̷̼̭a̺̪͍į͈͕̭͙̯̜t̶̼̮s̘͙͖̕ ̠̫̠B̻͍͙͉̳ͅe̵h̵̬͇̫͙i̹͓̳̳̮͎̫̕n͟d̴̪̜̖ ̰͉̩͇͙̲͞ͅT͖̼͓̪͢h͏͓̮̻e̬̝̟ͅ ̤̹̝W͙̞̝͔͇͝ͅa͏͓͔̹̼̣l̴͔̰̤̟͔ḽ̫.͕
 Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮
@@ -231,16 +322,24 @@ Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮
 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘
 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐
 ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢
+    },
+    {
+      Number: 23,
+      Text:
 <script>alert('1');</script>
 ">
 '>
 >
 < / script >< script >alert(8)< / script >
- onfocus=JaVaSCript:alert(9) autofocus
+onfocus=JaVaSCript:alert(9) autofocus
 " onfocus=JaVaSCript:alert(10) autofocus
 ' onfocus=JaVaSCript:alert(11) autofocus
 ＜script＞alert(12)＜/script＞
 ript>alert(13)ript>
+    },
+    {
+      Number: 24,
+      Text:
 -->
 ";alert(15);t="
 ';alert(16);t='
@@ -256,6 +355,10 @@ javascript:alert(25);
 javascript:alert(26);
 javascript:alert(27);
 javascript:alert(28);
+    },
+    {
+      Number: 25,
+      Text:
 javascript:alert(29);
 javascript:alert(30);
 javascript:alert(31);
@@ -271,6 +374,10 @@ ABC
 DEF
 ABC
 DEF
+    },
+    {
+      Number: 26,
+      Text:
 ABC
 DEF
 ABC
@@ -286,6 +393,10 @@ DEF
 ABC
 DEF
 ABC
+    },
+    {
+      Number: 27,
+      Text:
 DEF
 ABC
 DEF
@@ -301,6 +412,10 @@ ABC
 DEF
 ABC
 DEF
+    },
+    {
+      Number: 28,
+      Text:
 ABC
 DEF
 ABC
@@ -316,6 +431,10 @@ DEF
 ABC
 DEF
 test (\x0Bjavascript:javascript:alert(61))
+    },
+    {
+      Number: 29,
+      Text:
 test (\x0Fjavascript:javascript:alert(62))
 test (\xC2\xA0javascript:javascript:alert(63))
 test (\x05javascript:javascript:alert(64))
@@ -331,6 +450,10 @@ test (\x0Ejavascript:javascript:alert(73))
 test (\x1Ajavascript:javascript:alert(74))
 test (\x00javascript:javascript:alert(75))
 test (\x10javascript:javascript:alert(76))
+    },
+    {
+      Number: 30,
+      Text:
 test (\xE2\x80\x82javascript:javascript:alert(77))
 test (\x20javascript:javascript:alert(78))
 test (\x13javascript:javascript:alert(79))
@@ -346,6 +469,10 @@ test (\xE2\x80\x87javascript:javascript:alert(88))
 test (\x07javascript:javascript:alert(89))
 test (\xE1\x9A\x80javascript:javascript:alert(90))
 test (\xE2\x80\x83javascript:javascript:alert(91))
+    },
+    {
+      Number: 31,
+      Text:
 test (\x04javascript:javascript:alert(92))
 test (\x01javascript:javascript:alert(93))
 test (\x08javascript:javascript:alert(94))
@@ -361,6 +488,10 @@ test (\xE2\x80\xA8javascript:javascript:alert(103))
 test (\x16javascript:javascript:alert(104))
 test (\x02javascript:javascript:alert(105))
 test (\x1Bjavascript:javascript:alert(106))
+    },
+    {
+      Number: 32,
+      Text:
 test (\x06javascript:javascript:alert(107))
 test (\xE2\x80\xA9javascript:javascript:alert(108))
 test (\xE2\x80\x85javascript:javascript:alert(109))
@@ -376,6 +507,10 @@ test (javascript\x0A:javascript:alert(117))
 `"'>
 `"'>
 `"'>
+    },
+    {
+      Number: 33,
+      Text:
 `"'>
 `"'>
 `"'>
@@ -391,6 +526,10 @@ test (javascript\x0A:javascript:alert(117))
 "`'>
 "`'>
 "`'>
+    },
+    {
+      Number: 34,
+      Text:
 "`'>
 "`'>
 "`'>
@@ -406,6 +545,10 @@ test (javascript\x0A:javascript:alert(117))
 "`'>
 "`'>
 "`'>
+    },
+    {
+      Number: 35,
+      Text:
 "`'>
 "`'>
 "`'>
@@ -419,14 +562,26 @@ test (javascript\x0A:javascript:alert(117))
 "`'>
 "`'>
 "`'>
+    },
+    {
+      Number: 38,
+      Text:
 XXX (javascript:javascript:alert(199))
 `><img src=x:x onerror=javascript:alert(203)></a>
 ">
+    },
+    {
+      Number: 39,
+      Text:
 perl -e 'print "";' > out
 <
+    },
+    {
+      Number: 40,
+      Text:
 \";alert('223');//
- Copy me
- Scroll over me 
+Copy me
+Scroll over me
 </body>
 http://a/%%30%30
 1;DROP TABLE users
@@ -434,7 +589,10 @@ http://a/%%30%30
 ' OR 1=1 -- 1
 ' OR '1'='1
 '; EXEC sp_MSForEachTable 'DROP TABLE ?'; --
- 
+    },
+    {
+      Number: 41,
+      Text:
 %
 _
 -
@@ -450,6 +608,10 @@ eval("puts 'hello world'")
 System("ls -al /")
 `ls -al /`
 Kernel.exec("ls -al /")
+    },
+    {
+      Number: 42,
+      Text:
 Kernel.exit(1)
 %x('ls -al /')
 ]>&xxe;
@@ -465,6 +627,10 @@ File:///
 ../../../../../../../../../../../etc/passwd%00
 ../../../../../../../../../../../etc/hosts
 () { 0; }; touch /tmp/blns.shellshock1.fail;
+    },
+    {
+      Number: 43,
+      Text:
 () { _; } >_[$($())] { touch /tmp/blns.shellshock2.fail; }
 <<< %s(un='%s') = %u
 +++ATH0
@@ -480,6 +646,10 @@ LPT1
 LPT2
 LPT3
 COM2
+    },
+    {
+      Number: 44,
+      Text:
 COM3
 COM4
 DCC SEND STARTKEYLOGGER 0 0 0
@@ -495,6 +665,10 @@ Craig Cockburn, Software Specialist
 Linda Callahan
 Dr. Herman I. Libshitz
 magna cum laude
+    },
+    {
+      Number: 45,
+      Text:
 Super Bowl XXX
 medieval erection of parapets
 evaluate
@@ -508,6 +682,10 @@ basement
 If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you.
 Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue
 But now...[20Cfor my greatest trick...[8m
+    },
+    {
+      Number: 46,
+      Text:
 The quick brown fox... [Beeeep]
 Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗
 🏳0🌈️
@@ -522,6 +700,10 @@ Figure dash ‒
 Swung dash ⁓
 Single opening quote ‘
 Single closing quote ’
+    },
+    {
+      Number: 47,
+      Text:
 Double opening quote “
 Double closing quote ”
 Copyright ©
@@ -535,3 +717,6 @@ Non-breaking hyphen ߛ
 Em space ߓ
 En space ߒ
 Quarter space ߕ
+    }
+  ]
+}

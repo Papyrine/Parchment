@@ -1,4 +1,13 @@
-﻿# Welcome
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+# Welcome
 Welcome to the weekly digest.
-Search performance is up
-Two regressions closed
+• Search performance is up
+• Two regressions closed
+    }
+  ]
+}

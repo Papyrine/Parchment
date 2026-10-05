@@ -1,4 +1,10 @@
-﻿Q2 Platform Health Review
+﻿{
+  PageCount: 2,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Q2 Platform Health Review
 Prepared by Alex Chen on 07/01/2026
 Summary
 Platform reliability and developer experience both trended upward this quarter, driven by the build pipeline rewrite and the new on-call rotation.
@@ -9,7 +15,14 @@ Tests	Improved	QA
 Deploys	Stable	SRE
 On-call	Watch	SRE
 Action items
-Roll out cached builds — Extend the new pipeline to mobile repos.
-Document runbooks — Capture the top five paging scenarios.
-Audit alert thresholds — Reduce noise on the latency dashboard.
+1. Roll out cached builds — Extend the new pipeline to mobile repos.
+2. Document runbooks — Capture the top five paging scenarios.
+    },
+    {
+      Number: 2,
+      Text:
+3. Audit alert thresholds — Reduce noise on the latency dashboard.
 ⚠ Outstanding risks remain. See appendix for mitigation plan.
+    }
+  ]
+}

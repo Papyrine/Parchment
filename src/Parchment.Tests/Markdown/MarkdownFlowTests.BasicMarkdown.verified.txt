@@ -1,7 +1,16 @@
-﻿Q2 Engineering Review
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Q2 Engineering Review
 by Alex Chen
 Key findings
-Build times improved 40%
-Test flake rate halved
-Three new services in production
+• Build times improved 40%
+• Test flake rate halved
+• Three new services in production
 Review complete.
+    }
+  ]
+}

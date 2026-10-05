@@ -1,6 +1,15 @@
-﻿Top quote
-outer one
-inner a
-inner b
-outer two
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Top quote
+• outer one
+o inner a
+o inner b
+• outer two
 Tail
+    }
+  ]
+}

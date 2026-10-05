@@ -1,3 +1,17 @@
-﻿Portrait to begin with.
-A wide table belongs here.
-And back to portrait.
+﻿{
+  PageCount: 3,
+  Pages: [
+    {
+      Number: 1,
+      Text: Portrait to begin with.
+    },
+    {
+      Number: 2,
+      Text: A wide table belongs here.
+    },
+    {
+      Number: 3,
+      Text: And back to portrait.
+    }
+  ]
+}

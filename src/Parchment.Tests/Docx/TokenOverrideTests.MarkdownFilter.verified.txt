@@ -1,4 +1,13 @@
-﻿# Release notes
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+# Release notes
 Bug fixes
-Fixed crash on empty input
-Resolved timeout in batch mode
+• Fixed crash on empty input
+• Resolved timeout in batch mode
+    }
+  ]
+}

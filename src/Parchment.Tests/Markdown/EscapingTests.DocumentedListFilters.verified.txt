@@ -1,6 +1,15 @@
-﻿Totals | and dates
-1. Not a nested list
-**Not bold**
-Totals | and dates
-1. Not a nested list
-**Not bold**
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+• Totals | and dates
+• 1. Not a nested list
+• **Not bold**
+1. Totals | and dates
+2. 1. Not a nested list
+3. **Not bold**
+    }
+  ]
+}
