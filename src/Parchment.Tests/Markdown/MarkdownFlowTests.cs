@@ -565,6 +565,12 @@ public partial class TokenModel
         public required TokenValue Value { get; init; }
     }
 
+    [ParchmentBindable]
+    public partial class TokenListModel
+    {
+        public required IReadOnlyList<TokenValue> Values { get; init; }
+    }
+
     static async Task<string> RenderText<TModel>(string markdown, TModel model)
         where TModel : class
     {
@@ -657,6 +663,71 @@ public partial class TokenModel
                 Value = new HtmlToken("<p>from html</p>")
             });
         await Assert.That(text).IsEqualTo("from html");
+    }
+
+    // A token in a loop is parked once per iteration, each under its own marker, and every marker's
+    // host is found in one walk of the document. Past ten of them one marker's index is the start
+    // of another's, so each has to be matched whole to land on its own value. Each value here is
+    // two blocks, with a line of the template's own before it, so what a value produces has to
+    // arrive in order and where its marker was for the text to read straight through.
+    [Test]
+    public async Task HtmlTokenInALoopRendersEachValueInPlace()
+    {
+        var indexes = Enumerable.Range(0, 25).ToList();
+        var text = await RenderText(
+            """
+            {% for value in Values %}
+
+            item
+
+            {{ value }}
+
+            {% endfor %}
+            """,
+            new TokenListModel
+            {
+                Values = indexes
+                    .Select(TokenValue (_) => new HtmlToken($"<p>a{_};</p><p>b{_};</p>"))
+                    .ToList()
+            });
+        await Assert.That(text).IsEqualTo(string.Concat(indexes.Select(_ => $"itema{_};b{_};")));
+    }
+
+    // A marker can land in a table cell as well as in the body. The hosts are taken out a parent at
+    // a time, so each cell has to come back holding its own value and the body its own.
+    [Test]
+    public async Task HtmlTokenInATableCellRendersInThatCell()
+    {
+        using var stream = await Render(
+            """
+            | Left | Right |
+            | --- | --- |
+            | {{ Values[0] }} | {{ Values[1] }} |
+
+            {{ Values[2] }}
+            """,
+            new TokenListModel
+            {
+                Values =
+                [
+                    new HtmlToken("<p>left cell</p>"),
+                    new HtmlToken("<p>right cell</p>"),
+                    new HtmlToken("<p>below</p>")
+                ]
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var cells = body.Descendants<TableRow>()
+            .Last()
+            .Elements<TableCell>()
+            .Select(_ => _.InnerText);
+        await Assert.That(string.Join('|', cells)).IsEqualTo("left cell|right cell");
+
+        var paragraphs = body.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0);
+        await Assert.That(string.Join('|', paragraphs)).IsEqualTo("below");
     }
 
     [Test]
