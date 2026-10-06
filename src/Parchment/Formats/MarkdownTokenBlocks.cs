@@ -84,10 +84,10 @@ static class MarkdownTokenBlocks
 
         // Wrapped in the private-use sentinel MarkdownExcelsiorTables uses, for the two reasons it
         // uses it. No rendered value can contain one, so a value that happened to read like a
-        // marker is not swapped for someone else's content. And it terminates the index: Apply locates
-        // a host with Contains, so an unterminated "…-1" would be found inside "…-10" and the
-        // first marker reported as sharing its block with what is really the eleventh's.
-        var marker = $"parchment-token-{scope.Pending.Count}";
+        // marker is not swapped for someone else's content. And it terminates the index: Apply reads
+        // a marker as what lies between two sentinels, so an unterminated "…-1" could not be told
+        // from the start of "…-10".
+        var marker = $"{sentinel}parchment-token-{scope.Pending.Count}{sentinel}";
         scope.Pending[marker] = token;
         return marker;
     }
@@ -109,23 +109,130 @@ static class MarkdownTokenBlocks
             return;
         }
 
+        // Every host is found in one walk of the body, before anything is swapped. Looking for each
+        // marker with its own walk made the cost the number of markers times the number of
+        // paragraphs, and a token inside a loop adds to both with every iteration - so a report
+        // twice as long took four times as long. Finding them all first is safe because nothing a
+        // swap inserts can hold a marker: a marker only ever comes out of the liquid render, which
+        // is over. Materialized before mutating for the reason it always was - the swap edits the
+        // tree being walked.
+        var hosts = new Dictionary<string, List<Paragraph>>(StringComparer.Ordinal);
+        foreach (var paragraph in body.Descendants<Paragraph>())
+        {
+            foreach (var marker in Markers(paragraph.InnerText, pending))
+            {
+                if (!hosts.TryGetValue(marker, out var list))
+                {
+                    hosts[marker] = list = [];
+                }
+
+                list.Add(paragraph);
+            }
+        }
+
+        // In the order the markers were registered, so a block holding two of them is still
+        // reported against the first. A marker inside a loop iteration that rendered nothing, or
+        // inside a false conditional, has no host at all, which is not an error.
+        var replaced = new List<Paragraph>();
         foreach (var (marker, token) in pending)
         {
-            // Materialized before mutating: the swap edits the tree being walked. A marker inside a
-            // loop iteration that rendered nothing, or inside a false conditional, has no host at
-            // all, which is not an error.
-            var hosts = body.Descendants<Paragraph>()
-                .Where(_ => _.InnerText.Contains(marker, StringComparison.Ordinal))
-                .ToList();
-
-            foreach (var host in hosts)
+            if (!hosts.TryGetValue(marker, out var list))
             {
-                Replace(host, marker, token, mainPart, numbering, styles, imagePolicies, templateName);
+                continue;
+            }
+
+            foreach (var host in list)
+            {
+                Insert(host, marker, token, mainPart, numbering, styles, imagePolicies, templateName);
+                replaced.Add(host);
+            }
+        }
+
+        Remove(replaced);
+    }
+
+    /// <summary>
+    /// Takes the hosts out once everything they stood for is in, a parent at a time.
+    /// </summary>
+    /// <remarks>
+    /// OpenXML links an element's children forwards only, so removing one walks every sibling before
+    /// it to find the one to relink. Removing each host as it was swapped therefore cost the length
+    /// of the body per host - the cost the single walk in <see cref="Apply"/> is there to avoid,
+    /// cheaper per step but growing the same way. A parent's children are instead detached and
+    /// re-attached once, without the hosts, which is constant per child: detaching always takes the
+    /// first child and attaching always follows the last.
+    /// </remarks>
+    static void Remove(List<Paragraph> hosts)
+    {
+        var gone = new HashSet<OpenXmlElement>(hosts);
+
+        // Materialized before any parent is emptied: a host's Parent is null from then on.
+        var parents = hosts
+            .Select(_ => _.Parent!)
+            .Distinct()
+            .ToList();
+
+        foreach (var parent in parents)
+        {
+            var kept = new List<OpenXmlElement>();
+            for (var child = parent.FirstChild; child != null; child = child.NextSibling())
+            {
+                if (!gone.Contains(child))
+                {
+                    kept.Add(child);
+                }
+            }
+
+            parent.RemoveAllChildren();
+            foreach (var child in kept)
+            {
+                parent.AppendChild(child);
             }
         }
     }
 
-    static void Replace(
+    // The markers of this render that text holds, each once. Almost every paragraph holds none, and
+    // is dismissed on the search for a sentinel.
+    static List<string> Markers(string text, IReadOnlyDictionary<string, TokenValue> pending)
+    {
+        var markers = new List<string>();
+        var start = text.IndexOf(sentinel);
+        while (start >= 0)
+        {
+            var end = text.IndexOf(sentinel, start + 1);
+            if (end < 0)
+            {
+                break;
+            }
+
+            var candidate = text.Substring(start, end - start + 1);
+            if (!pending.ContainsKey(candidate))
+            {
+                // Not one of these markers - an [ExcelsiorTable] placeholder is wrapped the same
+                // way - so its closing sentinel may be the opening one of a marker that is.
+                start = end;
+                continue;
+            }
+
+            if (!markers.Contains(candidate))
+            {
+                markers.Add(candidate);
+            }
+
+            start = text.IndexOf(sentinel, end + 1);
+        }
+
+        return markers;
+    }
+
+    // Private-use, so no rendered value can contain one - see Register. Written as its code point
+    // because the character has no glyph, and a literal holding it reads as an empty one.
+    const char sentinel = (char) 0xE000;
+
+    // Puts what the value produces after its host and leaves the host where it is - see Remove.
+    // After rather than before, because inserting after an element is constant where inserting
+    // before one walks every sibling ahead of it, the same way removing one does.
+    static void Insert(
         Paragraph host,
         string marker,
         TokenValue token,
@@ -148,12 +255,11 @@ static class MarkdownTokenBlocks
         }
 
         var parent = host.Parent!;
+        OpenXmlElement cursor = host;
         foreach (var element in Render(token, host, mainPart, numbering, styles, imagePolicies))
         {
-            parent.InsertBefore(element, host);
+            cursor = parent.InsertAfter(element, cursor);
         }
-
-        host.Remove();
     }
 
     static IEnumerable<OpenXmlElement> Render(
