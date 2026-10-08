@@ -49,11 +49,30 @@ static class Filters
     static ValueTask<FluidValue> EscapeXml(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
         var text = input.ToStringValue();
+
+        // Opting out of MarkdownEncoder also opts out of what it does for a line break, so that part
+        // is repeated here. Only in the markdown flow, where the value becomes source: a newline
+        // left in it is whitespace at best, and a blank line ends the html block the value was
+        // escaped for. The docx flow lands the value in a run and leaves the newline to LineBreaks —
+        // a tag there would print.
+        var breaks = IsMarkdownFlow(context);
         var builder = new StringBuilder(text.Length);
-        foreach (var c in text)
+        for (var index = 0; index < text.Length; index++)
         {
+            var c = text[index];
             switch (c)
             {
+                case '\r' or '\n' when breaks:
+                    // A CRLF is one line break. Swallow the LF so the pair does not write two.
+                    if (c == '\r' &&
+                        index + 1 < text.Length &&
+                        text[index + 1] == '\n')
+                    {
+                        index++;
+                    }
+
+                    builder.Append(MarkdownEncoder.Break);
+                    break;
                 case '<':
                     builder.Append("&lt;");
                     break;

@@ -43,7 +43,7 @@ class MarkdownEncoder :
     /// end the host paragraph, taking the value out of its style and orphaning any <c>{.Style}</c>
     /// attribute attached to it.
     /// </remarks>
-    const string Break = "<br />";
+    public const string Break = "<br />";
 
     /// <summary>
     /// Characters a backslash makes literal. Every one is ASCII punctuation, which CommonMark

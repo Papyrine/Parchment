@@ -307,6 +307,48 @@ public partial class EscapingTests
         await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(2);
     }
 
+    // escape_xml opts out of the encoder, so the line break promise is its own to keep. A newline
+    // left in the source is whitespace at best, and a blank line ends the html block the value was
+    // escaped for — the rest of a table then spills out of it as markdown.
+    [Test]
+    public async Task EscapeXmlBlankLineStaysInsideItsHtmlBlock()
+    {
+        var body = await Render(
+            """
+            <table>
+            <tr><td>{{ Details | escape_xml }}</td><td>after</td></tr>
+            </table>
+            """,
+            new()
+            {
+                Details = "one\r\n\r\ntwo & <three>"
+            });
+
+        var cells = body.Descendants<TableCell>().ToList();
+        await Assert.That(cells.Count).IsEqualTo(2);
+        await Assert.That(cells[0].InnerText).IsEqualTo("onetwo & <three>");
+        await Assert.That(cells[0].Descendants<Break>().Count()).IsEqualTo(2);
+        await Assert.That(cells[1].InnerText).IsEqualTo("after");
+    }
+
+    [Test]
+    [Arguments("one\ntwo")]
+    [Arguments("one\r\ntwo")]
+    [Arguments("one\rtwo")]
+    public async Task EscapeXmlNewlineBecomesABreak(string value)
+    {
+        var body = await Render(
+            "{{ Title | escape_xml }}",
+            new()
+            {
+                Title = value
+            });
+
+        var paragraph = body.Elements<Paragraph>().Single();
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(paragraph.InnerText).IsEqualTo("onetwo");
+    }
+
     [Test]
     public async Task RawOptsOut()
     {
@@ -644,6 +686,23 @@ public partial class EscapingTests
             });
 
         await Assert.That(body.Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    // escape_xml writes its break as html only where the value becomes source. Here it lands in a
+    // run, where the tag would print, so the newline is left for LineBreaks like any other.
+    [Test]
+    public async Task DocxEscapeXmlNewlineBecomesABreak()
+    {
+        var body = await RenderDocx(
+            "{{ Title | escape_xml }}",
+            new()
+            {
+                Title = "one\ntwo"
+            });
+
+        var paragraph = body.Elements<Paragraph>().First();
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(paragraph.InnerText).IsEqualTo("onetwo");
     }
 
     // The docx flow substitutes into runs rather than into source, so it never needed escaping and
