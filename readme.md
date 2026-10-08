@@ -233,6 +233,8 @@ Escapes `<`, `>`, `&`, `"`, and `'` in a string value. Useful when a token's val
 
 In a markdown template this is rarely the right tool: a bare `{{ }}` is [already escaped](#bound-values-are-escaped) against markdown, which covers `<`, `>` and `&` as well. `escape_xml` earns its place only when the template is assembling markup by hand and the value has to be safe inside *that* — the filter opts out of markdown escaping, so its entities survive as entities rather than printing.
 
+There a line break in the value is written as `<br />`, the same [line break](#line-breaks) any other bound value gets. Left in the source as a newline it would be whitespace to the markup, and a blank line would end the HTML block the value sits in — the rest of a hand-written table then spills out of it as markdown. The break is an element, so this covers a value in element content and not one inside an attribute.
+
 
 #### Markdown property
 
@@ -1507,6 +1509,8 @@ The docx flow needs none of this. It substitutes into Word runs rather than into
 A newline in a bound value is a line break in the document, in both flows — the `\n` in `Comment` above is why the rendered cell reads across two lines rather than running on. `\r\n` is one break, not two.
 
 The break stays *inside* the host paragraph — a blank line in a value does not start a new one. A new paragraph would leave the value's own style behind and orphan any `{.Style}` attached to the token's paragraph, so multi-line content keeps the formatting the template gave it.
+
+A value passed through [`escape_xml`](#escape_xml-filter) gets the same break, so the rule also holds for one written into an HTML block.
 
 Editable fields are the exception: their values round-trip back out through extraction, so a newline in one stays a newline in the text rather than becoming a break.
 
