@@ -121,8 +121,10 @@ static class EditableFieldBuilder
 
     static (OpenXmlElement, Run, bool) BuildCheckbox(object? value, RunProperties? sitePr)
     {
-        // bool? is rejected at map build, so the only null is the blank item of an empty editable
-        // collection, which renders unchecked.
+        // bool? is rejected at map build, so a null value never comes from the member itself, only
+        // from a getter with nothing to read: a null parent on the path, a null collection item, or
+        // the blank item of an empty editable collection. A checkbox has no placeholder state, so
+        // that renders unchecked.
         var isChecked = value is true;
         var kind = new W14.SdtContentCheckBox(
             new W14.Checked

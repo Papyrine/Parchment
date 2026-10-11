@@ -275,6 +275,72 @@ public partial class EditableCollectionTests
         await Assert.That(model.Budgets[1].Amount).IsEqualTo(30m);
     }
 
+    public class ChecklistItem
+    {
+        [EditableField]
+        public string Label { get; set; } = "";
+
+        [EditableField]
+        public bool Done { get; set; }
+    }
+
+    [ParchmentBindable]
+    public partial class Checklist
+    {
+        [EditableField]
+        public List<ChecklistItem> Items { get; set; } = [];
+    }
+
+    [Test]
+    public async Task NullItemRendersUncheckedCheckbox()
+    {
+        var model = new Checklist
+        {
+            Items =
+            [
+                new()
+                {
+                    Label = "First",
+                    Done = true
+                },
+                null!
+            ]
+        };
+        using var stream = await Render(
+            """
+            {% for i in Items %}
+
+            {{ i.Label }}: {{ i.Done }}
+
+            {% endfor %}
+            """,
+            model);
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        var items = RepeatingSection(body, "Items").Descendants<SdtBlock>().Where(IsItem).ToList();
+        await Assert.That(items.Count).IsEqualTo(2);
+        await Assert.That(Control(items[0], "Done").InnerText).IsEqualTo("☒");
+
+        // The null item's getters all yield null: placeholder for the text, an unchecked box.
+        await Assert.That(Control(items[1], "Label").InnerText).IsEqualTo("Enter text");
+        await Assert.That(Control(items[1], "Done").InnerText).IsEqualTo("☐");
+
+        // A null item in a populated list is not the blank row of an empty collection: it carries
+        // no blank-item tag, so its unchecked box is a value and the row survives extraction.
+        await Assert.That(Tag(items[0])).IsNull();
+        await Assert.That(Tag(items[1])).IsNull();
+
+        stream.Position = 0;
+        var extracted = new Checklist();
+        ParchmentExtractor.Extract<Checklist>(stream).ApplyTo(extracted);
+        await Assert.That(extracted.Items.Count).IsEqualTo(2);
+        await Assert.That(extracted.Items[0].Label).IsEqualTo("First");
+        await Assert.That(extracted.Items[0].Done).IsTrue();
+        await Assert.That(extracted.Items[1].Done).IsFalse();
+    }
+
     [Test]
     public async Task EmptyCollectionRoundTripsAsEmpty()
     {
