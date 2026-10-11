@@ -336,4 +336,333 @@ public partial class LoopTests
         await Assert.That(paragraphs).Contains("inner=b1");
         await Assert.That(paragraphs).Contains("after-inner=B");
     }
+
+    // Matched by name, the way a consumer declares it.
+    [AttributeUsage(AttributeTargets.Property)]
+    sealed class HtmlAttribute : Attribute;
+
+    [ParchmentBindable]
+    public partial class ShadowedHtmlModel
+    {
+        public required HtmlPerson Customer { get; init; }
+        public required List<HtmlPerson> Customers { get; init; }
+    }
+
+    public class HtmlPerson
+    {
+        [Html]
+        public required string Notes { get; init; }
+    }
+
+    static ShadowedHtmlModel ShadowedHtml() =>
+        new()
+        {
+            Customer = new()
+            {
+                Notes = "<b>ROOT</b>"
+            },
+            Customers =
+            [
+                new()
+                {
+                    Notes = "<i>one</i>"
+                },
+                new()
+                {
+                    Notes = "two"
+                }
+            ]
+        };
+
+    // Root-keyed dispatch matches a token by its dotted path, and `customer.Notes` reads the same
+    // as the root's `Customer.Notes`. Inside the loop it is the item's member: the root value must
+    // not be rendered in its place, once per item.
+    [Test]
+    public async Task LoopVariableNamedAfterRootHtmlMemberReadsTheItem()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Customer.Notes }}
+
+            {% for customer in Customers %}
+
+            {{ customer.Notes }}
+
+            {% endfor %}
+
+            {{ Customer.Notes }}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedHtmlModel>(template);
+
+        var paragraphs = await RenderParagraphs(store, ShadowedHtml());
+
+        // Outside the loop the root member is still converted as html.
+        await Assert.That(paragraphs).IsEquivalentTo(["ROOT", "<i>one</i>", "two", "ROOT"]);
+    }
+
+    // Fluid finds a loop variable by its exact spelling and a model member without regard to
+    // case, so the root's own spelling still reaches the root while the loop is open.
+    [Test]
+    public async Task LoopVariableShadowsOnlyItsOwnSpelling()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for customer in Customers %}
+
+            {{ Customer.Notes }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedHtmlModel>(template);
+
+        var paragraphs = await RenderParagraphs(store, ShadowedHtml());
+
+        await Assert.That(paragraphs).IsEquivalentTo(["ROOT", "ROOT"]);
+    }
+
+    // The plain-member-access rule belongs to the root member. The item's member goes through
+    // Fluid, where a filter is applied like any other.
+    [Test]
+    public async Task FilterOnLoopVariableNamedAfterRootHtmlMemberIsAccepted()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for customer in Customers %}
+
+            {{ customer.Notes | upcase }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedHtmlModel>(template);
+
+        var paragraphs = await RenderParagraphs(store, ShadowedHtml());
+
+        await Assert.That(paragraphs).IsEquivalentTo(["<I>ONE</I>", "TWO"]);
+    }
+
+    [ParchmentBindable]
+    public partial class ShadowedTableModel
+    {
+        public required TableOrder Order { get; init; }
+        public required List<OrderSummary> Orders { get; init; }
+    }
+
+    public class TableOrder
+    {
+        [ExcelsiorTable]
+        public required List<TableLine> Lines { get; init; }
+    }
+
+    public class TableLine
+    {
+        public required string Description { get; init; }
+    }
+
+    public class OrderSummary
+    {
+        public required int Lines { get; init; }
+    }
+
+    [Test]
+    public async Task LoopVariableNamedAfterRootExcelsiorTableReadsTheItem()
+    {
+        // The second token would fail both [ExcelsiorTable] rules, shared paragraph and filter,
+        // were it taken for the root's table.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for order in Orders %}
+
+            {{ order.Lines }}
+
+            Next: {{ order.Lines | plus: 1 }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedTableModel>(template);
+
+        var model = new ShadowedTableModel
+        {
+            Order = new()
+            {
+                Lines =
+                [
+                    new()
+                    {
+                        Description = "ROOT"
+                    }
+                ]
+            },
+            Orders =
+            [
+                new()
+                {
+                    Lines = 3
+                },
+                new()
+                {
+                    Lines = 5
+                }
+            ]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(Texts(body)).IsEquivalentTo(["3", "Next: 4", "5", "Next: 6"]);
+    }
+
+    [ParchmentBindable]
+    public partial class ShadowedListModel
+    {
+        public required TaggedItem Item { get; init; }
+        public required List<LabelledItem> Items { get; init; }
+    }
+
+    public class TaggedItem
+    {
+        public required List<string> Tags { get; init; }
+    }
+
+    public class LabelledItem
+    {
+        public required string Tags { get; init; }
+    }
+
+    [Test]
+    public async Task LoopVariableNamedAfterRootStringListReadsTheItem()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for item in Items %}
+
+            {{ item.Tags }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedListModel>(template);
+
+        var model = new ShadowedListModel
+        {
+            Item = new()
+            {
+                Tags = ["root-1", "root-2"]
+            },
+            Items =
+            [
+                new()
+                {
+                    Tags = "one"
+                },
+                new()
+                {
+                    Tags = "two"
+                }
+            ]
+        };
+
+        var paragraphs = await RenderParagraphs(store, model);
+
+        await Assert.That(paragraphs).IsEquivalentTo(["one", "two"]);
+    }
+
+    [ParchmentBindable]
+    public partial class ShadowedEditableModel
+    {
+        public required EditablePerson Customer { get; init; }
+        public required List<PlainPerson> Customers { get; init; }
+    }
+
+    public class EditablePerson
+    {
+        [EditableField]
+        public string Notes { get; set; } = "";
+    }
+
+    public class PlainPerson
+    {
+        public required string Notes { get; init; }
+    }
+
+    // Taken for the root's editable member, the loop's tokens are a second and third use of its
+    // path, and one of them filtered: registration refused the template on both counts.
+    [Test]
+    public async Task LoopVariableNamedAfterRootEditableMemberReadsTheItem()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Customer.Notes }}
+
+            {% for customer in Customers %}
+
+            {{ customer.Notes }} and {{ customer.Notes | upcase }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ShadowedEditableModel>(template);
+
+        var model = new ShadowedEditableModel
+        {
+            Customer = new()
+            {
+                Notes = "ROOT"
+            },
+            Customers =
+            [
+                new()
+                {
+                    Notes = "one"
+                },
+                new()
+                {
+                    Notes = "two"
+                }
+            ]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var controls = body.Descendants<SdtElement>().ToList();
+
+        await Assert.That(controls.Count).IsEqualTo(1);
+        await Assert.That(controls[0].InnerText).IsEqualTo("ROOT");
+        await Assert.That(Texts(body)).IsEquivalentTo(["ROOT", "one and ONE", "two and TWO"]);
+    }
+
+    static async Task<List<string>> RenderParagraphs<TModel>(TemplateStore store, TModel model)
+        where TModel : class
+    {
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return Texts(doc.MainDocumentPart!.Document!.Body!);
+    }
+
+    static List<string> Texts(Body body) =>
+        body.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0)
+            .ToList();
 }

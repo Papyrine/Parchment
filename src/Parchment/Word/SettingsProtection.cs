@@ -52,7 +52,7 @@ static class SettingsProtection
 
     public static void Apply(MainDocumentPart mainPart)
     {
-        var part = mainPart.DocumentSettingsPart ?? mainPart.AddNewPart<DocumentSettingsPart>();
+        var part = mainPart.DocumentSettingsPart ?? mainPart.AddNewPart<DocumentSettingsPart>(RelationshipIds.Named(mainPart, SettingsCompatibility.RelationshipId));
         var settings = part.Settings ??= new();
 
         settings.RemoveAllChildren<DocumentProtection>();

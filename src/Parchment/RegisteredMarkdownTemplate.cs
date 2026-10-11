@@ -74,6 +74,11 @@ class RegisteredMarkdownTemplate(
             // replaces.
             MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, bookmarks, Name);
 
+            // A pipe-table cell whose value rendered to a table ends with that table, and Word
+            // wants a paragraph after it. Here rather than later because the added paragraph has
+            // height, like the swaps above.
+            TableCells.EnsureFinalParagraph(body);
+
             // Before the trailing section is attached, because the last [SECTION] in the template
             // is what that section describes — see SectionBreaks.
             SectionBreaks.Apply(body, sectPr, Name);
@@ -171,11 +176,14 @@ class RegisteredMarkdownTemplate(
                 imagePolicies);
             await runner.RunAsync(part.Nodes);
             runner.ApplyStructural();
+            runner.SeparateProducedTables();
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based
             // path and its line breaks are materialized the same way the docx flow's are.
             LineBreaks.Apply(root);
+            // And a header or footer table cell can lose its only paragraph the same way.
+            TableCells.EnsureFinalParagraph(root);
         }
     }
 }

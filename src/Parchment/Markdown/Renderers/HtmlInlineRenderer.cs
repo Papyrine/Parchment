@@ -1,30 +1,32 @@
 class HtmlInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, HtmlInline>
 {
+    // Tags nest in any order, and each formatter runs against properties the enclosing tags have
+    // already reached. Every one assigns through the typed property: that places the element at its
+    // position in the rPr sequence rather than after whatever is there, and replaces a property the
+    // run already carries instead of adding a second beside it - which is also what lets the inner
+    // of <sub><sup> decide.
     static readonly Dictionary<string, Action<RunProperties>> formatters = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["em"] = props => props.Append(new Italic()),
-        ["i"] = props => props.Append(new Italic()),
-        ["strong"] = props => props.Append(new Bold()),
-        ["b"] = props => props.Append(new Bold()),
-        ["u"] = props => props.Append(
-            new Underline
-            {
-                Val = UnderlineValues.Single
-            }),
-        ["s"] = props => props.Append(new Strike()),
-        ["del"] = props => props.Append(new Strike()),
-        ["strike"] = props => props.Append(new Strike()),
-        ["sub"] = props => props.Append(
-            new VerticalTextAlignment
-            {
-                Val = VerticalPositionValues.Subscript
-            }),
-        ["sup"] = props => props.Append(
-            new VerticalTextAlignment
-            {
-                Val = VerticalPositionValues.Superscript
-            }),
+        ["em"] = props => props.Italic = new(),
+        ["i"] = props => props.Italic = new(),
+        ["strong"] = props => props.Bold = new(),
+        ["b"] = props => props.Bold = new(),
+        ["u"] = props => props.Underline = new()
+        {
+            Val = UnderlineValues.Single
+        },
+        ["s"] = props => props.Strike = new(),
+        ["del"] = props => props.Strike = new(),
+        ["strike"] = props => props.Strike = new(),
+        ["sub"] = props => props.VerticalTextAlignment = new()
+        {
+            Val = VerticalPositionValues.Subscript
+        },
+        ["sup"] = props => props.VerticalTextAlignment = new()
+        {
+            Val = VerticalPositionValues.Superscript
+        },
     };
 
     protected override void Write(OpenXmlMarkdownRenderer renderer, HtmlInline inline)
