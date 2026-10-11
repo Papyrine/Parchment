@@ -179,6 +179,60 @@ public partial class EditableCollectionTests
         await Assert.That(model.Budgets[1].Amount).IsEqualTo(30m);
     }
 
+    // Extraction is replace-all: the rows in the document become the collection. A loop that
+    // rendered only a window of it, or rendered it backwards, would have that written back as the
+    // data, so the modifiers are refused here instead of applied.
+    [Test]
+    [Arguments("limit:1")]
+    [Arguments("offset:1")]
+    [Arguments("reversed")]
+    public async Task LoopModifierFailsRegistration(string modifier)
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            $$$"""
+               {% for b in Budgets {{{modifier}}} %}
+
+               Year: {{ b.Year }} Amount: {{ b.Amount }}
+
+               {% endfor %}
+               """);
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("Budgets");
+        await Assert.That(exception.Message).Contains("[EditableField]");
+    }
+
+    // A loop nested in another renders read-only — nothing it shows is extracted — so a modifier
+    // there is applied like on any other loop.
+    [Test]
+    public async Task LoopModifierOnNestedReadOnlyLoopIsApplied()
+    {
+        using var stream = await Render(
+            """
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }}
+
+            {% for other in Budgets limit:1 %}
+
+            first={{ other.Year }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """,
+            NewPlan());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var nested = doc.MainDocumentPart!.Document!.Body!.Descendants<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.StartsWith("first=", StringComparison.Ordinal))
+            .ToList();
+        await Assert.That(nested).IsEquivalentTo(["first=2026", "first=2026"]);
+    }
+
     static bool IsItem(OpenXmlElement element) =>
         element is SdtBlock sdt &&
         sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null;

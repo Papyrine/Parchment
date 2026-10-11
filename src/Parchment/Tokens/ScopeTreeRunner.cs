@@ -784,7 +784,57 @@ class ScopeTreeRunner(
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
         var sourceValue = await loop.LoopSource.EvaluateAsync(context);
-        return sourceValue.Enumerate(context);
+        var items = sourceValue.Enumerate(context);
+        if (loop.Limit == null &&
+            loop.Offset == null &&
+            !loop.Reversed)
+        {
+            return items;
+        }
+
+        return await ApplyLoopModifiersAsync(loop, items.ToList());
+    }
+
+    // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
+    // first, then limit, and `reversed` flips the window those two selected rather than the source,
+    // whatever order the tag lists them in. A negative limit drops that many items from the end.
+    async Task<IEnumerable<FluidValue>> ApplyLoopModifiersAsync(LoopNode loop, List<FluidValue> items)
+    {
+        var start = 0;
+        if (loop.Offset != null)
+        {
+            var offset = await loop.Offset.EvaluateAsync(context);
+            // Fluid indexes the source with a negative offset and throws. Nothing precedes the
+            // first item, so the docx flow starts there instead.
+            start = Math.Max(0, (int)offset.ToNumberValue());
+        }
+
+        var count = Math.Max(0, items.Count - start);
+        if (loop.Limit != null)
+        {
+            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            if (limit >= 0)
+            {
+                count = Math.Min(count, limit);
+            }
+            else
+            {
+                count = Math.Max(0, count + limit);
+            }
+        }
+
+        if (count == 0)
+        {
+            return [];
+        }
+
+        var window = items.GetRange(start, count);
+        if (loop.Reversed)
+        {
+            window.Reverse();
+        }
+
+        return window;
     }
 
     async Task ProcessIfAsync(IfNode ifNode)

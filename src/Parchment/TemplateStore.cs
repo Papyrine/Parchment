@@ -635,7 +635,15 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             return null;
         }
 
-        return new(BlockTagKind.For, source, null, forStatement.Identifier, forStatement.Source);
+        return new(
+            BlockTagKind.For,
+            source,
+            null,
+            forStatement.Identifier,
+            forStatement.Source,
+            forStatement.Limit,
+            forStatement.Offset,
+            forStatement.Reversed);
     }
 
     static BlockMarker? RebuildIf(string source, string? expression) =>

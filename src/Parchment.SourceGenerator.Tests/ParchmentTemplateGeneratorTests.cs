@@ -1425,4 +1425,51 @@
 
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
     }
+
+    const string pagedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Paged
+        {
+            public List<Line> Lines { get; set; } = new();
+            public int Max { get; set; }
+        }
+        """;
+
+    static List<string> PagedDiagnostics(string openTag) =>
+        GeneratorDriver.Run(pagedModel, openTag, "{{ line.Description }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .Where(_ => _.StartsWith("PARCH", StringComparison.Ordinal))
+            .ToList();
+
+    // The runtime evaluates limit and offset as expressions, so a member named there is a model
+    // reference like any other and is validated at registration.
+    [Test]
+    [Arguments("{% for line in Lines limit: Max %}")]
+    [Arguments("{% for line in Lines offset: Max %}")]
+    [Arguments("{% for line in Lines limit:2 offset:1 reversed %}")]
+    public async Task Docx_LoopModifier_Valid_NoDiagnostic(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEmpty();
+
+    [Test]
+    [Arguments("{% for line in Lines limit: Missing %}")]
+    [Arguments("{% for line in Lines offset: Missing %}")]
+    // Evaluated before the loop variable is bound.
+    [Arguments("{% for line in Lines limit: line %}")]
+    // The docx flow has no liquid loop scope to resume from; the runtime rejects it too.
+    [Arguments("{% for line in Lines offset: continue %}")]
+    public async Task Docx_LoopModifier_UnknownMember_ReportsParch001(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEquivalentTo(["PARCH001"]);
 }
