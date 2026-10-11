@@ -653,6 +653,72 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public async Task TabAfterTokenInSameRunIsKept()
+    {
+        // The token's run is left holding only the tab once the token text is removed; it is
+        // not an empty run and must survive, after the control.
+        using var template = BuildParagraphTemplate(
+            new Run(
+                Preserved("{{ PurchaseOrder }}"),
+                new TabChar(),
+                Preserved("after")));
+
+        await Assert.That(await RenderLayout(template)).IsEqualTo("[PO-2026-17]<tab>after");
+    }
+
+    [Test]
+    public async Task BreakAfterTokenEndingParagraphIsKept()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(
+                Preserved("before"),
+                new TabChar(),
+                Preserved("{{ PurchaseOrder }}"),
+                new Break()));
+
+        await Assert.That(await RenderLayout(template)).IsEqualTo("before<tab>[PO-2026-17]<br>");
+    }
+
+    [Test]
+    public async Task NonTextContentAroundMidTextTokenStaysOnItsSide()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(
+                new RunProperties(new Bold()),
+                new TabChar(),
+                Preserved("x {{ PurchaseOrder }}"),
+                new Break(),
+                new TabChar(),
+                Preserved(" y {{ Discount }}"),
+                new TabChar()));
+
+        await Assert.That(await RenderLayout(template))
+            .IsEqualTo("<tab>x [PO-2026-17]<br><tab> y [10]<tab>");
+    }
+
+    [Test]
+    public async Task RunEmptiedByTokenIsRemoved()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("PO: ")),
+            new Run(
+                new RunProperties(new Bold()),
+                Preserved("{{ PurchaseOrder }}")),
+            new Run(Preserved(" end")));
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("PO: PO-2026-17 end");
+        await Assert.That(paragraph.Elements<Run>().Count()).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task NestedPathBindsAndTags()
     {
         using var template = DocxTemplateBuilder.Build(
@@ -1209,7 +1275,57 @@ public partial class EditableFieldTests
         return sdt;
     }
 
-    static MemoryStream BuildStraddledTemplate()
+    static MemoryStream BuildStraddledTemplate() =>
+        BuildParagraphTemplate(
+            new Run(Preserved("PO: {{ Purch")),
+            new Run(
+                new RunProperties(new Bold()),
+                Preserved("aseOrder }}")),
+            new Run(Preserved(" end")));
+
+    static Text Preserved(string text) =>
+        new(text)
+        {
+            Space = SpaceProcessingModeValues.Preserve
+        };
+
+    // Renders the single-paragraph template and flattens the paragraph into its content order:
+    // text as-is, each content control as [value], tabs and breaks as <tab> / <br>.
+    static async Task<string> RenderLayout(MemoryStream template)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Single();
+        var builder = new StringBuilder();
+        foreach (var element in paragraph.Descendants())
+        {
+            switch (element)
+            {
+                case SdtRun sdt:
+                    builder.Append($"[{sdt.InnerText}]");
+                    break;
+                case Text text when !text.Ancestors<SdtRun>().Any():
+                    builder.Append(text.Text);
+                    break;
+                case TabChar:
+                    builder.Append("<tab>");
+                    break;
+                case Break:
+                    builder.Append("<br>");
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    static MemoryStream BuildParagraphTemplate(params OpenXmlElement[] children)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -1217,23 +1333,7 @@ public partial class EditableFieldTests
             var mainPart = doc.AddMainDocumentPart();
             mainPart.Document = new(
                 new Body(
-                    new Paragraph(
-                        new Run(
-                            new Text("PO: {{ Purch")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            }),
-                        new Run(
-                            new RunProperties(new Bold()),
-                            new Text("aseOrder }}")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            }),
-                        new Run(
-                            new Text(" end")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            })),
+                    new Paragraph(children),
                     new SectionProperties(
                         new PageSize
                         {
