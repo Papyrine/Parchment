@@ -823,6 +823,22 @@ public sealed class ParchmentTemplateGenerator :
                         }
                     }
 
+                    // Only a top-level loop renders as a repeating section — a nested one runs
+                    // with an empty editable map at runtime and stays read-only — so that is the
+                    // only place a modifier would be written back by extraction.
+                    if (isEditableCollectionLoop &&
+                        token.HasLoopModifiers &&
+                        loopStack.Count == 0)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableCollectionLoopModifier,
+                                location,
+                                templatePath,
+                                token.Source,
+                                string.Join('.', token.References[0])));
+                    }
+
                     loopStack.Push((bound, prior, isEditableCollectionLoop));
                     break;
 
@@ -933,9 +949,15 @@ public sealed class ParchmentTemplateGenerator :
         Location location,
         string markdown)
     {
+        var loops = MarkdownLoopScope.Scan(markdown);
+
+        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
+        var rawLineStart = 0;
         foreach (var rawLine in markdown.Split('\n'))
         {
             var line = rawLine.Trim();
+            var lineStart = rawLineStart + rawLine.Length - rawLine.TrimStart().Length;
+            rawLineStart += rawLine.Length + 1;
             foreach (Match match in markdownToken.Matches(line))
             {
                 var body = match.Groups["body"].Value.Trim();
@@ -947,8 +969,10 @@ public sealed class ParchmentTemplateGenerator :
                 }
 
                 // Root paths only, matching the map the render looks the table up in: a loop
-                // variable's members are not reachable from the root and fall through to Fluid.
-                if (!ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
+                // variable's members are not reachable from the root and fall through to Fluid,
+                // including when the loop variable happens to spell a root path.
+                if (loops.Shadows(lineStart + match.Index, path) ||
+                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
                 {
                     continue;
                 }
@@ -1125,6 +1149,14 @@ public sealed class ParchmentTemplateGenerator :
                                 location,
                                 templatePath,
                                 token.Source));
+                    }
+
+                    // `limit:` / `offset:` are evaluated before the loop variable is bound, so they
+                    // resolve against the enclosing scope. `offset: continue` lands here too: the
+                    // docx flow has no loop scope to resume from and the runtime rejects it.
+                    if (token.LoopModifierReferences != null)
+                    {
+                        ValidateReferences(context, target, templatePath, location, token.LoopModifierReferences, scope, token.Source);
                     }
 
                     if (token.LoopVariable == null)

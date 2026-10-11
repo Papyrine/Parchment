@@ -551,6 +551,90 @@
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
     }
 
+    // `order` is both a loop variable and, but for case, a root member whose own members carry
+    // the attributes. The loop item's members of the same names carry none.
+    const string shadowedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        public class Order
+        {
+            [ExcelsiorTable]
+            public List<Line> Lines { get; set; } = new();
+
+            [Html]
+            public string Notes { get; set; } = "";
+        }
+
+        public class Summary
+        {
+            public int Lines { get; set; }
+
+            public string Notes { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Invoice
+        {
+            public Order Order { get; set; } = new();
+
+            public List<Summary> Orders { get; set; } = new();
+        }
+        """;
+
+    static readonly string[] attributeRuleIds = ["PARCH007", "PARCH008", "PARCH010", "PARCH024"];
+
+    // Inside the loop the tokens read the item, so none of the root members' rules apply: not
+    // alone-in-its-paragraph, not plain-member-access, and no marker is being lost. The runtime
+    // agrees — see LoopTests.LoopVariableNamedAfterRoot*.
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            shadowedModel,
+            "{% for order in Orders %}",
+            "Next: {{ order.Lines | plus: 1 }}",
+            "{{ order.Notes | upcase }}",
+            "{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\nNext: {{ order.Lines | plus: 1 }}\n\n{{ order.Notes | upcase }}\n{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    // Outside the loop the same spelling is the root member again.
+    [Test]
+    public async Task RootMemberAfterLoopOfTheSameName_StillReported_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\n{{ order.Notes }}\n{% endfor %}\nLines: {{ Order.Lines }}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
     const string formatModel =
         """
         using System.Diagnostics.CodeAnalysis;
@@ -1530,4 +1614,82 @@
 
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
     }
+
+    const string pagedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Paged
+        {
+            public List<Line> Lines { get; set; } = new();
+            public int Max { get; set; }
+        }
+        """;
+
+    static List<string> PagedDiagnostics(string openTag) =>
+        GeneratorDriver.Run(pagedModel, openTag, "{{ line.Description }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .Where(_ => _.StartsWith("PARCH", StringComparison.Ordinal))
+            .ToList();
+
+    // The runtime evaluates limit and offset as expressions, so a member named there is a model
+    // reference like any other and is validated at registration.
+    [Test]
+    [Arguments("{% for line in Lines limit: Max %}")]
+    [Arguments("{% for line in Lines offset: Max %}")]
+    [Arguments("{% for line in Lines limit:2 offset:1 reversed %}")]
+    [Arguments("{% for line in Lines limit: Lines.size %}")]
+    public async Task Docx_LoopModifier_Valid_NoDiagnostic(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEmpty();
+
+    [Test]
+    [Arguments("{% for line in Lines limit: Missing %}")]
+    [Arguments("{% for line in Lines offset: Missing %}")]
+    // The CLR member is not what liquid binds; `size` is.
+    [Arguments("{% for line in Lines limit: Lines.Count %}")]
+    // Evaluated before the loop variable is bound.
+    [Arguments("{% for line in Lines limit: line %}")]
+    // The docx flow has no liquid loop scope to resume from; the runtime rejects it too.
+    [Arguments("{% for line in Lines offset: continue %}")]
+    public async Task Docx_LoopModifier_UnknownMember_ReportsParch001(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEquivalentTo(["PARCH001"]);
+
+    static List<string> RangeModifierDiagnostics(string openTag) =>
+        GeneratorDriver.Run(pagedModel, openTag, "{{ i }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .ToList();
+
+    // A range loop takes the modifiers like any other, and their references are validated on its
+    // path too.
+    [Test]
+    [Arguments("{% for i in (1..5) limit:2 %}")]
+    [Arguments("{% for i in (1..5) offset:1 %}")]
+    [Arguments("{% for i in (1..5) reversed %}")]
+    [Arguments("{% for i in (1..5) limit:2 offset:1 reversed %}")]
+    [Arguments("{% for i in (1..Max) limit: Max offset: Lines.size %}")]
+    public async Task Docx_RangeLoopModifier_Valid_NoDiagnostic(string openTag) =>
+        await Assert.That(RangeModifierDiagnostics(openTag)).IsEmpty();
+
+    [Test]
+    [Arguments("{% for i in (1..5) limit: Missing %}")]
+    [Arguments("{% for i in (1..5) offset: Missing %}")]
+    [Arguments("{% for i in (1..5) limit: Lines.Count %}")]
+    // Evaluated before the loop variable is bound, untyped or not.
+    [Arguments("{% for i in (1..5) limit: i %}")]
+    [Arguments("{% for i in (1..5) offset: continue %}")]
+    public async Task Docx_RangeLoopModifier_UnknownMember_ReportsParch001(string openTag) =>
+        await Assert.That(RangeModifierDiagnostics(openTag)).IsEquivalentTo(["PARCH001"]);
 }

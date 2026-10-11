@@ -56,6 +56,11 @@
                         loop.LoopVariable);
                 }
 
+                // The modifiers are evaluated before the first iteration, so they validate against
+                // the enclosing scope: the loop variable is not bound yet.
+                ValidateLoopModifier(loop.Limit, scope);
+                ValidateLoopModifier(loop.Offset, scope);
+
                 var loopScope = new Dictionary<string, Type>(scope, StringComparer.Ordinal)
                 {
                     [loop.LoopVariable] = elementType
@@ -106,6 +111,16 @@
     static bool IsUntyped(IdentifierPath path, Dictionary<string, Type> scope) =>
         scope.TryGetValue(path.Root, out var bound) &&
         bound == untyped;
+
+    void ValidateLoopModifier(Expression? modifier, Dictionary<string, Type> scope)
+    {
+        if (modifier == null)
+        {
+            return;
+        }
+
+        ValidateReferences(IdentifierVisitor.Collect(modifier), scope, "for");
+    }
 
     bool TryResolvePathType(
         IdentifierPath path,

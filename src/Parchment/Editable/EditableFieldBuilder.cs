@@ -121,8 +121,9 @@ static class EditableFieldBuilder
 
     static (OpenXmlElement, Run, bool) BuildCheckbox(object? value, RunProperties? sitePr)
     {
-        // bool? is rejected at map build, so value is always a non-null bool here.
-        var isChecked = (bool)value!;
+        // bool? is rejected at map build, so the only null is the blank item of an empty editable
+        // collection, which renders unchecked.
+        var isChecked = value is true;
         var kind = new W14.SdtContentCheckBox(
             new W14.Checked
             {
@@ -294,12 +295,13 @@ static class EditableFieldBuilder
         var pr = ClonePr(sitePr);
         // Word's built-in grey placeholder look. The style may not exist in the template's
         // styles part — Word tolerates the dangling reference and falls back to plain text.
-        pr.InsertAt(
-            new RunStyle
-            {
-                Val = "PlaceholderText"
-            },
-            0);
+        // Assigned through the typed property so it replaces a character style cloned from the
+        // site (w:rPr allows one w:rStyle). The site's own style stays on the control's
+        // sdtPr/rPr, which is what Word applies to the text typed over the placeholder.
+        pr.RunStyle = new()
+        {
+            Val = "PlaceholderText"
+        };
         var run = new Run(pr);
         run.AppendChild(
             new Text(text)

@@ -831,6 +831,119 @@ public partial class TokenModel
         await Assert.That(text).IsEqualTo("beforeafter");
     }
 
+    // TokenValueHelpers parks a newline in an item as the LineBreaks marker, a control character no
+    // xml part can hold, and counts on a later pass to split it into a w:br. The docx flow runs that
+    // pass over every part; the markdown body had none, so the marker reached the save and threw.
+    [Test]
+    public async Task BulletListTokenPropertyKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = TokenValueHelpers.BulletList(["a\nb", "c"])
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    [Test]
+    public async Task NumberedListTokenPropertyKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = TokenValueHelpers.NumberedList(["a\r\nb", "c"])
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    // Each iteration parks its own token, and each one's output is split where it is inserted.
+    [Test]
+    public async Task BulletListTokenInALoopKeepsLineBreakInEachItem()
+    {
+        using var stream = await Render(
+            """
+            {% for value in Values %}
+
+            {{ value }}
+
+            {% endfor %}
+            """,
+            new TokenListModel
+            {
+                Values =
+                [
+                    TokenValueHelpers.BulletList(["a\nb"]),
+                    TokenValueHelpers.BulletList(["c\nd\ne"])
+                ]
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("abcde");
+        await Assert.That(body.Descendants<Break>().Count()).IsEqualTo(3);
+    }
+
+    // The filters take the other route here - markdown source rather than a parked token - where
+    // the break is written as markdown's own, so no marker is involved at all.
+    [Test]
+    public async Task BulletListFilterKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Items | bullet_list }}",
+            new ItemsModel
+            {
+                Items = ["a\nb", "c"]
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    [Test]
+    public async Task NumberedListFilterKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Items | numbered_list }}",
+            new ItemsModel
+            {
+                Items = ["a\nb", "c"]
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    static async Task AssertListWithLineBreak(Stream stream)
+    {
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Where(_ => _.InnerText.Length > 0)
+            .ToList();
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("ab|c");
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+
+        // Between the two lines of the first item, and nowhere else.
+        var kinds = paragraphs[0]
+            .Descendants()
+            .Where(_ => _ is Text or Break)
+            .Select(_ => _.LocalName);
+        await Assert.That(string.Join(',', kinds)).IsEqualTo("t,br,t");
+        await Assert.That(paragraphs[1].Descendants<Break>().Count()).IsEqualTo(0);
+    }
+
+    // Html has its own answer for a line break, so what it parks never carries the marker.
+    [Test]
+    public async Task HtmlTokenPropertyWithNewlineLeavesNoMarker()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new HtmlToken("<p>a\nb<br>c</p>")
+            });
+        await Assert.That(text).DoesNotContain('\u0001');
+        await Assert.That(text).Contains("c");
+    }
+
     // Same refusal html gets, and for the same reason: the token replaces the block it sits in, so
     // text sharing that block would be discarded rather than kept.
     [Test]

@@ -257,6 +257,220 @@ public partial class ExcelsiorTableTests
         await Verify(stream, "docx");
     }
 
+    [ParchmentBindable]
+    public partial class Catalogue
+    {
+        [ExcelsiorTable]
+        public required IReadOnlyList<QuoteLine> Lines;
+
+        public required IReadOnlyList<Section> Sections;
+
+        public string Notes = "";
+    }
+
+    public class Section
+    {
+        public required string Table;
+    }
+
+    const string markdownTable =
+        """
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+        """;
+
+    static Catalogue BuildCatalogue() =>
+        new()
+        {
+            Lines =
+            [
+                new()
+                {
+                    Description = "Strategy workshop",
+                    Quantity = 2,
+                    UnitPrice = 4500m
+                }
+            ],
+            Sections =
+            [
+                new()
+                {
+                    Table = markdownTable
+                },
+                new()
+                {
+                    Table = markdownTable
+                },
+                new()
+                {
+                    Table = markdownTable
+                }
+            ],
+            Notes = "Notes\n\n" + markdownTable
+        };
+
+    static async Task<List<string>> RenderBlockNames(Stream template)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Catalogue>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(BuildCatalogue(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!.ChildElements
+            .Where(_ => _ is not SectionProperties)
+            .Select(_ => _.LocalName)
+            .ToList();
+    }
+
+    static MemoryStream BuildTemplateWithBlocks(params OpenXmlElement[] blocks)
+    {
+        var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            var body = new Body(blocks);
+            body.Append(
+                new SectionProperties(
+                    new PageSize
+                    {
+                        Width = 6500,
+                        Height = 8000
+                    }));
+            mainPart.Document = new(body);
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
+    static Paragraph BuildParagraph(string text) =>
+        new(
+            new Run(
+                new Text(text)
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                }));
+
+    static Table BuildStaticTable() =>
+        new(
+            new TableRow(
+                new TableCell(
+                    BuildParagraph("Static"))));
+
+    [Test]
+    public async Task ConsecutiveTableTokensStaySeparateTables()
+    {
+        // Word merges two w:tbl siblings into one table, so the two produced tables need a
+        // paragraph between them.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Lines }}
+
+            {{ Lines }}
+            """);
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("tbl p tbl");
+    }
+
+    [Test]
+    public async Task TableTokenBetweenTemplateTablesStaysSeparate()
+    {
+        using var template = BuildTemplateWithBlocks(
+            BuildStaticTable(),
+            BuildParagraph("{{ Lines }}"),
+            BuildStaticTable());
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("tbl p tbl p tbl");
+    }
+
+    [Test]
+    public async Task TableTokenBetweenParagraphsGetsNoSeparator()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            Before
+
+            {{ Lines }}
+
+            After
+            """);
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("p tbl p");
+    }
+
+    [Test]
+    public async Task TablesProducedByLoopIterationsStaySeparate()
+    {
+        // Each iteration's body is nothing but a produced table, and the loop sits between two
+        // template tables once its tag paragraphs are removed.
+        using var template = BuildTemplateWithBlocks(
+            BuildStaticTable(),
+            BuildParagraph("{% for section in Sections %}"),
+            BuildParagraph("{{ section.Table | markdown }}"),
+            BuildParagraph("{% endfor %}"),
+            BuildStaticTable());
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("tbl p tbl p tbl p tbl p tbl");
+    }
+
+    [Test]
+    public async Task TableProducedInsideIfStaysSeparateFromFollowingTable()
+    {
+        using var template = BuildTemplateWithBlocks(
+            BuildParagraph("{% if Notes %}"),
+            BuildParagraph("{{ Lines }}"),
+            BuildParagraph("{% endif %}"),
+            BuildStaticTable());
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("tbl p tbl");
+    }
+
+    [Test]
+    public async Task MarkdownEndingInTableStaysSeparateFromFollowingTable()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Notes | markdown }}
+
+            {{ Lines }}
+            """);
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("p tbl p tbl");
+    }
+
+    [Test]
+    public async Task NonSoloMarkdownEndingInTableKeepsOneParagraphBeforeFollowingTable()
+    {
+        // The split path keeps the host as the before half and always emits the after half, so
+        // that paragraph already separates the tables and no second one is added.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            Intro {{ Notes | markdown }}
+
+            {{ Lines }}
+            """);
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("p p tbl p tbl");
+    }
+
     [Test]
     public async Task MixedInlineContentInSameParagraphIsRejected()
     {

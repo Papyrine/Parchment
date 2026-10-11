@@ -17,9 +17,19 @@ class ScopeTreeRunner(
     BookmarkIds bookmarks,
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
-    ImagePolicies imagePolicies)
+    ImagePolicies imagePolicies,
+    List<Table>? tables = null)
 {
     List<StructuralReplacement>? structuralReplacements;
+
+    // Every table a structural replacement put at block level, shared with the runners created
+    // for loop iterations and if branches. Whether one ends up beside another table is only
+    // known once the tag paragraphs around it are gone, so the root runner checks at the end.
+    readonly List<Table> producedTables = tables ?? [];
+
+    // The loop variables open around the nodes this runner walks. A token that starts with one
+    // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
+    IReadOnlyList<string> loopVariables = [];
 
     public Task RunAsync(IReadOnlyList<RangeNode> nodes) =>
         ProcessAsync(nodes);
@@ -39,7 +49,58 @@ class ScopeTreeRunner(
         structuralReplacements.Clear();
     }
 
-    static void ApplyOne(StructuralReplacement replacement)
+    /// <summary>
+    /// Word merges two <c>w:tbl</c> siblings into one table. Run on the root runner once the whole
+    /// tree has been processed: any produced table left directly beside another table — one from
+    /// a neighbouring token or loop iteration, or one already in the template — gets an empty
+    /// paragraph between them.
+    /// </summary>
+    public void SeparateProducedTables()
+    {
+        foreach (var table in producedTables)
+        {
+            if (table.Parent == null)
+            {
+                continue;
+            }
+
+            if (NeighbouringBlock(table, forward: false) is Table)
+            {
+                table.InsertBeforeSelf(new Paragraph());
+            }
+
+            if (NeighbouringBlock(table, forward: true) is Table)
+            {
+                table.InsertAfterSelf(new Paragraph());
+            }
+        }
+
+        producedTables.Clear();
+    }
+
+    // Range markers can sit between two blocks without keeping their tables apart.
+    static OpenXmlElement? NeighbouringBlock(OpenXmlElement element, bool forward)
+    {
+        var cursor = Step(element, forward);
+        while (cursor is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError)
+        {
+            cursor = Step(cursor, forward);
+        }
+
+        return cursor;
+    }
+
+    static OpenXmlElement? Step(OpenXmlElement element, bool forward)
+    {
+        if (forward)
+        {
+            return element.NextSibling();
+        }
+
+        return element.PreviousSibling();
+    }
+
+    void ApplyOne(StructuralReplacement replacement)
     {
         var host = replacement.Host;
         var parent = host.Parent;
@@ -52,6 +113,15 @@ class ScopeTreeRunner(
         foreach (var produced in replacement.Produced)
         {
             cursor = parent.InsertAfter(produced, cursor);
+            if (produced is Table table)
+            {
+                producedTables.Add(table);
+            }
+        }
+
+        if (replacement.KeepHost)
+        {
+            return;
         }
 
         host.Remove();
@@ -244,12 +314,13 @@ class ScopeTreeRunner(
         }
 
         // Block-shaped output in a non-solo context: split the host paragraph and insert the
-        // produced block elements between the resulting before/after halves. We queue this as a
-        // structural replacement so any other in-paragraph substitutions on the same host have
-        // already applied to the host's text by the time we replace it.
+        // produced block elements between the resulting before/after halves. The host itself
+        // becomes the before half, so the lower-offset tokens still to be applied keep running
+        // against a paragraph that stays in the document; higher-offset tokens have already been
+        // applied and are carried into the after half.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
         structuralReplacements ??= [];
-        structuralReplacements.Add(new(host, split));
+        structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
     }
 
@@ -394,7 +465,8 @@ class ScopeTreeRunner(
     OpenXmlToken? TryResolveExcelsiorTable(DocxTokenSite site)
     {
         if (excelsiorTables.IsEmpty ||
-            site.References.Count == 0)
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -402,8 +474,9 @@ class ScopeTreeRunner(
         // Match the token's full dotted reference (e.g. `Customer.Lines`) against the registered
         // map. Single-segment, multi-segment, and arbitrarily-nested paths from the root model
         // all flow through the same lookup. Loop-scope variables (e.g. `{{ line.SubItems }}`
-        // inside `{% for line in Lines %}`) won't match because the map is keyed on paths from
-        // the root model only — they fall through to normal Fluid evaluation.
+        // inside `{% for line in Lines %}`) never match: the map is keyed on paths from the root
+        // model only, and a loop variable that happens to spell a root path was ruled out above
+        // — they fall through to normal Fluid evaluation.
         var reference = site.References[0];
         if (!excelsiorTables.TryGet(reference.Dotted, out var entry))
         {
@@ -422,7 +495,8 @@ class ScopeTreeRunner(
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
     {
         if (stringLists.IsEmpty ||
-            site.References.Count == 0)
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -468,6 +542,10 @@ class ScopeTreeRunner(
         return TokenValueHelpers.BulletList(items.ToList());
     }
 
+    // No LoopScope check here, unlike the other three. The map a runner holds is never keyed
+    // from the root while a loop is open: a loop body gets EditableMap.Empty, and an editable
+    // collection's items get a map keyed under the loop variable itself (EditableMap.ScopedToItem),
+    // which is exactly the token the check would turn away.
     EditableToken? TryResolveEditable(DocxTokenSite site)
     {
         if (editables.IsEmpty ||
@@ -507,7 +585,9 @@ class ScopeTreeRunner(
 
     TokenValue? TryResolveFormatted(DocxTokenSite site)
     {
-        if (formats.IsEmpty || site.References.Count == 0)
+        if (formats.IsEmpty ||
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -595,7 +675,11 @@ class ScopeTreeRunner(
             bookmarks,
             numberingState,
             styles,
-            imagePolicies);
+            imagePolicies,
+            producedTables)
+        {
+            loopVariables = [..loopVariables, loop.LoopVariable]
+        };
 
         foreach (var item in items)
         {
@@ -676,6 +760,11 @@ class ScopeTreeRunner(
         List<OpenXmlElement> bodyElements,
         List<FluidValue> items)
     {
+        // The blank item still binds the loop variable to a default element, so tokens that are not
+        // editable fields resolve as they would for a real item. Its controls are built from no item
+        // at all (see ScopedToItem): a default element's `0` or `false` would otherwise read back as
+        // a value and the untouched row would extract as an item nobody entered.
+        var isBlank = items.Count == 0;
         var effectiveItems = items.Count > 0
             ? items
             : [FluidValue.Create(entry.ElementFactory(), context.Options)];
@@ -683,10 +772,11 @@ class ScopeTreeRunner(
         var scratch = new Body();
         var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         var repeatedItems = new List<SdtBlock>();
+        IReadOnlyList<string> itemLoopVariables = [..loopVariables, loop.LoopVariable];
 
         foreach (var fluidItem in effectiveItems)
         {
-            var rawItem = fluidItem.ToObjectValue();
+            var rawItem = isBlank ? null : fluidItem.ToObjectValue();
             context.EnterChildScope();
             try
             {
@@ -714,7 +804,11 @@ class ScopeTreeRunner(
                     bookmarks,
                     numberingState,
                     styles,
-                    imagePolicies);
+                    imagePolicies,
+                    producedTables)
+                {
+                    loopVariables = itemLoopVariables
+                };
                 await itemRunner.RunAsync(loop.Body);
                 itemRunner.ApplyStructural();
 
@@ -725,7 +819,7 @@ class ScopeTreeRunner(
                     itemBody.Add(element);
                 }
 
-                repeatedItems.Add(EditableRepeatingBuilder.BuildItem(itemBody, editableState));
+                repeatedItems.Add(EditableRepeatingBuilder.BuildItem(itemBody, editableState, isBlank));
             }
             finally
             {
@@ -800,7 +894,57 @@ class ScopeTreeRunner(
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
         var sourceValue = await loop.LoopSource.EvaluateAsync(context);
-        return sourceValue.Enumerate(context);
+        var items = sourceValue.Enumerate(context);
+        if (loop.Limit == null &&
+            loop.Offset == null &&
+            !loop.Reversed)
+        {
+            return items;
+        }
+
+        return await ApplyLoopModifiersAsync(loop, items.ToList());
+    }
+
+    // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
+    // first, then limit, and `reversed` flips the window those two selected rather than the source,
+    // whatever order the tag lists them in. A negative limit drops that many items from the end.
+    async Task<IEnumerable<FluidValue>> ApplyLoopModifiersAsync(LoopNode loop, List<FluidValue> items)
+    {
+        var start = 0;
+        if (loop.Offset != null)
+        {
+            var offset = await loop.Offset.EvaluateAsync(context);
+            // Fluid indexes the source with a negative offset and throws. Nothing precedes the
+            // first item, so the docx flow starts there instead.
+            start = Math.Max(0, (int)offset.ToNumberValue());
+        }
+
+        var count = Math.Max(0, items.Count - start);
+        if (loop.Limit != null)
+        {
+            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            if (limit >= 0)
+            {
+                count = Math.Min(count, limit);
+            }
+            else
+            {
+                count = Math.Max(0, count + limit);
+            }
+        }
+
+        if (count == 0)
+        {
+            return [];
+        }
+
+        var window = items.GetRange(start, count);
+        if (loop.Reversed)
+        {
+            window.Reverse();
+        }
+
+        return window;
     }
 
     async Task ProcessIfAsync(IfNode ifNode)
@@ -870,7 +1014,10 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies);
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
+        {
+            loopVariables = loopVariables
+        };
         await innerRunner.RunAsync(chosen);
         innerRunner.ApplyStructural();
 
@@ -936,5 +1083,5 @@ class ScopeTreeRunner(
         return text[start..end];
     }
 
-    sealed record StructuralReplacement(Paragraph Host, IReadOnlyList<OpenXmlElement> Produced);
+    sealed record StructuralReplacement(Paragraph Host, IReadOnlyList<OpenXmlElement> Produced, bool KeepHost = false);
 }

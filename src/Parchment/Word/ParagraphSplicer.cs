@@ -14,10 +14,9 @@
 /// </item>
 /// <item>
 /// <c>Split</c> — the produced output is multiple block elements, or contains a non-paragraph
-/// block (a table). The host paragraph is split at the token offset: text before the token
-/// becomes its own paragraph (cloning the host's <c>pPr</c>), the produced block elements are
-/// inserted between, and text after the token becomes another paragraph. The original host is
-/// removed from the document.
+/// block (a table). The host paragraph is split at the token offset: the host is trimmed to the
+/// text before the token, the produced block elements are inserted after it, and text after the
+/// token becomes another paragraph (cloning the host's <c>pPr</c>).
 /// </item>
 /// </list>
 ///
@@ -67,9 +66,11 @@ static class ParagraphSplicer
     }
 
     /// <summary>
-    /// Split: returns the ordered replacement list (the caller is responsible for removing host
-    /// and inserting these into its parent). The list is
-    /// <c>[before-paragraph, ...produced, after-paragraph]</c>.
+    /// Split: trims host in place to the text before the token and returns the ordered list to
+    /// insert after it (the caller is responsible for inserting these into host's parent). The
+    /// list is <c>[...produced, after-paragraph]</c>.
+    /// Host stays the before half rather than being cloned so that tokens at lower offsets, which
+    /// are substituted after the split, still land in the document with their offsets intact.
     /// Empty before/after paragraphs are still emitted — the user authored a paragraph there
     /// and removing it would shift the document layout.
     /// </summary>
@@ -79,10 +80,10 @@ static class ParagraphSplicer
         int length,
         IReadOnlyList<OpenXmlElement> produced)
     {
-        var before = BuildShellWithChildren(host, TrimmedHead(host, offset));
         var after = BuildShellWithChildren(host, TrimmedTail(host, offset, offset + length));
+        TrimToHead(host, offset);
 
-        var result = new List<OpenXmlElement>(produced.Count + 2) { before };
+        var result = new List<OpenXmlElement>(produced.Count + 1);
         foreach (var element in produced)
         {
             result.Add(element.CloneNode(true));
@@ -155,7 +156,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<OpenXmlElement>();
 
-        foreach (var element in paragraph.Descendants().ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
             if (element is not Text text)
             {
@@ -205,7 +206,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<OpenXmlElement>();
 
-        foreach (var element in paragraph.Descendants().ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
             if (element is not Text text)
             {
