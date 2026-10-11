@@ -38,7 +38,7 @@ class WordNumberingState(MainDocumentPart mainPart)
 
     Numbering GetNumbering()
     {
-        var part = mainPart.NumberingDefinitionsPart ?? mainPart.AddNewPart<NumberingDefinitionsPart>();
+        var part = mainPart.NumberingDefinitionsPart ?? mainPart.AddNewPart<NumberingDefinitionsPart>(RelationshipIds.Named(mainPart, "rIdNumbering"));
         if (part.Numbering == null)
         {
             part.Numbering = new();
