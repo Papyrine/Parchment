@@ -291,4 +291,117 @@ public class HtmlInlineRendererTests
         var run = (Run)renderer.Top.CurrentRuns.Single();
         await Assert.That(run.GetFirstChild<Text>()!.Text).IsEqualTo("<custom-thing>");
     }
+
+    [Test]
+    public async Task UnclosedTagEndsWithItsParagraph()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            This is <b>bold and never closed.
+
+            A later paragraph.
+
+            ## A heading
+
+            - A list item
+
+            > A quote
+            """);
+
+        var paragraphs = blocks.Cast<Paragraph>().ToList();
+        await Assert.That(paragraphs.Count).IsEqualTo(5);
+        await Assert.That(BoldText(paragraphs[0])).IsEqualTo("bold and never closed.");
+        foreach (var paragraph in paragraphs.Skip(1))
+        {
+            await Assert.That(BoldText(paragraph)).IsEqualTo("");
+        }
+    }
+
+    [Test]
+    public async Task UnclosedTagInHeadingDoesNotReachTheBody()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            # A <i>heading
+
+            Body text.
+            """);
+
+        await Assert.That(blocks[0].Descendants<Italic>().Any()).IsTrue();
+        await Assert.That(blocks[1].Descendants<Italic>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task UnclosedTagInListItemDoesNotReachTheNextItem()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            - one <b>bold
+            - two
+            """);
+
+        await Assert.That(BoldText((Paragraph)blocks[0])).IsEqualTo("bold");
+        await Assert.That(BoldText((Paragraph)blocks[1])).IsEqualTo("");
+    }
+
+    [Test]
+    public async Task UnclosedTagInTableCellEndsWithTheCell()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            | A | B |
+            | --- | --- |
+            | one <u>under | *two* |
+            | `three` | four |
+
+            After the table.
+            """);
+
+        var underlined = blocks[0]
+            .Descendants<Run>()
+            .Where(_ => _.RunProperties?.GetFirstChild<Underline>() != null)
+            .Select(_ => _.InnerText);
+        await Assert.That(string.Join('|', underlined)).IsEqualTo("under");
+        await Assert.That(blocks[1].Descendants<Underline>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task TagSpansSoftLineBreakWithinParagraph()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            Start <b>bold
+            still bold</b> plain.
+            """);
+
+        var bold = BoldText((Paragraph)blocks.Single());
+        await Assert.That(bold).StartsWith("bold");
+        await Assert.That(bold).EndsWith("still bold");
+    }
+
+    [Test]
+    public async Task StrayClosingTagAfterUnclosedTagIsHarmless()
+    {
+        var blocks = RendererHarness.RenderMarkdown(
+            """
+            Open <b>bold.
+
+            Stray</b> close, then <i>italic</i>.
+            """);
+
+        var second = (Paragraph)blocks[1];
+        await Assert.That(BoldText(second)).IsEqualTo("");
+        var italic = second
+            .Descendants<Run>()
+            .Where(_ => _.RunProperties?.GetFirstChild<Italic>() != null)
+            .Select(_ => _.InnerText);
+        await Assert.That(string.Concat(italic)).IsEqualTo("italic");
+    }
+
+    static string BoldText(Paragraph paragraph) =>
+        string.Concat(
+            paragraph
+                .Descendants<Run>()
+                .Where(_ => _.RunProperties?.GetFirstChild<Bold>() != null)
+                .Select(_ => _.InnerText));
 }

@@ -343,13 +343,14 @@ public sealed class ParchmentTemplateGenerator :
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
+                new(result.ParagraphContainers.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 Convert.ToBase64String(ReadBytes(text.Path)),
                 null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -494,8 +495,9 @@ public sealed class ParchmentTemplateGenerator :
                     templatePath));
         }
 
-        var tokens = TokenScanner.Scan(matched.Paragraphs);
+        var tokens = TokenScanner.Scan(matched.Paragraphs, matched.ParagraphContainers.AsImmutableArray());
         ValidateTokens(context, target, templatePath, tokens, location);
+        ValidateBlockContainers(context, templatePath, tokens, location);
 
         // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
@@ -1220,6 +1222,99 @@ public sealed class ParchmentTemplateGenerator :
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// PARCH028: the tag paragraphs of one block — open, every elsif / else, close — must share a
+    /// parent element. Lockstep with <c>ScopeTreeBuilder.RequireSameContainer</c> at runtime.
+    /// </summary>
+    /// <remarks>
+    /// A pass of its own because <see cref="ValidateTokens"/> only keeps a stack for loops whose
+    /// source resolved, and this rule is about where a tag sits rather than what it binds. Tags
+    /// are paired the way the runtime pairs them, by document order. An unsupported tag leaves the
+    /// nesting unknown — it may or may not open a block — so nothing is reported past PARCH003.
+    /// </remarks>
+    static void ValidateBlockContainers(
+        SourceProductionContext context,
+        string templatePath,
+        IReadOnlyList<Token> tokens,
+        Location location)
+    {
+        foreach (var token in tokens)
+        {
+            if (token.Kind == TokenKind.UnknownBlock)
+            {
+                return;
+            }
+        }
+
+        var open = new Stack<(Token Opening, Token? Stray)>();
+        foreach (var token in tokens)
+        {
+            switch (token.Kind)
+            {
+                case TokenKind.ForOpen:
+                case TokenKind.IfOpen:
+                    open.Push((token, null));
+                    break;
+
+                case TokenKind.ElsIf:
+                case TokenKind.Else:
+                    if (open.Count > 0 &&
+                        open.Peek() is { Opening.Kind: TokenKind.IfOpen, Stray: null } block &&
+                        token.Container != block.Opening.Container)
+                    {
+                        open.Pop();
+                        open.Push((block.Opening, token));
+                    }
+
+                    break;
+
+                case TokenKind.ForClose:
+                    CloseBlock(context, templatePath, location, open, TokenKind.ForOpen, token);
+                    break;
+
+                case TokenKind.IfClose:
+                    CloseBlock(context, templatePath, location, open, TokenKind.IfOpen, token);
+                    break;
+            }
+        }
+    }
+
+    static void CloseBlock(
+        SourceProductionContext context,
+        string templatePath,
+        Location location,
+        Stack<(Token Opening, Token? Stray)> open,
+        TokenKind opener,
+        Token closing)
+    {
+        // A close with no matching open is malformed nesting, which is not this rule's to report.
+        if (open.Count == 0 ||
+            open.Peek().Opening.Kind != opener)
+        {
+            return;
+        }
+
+        var (opening, stray) = open.Pop();
+        if (stray == null &&
+            closing.Container != opening.Container)
+        {
+            stray = closing;
+        }
+
+        if (stray == null)
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.BlockTagsNotSiblings,
+                location,
+                templatePath,
+                opening.Source,
+                stray.Source));
     }
 
     static void ValidateExcelsiorToken(

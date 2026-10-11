@@ -1460,12 +1460,15 @@
     [Arguments("{% for line in Lines limit: Max %}")]
     [Arguments("{% for line in Lines offset: Max %}")]
     [Arguments("{% for line in Lines limit:2 offset:1 reversed %}")]
+    [Arguments("{% for line in Lines limit: Lines.size %}")]
     public async Task Docx_LoopModifier_Valid_NoDiagnostic(string openTag) =>
         await Assert.That(PagedDiagnostics(openTag)).IsEmpty();
 
     [Test]
     [Arguments("{% for line in Lines limit: Missing %}")]
     [Arguments("{% for line in Lines offset: Missing %}")]
+    // The CLR member is not what liquid binds; `size` is.
+    [Arguments("{% for line in Lines limit: Lines.Count %}")]
     // Evaluated before the loop variable is bound.
     [Arguments("{% for line in Lines limit: line %}")]
     // The docx flow has no liquid loop scope to resume from; the runtime rejects it too.

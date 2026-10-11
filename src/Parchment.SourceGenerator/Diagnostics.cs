@@ -246,6 +246,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch027--loop-over-an-editablefield-collection-carries-a-modifier");
 
+    // Nothing in the markdown flow can trip this: a markdown template is one Fluid parse, with no
+    // paragraphs for a tag to be stranded in.
+    public static readonly DiagnosticDescriptor BlockTagsNotSiblings = new(
+        id: "PARCH028",
+        title: "Block tags must sit in the same container",
+        messageFormat: "Template '{0}' block tags '{1}' and '{2}' are not in the same container; the paragraphs holding the tags of one block must be siblings — in the same table cell, the same text box, or at the same level of the body",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch028--block-tags-in-different-containers");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",

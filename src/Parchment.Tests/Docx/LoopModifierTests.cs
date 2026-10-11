@@ -28,6 +28,9 @@ public partial class LoopModifierTests
     [Arguments("limit: Max", "a,b,c")]
     [Arguments("offset: Skip", "c,d,e")]
     [Arguments("offset: Skip limit: Max", "c,d,e")]
+    // Liquid's own members resolve in a modifier as they do in a token.
+    [Arguments("limit: Items.size", "a,b,c,d,e")]
+    [Arguments("offset: Items.size", "")]
     public async Task MatchesTheMarkdownFlow(string modifiers, string expected)
     {
         var model = new Model
