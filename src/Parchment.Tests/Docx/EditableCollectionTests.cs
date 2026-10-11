@@ -1,3 +1,4 @@
+using W14 = DocumentFormat.OpenXml.Office2010.Word;
 using W15 = DocumentFormat.OpenXml.Office2013.Word;
 // ReSharper disable PartialTypeWithSinglePart
 
@@ -22,6 +23,52 @@ public partial class EditableCollectionTests
         public required List<Budget> Budgets { get; set; }
     }
     #endregion
+
+    public enum Priority
+    {
+        Low,
+        High
+    }
+
+    public class Chore
+    {
+        [EditableField]
+        public string? Name { get; set; }
+
+        [EditableField]
+        public bool Done { get; set; }
+
+        [EditableField]
+        public int Count { get; set; }
+
+        [EditableField]
+        public Date Due { get; set; }
+
+        [EditableField]
+        public Priority Priority { get; set; }
+
+        [EditableField]
+        public DateTimeOffset Logged { get; set; }
+
+        [EditableField]
+        public Time At { get; set; }
+    }
+
+    [ParchmentBindable]
+    public partial class ChoreList
+    {
+        [EditableField]
+        public required List<Chore> Chores { get; set; }
+    }
+
+    const string choreTemplate =
+        """
+        {% for c in Chores %}
+
+        {{ c.Name }} {{ c.Done }} {{ c.Count }} {{ c.Due }} {{ c.Priority }} {{ c.Logged }} {{ c.At }}
+
+        {% endfor %}
+        """;
 
     static BudgetPlan NewPlan() =>
         new()
@@ -226,6 +273,159 @@ public partial class EditableCollectionTests
         await Assert.That(model.Budgets[0].Amount).IsEqualTo(10m);
         await Assert.That(model.Budgets[1].Year).IsEqualTo("2100");
         await Assert.That(model.Budgets[1].Amount).IsEqualTo(30m);
+    }
+
+    [Test]
+    public async Task EmptyCollectionRoundTripsAsEmpty()
+    {
+        using var stream = await Render(
+            template,
+            new BudgetPlan
+            {
+                Title = "Empty",
+                Budgets = []
+            });
+
+        // The blank row carries no default values: a non-nullable member shows placeholder text
+        // rather than "0", so the untouched row extracts as nothing.
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var amount = Control(doc.MainDocumentPart!.Document!.Body!, "Amount");
+            await Assert.That(amount.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+        }
+
+        stream.Position = 0;
+        var model = NewPlan();
+        ParchmentExtractor.Extract<BudgetPlan>(stream).ApplyTo(model);
+
+        await Assert.That(model.Budgets.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task EmptyCollectionOfEveryKindRoundTripsAsEmpty()
+    {
+        using var stream = await Render(
+            choreTemplate,
+            new ChoreList
+            {
+                Chores = []
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+            var errors = validator.Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+        }
+
+        stream.Position = 0;
+        var model = new ChoreList
+        {
+            Chores = [new()]
+        };
+        ParchmentExtractor.Extract<ChoreList>(stream).ApplyTo(model);
+
+        await Assert.That(model.Chores.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task FilledBlankRowExtractsOneItem()
+    {
+        using var stream = await Render(
+            template,
+            new BudgetPlan
+            {
+                Title = "Empty",
+                Budgets = []
+            });
+
+        // Only Year is filled in; Amount stays blank and keeps the element's default.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            SetText(Control(doc.MainDocumentPart!.Document!.Body!, "Year"), "2030");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var model = NewPlan();
+        ParchmentExtractor.Extract<BudgetPlan>(stream).ApplyTo(model);
+
+        await Assert.That(model.Budgets.Count).IsEqualTo(1);
+        await Assert.That(model.Budgets[0].Year).IsEqualTo("2030");
+        await Assert.That(model.Budgets[0].Amount).IsEqualTo(0m);
+    }
+
+    [Test]
+    public async Task CheckedBlankRowExtractsOneItem()
+    {
+        using var stream = await Render(
+            choreTemplate,
+            new ChoreList
+            {
+                Chores = []
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var done = Control(doc.MainDocumentPart!.Document!.Body!, "Done");
+            done.SdtProperties!
+                .GetFirstChild<W14.SdtContentCheckBox>()!
+                .GetFirstChild<W14.Checked>()!
+                .Val = W14.OnOffValues.One;
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var model = new ChoreList
+        {
+            Chores = []
+        };
+        ParchmentExtractor.Extract<ChoreList>(stream).ApplyTo(model);
+
+        await Assert.That(model.Chores.Count).IsEqualTo(1);
+        await Assert.That(model.Chores[0].Done).IsTrue();
+        await Assert.That(model.Chores[0].Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task AllDefaultItemRoundTrips()
+    {
+        // A row rendered from a real item is kept even when every value is its default: only the
+        // blank row of an empty collection is dropped for being untouched.
+        using var budgets = await Render(
+            template,
+            new BudgetPlan
+            {
+                Title = "Zero",
+                Budgets =
+                [
+                    new()
+                    {
+                        Year = "",
+                        Amount = 0m
+                    }
+                ]
+            });
+        var plan = NewPlan();
+        ParchmentExtractor.Extract<BudgetPlan>(budgets).ApplyTo(plan);
+        await Assert.That(plan.Budgets.Count).IsEqualTo(1);
+        await Assert.That(plan.Budgets[0].Amount).IsEqualTo(0m);
+
+        using var chores = await Render(
+            choreTemplate,
+            new ChoreList
+            {
+                Chores = [new()]
+            });
+        var list = new ChoreList
+        {
+            Chores = []
+        };
+        ParchmentExtractor.Extract<ChoreList>(chores).ApplyTo(list);
+        await Assert.That(list.Chores.Count).IsEqualTo(1);
+        await Assert.That(list.Chores[0].Done).IsFalse();
     }
 
     // Extraction is replace-all: the rows in the document become the collection. A loop that

@@ -22,7 +22,10 @@ namespace Parchment;
 /// The markdown flow's body does not come through here. It has no <c>w:t</c> to split at
 /// substitution time, so <see cref="MarkdownEncoder"/> writes an inline <c>&lt;br /&gt;</c> into the
 /// markdown instead and <c>HtmlInlineRenderer</c> renders it to the same <c>w:br</c>. A markdown
-/// template's headers and footers are docx parts, so those do come through here.
+/// template's headers and footers are docx parts, so those do come through here. So does what
+/// an <see cref="OpenXmlToken"/> emits into that body: <c>TokenValueHelpers</c> marks its items
+/// in either flow, and <c>MarkdownTokenBlocks</c> runs <see cref="Apply"/> over the elements the
+/// token produced as it inserts them.
 /// </para>
 /// </remarks>
 static class LineBreaks
