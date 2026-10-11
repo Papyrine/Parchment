@@ -19,8 +19,10 @@ static class FormatTokenValidator
             return;
         }
 
+        var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
+            LoopScope.Track(loopVariables, classification);
             if (classification.Kind != ParagraphKind.Substitution)
             {
                 continue;
@@ -28,7 +30,10 @@ static class FormatTokenValidator
 
             foreach (var token in classification.Substitutions)
             {
-                if (token.References.Count == 0)
+                // A token that starts with a loop variable reads the loop item, whatever root
+                // path it happens to spell, and renders through Fluid.
+                if (token.References.Count == 0 ||
+                    LoopScope.Shadows(loopVariables, token))
                 {
                     continue;
                 }

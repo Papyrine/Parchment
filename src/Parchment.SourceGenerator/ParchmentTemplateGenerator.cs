@@ -922,9 +922,15 @@ public sealed class ParchmentTemplateGenerator :
         Location location,
         string markdown)
     {
+        var loops = MarkdownLoopScope.Scan(markdown);
+
+        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
+        var rawLineStart = 0;
         foreach (var rawLine in markdown.Split('\n'))
         {
             var line = rawLine.Trim();
+            var lineStart = rawLineStart + rawLine.Length - rawLine.TrimStart().Length;
+            rawLineStart += rawLine.Length + 1;
             foreach (Match match in markdownToken.Matches(line))
             {
                 var body = match.Groups["body"].Value.Trim();
@@ -936,8 +942,10 @@ public sealed class ParchmentTemplateGenerator :
                 }
 
                 // Root paths only, matching the map the render looks the table up in: a loop
-                // variable's members are not reachable from the root and fall through to Fluid.
-                if (!ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
+                // variable's members are not reachable from the root and fall through to Fluid,
+                // including when the loop variable happens to spell a root path.
+                if (loops.Shadows(lineStart + match.Index, path) ||
+                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
                 {
                     continue;
                 }

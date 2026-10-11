@@ -196,6 +196,68 @@ public partial class MarkdownExcelsiorTableTests
         await Assert.That(doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Count()).IsEqualTo(1);
     }
 
+    [ParchmentBindable]
+    public partial class ShadowedQuoteModel
+    {
+        public required QuoteModel Order { get; init; }
+        public required List<OrderSummary> Orders { get; init; }
+    }
+
+    public class OrderSummary
+    {
+        public required int Lines { get; init; }
+    }
+
+    // `order.Lines` spells the root's `Order.Lines`, but inside the loop it is the item's member.
+    // Taken for the table it rendered the root's rows once per item, and the second token was
+    // refused at registration for sharing its line.
+    [Test]
+    public async Task LoopVariableNamedAfterRootTableReadsTheItem()
+    {
+        var markdown =
+            """
+            {% for order in Orders %}
+            {{ order.Lines }}
+
+            Next: {{ order.Lines | plus: 1 }}
+
+            {% endfor %}
+            """;
+
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ShadowedQuoteModel>(markdown, styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ShadowedQuoteModel
+            {
+                Order = Quote(),
+                Orders =
+                [
+                    new()
+                    {
+                        Lines = 3
+                    },
+                    new()
+                    {
+                        Lines = 5
+                    }
+                ]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var paragraphs = body.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0);
+
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(paragraphs).IsEquivalentTo(["3", "Next: 4", "5", "Next: 6"]);
+    }
+
     // Sharing a line means the table would have to discard the text beside it, so it is refused at
     // registration rather than rendering the collection's ToString into the document.
     [Test]

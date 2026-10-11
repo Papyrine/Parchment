@@ -50,19 +50,26 @@ static class MarkdownExcelsiorTables
         }
 
         var placeholders = new List<Placeholder>();
+        var loops = MarkdownLoopScope.Scan(markdown);
         var lines = markdown.Split('\n');
+
+        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
+        var lineStart = 0;
         for (var index = 0; index < lines.Length; index++)
         {
             // Split on \n alone so a CRLF source keeps its \r; the trim below takes it off the
             // comparison and the line is replaced wholesale when it matches.
             var line = lines[index];
             var trimmed = line.Trim();
+            var trimmedStart = lineStart + line.Length - line.TrimStart().Length;
+            lineStart += line.Length + 1;
 
             var match = soloToken.Match(trimmed);
             if (match.Success)
             {
                 var path = Normalize(match.Groups["path"].Value);
-                if (tables.TryGet(path, out _))
+                if (!loops.Shadows(trimmedStart, path) &&
+                    tables.TryGet(path, out _))
                 {
                     var marker = MarkerFor(placeholders.Count);
                     placeholders.Add(new(marker, path));
@@ -71,7 +78,7 @@ static class MarkdownExcelsiorTables
                 }
             }
 
-            GuardUnrenderableToken(trimmed, tables, templateName);
+            GuardUnrenderableToken(trimmed, trimmedStart, tables, loops, templateName);
         }
 
         if (placeholders.Count == 0)
@@ -90,7 +97,12 @@ static class MarkdownExcelsiorTables
     /// ToString into the document — a wrong document rather than a failed one. The docx flow rejects
     /// both shapes too, as PARCH007 and PARCH008, so this keeps the two flows answering the same way.
     /// </remarks>
-    static void GuardUnrenderableToken(string trimmedLine, ExcelsiorTableMap tables, string templateName)
+    static void GuardUnrenderableToken(
+        string trimmedLine,
+        int lineStart,
+        ExcelsiorTableMap tables,
+        MarkdownLoopScope loops,
+        string templateName)
     {
         foreach (Match match in anyToken.Matches(trimmedLine))
         {
@@ -99,7 +111,10 @@ static class MarkdownExcelsiorTables
             // The leading path, up to whatever ends it — a filter pipe, an operator, a space.
             var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
             var leading = Normalize(end < 0 ? body : body[..end]);
+            // A token that starts with a loop variable reads the loop item, whatever root path
+            // it happens to spell: Fluid renders it, and neither rule below is its to break.
             if (leading.Length == 0 ||
+                loops.Shadows(lineStart + match.Index, leading) ||
                 !tables.TryGet(leading, out _))
             {
                 continue;
