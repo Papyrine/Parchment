@@ -294,12 +294,13 @@ static class EditableFieldBuilder
         var pr = ClonePr(sitePr);
         // Word's built-in grey placeholder look. The style may not exist in the template's
         // styles part — Word tolerates the dangling reference and falls back to plain text.
-        pr.InsertAt(
-            new RunStyle
-            {
-                Val = "PlaceholderText"
-            },
-            0);
+        // Assigned through the typed property so it replaces a character style cloned from the
+        // site (w:rPr allows one w:rStyle). The site's own style stays on the control's
+        // sdtPr/rPr, which is what Word applies to the text typed over the placeholder.
+        pr.RunStyle = new()
+        {
+            Val = "PlaceholderText"
+        };
         var run = new Run(pr);
         run.AppendChild(
             new Text(text)

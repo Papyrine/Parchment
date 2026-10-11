@@ -455,6 +455,23 @@ public partial class ExcelsiorTableTests
     }
 
     [Test]
+    public async Task NonSoloMarkdownEndingInTableKeepsOneParagraphBeforeFollowingTable()
+    {
+        // The split path keeps the host as the before half and always emits the after half, so
+        // that paragraph already separates the tables and no second one is added.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            Intro {{ Notes | markdown }}
+
+            {{ Lines }}
+            """);
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("p p tbl p tbl");
+    }
+
+    [Test]
     public async Task MixedInlineContentInSameParagraphIsRejected()
     {
         // "Prefix {{ Lines }}" — the token doesn't cover the whole paragraph. Structural

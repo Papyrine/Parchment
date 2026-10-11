@@ -341,19 +341,13 @@ class TableRenderer :
             var run = LiteralInlineRenderer.BuildRun(XmlChars.Strip(content).ToString());
             if (isHeader)
             {
-                run.RunProperties = new();
-                run.RunProperties.Append(new Bold());
+                ApplyBold(run);
             }
 
             paragraph.Append(run);
         }
 
-        var justification = ResolveJustification(isHeader, alignment);
-        if (justification is not null)
-        {
-            paragraph.ParagraphProperties = new();
-            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
-        }
+        ApplyJustification(paragraph, isHeader, alignment);
 
         var tableCell = new TableCell(paragraph);
         ApplyCellProperties(tableCell, widthDxa, columnSpan);
@@ -400,12 +394,7 @@ class TableRenderer :
         bool isHeader,
         Markdig.Extensions.Tables.TableColumnAlign? alignment)
     {
-        var justification = ResolveJustification(isHeader, alignment);
-        if (justification is not null)
-        {
-            paragraph.ParagraphProperties ??= new();
-            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
-        }
+        ApplyJustification(paragraph, isHeader, alignment);
 
         if (!isHeader)
         {
@@ -414,9 +403,36 @@ class TableRenderer :
 
         foreach (var run in paragraph.Descendants<Run>())
         {
-            run.RunProperties ??= new();
-            run.RunProperties.Append(new Bold());
+            ApplyBold(run);
         }
+    }
+
+    // Both go through the typed properties rather than Append. A cell built by the general path
+    // arrives with whatever its inlines and blocks already wrote - emphasis, a link's rStyle, a
+    // heading's pStyle - and Append would put the new element last whatever the schema sequence
+    // says, or add a second w:b beside the one a bold header already carries.
+    static void ApplyBold(Run run)
+    {
+        run.RunProperties ??= new();
+        run.RunProperties.Bold ??= new();
+    }
+
+    static void ApplyJustification(
+        Paragraph paragraph,
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment)
+    {
+        var justification = ResolveJustification(isHeader, alignment);
+        if (justification is null)
+        {
+            return;
+        }
+
+        paragraph.ParagraphProperties ??= new();
+        paragraph.ParagraphProperties.Justification = new()
+        {
+            Val = justification
+        };
     }
 
     static JustificationValues? ResolveJustification(

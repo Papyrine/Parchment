@@ -206,6 +206,96 @@ public partial class EscapingTests
         public string Syntaxed { get; init; } = "";
     }
 
+    [ParchmentBindable]
+    public partial class ShadowedAnnotatedModel
+    {
+        public required AnnotatedPerson Customer { get; init; }
+        public required List<PlainPerson> Customers { get; init; }
+    }
+
+    public class AnnotatedPerson
+    {
+        [Html]
+        public required string Notes { get; init; }
+    }
+
+    public class PlainPerson
+    {
+        public required string Notes { get; init; }
+    }
+
+    static async Task<Body> RenderShadowed(string template)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ShadowedAnnotatedModel>(template, styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ShadowedAnnotatedModel
+            {
+                Customer = new()
+                {
+                    Notes = "<b>ROOT</b>"
+                },
+                Customers =
+                [
+                    new()
+                    {
+                        Notes = "<b>one</b>"
+                    }
+                ]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var document = WordprocessingDocument.Open(stream, false);
+        return (Body) document.MainDocumentPart!.Document!.Body!.CloneNode(true);
+    }
+
+    // `customer.Notes` spells the root's annotated `Customer.Notes`, but inside the loop it is the
+    // item's member, which carries no annotation: it is text, and is escaped as text.
+    [Test]
+    public async Task LoopVariableNamedAfterAnnotatedRootMemberStaysText()
+    {
+        var body = await RenderShadowed(
+            """
+            {{ Customer.Notes }}
+
+            {% for customer in Customers %}
+            {{ customer.Notes }}
+
+            {% endfor %}
+            """);
+
+        var paragraphs = body.Elements<Paragraph>()
+            .Where(_ => _.InnerText.Length > 0)
+            .ToList();
+
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["ROOT", "<b>one</b>"]);
+        await Assert.That(paragraphs[0].Descendants<Bold>().Any()).IsTrue();
+        await Assert.That(paragraphs[1].Descendants<Bold>().Any()).IsFalse();
+    }
+
+    // Fluid finds a loop variable by its exact spelling and a model member without regard to
+    // case, so the root's own spelling still reaches the root, and its annotation, inside the loop.
+    [Test]
+    public async Task LoopVariableShadowsOnlyItsOwnSpelling()
+    {
+        var body = await RenderShadowed(
+            """
+            {% for customer in Customers %}
+            {{ Customer.Notes }}
+
+            {% endfor %}
+            """);
+
+        var paragraph = body.Elements<Paragraph>().Single(_ => _.InnerText.Length > 0);
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("ROOT");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
+    }
+
     // The original breakage: a value carrying a pipe took over the row it sat in, silently turning
     // one cell into two and shifting every column after it.
     [Test]
