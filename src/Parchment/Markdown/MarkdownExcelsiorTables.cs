@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// Renders <c>[ExcelsiorTable]</c> members as Word tables in the markdown flow.
 /// </summary>
 /// <remarks>
@@ -152,6 +152,7 @@ static class MarkdownExcelsiorTables
         ExcelsiorTableMap tables,
         object model,
         MainDocumentPart mainPart,
+        BookmarkIds bookmarks,
         string templateName)
     {
         if (placeholders.Count == 0)
@@ -186,12 +187,12 @@ static class MarkdownExcelsiorTables
                         $"Markdown parsed it into a paragraph reading: {host.InnerText.Trim()}");
                 }
 
-                Replace(host, data, entry, mainPart);
+                Replace(host, data, entry, mainPart, bookmarks);
             }
         }
     }
 
-    static void Replace(Paragraph host, object? data, ExcelsiorTableEntry entry, MainDocumentPart mainPart)
+    static void Replace(Paragraph host, object? data, ExcelsiorTableEntry entry, MainDocumentPart mainPart, BookmarkIds bookmarks)
     {
         var parent = host.Parent!;
 
@@ -211,6 +212,10 @@ static class MarkdownExcelsiorTables
             entry.TableStyle,
             entry.Configure);
 
+        // Like everything else that joins the body. Excelsior writes no bookmarks of its own, but a
+        // Configure hook is caller code, and the table of contents numbers its entries from the
+        // same counter on the strength of nothing in the body having bypassed it.
+        bookmarks.Renumber(table);
         parent.InsertBefore(table, host);
 
         // Word merges adjacent tables and mishandles a table that ends a body, so the host

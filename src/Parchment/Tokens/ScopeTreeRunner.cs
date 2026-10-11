@@ -14,6 +14,7 @@ class ScopeTreeRunner(
     StringListMap stringLists,
     EditableMap editables,
     EditableState editableState,
+    BookmarkIds bookmarks,
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies)
@@ -205,6 +206,7 @@ class ScopeTreeRunner(
                 html,
                 mainPart,
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
+        bookmarks.Renumber(content);
 
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, EditableHtmlBuilder.Build(editable.Entry, content, editableState, host)));
@@ -266,10 +268,16 @@ class ScopeTreeRunner(
         return result;
     }
 
-    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host) =>
-        value switch
+    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host)
+    {
+        if (value is MarkdownToken md)
         {
-            MarkdownToken md => MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, headingOffset: 0),
+            // Renumbers its own bookmarks, from the same counter.
+            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+        }
+
+        IReadOnlyList<OpenXmlElement> produced = value switch
+        {
             HtmlToken html => WordHtmlConverter.ToElements(
                 html.Source,
                 mainPart,
@@ -280,6 +288,12 @@ class ScopeTreeRunner(
                 .ToList(),
             _ => []
         };
+
+        // Whatever produced these numbered its bookmarks without sight of the document they are
+        // about to join - see BookmarkIds.
+        bookmarks.Renumber(produced);
+        return produced;
+    }
 
     /// <summary>
     /// Splits the synchronous fast path from async machinery: the dispatch checks (Excelsior /
@@ -591,6 +605,7 @@ class ScopeTreeRunner(
             stringLists,
             EditableMap.Empty,
             editableState,
+            bookmarks,
             numberingState,
             styles,
             imagePolicies)
@@ -713,6 +728,7 @@ class ScopeTreeRunner(
                     stringLists,
                     entry.ElementMap.ScopedToItem(loop.LoopVariable, rawItem),
                     editableState,
+                    bookmarks,
                     numberingState,
                     styles,
                     imagePolicies)
@@ -874,7 +890,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, numberingState, styles, imagePolicies)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies)
         {
             loopVariables = loopVariables
         };
