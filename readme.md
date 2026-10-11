@@ -1178,7 +1178,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L840-L850' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L957-L967' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1201,7 +1201,7 @@ Protection is applied at registration whenever the model declares at least one `
 ```cs
 store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L485-L487' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L602-L604' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:
@@ -1302,7 +1302,7 @@ var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
 // model.Budgets is the edited list - added rows appear, removed rows are gone
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L129-L134' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L178-L183' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
