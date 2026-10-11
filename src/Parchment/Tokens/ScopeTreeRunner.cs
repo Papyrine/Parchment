@@ -16,9 +16,15 @@ class ScopeTreeRunner(
     EditableState editableState,
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
-    ImagePolicies imagePolicies)
+    ImagePolicies imagePolicies,
+    List<Table>? tables = null)
 {
     List<StructuralReplacement>? structuralReplacements;
+
+    // Every table a structural replacement put at block level, shared with the runners created
+    // for loop iterations and if branches. Whether one ends up beside another table is only
+    // known once the tag paragraphs around it are gone, so the root runner checks at the end.
+    readonly List<Table> producedTables = tables ?? [];
 
     public Task RunAsync(IReadOnlyList<RangeNode> nodes) =>
         ProcessAsync(nodes);
@@ -38,7 +44,58 @@ class ScopeTreeRunner(
         structuralReplacements.Clear();
     }
 
-    static void ApplyOne(StructuralReplacement replacement)
+    /// <summary>
+    /// Word merges two <c>w:tbl</c> siblings into one table. Run on the root runner once the whole
+    /// tree has been processed: any produced table left directly beside another table — one from
+    /// a neighbouring token or loop iteration, or one already in the template — gets an empty
+    /// paragraph between them.
+    /// </summary>
+    public void SeparateProducedTables()
+    {
+        foreach (var table in producedTables)
+        {
+            if (table.Parent == null)
+            {
+                continue;
+            }
+
+            if (NeighbouringBlock(table, forward: false) is Table)
+            {
+                table.InsertBeforeSelf(new Paragraph());
+            }
+
+            if (NeighbouringBlock(table, forward: true) is Table)
+            {
+                table.InsertAfterSelf(new Paragraph());
+            }
+        }
+
+        producedTables.Clear();
+    }
+
+    // Range markers can sit between two blocks without keeping their tables apart.
+    static OpenXmlElement? NeighbouringBlock(OpenXmlElement element, bool forward)
+    {
+        var cursor = Step(element, forward);
+        while (cursor is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError)
+        {
+            cursor = Step(cursor, forward);
+        }
+
+        return cursor;
+    }
+
+    static OpenXmlElement? Step(OpenXmlElement element, bool forward)
+    {
+        if (forward)
+        {
+            return element.NextSibling();
+        }
+
+        return element.PreviousSibling();
+    }
+
+    void ApplyOne(StructuralReplacement replacement)
     {
         var host = replacement.Host;
         var parent = host.Parent;
@@ -51,6 +108,10 @@ class ScopeTreeRunner(
         foreach (var produced in replacement.Produced)
         {
             cursor = parent.InsertAfter(produced, cursor);
+            if (produced is Table table)
+            {
+                producedTables.Add(table);
+            }
         }
 
         host.Remove();
@@ -580,7 +641,8 @@ class ScopeTreeRunner(
             editableState,
             numberingState,
             styles,
-            imagePolicies);
+            imagePolicies,
+            producedTables);
 
         foreach (var item in items)
         {
@@ -698,7 +760,8 @@ class ScopeTreeRunner(
                     editableState,
                     numberingState,
                     styles,
-                    imagePolicies);
+                    imagePolicies,
+                    producedTables);
                 await itemRunner.RunAsync(loop.Body);
                 itemRunner.ApplyStructural();
 
@@ -854,7 +917,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, numberingState, styles, imagePolicies);
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, numberingState, styles, imagePolicies, producedTables);
         await innerRunner.RunAsync(chosen);
         innerRunner.ApplyStructural();
 
