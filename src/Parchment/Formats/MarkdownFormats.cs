@@ -38,6 +38,7 @@ static class MarkdownFormats
             return markdown;
         }
 
+        var loops = MarkdownLoopScope.Scan(markdown);
         return plainToken.Replace(
             markdown,
             match =>
@@ -47,7 +48,10 @@ static class MarkdownFormats
                     .Replace(" ", "")
                     .Replace("\t", "");
 
-                if (!formats.TryGet(path, out var entry))
+                // A token that starts with a loop variable reads the loop item, whatever root
+                // path it happens to spell, so the root member's annotation is not its own.
+                if (loops.Shadows(match.Index, path) ||
+                    !formats.TryGet(path, out var entry))
                 {
                     return match.Value;
                 }

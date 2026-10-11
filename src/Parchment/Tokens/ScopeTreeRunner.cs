@@ -21,6 +21,10 @@ class ScopeTreeRunner(
 {
     List<StructuralReplacement>? structuralReplacements;
 
+    // The loop variables open around the nodes this runner walks. A token that starts with one
+    // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
+    IReadOnlyList<string> loopVariables = [];
+
     public Task RunAsync(IReadOnlyList<RangeNode> nodes) =>
         ProcessAsync(nodes);
 
@@ -394,7 +398,8 @@ class ScopeTreeRunner(
     OpenXmlToken? TryResolveExcelsiorTable(DocxTokenSite site)
     {
         if (excelsiorTables.IsEmpty ||
-            site.References.Count == 0)
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -402,8 +407,9 @@ class ScopeTreeRunner(
         // Match the token's full dotted reference (e.g. `Customer.Lines`) against the registered
         // map. Single-segment, multi-segment, and arbitrarily-nested paths from the root model
         // all flow through the same lookup. Loop-scope variables (e.g. `{{ line.SubItems }}`
-        // inside `{% for line in Lines %}`) won't match because the map is keyed on paths from
-        // the root model only — they fall through to normal Fluid evaluation.
+        // inside `{% for line in Lines %}`) never match: the map is keyed on paths from the root
+        // model only, and a loop variable that happens to spell a root path was ruled out above
+        // — they fall through to normal Fluid evaluation.
         var reference = site.References[0];
         if (!excelsiorTables.TryGet(reference.Dotted, out var entry))
         {
@@ -422,7 +428,8 @@ class ScopeTreeRunner(
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
     {
         if (stringLists.IsEmpty ||
-            site.References.Count == 0)
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -468,6 +475,10 @@ class ScopeTreeRunner(
         return TokenValueHelpers.BulletList(items.ToList());
     }
 
+    // No LoopScope check here, unlike the other three. The map a runner holds is never keyed
+    // from the root while a loop is open: a loop body gets EditableMap.Empty, and an editable
+    // collection's items get a map keyed under the loop variable itself (EditableMap.ScopedToItem),
+    // which is exactly the token the check would turn away.
     EditableToken? TryResolveEditable(DocxTokenSite site)
     {
         if (editables.IsEmpty ||
@@ -507,7 +518,9 @@ class ScopeTreeRunner(
 
     TokenValue? TryResolveFormatted(DocxTokenSite site)
     {
-        if (formats.IsEmpty || site.References.Count == 0)
+        if (formats.IsEmpty ||
+            site.References.Count == 0 ||
+            LoopScope.Shadows(loopVariables, site))
         {
             return null;
         }
@@ -595,7 +608,10 @@ class ScopeTreeRunner(
             bookmarks,
             numberingState,
             styles,
-            imagePolicies);
+            imagePolicies)
+        {
+            loopVariables = [..loopVariables, loop.LoopVariable]
+        };
 
         foreach (var item in items)
         {
@@ -683,6 +699,7 @@ class ScopeTreeRunner(
         var scratch = new Body();
         var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         var repeatedItems = new List<SdtBlock>();
+        IReadOnlyList<string> itemLoopVariables = [..loopVariables, loop.LoopVariable];
 
         foreach (var fluidItem in effectiveItems)
         {
@@ -714,7 +731,10 @@ class ScopeTreeRunner(
                     bookmarks,
                     numberingState,
                     styles,
-                    imagePolicies);
+                    imagePolicies)
+                {
+                    loopVariables = itemLoopVariables
+                };
                 await itemRunner.RunAsync(loop.Body);
                 itemRunner.ApplyStructural();
 
@@ -870,7 +890,10 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies);
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies)
+        {
+            loopVariables = loopVariables
+        };
         await innerRunner.RunAsync(chosen);
         innerRunner.ApplyStructural();
 
