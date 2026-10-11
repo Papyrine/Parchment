@@ -138,7 +138,8 @@ public static class TokenScanner
             forStatement.Identifier,
             hasOtherContent,
             LoopModifierReferences: modifierReferences,
-            HasLoopModifiers: hasModifiers);
+            HasLoopModifiers: hasModifiers,
+            LoopSourceIsRange: forStatement.Source is not MemberExpression);
     }
 
     static Token BuildConditional(TokenKind kind, string source, string? expression, bool hasOtherContent)

@@ -49,6 +49,47 @@ public partial class LoopModifierTests
         await Assert.That(markdown).IsEqualTo(expected);
     }
 
+    // The modifiers window whatever the source enumerates to, so a range takes them like a
+    // collection does.
+    [Test]
+    [Arguments("(1..5) limit:2", "1,2")]
+    [Arguments("(1..5) offset:3", "4,5")]
+    [Arguments("(1..5) reversed", "5,4,3,2,1")]
+    [Arguments("(1..5) limit:2 offset:1 reversed", "3,2")]
+    [Arguments("(1..Max) reversed", "3,2,1")]
+    [Arguments("(1..5) limit: Max", "1,2,3")]
+    [Arguments("(1..5) offset: Skip", "3,4,5")]
+    [Arguments("(1..Items.size) offset: Skip limit: Max", "3,4,5")]
+    public async Task RangeMatchesTheMarkdownFlow(string source, string expected)
+    {
+        var model = new Model
+        {
+            Items = five,
+            Max = 3,
+            Skip = 2
+        };
+
+        var docx = await RenderDocx($"{{% for item in {source} %}}", model);
+        await Assert.That(docx).IsEqualTo(expected);
+
+        var markdown = await RenderMarkdown($"{{% for item in {source} %}}", model);
+        await Assert.That(markdown).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("limit: Missing")]
+    [Arguments("offset: Missing")]
+    // Evaluated before the loop variable is bound, untyped or not.
+    [Arguments("limit: item")]
+    public async Task RangeUnknownMemberInModifier_FailsRegistration(string modifier)
+    {
+        using var template = Template($"{{% for item in (1..5) {modifier} %}}");
+        var store = new TemplateStore();
+        await Assert.That(
+                () => store.RegisterDocxTemplate<Model>(template))
+            .Throws<ParchmentRegistrationException>();
+    }
+
     [Test]
     public async Task NestedLoopsWindowIndependently()
     {

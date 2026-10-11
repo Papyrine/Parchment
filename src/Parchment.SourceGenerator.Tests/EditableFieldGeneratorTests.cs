@@ -443,6 +443,20 @@ public class EditableFieldGeneratorTests
         await Assert.That(warning.Severity).IsEqualTo(DiagnosticSeverity.Warning);
     }
 
+    // A range loop variable shadows a model member of the same name, as it does at render, so the
+    // token is the loop value and not the editable field.
+    [Test]
+    public async Task RangeLoopVariable_ShadowingEditableMember_NoParch018()
+    {
+        var result = GeneratorDriver.Run(
+            editableModel,
+            "{% for PurchaseOrder in (1..3) %}",
+            "{{ PurchaseOrder }}",
+            "{% endfor %}");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).IsEmpty();
+    }
+
     [Test]
     public async Task LoopVariablePathToken_ReportsParch018Warning()
     {

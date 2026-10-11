@@ -86,6 +86,41 @@ public class BlockTagContainerTests
         await Assert.That(texts).IsEquivalentTo(expected);
     }
 
+    // A range loop is a block like any other: where its tags sit is checked whatever it iterates.
+    [Test]
+    public async Task RangeForAndEndForInDifferentTableRowsIsRejected()
+    {
+        using var template = BuildTemplate(
+            new Table(
+                new TableRow(new TableCell(BuildParagraph("{% for i in (1..3) %}"))),
+                new TableRow(new TableCell(BuildParagraph("{{ i }}"))),
+                new TableRow(new TableCell(BuildParagraph("{% endfor %}")))));
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<Invoice>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("{% for i in (1..3) %}");
+        await Assert.That(exception.Message).Contains("same container");
+    }
+
+    // The bound is a liquid member of the collection, validated like any other reference.
+    [Test]
+    public async Task RangeLoopInsideOneCellRenders()
+    {
+        using var template = BuildTemplate(
+            new Table(
+                new TableRow(
+                    new TableCell(
+                        BuildParagraph("{% for i in (1..Lines.size) %}"),
+                        BuildParagraph("Row {{ i }}"),
+                        BuildParagraph("{% endfor %}")))));
+
+        var texts = await RenderCellTexts(template, SampleData.Invoice());
+        var expected = Enumerable.Range(1, SampleData.Invoice().Lines.Count).Select(_ => $"Row {_}").ToList();
+        await Assert.That(texts).IsEquivalentTo(expected);
+    }
+
     [Test]
     public async Task LoopRepeatingAWholeTableRenders()
     {
