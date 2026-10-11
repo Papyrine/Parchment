@@ -4,7 +4,7 @@ class AutolinkInlineRenderer :
     protected override void Write(OpenXmlMarkdownRenderer renderer, AutolinkInline inline)
     {
         var url = inline.IsEmail ? $"mailto:{inline.Url}" : inline.Url;
-        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
         var run = new Run(
             new RunProperties(
                 new RunStyle
