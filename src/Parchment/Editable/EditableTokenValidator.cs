@@ -31,33 +31,21 @@ static class EditableTokenValidator
         }
 
         var seen = isBody ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
-        var loopDepth = 0;
 
+        var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
-            if (classification.Block is { } block)
+            // Only a top-level body loop renders as a repeating section: non-body parts and
+            // nested loop bodies run with an empty editable map and stay read-only, where a
+            // modifier is harmless. Checked before the tag opens its own variable.
+            if (isBody &&
+                loopVariables.Count == 0 &&
+                classification.Block is { Kind: BlockTagKind.For } block)
             {
-                if (block.Kind == BlockTagKind.For)
-                {
-                    // Only a top-level body loop renders as a repeating section: non-body parts and
-                    // nested loop bodies run with an empty editable map and stay read-only, where a
-                    // modifier is harmless.
-                    if (isBody &&
-                        loopDepth == 0)
-                    {
-                        RejectModifiersOnCollectionLoop(block, editables, templateName, partUri);
-                    }
-
-                    loopDepth++;
-                }
-                else if (block.Kind == BlockTagKind.EndFor)
-                {
-                    loopDepth--;
-                }
-
-                continue;
+                RejectModifiersOnCollectionLoop(block, editables, templateName, partUri);
             }
 
+            LoopScope.Track(loopVariables, classification);
             if (classification.Kind != ParagraphKind.Substitution)
             {
                 continue;
@@ -66,7 +54,10 @@ static class EditableTokenValidator
             List<DocxTokenSite>? editableTokens = null;
             foreach (var token in classification.Substitutions)
             {
-                if (token.References.Count == 0)
+                // A token that starts with a loop variable reads the loop item, whatever root
+                // path it happens to spell — it is not a use of the root's editable member.
+                if (token.References.Count == 0 ||
+                    LoopScope.Shadows(loopVariables, token))
                 {
                     continue;
                 }
@@ -107,7 +98,8 @@ static class EditableTokenValidator
 
             foreach (var token in classification.Substitutions)
             {
-                if (token.References.Count == 0)
+                if (token.References.Count == 0 ||
+                    LoopScope.Shadows(loopVariables, token))
                 {
                     continue;
                 }

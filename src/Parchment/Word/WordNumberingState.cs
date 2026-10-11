@@ -38,7 +38,7 @@ class WordNumberingState(MainDocumentPart mainPart)
 
     Numbering GetNumbering()
     {
-        var part = mainPart.NumberingDefinitionsPart ?? mainPart.AddNewPart<NumberingDefinitionsPart>();
+        var part = mainPart.NumberingDefinitionsPart ?? mainPart.AddNewPart<NumberingDefinitionsPart>(RelationshipIds.Named(mainPart, "rIdNumbering"));
         if (part.Numbering == null)
         {
             part.Numbering = new();
@@ -97,6 +97,11 @@ class WordNumberingState(MainDocumentPart mainPart)
     // level renders unindented with no marker. The abstractNum is cached per format, so defining the
     // full set costs one definition rather than one per list.
     internal const int MaxIlvl = 8;
+
+    // Where a level's text starts. A continuation paragraph of a list item carries no numPr, so it
+    // gets none of the level's indentation and has to state this itself to line up under the item.
+    internal static int TextIndent(int ilvl) =>
+        480 * (ilvl + 1);
 
     // Word cycles these three glyphs across the nine levels.
     static readonly (string Glyph, string Font)[] bulletGlyphs =
@@ -168,7 +173,7 @@ class WordNumberingState(MainDocumentPart mainPart)
             PreviousParagraphProperties = new(
                 new Indentation
                 {
-                    Left = (480 * (ilvl + 1)).ToString(),
+                    Left = TextIndent(ilvl).ToString(),
                     Hanging = "240"
                 }),
             NumberingSymbolRunProperties = new(
@@ -203,7 +208,7 @@ class WordNumberingState(MainDocumentPart mainPart)
             PreviousParagraphProperties = new(
                 new Indentation
                 {
-                    Left = (480 * (ilvl + 1)).ToString(),
+                    Left = TextIndent(ilvl).ToString(),
                     Hanging = "240"
                 })
         };

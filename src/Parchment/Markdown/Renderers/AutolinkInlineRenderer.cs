@@ -10,7 +10,7 @@ class AutolinkInlineRenderer :
             url = $"mailto:{text}";
         }
 
-        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
         var run = new Run(
             new RunProperties(
                 new RunStyle

@@ -44,7 +44,8 @@ class EmphasisInlineRenderer :
     // the same run twice. Every property here is one the schema lets a run carry once, so the second
     // pass leaves what the first put there rather than adding a duplicate beside it. Each goes in
     // through its typed property, which places it by the rPr sequence rather than last: a run inside
-    // a link already holds an rStyle, and the inner emphasis is not always the earlier element.
+    // a link already holds an rStyle, and the inner emphasis is not always the earlier element -
+    // "**_text_**" reaches the run italic first and bold second.
     static void ApplyStyle(Run run, char delimiter, int count)
     {
         var properties = run.RunProperties ??= new();

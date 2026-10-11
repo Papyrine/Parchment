@@ -102,6 +102,55 @@ public partial class EditableCollectionTests
     }
 
     [Test]
+    public async Task BlankItemInCharacterStyledRunValidates()
+    {
+        using var docx = DocxTemplateBuilder.Build(template);
+        using (var doc = WordprocessingDocument.Open(docx, true))
+        {
+            foreach (var run in doc.MainDocumentPart!.Document!.Body!.Descendants<Run>())
+            {
+                run.RunProperties ??= new();
+                run.RunProperties.RunStyle = new()
+                {
+                    Val = "Strong"
+                };
+            }
+
+            doc.Save();
+        }
+
+        docx.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<BudgetPlan>(docx);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new BudgetPlan
+            {
+                Title = "Empty",
+                Budgets = []
+            },
+            stream);
+        stream.Position = 0;
+
+        using var rendered = WordprocessingDocument.Open(stream, false);
+        var container = RepeatingSection(rendered.MainDocumentPart!.Document!.Body!, "Budgets");
+
+        // The blank item's placeholder run swaps the site's character style for the placeholder one.
+        var year = container.Descendants<SdtRun>().First(_ => Tag(_) == "Year");
+        await Assert.That(year.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+        var styles = year.Descendants<Run>().Single().RunProperties!.Elements<RunStyle>().ToList();
+        await Assert.That(styles.Count).IsEqualTo(1);
+        await Assert.That(styles[0].Val!.Value).IsEqualTo("PlaceholderText");
+
+        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+        var errors = validator.Validate(rendered)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    [Test]
     public async Task OutputValidates()
     {
         using var stream = await Render(template, NewPlan());

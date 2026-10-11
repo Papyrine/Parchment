@@ -90,6 +90,61 @@ public partial class LoopModifierTests
         await Assert.That(Paragraphs(stream)).IsEqualTo("one-b,one-a");
     }
 
+    [ParchmentBindable]
+    public partial class PagedGroups
+    {
+        public required IReadOnlyList<PagedGroup> Groups { get; init; }
+    }
+
+    public class PagedGroup
+    {
+        public required int Max { get; init; }
+        public required IReadOnlyList<string> Items { get; init; }
+    }
+
+    // An enclosing loop's variable is in scope for an inner loop's modifier, at registration and at
+    // render alike.
+    [Test]
+    public async Task OuterLoopVariableInInnerModifier()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for group in Groups %}
+
+            {% for item in group.Items limit: group.Max %}
+
+            {{ item }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<PagedGroups>(template);
+        using var stream = new MemoryStream();
+        await store.Render(
+            new PagedGroups
+            {
+                Groups =
+                [
+                    new()
+                    {
+                        Max = 1,
+                        Items = ["a", "b"]
+                    },
+                    new()
+                    {
+                        Max = 2,
+                        Items = ["c", "d", "e"]
+                    }
+                ]
+            },
+            stream);
+
+        await Assert.That(Paragraphs(stream)).IsEqualTo("a,c,d");
+    }
+
     [Test]
     public async Task UnknownMemberInLimit_FailsRegistration()
     {

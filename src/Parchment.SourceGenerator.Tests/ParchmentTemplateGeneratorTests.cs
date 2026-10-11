@@ -446,6 +446,90 @@
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
     }
 
+    // `order` is both a loop variable and, but for case, a root member whose own members carry
+    // the attributes. The loop item's members of the same names carry none.
+    const string shadowedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        public class Order
+        {
+            [ExcelsiorTable]
+            public List<Line> Lines { get; set; } = new();
+
+            [Html]
+            public string Notes { get; set; } = "";
+        }
+
+        public class Summary
+        {
+            public int Lines { get; set; }
+
+            public string Notes { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Invoice
+        {
+            public Order Order { get; set; } = new();
+
+            public List<Summary> Orders { get; set; } = new();
+        }
+        """;
+
+    static readonly string[] attributeRuleIds = ["PARCH007", "PARCH008", "PARCH010", "PARCH024"];
+
+    // Inside the loop the tokens read the item, so none of the root members' rules apply: not
+    // alone-in-its-paragraph, not plain-member-access, and no marker is being lost. The runtime
+    // agrees — see LoopTests.LoopVariableNamedAfterRoot*.
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            shadowedModel,
+            "{% for order in Orders %}",
+            "Next: {{ order.Lines | plus: 1 }}",
+            "{{ order.Notes | upcase }}",
+            "{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\nNext: {{ order.Lines | plus: 1 }}\n\n{{ order.Notes | upcase }}\n{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    // Outside the loop the same spelling is the root member again.
+    [Test]
+    public async Task RootMemberAfterLoopOfTheSameName_StillReported_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\n{{ order.Notes }}\n{% endfor %}\nLines: {{ Order.Lines }}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
     const string formatModel =
         """
         using System.Diagnostics.CodeAnalysis;

@@ -41,7 +41,7 @@ static class EditableSplicer
     static Run? RunAt(Paragraph host, int offset)
     {
         var consumed = 0;
-        foreach (var text in host.Descendants<Text>())
+        foreach (var text in ParagraphText.Texts(host))
         {
             var end = consumed + text.Text.Length;
             if (offset >= consumed && offset < end)
@@ -64,7 +64,7 @@ static class EditableSplicer
     {
         var consumed = 0;
         OpenXmlElement? lastTopLevelBefore = null;
-        foreach (var text in host.Descendants<Text>().ToList())
+        foreach (var text in ParagraphText.Texts(host).ToList())
         {
             var start = consumed;
             var end = consumed + text.Text.Length;
@@ -176,7 +176,7 @@ static class EditableSplicer
     {
         var consumed = 0;
         var toRemove = new List<Text>();
-        foreach (var text in host.Descendants<Text>().ToList())
+        foreach (var text in ParagraphText.Texts(host).ToList())
         {
             var start = consumed;
             var end = consumed + text.Text.Length;
