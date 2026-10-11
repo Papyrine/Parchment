@@ -254,11 +254,23 @@ static class MarkdownTokenBlocks
                 $"Markdown parsed it into a paragraph reading: {host.InnerText.Trim()}");
         }
 
+        // TokenValueHelpers parks a newline as the LineBreaks marker and leaves the split to a later
+        // pass, which the docx flow runs over the whole part. The body here has no such pass - its
+        // own text gets its breaks from MarkdownEncoder - so the split is made on what the token
+        // produced and nothing else, which keeps it off the rest of a body that cannot hold a
+        // marker. Html never writes one.
+        var marks = token is OpenXmlToken;
+
         var parent = host.Parent!;
         OpenXmlElement cursor = host;
         foreach (var element in Render(token, host, mainPart, numbering, styles, imagePolicies))
         {
             cursor = parent.InsertAfter(element, cursor);
+            if (marks &&
+                element is OpenXmlCompositeElement composite)
+            {
+                LineBreaks.Apply(composite);
+            }
         }
     }
 
