@@ -72,13 +72,18 @@ public class NestedFormattingTests
     [Arguments("++**x**{.Lead}++", "rStyle b u")]
     [Arguments("<u>**x**{.Lead}</u>", "rStyle b u")]
     [Arguments("<u>`x`{.Lead}</u>", "rStyle rFonts u")]
+    // Link text sits in a Hyperlink and already holds the link's rStyle
+    [Arguments("<u>[x](https://example.com)</u>", "rStyle u")]
+    [Arguments("<u>**[x](https://example.com)**</u>", "rStyle b u")]
+    [Arguments("**<u>[x](https://example.com)</u>**", "rStyle b u")]
+    [Arguments("[<sup>*x*</sup>](https://example.com)", "rStyle i vertAlign")]
     public async Task RunPropertiesKeepSchemaOrder(string markdown, string expected)
     {
         var paragraph = RendererHarness.RenderMarkdown($"before {markdown} after\n")
             .OfType<Paragraph>()
             .Single();
         var run = paragraph
-            .Elements<Run>()
+            .Descendants<Run>()
             .Single(_ => _.InnerText == "x");
 
         var children = run.RunProperties!.ChildElements.Select(_ => _.LocalName);
@@ -103,7 +108,7 @@ public class NestedFormattingTests
             .OfType<Paragraph>()
             .Single();
         var run = paragraph
-            .Elements<Run>()
+            .Descendants<Run>()
             .Single(_ => _.InnerText == "x");
 
         var alignment = run.RunProperties!.Elements<VerticalTextAlignment>().Single();

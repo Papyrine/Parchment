@@ -19,6 +19,35 @@ public class AutolinkInlineRendererTests
         await Assert.That(rel.Uri.ToString()).IsEqualTo("https://example.com/");
     }
 
+    // What MarkdownEncoder wrote into a bound part of the url is undone, in the text and the target.
+    [Test]
+    public async Task EncoderEscapesAreUndone()
+    {
+        var inline = new AutolinkInline(@"https://example.com/A\-1\_x\.y") { IsEmail = false };
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(inline);
+
+        var hyperlink = (Hyperlink)renderer.Top.CurrentRuns.Single();
+        await Assert.That(hyperlink.InnerText).IsEqualTo("https://example.com/A-1_x.y");
+
+        var rel = renderer.MainPart.HyperlinkRelationships.Single();
+        await Assert.That(rel.Uri.OriginalString).IsEqualTo("https://example.com/A-1_x.y");
+    }
+
+    // A backslash is a path separator in a file: url, so \\ there is not an escaped backslash.
+    [Test]
+    public async Task FileUrlKeepsItsBackslashes()
+    {
+        var inline = new AutolinkInline(@"file:\\server\share\_drafts") { IsEmail = false };
+        var renderer = RendererHarness.BuildRenderer();
+
+        renderer.Render(inline);
+
+        var hyperlink = (Hyperlink)renderer.Top.CurrentRuns.Single();
+        await Assert.That(hyperlink.InnerText).IsEqualTo(@"file:\\server\share\_drafts");
+    }
+
     [Test]
     public async Task EmailAutolinkPrefixesMailto()
     {

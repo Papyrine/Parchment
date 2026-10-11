@@ -1,4 +1,4 @@
-﻿class EmphasisInlineRenderer :
+class EmphasisInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, EmphasisInline>
 {
     protected override void Write(OpenXmlMarkdownRenderer renderer, EmphasisInline inline)
@@ -13,7 +13,8 @@
         var top = renderer.Top;
         for (var i = before; i < top.CurrentRuns.Count; i++)
         {
-            if (top.CurrentRuns[i] is Run run)
+            var element = top.CurrentRuns[i];
+            if (element is Run run)
             {
                 ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
                 if (styleId != null)
@@ -24,16 +25,27 @@
                         Val = styleId
                     };
                 }
+
+                continue;
+            }
+
+            // A link arrives as one Hyperlink holding the runs of its text, so "**[text](url)**"
+            // puts no Run of its own between the delimiters and the emphasis has to be carried
+            // inside. The {.StyleName} is not: a run takes a single rStyle, and replacing the one
+            // the link put there would stop the text reading as a link.
+            foreach (var inner in element.Descendants<Run>())
+            {
+                ApplyStyle(inner, inline.DelimiterChar, inline.DelimiterCount);
             }
         }
     }
 
     // Emphasis nests, and the outer one applies to runs the inner already reached: "*_text_*" walks
-    // the same run twice, and "**_text_**" reaches it italic first and bold second. Every property
-    // here is one the schema lets a run carry once, at a fixed place in the rPr sequence. Each is
-    // therefore set through its typed property, which places it by the schema rather than by the
-    // order the inlines closed in, and only when absent, so the second pass leaves what the first
-    // put there rather than adding a duplicate beside it.
+    // the same run twice. Every property here is one the schema lets a run carry once, so the second
+    // pass leaves what the first put there rather than adding a duplicate beside it. Each goes in
+    // through its typed property, which places it by the rPr sequence rather than last: a run inside
+    // a link already holds an rStyle, and the inner emphasis is not always the earlier element -
+    // "**_text_**" reaches the run italic first and bold second.
     static void ApplyStyle(Run run, char delimiter, int count)
     {
         var properties = run.RunProperties ??= new();
