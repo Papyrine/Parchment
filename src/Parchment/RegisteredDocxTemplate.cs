@@ -52,6 +52,9 @@ class RegisteredDocxTemplate(
                 // Once every substitution in the part has run, so splitting a w:t can no longer
                 // disturb the offsets the substitutions were driven by.
                 LineBreaks.Apply(root);
+                // A removed branch, an empty loop or a structural token can take a cell's only
+                // paragraph with it, or leave a nested table as the cell's last block.
+                TableCells.EnsureFinalParagraph(root);
             }
 
             // compatibilityMode=15 is baked into the registration snapshot (see
