@@ -15,6 +15,7 @@ public partial class LiquidMemberTests
         public required string[] Tags { get; init; }
         public required Dictionary<string, string> Lookup { get; init; }
         public required LineBag Bag { get; init; }
+        public required LineList Listed { get; init; }
     }
 
     public class Line
@@ -41,6 +42,14 @@ public partial class LiquidMemberTests
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
             GetEnumerator();
+    }
+
+    // Deriving from List<T> brings the list's own members in through the base chain, the indexer
+    // among them.
+    public class LineList :
+        List<Line>
+    {
+        public string Label { get; init; } = "label";
     }
 
     static Doc BuildModel() =>
@@ -80,6 +89,13 @@ public partial class LiquidMemberTests
                 {
                     Name = "bagged"
                 }
+            ],
+            Listed =
+            [
+                new()
+                {
+                    Name = "listed"
+                }
             ]
         };
 
@@ -98,6 +114,8 @@ public partial class LiquidMemberTests
     [Arguments("{{ Lookup.size }}", "1")]
     [Arguments("{{ Bag.size }}", "1")]
     [Arguments("{{ Bag.first.Name }}", "bagged")]
+    [Arguments("{{ Listed.size }}", "1")]
+    [Arguments("{{ Listed.first.Name }}", "listed")]
     public async Task LiquidMemberRegistersAndRenders(string token, string expected)
     {
         await Assert.That(await RenderDocx($"[{token}]")).IsEqualTo($"[{expected}]");
@@ -162,6 +180,8 @@ public partial class LiquidMemberTests
     [Arguments("Lookup.first")]
     [Arguments("Bag.Count")]
     [Arguments("Bag.Label")]
+    [Arguments("Listed.Count")]
+    [Arguments("Listed.Label")]
     public async Task ClrMemberRendersBlankInFluid(string path)
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
@@ -183,6 +203,8 @@ public partial class LiquidMemberTests
     [Arguments("Lookup.first")]
     [Arguments("Bag.Count")]
     [Arguments("Bag.Label")]
+    [Arguments("Listed.Count")]
+    [Arguments("Listed.Label")]
     public async Task ClrMemberFailsRegistrationNamingSize(string path)
     {
         var member = path[(path.IndexOf('.') + 1)..];

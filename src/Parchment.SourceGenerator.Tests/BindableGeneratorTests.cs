@@ -113,6 +113,84 @@ public class BindableGeneratorTests
         await Assert.That(ids).Contains("PARCH013");
     }
 
+    // A member type deriving from List<T> brings the list's indexer in through its base chain. An
+    // accessor for it reads `((Bag)o).this[]`, which is not C#, and a template has no way to ask
+    // for it anyway.
+    [Test]
+    public async Task ListDerivedMember_EmitsNoIndexerAccessor()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Name { get; set; } = "";
+            }
+
+            public class Bag : List<Line>
+            {
+                public string Label { get; set; } = "";
+            }
+
+            [ParchmentBindable]
+            public partial class Letter
+            {
+                public Bag Bag { get; set; } = new();
+            }
+            """;
+        var setup = GeneratorDriver.CreateDriverWithFiles(source);
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var syntaxErrors = result.GeneratedTrees
+            .SelectMany(_ => _.GetDiagnostics())
+            .Select(_ => _.Id)
+            .ToList();
+        var generated = string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+
+        await Assert.That(syntaxErrors).IsEmpty();
+        await Assert.That(generated).DoesNotContain("this[]");
+        // What the list itself declares is not binding surface either: a template sees an array.
+        await Assert.That(generated).DoesNotContain("\"Capacity\"");
+        await Assert.That(generated).Contains("\"Label\"");
+    }
+
+    // An indexer the model declares itself is no more a member a template can name.
+    [Test]
+    public async Task DeclaredIndexer_EmitsNoAccessor()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentBindable]
+            public partial class Letter
+            {
+                public string Name { get; set; } = "";
+
+                public string this[int index] => Name;
+
+                public string WriteOnly { set { } }
+            }
+            """;
+        var setup = GeneratorDriver.CreateDriverWithFiles(source);
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        var syntaxErrors = result.GeneratedTrees
+            .SelectMany(_ => _.GetDiagnostics())
+            .Select(_ => _.Id)
+            .ToList();
+        var generated = string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+
+        await Assert.That(syntaxErrors).IsEmpty();
+        await Assert.That(generated).DoesNotContain("this[]");
+        await Assert.That(generated).DoesNotContain("WriteOnly");
+        await Assert.That(generated).Contains("\"Name\"");
+    }
+
     // A base and a derived model can both be bindable — the type name is folded into the module
     // initializer's name so the derived one does not hide the base one (CS0108).
     [Test]
