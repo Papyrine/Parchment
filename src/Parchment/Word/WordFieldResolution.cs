@@ -8,11 +8,11 @@ static class WordFieldResolution
     /// Give every table of contents its entries. Runs while the document is still being built,
     /// because entries added later would change the pagination that <see cref="Resolve"/> measures.
     /// </summary>
-    public static void WriteTableOfContents(Body body)
+    public static void WriteTableOfContents(Body body, BookmarkIds bookmarks)
     {
         foreach (var field in WordFieldRegion.Scan(body).Where(_ => _.IsTableOfContents))
         {
-            WordTableOfContentsBuilder.WriteEntries(body, field);
+            WordTableOfContentsBuilder.WriteEntries(body, field, bookmarks);
         }
     }
 
