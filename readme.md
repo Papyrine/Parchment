@@ -131,7 +131,7 @@ The body isn't restricted to paragraphs. Anything between the open and close par
 {% endfor %}
 ```
 
-The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell will not pair up.
+The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
 
 ### Conditionals
 
@@ -2477,6 +2477,19 @@ public List<Line> Lines { get; set; } = new();
 static void ConfigureLines(WordTableBuilder<Line> builder) =>
     ...
 ```
+
+
+### `PARCH028` — block tags in different containers
+
+**Docx only.** The paragraphs holding the tags of one block — `{% for %}` and `{% endfor %}`, or `{% if %}`, every `{% elsif %}` / `{% else %}`, and `{% endif %}` — must be siblings: in the same table cell, the same text box, or at the same level of the body. A block's content is everything between its tag paragraphs inside that one container, so a tag stranded elsewhere leaves nothing well-defined to repeat or remove.
+
+```
+[table row 1, cell]  {% for line in Lines %}
+[table row 2, cell]  {{ line.Description }}
+[table row 3, cell]  {% endfor %}     ← a different cell from the opening tag
+```
+
+Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
 
 
 ### `PARCH100` — template carries a second item type

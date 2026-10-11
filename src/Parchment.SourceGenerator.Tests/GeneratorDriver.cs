@@ -233,7 +233,28 @@
         return stream.ToArray();
     }
 
-    static Paragraph BuildParagraph(string text) =>
+    /// <summary>
+    /// A docx whose body is the given blocks as-is — for templates where it matters which element
+    /// a paragraph sits in (a table cell as opposed to the body).
+    /// </summary>
+    public static byte[] BuildDocxBytesFromBlocks(params OpenXmlElement[] blocks)
+    {
+        using var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(new Body(blocks));
+
+            var settingsPart = mainPart.AddNewPart<DocumentSettingsPart>();
+            settingsPart.Settings = new(
+                new RemovePersonalInformation(),
+                new RemoveDateAndTime());
+        }
+
+        return stream.ToArray();
+    }
+
+    public static Paragraph BuildParagraph(string text) =>
         new(
             new Run(
                 new Text(text)
