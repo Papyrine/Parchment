@@ -41,7 +41,7 @@ static class ParagraphSplicer
     public static void SpliceInline(Paragraph host, int offset, int length, Paragraph producedParagraph)
     {
         var beforeChildren = TrimmedHead(host, offset);
-        var afterChildren = TrimmedTail(host, offset + length);
+        var afterChildren = TrimmedTail(host, offset, offset + length);
         var producedChildren = ContentChildren(producedParagraph);
 
         var pPr = host.ParagraphProperties;
@@ -80,7 +80,7 @@ static class ParagraphSplicer
         IReadOnlyList<OpenXmlElement> produced)
     {
         var before = BuildShellWithChildren(host, TrimmedHead(host, offset));
-        var after = BuildShellWithChildren(host, TrimmedTail(host, offset + length));
+        var after = BuildShellWithChildren(host, TrimmedTail(host, offset, offset + length));
 
         var result = new List<OpenXmlElement>(produced.Count + 2) { before };
         foreach (var element in produced)
@@ -134,27 +134,40 @@ static class ParagraphSplicer
 
     /// <summary>
     /// Returns deep-cloned children of host (excluding pPr) trimmed to keep only inner text from
-    /// <paramref name="fromOffset"/> onward.
+    /// <paramref name="fromOffset"/> onward. <paramref name="tokenOffset"/> is where the token
+    /// being replaced starts — the boundary <see cref="TrimmedHead"/> was trimmed to.
     /// </summary>
-    static List<OpenXmlElement> TrimmedTail(Paragraph host, int fromOffset)
+    static List<OpenXmlElement> TrimmedTail(Paragraph host, int tokenOffset, int fromOffset)
     {
         var clone = (Paragraph)host.CloneNode(true);
-        TrimToTail(clone, fromOffset);
+        TrimToTail(clone, tokenOffset, fromOffset);
         return ContentChildren(clone);
     }
 
     /// <summary>
     /// Mutates the paragraph: for every Text descendant whose character range falls fully or
-    /// partly past <paramref name="upToOffset"/>, removes or trims it. Empty runs are then
-    /// removed.
+    /// partly past <paramref name="upToOffset"/>, removes or trims it. Run content that carries
+    /// no text (a tab, a break, a drawing, a field char) is positioned by the text preceding it
+    /// and removed when it sits past the offset. Emptied runs are then removed.
     /// </summary>
     static void TrimToHead(Paragraph paragraph, int upToOffset)
     {
         var consumed = 0;
-        var toRemove = new List<Text>();
+        var toRemove = new List<OpenXmlElement>();
 
-        foreach (var text in ParagraphText.Texts(paragraph).ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
+            if (element is not Text text)
+            {
+                if (IsRunContent(element) &&
+                    consumed > upToOffset)
+                {
+                    toRemove.Add(element);
+                }
+
+                continue;
+            }
+
             var value = text.Text;
             var start = consumed;
             var end = consumed + value.Length;
@@ -177,20 +190,34 @@ static class ParagraphSplicer
             }
         }
 
-        RemoveTextsAndEmptyRuns(toRemove);
+        RemoveContentAndEmptyRuns(toRemove);
     }
 
     /// <summary>
     /// Mutates the paragraph: for every Text descendant whose character range ends at or before
-    /// <paramref name="fromOffset"/>, removes or trims it. Empty runs are then removed.
+    /// <paramref name="fromOffset"/>, removes or trims it. Run content that carries no text is
+    /// removed when it sits at or before <paramref name="tokenOffset"/> — exactly the content
+    /// <see cref="TrimToHead"/> keeps, so each such element survives in one half only. Emptied
+    /// runs are then removed.
     /// </summary>
-    static void TrimToTail(Paragraph paragraph, int fromOffset)
+    static void TrimToTail(Paragraph paragraph, int tokenOffset, int fromOffset)
     {
         var consumed = 0;
-        var toRemove = new List<Text>();
+        var toRemove = new List<OpenXmlElement>();
 
-        foreach (var text in ParagraphText.Texts(paragraph).ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
+            if (element is not Text text)
+            {
+                if (IsRunContent(element) &&
+                    consumed <= tokenOffset)
+                {
+                    toRemove.Add(element);
+                }
+
+                continue;
+            }
+
             var value = text.Text;
             var start = consumed;
             var end = consumed + value.Length;
@@ -213,25 +240,34 @@ static class ParagraphSplicer
             }
         }
 
-        RemoveTextsAndEmptyRuns(toRemove);
+        RemoveContentAndEmptyRuns(toRemove);
     }
 
-    static void RemoveTextsAndEmptyRuns(IReadOnlyList<Text> texts)
+    /// <summary>
+    /// True for a run child other than its <c>rPr</c> and its text: a tab, a break, a drawing, a
+    /// field char, a symbol, a footnote reference. Paragraph-level zero-width markers (bookmarks)
+    /// are not run content and stay in both halves.
+    /// </summary>
+    static bool IsRunContent(OpenXmlElement element) =>
+        element.Parent is Run &&
+        element is not RunProperties;
+
+    static void RemoveContentAndEmptyRuns(IReadOnlyList<OpenXmlElement> elements)
     {
         var owners = new HashSet<Run>();
-        foreach (var text in texts)
+        foreach (var element in elements)
         {
-            if (text.Parent is Run run)
+            if (element.Parent is Run run)
             {
                 owners.Add(run);
             }
 
-            text.Remove();
+            element.Remove();
         }
 
         foreach (var run in owners)
         {
-            if (!run.Descendants<Text>().Any())
+            if (run.ChildElements.All(_ => _ is RunProperties))
             {
                 run.Remove();
             }

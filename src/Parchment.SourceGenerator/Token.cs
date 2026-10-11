@@ -4,4 +4,5 @@
     IReadOnlyList<IReadOnlyList<string>> References,
     string? LoopVariable,
     bool HasOtherContent,
-    bool IsPlainIdentifier = false);
+    bool IsPlainIdentifier = false,
+    int Container = 0);

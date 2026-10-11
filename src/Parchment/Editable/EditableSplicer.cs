@@ -204,9 +204,11 @@ static class EditableSplicer
             text.Remove();
         }
 
+        // Only a run left with nothing but its properties is dropped. A run still holding a tab,
+        // break, drawing, field char etc. keeps that content in place beside the control.
         foreach (var run in owners)
         {
-            if (!run.Descendants<Text>().Any())
+            if (run.ChildElements.All(_ => _ is RunProperties))
             {
                 run.Remove();
             }

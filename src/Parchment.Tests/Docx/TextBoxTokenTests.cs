@@ -6,12 +6,20 @@ using V = DocumentFormat.OpenXml.Vml;
 // ReSharper disable PartialTypeWithSinglePart
 public partial class TextBoxTokenTests
 {
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+    sealed class HtmlAttribute : Attribute;
+
     [ParchmentBindable]
     public partial class Model
     {
         public required string Title { get; init; }
 
         public bool Show { get; init; }
+
+        public List<string> Tags { get; init; } = [];
+
+        [Html]
+        public string Body { get; init; } = "";
     }
 
     [Test]
@@ -79,27 +87,86 @@ public partial class TextBoxTokenTests
         await Assert.That(texts).IsEquivalentTo(["Label", "shown to Al"]);
     }
 
+    // The tags of one block share the text box as their container, so the pair is accepted and the
+    // loop body is repeated inside the box.
+    [Test]
+    public async Task LoopInsideATextBoxRepeatsItsBody()
+    {
+        using var template = Build(
+            new Paragraph(
+                new Run(Preserved("Label")),
+                new Run(VmlTextBox("{% for tag in Tags %}", "{{ tag }}", "{% endfor %}"))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Tags = ["one", "two"]
+            });
+
+        await Assert.That(Texts(result)).IsEquivalentTo(["Label", "one", "two"]);
+    }
+
+    // Splicing a non-solo token clones the host into a head and a tail and trims each. The text
+    // box belongs to one half only, and what is inside it is not the host's to count or trim.
+    [Test]
+    [Arguments("<b>bold</b>")]
+    [Arguments("<p>First</p><p>Second</p>")]
+    public async Task SplicedTokenLeavesAnAnchoredTextBoxIntact(string html)
+    {
+        var aside = new Paragraph(new Run(new TabChar(), Preserved("aside")));
+        using var template = Build(
+            new Paragraph(
+                new Run(new Picture(new V.Shape(new V.TextBox(new TextBoxContent(aside))))),
+                new Run(Preserved("Intro {{ Body }} outro"))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Body = html
+            });
+
+        var body = result.MainDocumentPart!.Document!.Body!;
+        var box = body.Descendants<TextBoxContent>().Single();
+        await Assert.That(box.InnerText).IsEqualTo("aside");
+        await Assert.That(box.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(body.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(Texts(result).Count(_ => _ == "aside")).IsEqualTo(1);
+        await Assert.That(Texts(result)).Contains("Intro ");
+        await Assert.That(Texts(result)).Contains(" outro");
+    }
+
     static async Task<List<string>> Render(Stream template, string title, bool show = false)
+    {
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = title,
+                Show = show
+            });
+        return Texts(result);
+    }
+
+    static async Task<WordprocessingDocument> Render(Stream template, Model model)
     {
         var store = new TemplateStore();
         store.RegisterDocxTemplate<Model>(template);
 
-        using var output = new MemoryStream();
-        await store.Render(
-            new Model
-            {
-                Title = title,
-                Show = show
-            },
-            output);
+        var output = new MemoryStream();
+        await store.Render(model, output);
         output.Position = 0;
+        return WordprocessingDocument.Open(output, false);
+    }
 
-        using var result = WordprocessingDocument.Open(output, false);
-        return result.MainDocumentPart!.Document!.Body!
+    static List<string> Texts(WordprocessingDocument document) =>
+        document.MainDocumentPart!.Document!.Body!
             .Descendants<Text>()
             .Select(_ => _.Text)
             .ToList();
-    }
 
     static Picture VmlTextBox(params string[] paragraphs) =>
         new(

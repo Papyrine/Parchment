@@ -54,22 +54,38 @@ class ParagraphText
 
     /// <summary>
     /// The <c>w:t</c> elements that belong to <paramref name="paragraph"/> itself, in document
-    /// order. A text box anchored in one of its runs holds paragraphs of its own; those are
-    /// scanned and substituted as their own paragraphs, so the walk does not descend into them.
-    /// Everything that turns a token offset back into a text element has to enumerate through
-    /// here, or its offsets drift from the ones the scan produced.
+    /// order. Everything that turns a token offset back into a text element has to enumerate
+    /// through here, or its offsets drift from the ones the scan produced.
     /// </summary>
     public static IEnumerable<Text> Texts(Paragraph paragraph)
+    {
+        foreach (var element in Elements(paragraph))
+        {
+            if (element is Text text)
+            {
+                yield return text;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every descendant that belongs to <paramref name="paragraph"/> itself, in document order.
+    /// A text box anchored in one of its runs holds paragraphs of its own; those are scanned and
+    /// substituted as their own paragraphs, so the walk stops at a nested paragraph — neither it
+    /// nor anything inside it is returned.
+    /// </summary>
+    public static IEnumerable<OpenXmlElement> Elements(Paragraph paragraph)
     {
         var current = paragraph.FirstChild;
         while (current != null)
         {
-            if (current is Text text)
+            OpenXmlElement? next = null;
+            if (current is not Paragraph)
             {
-                yield return text;
+                yield return current;
+                next = current.FirstChild;
             }
 
-            var next = current is Paragraph ? null : current.FirstChild;
             while (next == null)
             {
                 next = current.NextSibling();
