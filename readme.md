@@ -1306,7 +1306,7 @@ result.ApplyTo(model);
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
-- **An empty collection renders one blank row** so Word has a template to clone; an all-blank row extracts as nothing, so clearing a row deletes it.
+- **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
 - **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
 - **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
