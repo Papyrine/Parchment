@@ -137,6 +137,50 @@ class MarkdownEncoder :
     public static string EscapeValue(string value) =>
         Default.Encode(value);
 
+    /// <summary>
+    /// Undoes <see cref="Encode(string)"/>'s backslashes for the one construct that reads them
+    /// verbatim and still has to work: an autolink, whose text is also its target. A backslash that
+    /// escapes nothing is kept.
+    /// </summary>
+    public static string Unescape(CharSpan value)
+    {
+        if (value.IndexOf('\\') < 0)
+        {
+            return value.ToString();
+        }
+
+        var builder = new StringBuilder(value.Length);
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] == '\\' &&
+                index + 1 < value.Length &&
+                escapable.Contains(value[index + 1]))
+            {
+                index++;
+            }
+
+            builder.Append(value[index]);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Whether the last character is a backslash left over once every escape before it has been
+    /// paired off — one that escapes whatever followed the span, not anything inside it.
+    /// </summary>
+    public static bool EndsWithDanglingEscape(CharSpan value)
+    {
+        var count = 0;
+        while (count < value.Length &&
+               value[^(count + 1)] == '\\')
+        {
+            count++;
+        }
+
+        return count % 2 == 1;
+    }
+
     // Reached only through base-class entry points this type does not override; every one Fluid
     // uses is overridden above. Kept correct for a single character, which is all the signature can
     // express — a scalar at a time cannot see a CRLF pair, so this writes a break for each half.

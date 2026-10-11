@@ -202,7 +202,7 @@ class MarkdownReferenceValidator :
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
-            if (!ModelValidator.TryResolveMember(current, path.Segments[i], out var next))
+            if (!ModelValidator.TryResolveSegment(current, path.Segments[i], out var next))
             {
                 return false;
             }

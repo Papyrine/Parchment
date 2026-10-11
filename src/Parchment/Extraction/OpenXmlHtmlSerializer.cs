@@ -86,6 +86,17 @@ static class OpenXmlHtmlSerializer
                 }
 
                 builder.Append("</li>");
+
+                // A sibling of the other kind (bullet next to ordered) is a new list, not another
+                // item. Only the kind splits: Word hands out a fresh w:numId for bullets a user
+                // sees as one list, so the numbering instance alone is not a boundary.
+                var tag = ListTag(numbering, numberingId, level);
+                if (tag != openTags.Peek())
+                {
+                    builder.Append("</").Append(openTags.Pop()).Append('>');
+                    builder.Append('<').Append(tag).Append('>');
+                    openTags.Push(tag);
+                }
             }
 
             builder.Append("<li>");

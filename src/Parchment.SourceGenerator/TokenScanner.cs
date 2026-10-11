@@ -2,11 +2,15 @@ public static class TokenScanner
 {
     static readonly FluidParser parser = new();
 
-    public static List<Token> Scan(IEnumerable<string> paragraphs)
+    // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
+    // onto its tokens. Omitted, every token reports container 0.
+    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
     {
         var result = new List<Token>();
+        var index = -1;
         foreach (var paragraph in paragraphs)
         {
+            index++;
             var sites = TokenScan.Scan(paragraph);
             if (sites.Count == 0)
             {
@@ -14,17 +18,22 @@ public static class TokenScanner
             }
 
             var hasOtherContent = TokenScan.HasContentOutsideSites(paragraph, sites);
+            var container = 0;
+            if (containers != null)
+            {
+                container = containers[index];
+            }
 
             foreach (var site in sites)
             {
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent));
+                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent));
+                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
                 }
             }
         }
