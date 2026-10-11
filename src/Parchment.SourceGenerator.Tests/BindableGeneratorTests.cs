@@ -157,7 +157,8 @@ public class BindableGeneratorTests
         await Assert.That(generated).Contains("\"Label\"");
     }
 
-    // An indexer the model declares itself is no more a member a template can name.
+    // An indexer the model declares itself is no more a member a template can name, and a property
+    // whose getter is missing or private is one the generated code cannot read.
     [Test]
     public async Task DeclaredIndexer_EmitsNoAccessor()
     {
@@ -175,6 +176,8 @@ public class BindableGeneratorTests
                 public string this[int index] => Name;
 
                 public string WriteOnly { set { } }
+
+                public string Hidden { private get; set; } = "";
             }
             """;
         var setup = GeneratorDriver.CreateDriverWithFiles(source);
@@ -188,6 +191,7 @@ public class BindableGeneratorTests
         await Assert.That(syntaxErrors).IsEmpty();
         await Assert.That(generated).DoesNotContain("this[]");
         await Assert.That(generated).DoesNotContain("WriteOnly");
+        await Assert.That(generated).DoesNotContain("Hidden");
         await Assert.That(generated).Contains("\"Name\"");
     }
 

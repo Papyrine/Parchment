@@ -494,9 +494,10 @@ static class ShapeBuilder
 
     static bool TryGetMemberType(ISymbol member, out ITypeSymbol type, out string name, out bool isStatic)
     {
-        // An indexer has no name a template can ask for, and a property with no getter has nothing
-        // to read: an accessor for either (`o.this[]`) does not compile.
-        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod: not null } property)
+        // An indexer has no name a template can ask for, and a property without a public getter has
+        // nothing the generated code can read: an accessor for either (`o.this[]`, or a call to a
+        // private get) does not compile. Lockstep with the runtime's ModelValidator.TryResolveMember.
+        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod.DeclaredAccessibility: Accessibility.Public } property)
         {
             type = property.Type;
             name = property.Name;
