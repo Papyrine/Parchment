@@ -340,7 +340,7 @@ Token validation is the deliberate exception: `ModelValidator` / `ReferenceValid
 3. **Format entries**: same walk for `[Html]` / `[Markdown]` / `[StringSyntax]` strings as `(DottedPath, FormatMapKind, Getter)`. Render-time `ScopeTreeRunner.TryResolveFormatted` uses the emitted getter — no per-segment reflection.
 4. **String-list entries**: dotted-path walk for `IEnumerable<string>` members not already owned by `[ExcelsiorTable]`. Populates `StringListMap.precompiledCache`.
 
-`KeyValuePair<K,V>` is special-cased in `ShapeBuilder` (Key/Value members surfaced, argument types enqueued) so dictionary iteration binds; array types are deliberately member-less (their CLR members are not binding surface). Emission avoids `StringBuilder.AppendJoin` — under the netstandard2.0/Polyfill analyzer build it binds to the params-object overload and stringifies the list.
+`KeyValuePair<K,V>` is special-cased in `ShapeBuilder` (Key/Value members surfaced, argument types enqueued) so dictionary iteration binds; array types are deliberately member-less (their CLR members are not binding surface). For the same reason the base-chain walk of a model's own collection class stops at its first system base — `class Bag : List<Line>` keeps what `Bag` declares and drops `Count` / `Capacity` — and `TryGetMemberType` never surfaces an indexer or a getter-less property, since an accessor for either (`o.this[]`) does not compile. Emission avoids `StringBuilder.AppendJoin` — under the netstandard2.0/Polyfill analyzer build it binds to the params-object overload and stringifies the list.
 
 **Public API surface.** SG-emitted code calls into `Parchment.Generated`:
 - `GeneratedRegistration` — static class with one `Register*` method per dataset.

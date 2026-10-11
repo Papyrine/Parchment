@@ -26,6 +26,11 @@ public class LiquidMemberGeneratorTests
             IEnumerator IEnumerable.GetEnumerator() => null!;
         }
 
+        public class LineList : List<Line>
+        {
+            public string Label { get; set; } = "";
+        }
+
         [ParchmentModel]
         public partial class Doc
         {
@@ -34,6 +39,7 @@ public class LiquidMemberGeneratorTests
             public string[] Tags { get; set; } = new string[0];
             public Dictionary<string, string> Lookup { get; set; } = new();
             public LineBag Bag { get; set; } = new();
+            public LineList Listed { get; set; } = new();
         }
         """;
 
@@ -52,6 +58,8 @@ public class LiquidMemberGeneratorTests
     [Arguments("Lookup.size")]
     [Arguments("Bag.size")]
     [Arguments("Bag.first.Name")]
+    [Arguments("Listed.size")]
+    [Arguments("Listed.first.Name")]
     public async Task LiquidMemberIsAccepted(string path)
     {
         await Assert.That(DocxDiagnostics($"{{{{ {path} }}}}")).IsEmpty();
@@ -73,6 +81,8 @@ public class LiquidMemberGeneratorTests
     [Arguments("Lookup.first")]
     [Arguments("Bag.Count")]
     [Arguments("Bag.Label")]
+    [Arguments("Listed.Count")]
+    [Arguments("Listed.Label")]
     public async Task ClrMemberIsRejected(string path)
     {
         await Assert.That(DocxDiagnostics($"{{{{ {path} }}}}")).IsEquivalentTo(["PARCH001"]);
