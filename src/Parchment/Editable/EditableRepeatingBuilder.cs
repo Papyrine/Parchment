@@ -11,7 +11,18 @@ using W15 = DocumentFormat.OpenXml.Office2013.Word;
 /// </summary>
 static class EditableRepeatingBuilder
 {
-    public static SdtBlock BuildItem(IReadOnlyList<OpenXmlElement> body, EditableState state)
+    /// <summary>
+    /// Tag on the single blank item an empty collection renders. Every other kind of control can be
+    /// rendered empty, but a checkbox always holds a state, so extraction needs to know that an
+    /// unchecked box in this item is the absence of a value rather than a rendered <c>false</c>.
+    /// Items rendered from model items never carry it, so their values always round-trip.
+    /// </summary>
+    public const string BlankItemTag = "parchment-blank-item";
+
+    public static bool IsBlankItem(SdtElement item) =>
+        item.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == BlankItemTag;
+
+    public static SdtBlock BuildItem(IReadOnlyList<OpenXmlElement> body, EditableState state, bool blank)
     {
         var content = new SdtContentBlock();
         foreach (var element in body)
@@ -38,14 +49,23 @@ static class EditableRepeatingBuilder
             content.AppendChild(element);
         }
 
-        return new(
-            new SdtProperties(
-                new SdtId
+        var properties = new SdtProperties();
+        if (blank)
+        {
+            properties.AppendChild(
+                new Tag
                 {
-                    Val = state.NextId()
-                },
-                new W15.SdtRepeatedSectionItem()),
-            content);
+                    Val = BlankItemTag
+                });
+        }
+
+        properties.AppendChild(
+            new SdtId
+            {
+                Val = state.NextId()
+            });
+        properties.AppendChild(new W15.SdtRepeatedSectionItem());
+        return new(properties, content);
     }
 
     public static IReadOnlyList<OpenXmlElement> BuildContainer(CollectionEntry entry, IReadOnlyList<SdtBlock> items, EditableState state)
