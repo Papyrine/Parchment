@@ -1045,6 +1045,54 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableBulletListThenOrderedListRoundTrips() =>
+        await AssertHtmlRoundTrips("<ul><li>a</li></ul><ol><li>b</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListThenBulletListRoundTrips() =>
+        await AssertHtmlRoundTrips("<ol><li>a</li><li>b</li></ol><ul><li>c</li></ul>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListNestedInBulletItemRoundTrips() =>
+        await AssertHtmlRoundTrips("<ul><li>a<ol><li>b</li><li>c</li></ol></li><li>d</li></ul>");
+
+    [Test]
+    public async Task HtmlEditableNestedListsOfDifferentKindsRoundTrip() =>
+        await AssertHtmlRoundTrips("<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol></li></ul><ol><li>d</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableAdjacentListsOfTheSameKindExtractAsOne()
+    {
+        // The numbering instance is not a list boundary: Word hands out a new w:numId for bullets
+        // a user sees as one list, so only a change of kind splits.
+        var extracted = await ExtractHtml("<ul><li>a</li></ul><ul><li>b</li></ul>");
+
+        await Assert.That(extracted).IsEqualTo("<ul><li>a</li><li>b</li></ul>");
+    }
+
+    static async Task AssertHtmlRoundTrips(string html)
+    {
+        var extracted = await ExtractHtml(html);
+
+        await Assert.That(extracted).IsEqualTo(html);
+    }
+
+    static async Task<string?> ExtractHtml(string html)
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = html
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        model.Body = "";
+        result.ApplyTo(model);
+        return model.Body;
+    }
+
+    [Test]
     public async Task HtmlEditableEditedContentRoundTrips()
     {
         var model = new EditableArticle
