@@ -222,6 +222,13 @@ class OpenXmlMarkdownRenderer :
         }
     }
 
+    /// <summary>
+    /// Drop every format still open. An unclosed tag would otherwise apply to every run in the
+    /// rest of the document, since nothing else ever removes it.
+    /// </summary>
+    internal void ClearInlineHtmlFormats() =>
+        activeInlineHtml.Clear();
+
     internal void AddBlock(OpenXmlElement block)
     {
         FlushParagraph();

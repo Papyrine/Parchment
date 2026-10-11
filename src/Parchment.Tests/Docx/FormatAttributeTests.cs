@@ -403,6 +403,154 @@ public partial class FormatAttributeTests
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
     }
 
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsTabRunBeforeTokenOnce()
+    {
+        // A run holding only a tab carries no text, so a text-driven trim keeps it in both the
+        // before and the after half. It sits before the token and must land there exactly once.
+        using var template = BuildSingleParagraphTemplate(
+            new Run(new Text("Label")),
+            new Run(new TabChar()),
+            PreservedRun("{{ Body }} tail"));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("Labelx tail");
+        await Assert.That(paragraph.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<TabChar>().Single())).IsEqualTo("Label");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsBreakAfterTokenInSameRunOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(
+                new Text("pre {{ Body }} post")
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                },
+                new Break()));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("pre x post");
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<Break>().Single())).IsEqualTo("pre x post");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsNonTextContentAroundTokenInSameRun()
+    {
+        // The token's own run carries a tab before the token text and a break after it; the run
+        // has no other text, so removing the token text must not take either element with it.
+        using var template = BuildSingleParagraphTemplate(
+            PreservedRun("pre "),
+            new Run(
+                new TabChar(),
+                new Text("{{ Body }}"),
+                new Break()),
+            PreservedRun(" post"));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("pre x post");
+        await Assert.That(paragraph.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<TabChar>().Single())).IsEqualTo("pre ");
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<Break>().Single())).IsEqualTo("pre x");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsTabRunBeforeTokenOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(new Text("Label")),
+            new Run(new TabChar()),
+            PreservedRun("{{ Body }} tail"));
+
+        var paragraphs = await RenderBodyParagraphs(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("Label|one|two| tail");
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<TabChar>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[0].Descendants<TabChar>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsBreakAfterTokenInSameRunOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(
+                new Text("pre {{ Body }} post")
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                },
+                new Break()));
+
+        var paragraphs = await RenderBodyParagraphs(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("pre |one|two| post");
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<Break>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[^1].Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    static Run PreservedRun(string text) =>
+        new(
+            new Text(text)
+            {
+                Space = SpaceProcessingModeValues.Preserve
+            });
+
+    static string TextBefore(Paragraph paragraph, OpenXmlElement element) =>
+        string.Concat(
+            paragraph
+                .Descendants()
+                .TakeWhile(_ => _ != element)
+                .OfType<Text>()
+                .Select(_ => _.Text));
+
+    static async Task<List<Paragraph>> RenderBodyParagraphs(MemoryStream template, string html)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = html
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Select(_ => (Paragraph)_.CloneNode(true))
+            .ToList();
+    }
+
+    static MemoryStream BuildSingleParagraphTemplate(params OpenXmlElement[] children)
+    {
+        var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(
+                new Body(
+                    new Paragraph(children),
+                    new SectionProperties(
+                        new PageSize
+                        {
+                            Width = 6500,
+                            Height = 8000
+                        })));
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
     static byte[] OnePixelPng() =>
         Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");

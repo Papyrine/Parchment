@@ -121,7 +121,9 @@ static class Anchors
     /// per-part id counter from this once (starting at result + 1) and increment locally as anchors
     /// are inserted, rather than re-scanning the part for every anchor. Ids only need to be unique
     /// within the part — Parchment anchors are located by name and stripped before save, so
-    /// cross-part id collisions never reach the output.
+    /// cross-part id collisions never reach the output. Registration also takes the highest result
+    /// across the parts, once the anchors are in, as the floor for what a render produces — see
+    /// <see cref="BookmarkIds"/>.
     /// </summary>
     public static int MaxBookmarkId(OpenXmlCompositeElement root)
     {
