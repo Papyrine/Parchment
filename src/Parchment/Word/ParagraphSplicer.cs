@@ -153,7 +153,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<Text>();
 
-        foreach (var text in paragraph.Descendants<Text>().ToList())
+        foreach (var text in ParagraphText.Texts(paragraph).ToList())
         {
             var value = text.Text;
             var start = consumed;
@@ -189,7 +189,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<Text>();
 
-        foreach (var text in paragraph.Descendants<Text>().ToList())
+        foreach (var text in ParagraphText.Texts(paragraph).ToList())
         {
             var value = text.Text;
             var start = consumed;

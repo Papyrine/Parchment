@@ -25,7 +25,7 @@ class ParagraphText
         StringBuilder? builder = null;
         string? singleValue = null;
 
-        foreach (var text in paragraph.Descendants<Text>())
+        foreach (var text in Texts(paragraph))
         {
             var value = text.Text;
             var offset = builder?.Length ?? singleValue?.Length ?? 0;
@@ -50,6 +50,44 @@ class ParagraphText
 
         var innerText = builder?.ToString() ?? singleValue ?? string.Empty;
         return new(spans, innerText);
+    }
+
+    /// <summary>
+    /// The <c>w:t</c> elements that belong to <paramref name="paragraph"/> itself, in document
+    /// order. A text box anchored in one of its runs holds paragraphs of its own; those are
+    /// scanned and substituted as their own paragraphs, so the walk does not descend into them.
+    /// Everything that turns a token offset back into a text element has to enumerate through
+    /// here, or its offsets drift from the ones the scan produced.
+    /// </summary>
+    public static IEnumerable<Text> Texts(Paragraph paragraph)
+    {
+        var current = paragraph.FirstChild;
+        while (current != null)
+        {
+            if (current is Text text)
+            {
+                yield return text;
+            }
+
+            var next = current is Paragraph ? null : current.FirstChild;
+            while (next == null)
+            {
+                next = current.NextSibling();
+                if (next != null)
+                {
+                    break;
+                }
+
+                current = current.Parent;
+                if (current == null ||
+                    current == paragraph)
+                {
+                    yield break;
+                }
+            }
+
+            current = next;
+        }
     }
 
     /// <summary>
