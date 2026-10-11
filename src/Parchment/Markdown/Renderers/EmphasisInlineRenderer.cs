@@ -28,6 +28,12 @@
         }
     }
 
+    // Emphasis nests, and the outer one applies to runs the inner already reached: "*_text_*" walks
+    // the same run twice, and "**_text_**" reaches it italic first and bold second. Every property
+    // here is one the schema lets a run carry once, at a fixed place in the rPr sequence. Each is
+    // therefore set through its typed property, which places it by the schema rather than by the
+    // order the inlines closed in, and only when absent, so the second pass leaves what the first
+    // put there rather than adding a duplicate beside it.
     static void ApplyStyle(Run run, char delimiter, int count)
     {
         var properties = run.RunProperties ??= new();
@@ -37,66 +43,46 @@
             case '_':
                 if (count >= 2)
                 {
-                    Set(properties, new Bold());
+                    properties.Bold ??= new();
                 }
                 else
                 {
-                    Set(properties, new Italic());
+                    properties.Italic ??= new();
                 }
 
                 break;
             case '~':
                 if (count >= 2)
                 {
-                    Set(properties, new Strike());
+                    properties.Strike ??= new();
                 }
                 else
                 {
-                    Set(
-                        properties,
-                        new VerticalTextAlignment
-                        {
-                            Val = VerticalPositionValues.Subscript
-                        });
+                    properties.VerticalTextAlignment ??= new()
+                    {
+                        Val = VerticalPositionValues.Subscript
+                    };
                 }
 
                 break;
             case '^':
-                Set(
-                    properties,
-                    new VerticalTextAlignment
-                    {
-                        Val = VerticalPositionValues.Superscript
-                    });
+                properties.VerticalTextAlignment ??= new()
+                {
+                    Val = VerticalPositionValues.Superscript
+                };
                 break;
             case '+':
-                Set(
-                    properties,
-                    new Underline
-                    {
-                        Val = UnderlineValues.Single
-                    });
+                properties.Underline ??= new()
+                {
+                    Val = UnderlineValues.Single
+                };
                 break;
             case '=':
-                Set(
-                    properties,
-                    new Highlight
-                    {
-                        Val = HighlightColorValues.Yellow
-                    });
+                properties.Highlight ??= new()
+                {
+                    Val = HighlightColorValues.Yellow
+                };
                 break;
-        }
-    }
-
-    // Emphasis nests, and the outer one applies to runs the inner already reached: "*_text_*" walks
-    // the same run twice. Every property here is one the schema lets a run carry once, so the second
-    // pass leaves what the first put there rather than adding a duplicate beside it.
-    static void Set<T>(RunProperties properties, T property)
-        where T : OpenXmlElement
-    {
-        if (properties.GetFirstChild<T>() == null)
-        {
-            properties.Append(property);
         }
     }
 }
