@@ -7,7 +7,8 @@ class RegisteredMarkdownTemplate(
     ImagePolicies imagePolicies,
     IPageNumberResolver? pageNumbers,
     ExcelsiorTableMap excelsiorTables,
-    IReadOnlyList<MarkdownExcelsiorTables.Placeholder> tablePlaceholders) :
+    IReadOnlyList<MarkdownExcelsiorTables.Placeholder> tablePlaceholders,
+    int maxBookmarkId) :
     RegisteredTemplate(name, modelType)
 {
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
@@ -56,7 +57,10 @@ class RegisteredMarkdownTemplate(
             var numberingState = new WordNumberingState(mainPart);
             // Lazy because only an OpenXmlToken asks for it, and most renders have none.
             var bodyStyles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, headingOffset: 0);
+            // One counter for the whole render, seeded above what the headers, footers and notes
+            // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
+            var bookmarks = new BookmarkIds(maxBookmarkId);
+            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
             foreach (var element in elements)
             {
                 body.AppendChild(element);
@@ -64,11 +68,16 @@ class RegisteredMarkdownTemplate(
 
             // Before anything measures or numbers the document: a table is taller than the marker
             // paragraph it replaces, so every page number after it moves.
-            MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, Name);
+            MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, bookmarks, Name);
 
             // Same reason, and what a parked token produces is likewise taller than the marker it
             // replaces.
-            MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, Name);
+            MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, bookmarks, Name);
+
+            // A pipe-table cell whose value rendered to a table ends with that table, and Word
+            // wants a paragraph after it. Here rather than later because the added paragraph has
+            // height, like the swaps above.
+            TableCells.EnsureFinalParagraph(body);
 
             // Before the trailing section is attached, because the last [SECTION] in the template
             // is what that section describes — see SectionBreaks.
@@ -83,10 +92,10 @@ class RegisteredMarkdownTemplate(
             // placeholder to its entries afterwards would move every heading below it.
             if (pageNumbers != null)
             {
-                WordFieldResolution.WriteTableOfContents(body);
+                WordFieldResolution.WriteTableOfContents(body, bookmarks);
             }
 
-            await RenderNonBodyParts(doc, mainPart, model, numberingState, cancel);
+            await RenderNonBodyParts(doc, mainPart, model, numberingState, bookmarks, cancel);
 
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
             // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
@@ -124,6 +133,7 @@ class RegisteredMarkdownTemplate(
         MainDocumentPart mainPart,
         object model,
         WordNumberingState numberingState,
+        BookmarkIds bookmarks,
         Cancel cancel)
     {
         if (nonBodyParts.Count == 0)
@@ -160,6 +170,7 @@ class RegisteredMarkdownTemplate(
                 StringListMap.Empty,
                 EditableMap.Empty,
                 new(),
+                bookmarks,
                 numberingState,
                 styles,
                 imagePolicies);
@@ -170,6 +181,8 @@ class RegisteredMarkdownTemplate(
             // A header or footer is a docx part, so its substitutions go through the text-based
             // path and its line breaks are materialized the same way the docx flow's are.
             LineBreaks.Apply(root);
+            // And a header or footer table cell can lose its only paragraph the same way.
+            TableCells.EnsureFinalParagraph(root);
         }
     }
 }

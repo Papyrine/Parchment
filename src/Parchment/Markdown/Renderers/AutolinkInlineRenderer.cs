@@ -3,15 +3,21 @@ class AutolinkInlineRenderer :
 {
     protected override void Write(OpenXmlMarkdownRenderer renderer, AutolinkInline inline)
     {
-        var url = inline.IsEmail ? $"mailto:{inline.Url}" : inline.Url;
-        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        var text = Unescape(inline.Url, out var closedByValue);
+        var url = text;
+        if (inline.IsEmail)
+        {
+            url = $"mailto:{text}";
+        }
+
+        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
         var run = new Run(
             new RunProperties(
                 new RunStyle
                 {
                     Val = MarkdownStyle.Resolve(inline) ?? "Hyperlink"
                 }),
-            new Text(inline.Url)
+            new Text(text)
             {
                 Space = SpaceProcessingModeValues.Preserve
             });
@@ -20,5 +26,37 @@ class AutolinkInlineRenderer :
             {
                 Id = relId
             });
+
+        // The > that closed the autolink belonged to the value, so it is text the value is owed
+        // rather than syntax to swallow.
+        if (closedByValue)
+        {
+            renderer.AddRun(LiteralInlineRenderer.BuildRun(">"));
+        }
+    }
+
+    // An autolink is read verbatim, so the escapes MarkdownEncoder wrote into a bound part of the
+    // url are still in it — see BoundAutoLinkParser, which does this for the bare form. A file: url
+    // is left as written: a backslash is a path separator there, and \\server\share is not an
+    // escaped backslash.
+    static string Unescape(string url, out bool closedByValue)
+    {
+        closedByValue = false;
+        if (!url.Contains('\\') ||
+            url.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        // A value holding a > closes the autolink with it, leaving that character's escape as the
+        // last thing inside.
+        var span = url.AsSpan();
+        if (MarkdownEncoder.EndsWithDanglingEscape(span))
+        {
+            closedByValue = true;
+            span = span[..^1];
+        }
+
+        return MarkdownEncoder.Unescape(span);
     }
 }

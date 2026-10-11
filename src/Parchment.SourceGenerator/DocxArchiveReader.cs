@@ -1,11 +1,15 @@
 static class DocxArchiveReader
 {
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    static readonly XName paragraphName = w + "p";
+    static readonly XName textName = w + "t";
 
     public static DocxReadResult Read(string filePath)
     {
         var paragraphs = new List<string>();
         var bodyParagraphs = new List<string>();
+        var containers = new List<int>();
+        var containerCount = 0;
         var hasRemovePersonalInformation = false;
         var builder = new StringBuilder();
         using var archive = ZipFile.OpenRead(filePath);
@@ -31,18 +35,20 @@ static class DocxArchiveReader
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
 
-            foreach (var paragraph in doc.Descendants(w + "p"))
+            // Numbered in order of first appearance and never reset between parts, so the ids are
+            // stable for a given document and a header paragraph never shares one with the body.
+            var containerIds = new Dictionary<XElement, int>();
+
+            foreach (var paragraph in doc.Descendants(paragraphName))
             {
                 builder.Clear();
-                foreach (var t in paragraph.Descendants(w + "t"))
-                {
-                    builder.Append(t.Value);
-                }
+                AppendOwnText(paragraph, builder);
 
                 if (builder.Length > 0)
                 {
                     var text = builder.ToString();
                     paragraphs.Add(text);
+                    containers.Add(ContainerId(paragraph, containerIds, ref containerCount));
                     if (isBody)
                     {
                         bodyParagraphs.Add(text);
@@ -51,7 +57,44 @@ static class DocxArchiveReader
             }
         }
 
-        return new(paragraphs, bodyParagraphs, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+    }
+
+    static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)
+    {
+        var parent = paragraph.Parent;
+        if (parent == null)
+        {
+            return count++;
+        }
+
+        if (ids.TryGetValue(parent, out var id))
+        {
+            return id;
+        }
+
+        ids[parent] = count;
+        return count++;
+    }
+
+    // Mirrors the runtime's ParagraphText.Texts: a text box anchored in a paragraph holds
+    // paragraphs of its own, which the outer Descendants walk visits separately, so their text
+    // is not also the anchoring paragraph's.
+    static void AppendOwnText(XElement element, StringBuilder builder)
+    {
+        foreach (var child in element.Elements())
+        {
+            if (child.Name == textName)
+            {
+                builder.Append(child.Value);
+                continue;
+            }
+
+            if (child.Name != paragraphName)
+            {
+                AppendOwnText(child, builder);
+            }
+        }
     }
 
     static bool IsBodyPart(string path) =>

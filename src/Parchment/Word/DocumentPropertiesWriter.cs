@@ -55,7 +55,7 @@ static class DocumentPropertiesWriter
         XElement root;
         if (part == null)
         {
-            part = document.AddCoreFilePropertiesPart();
+            part = document.AddNewPart<CoreFilePropertiesPart>(RelationshipIds.Named(document, "rIdCore"));
             root = NewCoreRoot();
         }
         else if (properties.ClearBuiltIn)
@@ -139,7 +139,7 @@ static class DocumentPropertiesWriter
                 return;
             }
 
-            part = document.AddExtendedFilePropertiesPart();
+            part = document.AddNewPart<ExtendedFilePropertiesPart>(RelationshipIds.Named(document, "rIdExtended"));
         }
 
         var extended = part.Properties ??= new();
@@ -170,7 +170,8 @@ static class DocumentPropertiesWriter
             return;
         }
 
-        var part = document.CustomFilePropertiesPart ?? document.AddCustomFilePropertiesPart();
+        var part = document.CustomFilePropertiesPart ??
+                   document.AddNewPart<CustomFilePropertiesPart>(RelationshipIds.Named(document, "rIdCustom"));
         var custom = part.Properties ??= new();
 
         foreach (var (name, value) in properties.Custom)

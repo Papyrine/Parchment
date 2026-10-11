@@ -102,6 +102,7 @@ static class MarkdownTokenBlocks
         WordNumberingState numbering,
         Lazy<StyleSet> styles,
         ImagePolicies imagePolicies,
+        BookmarkIds bookmarks,
         string templateName)
     {
         if (pending.Count == 0)
@@ -143,7 +144,7 @@ static class MarkdownTokenBlocks
 
             foreach (var host in list)
             {
-                Insert(host, marker, token, mainPart, numbering, styles, imagePolicies, templateName);
+                Insert(host, marker, token, mainPart, numbering, styles, imagePolicies, bookmarks, templateName);
                 replaced.Add(host);
             }
         }
@@ -240,6 +241,7 @@ static class MarkdownTokenBlocks
         WordNumberingState numbering,
         Lazy<StyleSet> styles,
         ImagePolicies imagePolicies,
+        BookmarkIds bookmarks,
         string templateName)
     {
         if (host.InnerText.Trim() != marker)
@@ -263,7 +265,12 @@ static class MarkdownTokenBlocks
 
         var parent = host.Parent!;
         OpenXmlElement cursor = host;
-        foreach (var element in Render(token, host, mainPart, numbering, styles, imagePolicies))
+
+        // Materialized so the fragment can be renumbered as one: the markdown around it was
+        // numbered before this value was converted, and the converter starts again at 1.
+        var produced = Render(token, host, mainPart, numbering, styles, imagePolicies).ToList();
+        bookmarks.Renumber(produced);
+        foreach (var element in produced)
         {
             cursor = parent.InsertAfter(element, cursor);
             if (marks &&

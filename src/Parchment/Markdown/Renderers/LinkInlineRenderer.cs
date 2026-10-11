@@ -49,7 +49,7 @@ class LinkInlineRenderer :
             return;
         }
 
-        var relId = renderer.MainPart.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true).Id;
+        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
         WriteHyperlink(renderer, inline, new()
         {
             Id = relId
@@ -68,12 +68,15 @@ class LinkInlineRenderer :
         {
             if (run is Run runElement)
             {
-                runElement.RunProperties ??= new();
-                runElement.RunProperties.Append(
-                    new RunStyle
-                    {
-                        Val = styleId
-                    });
+                // The children have already given these runs properties, so the style is assigned
+                // through the typed property, which puts rStyle first in the rPr sequence. A run
+                // carries one character style: one a child asked for by name ("`code`{.Mono}", a
+                // classed span) is the more specific and is kept.
+                var properties = runElement.RunProperties ??= new();
+                properties.RunStyle ??= new()
+                {
+                    Val = styleId
+                };
                 hyperlink.Append(runElement);
             }
             else
