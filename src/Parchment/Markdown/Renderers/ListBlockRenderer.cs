@@ -16,6 +16,10 @@ class ListBlockRenderer :
                 continue;
             }
 
+            // Only the item's first paragraph takes the marker. Numbering every paragraph gave a
+            // continuation paragraph a bullet of its own and made an ordered list count it as the
+            // next item.
+            var numbered = false;
             foreach (var child in itemBlock)
             {
                 if (child is HtmlBlock or CodeBlock or ThematicBreakBlock || child is not LeafBlock leaf)
@@ -42,7 +46,20 @@ class ListBlockRenderer :
                     {
                         Val = styleId
                     },
-                    NumberingProperties = new(
+                    ContextualSpacing = new()
+                };
+                if (numbered)
+                {
+                    // Without a numPr none of the level's indentation applies, so the paragraph
+                    // states the level's text indent itself to sit under the item's text.
+                    properties.Indentation = new()
+                    {
+                        Left = WordNumberingState.TextIndent(ilvl).ToString(CultureInfo.InvariantCulture)
+                    };
+                }
+                else
+                {
+                    properties.NumberingProperties = new(
                         new NumberingLevelReference
                         {
                             Val = ilvl
@@ -50,9 +67,10 @@ class ListBlockRenderer :
                         new NumberingId
                         {
                             Val = numId
-                        }),
-                    ContextualSpacing = new()
-                };
+                        });
+                    numbered = true;
+                }
+
                 renderer.WriteLeafInline(leaf);
                 renderer.FlushParagraph(properties);
             }

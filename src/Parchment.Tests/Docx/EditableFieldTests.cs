@@ -333,6 +333,123 @@ public partial class EditableFieldTests
         await Assert.That(FindSdt(body, "Text").InnerText).IsEqualTo("Enter text");
     }
 
+    [ParchmentBindable]
+    public partial class StyledPlaceholderModel
+    {
+        [EditableField]
+        public string? Text { get; set; }
+
+        [EditableField(MultiLine = true)]
+        public string? Lines { get; set; }
+
+        [EditableField]
+        public decimal? Amount { get; set; }
+
+        [EditableField]
+        public Date? When { get; set; }
+
+        [EditableField]
+        public DateTimeOffset? SignedAt { get; set; }
+
+        [EditableField]
+        public Time? PickupTime { get; set; }
+
+        [EditableField]
+        public QuoteStatus? Choice { get; set; }
+
+        [Html]
+        [EditableField]
+        public string? Body { get; set; }
+    }
+
+    [Test]
+    public async Task PlaceholderInCharacterStyledRunHasOneRunStyle()
+    {
+        string[] inline = ["Text", "Lines", "Amount", "When", "SignedAt", "PickupTime", "Choice"];
+
+        // Every token sits in a run carrying a character style, the shape Word produces when the
+        // template author styles the token.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Text }}
+
+            {{ Lines }}
+
+            {{ Amount }}
+
+            {{ When }}
+
+            {{ SignedAt }}
+
+            {{ PickupTime }}
+
+            {{ Choice }}
+
+            {{ Body }}
+            """);
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            foreach (var run in doc.MainDocumentPart!.Document!.Body!.Descendants<Run>())
+            {
+                run.RunProperties ??= new();
+                run.RunProperties.RunStyle = new()
+                {
+                    Val = "Strong"
+                };
+            }
+
+            doc.Save();
+        }
+
+        template.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<StyledPlaceholderModel>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(new StyledPlaceholderModel(), stream);
+        stream.Position = 0;
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            foreach (var tag in inline)
+            {
+                var sdt = FindSdt(body, tag);
+                await Assert.That(sdt.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+
+                // The placeholder run is styled as a placeholder only...
+                var styles = sdt.Descendants<Run>().Single().RunProperties!.Elements<RunStyle>().ToList();
+                await Assert.That(styles.Count).IsEqualTo(1);
+                await Assert.That(styles[0].Val!.Value).IsEqualTo("PlaceholderText");
+
+                // ...while the control keeps the site's character style for the text typed over it.
+                var controlStyles = sdt.SdtProperties.GetFirstChild<RunProperties>()!.Elements<RunStyle>().ToList();
+                await Assert.That(controlStyles.Count).IsEqualTo(1);
+                await Assert.That(controlStyles[0].Val!.Value).IsEqualTo("Strong");
+            }
+
+            var block = FindSdtBlock(body, "Body");
+            await Assert.That(block.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+            foreach (var properties in block.Descendants<RunProperties>())
+            {
+                await Assert.That(properties.Elements<RunStyle>().Count()).IsEqualTo(1);
+            }
+
+            var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+            var errors = validator.Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<StyledPlaceholderModel>(stream);
+        foreach (var tag in inline.Append("Body"))
+        {
+            await Assert.That(result.Fields.Single(_ => _.Path == tag).State).IsEqualTo(FieldState.Empty);
+        }
+    }
+
     public enum ReviewStage
     {
         NotYetStarted,
@@ -650,6 +767,72 @@ public partial class EditableFieldTests
         var body = doc.MainDocumentPart!.Document!.Body!;
         await Assert.That(body.InnerText).IsEqualTo("PO: PO-2026-17 end");
         await Assert.That(FindSdt(body, "PurchaseOrder").InnerText).IsEqualTo("PO-2026-17");
+    }
+
+    [Test]
+    public async Task TabAfterTokenInSameRunIsKept()
+    {
+        // The token's run is left holding only the tab once the token text is removed; it is
+        // not an empty run and must survive, after the control.
+        using var template = BuildParagraphTemplate(
+            new Run(
+                Preserved("{{ PurchaseOrder }}"),
+                new TabChar(),
+                Preserved("after")));
+
+        await Assert.That(await RenderLayout(template)).IsEqualTo("[PO-2026-17]<tab>after");
+    }
+
+    [Test]
+    public async Task BreakAfterTokenEndingParagraphIsKept()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(
+                Preserved("before"),
+                new TabChar(),
+                Preserved("{{ PurchaseOrder }}"),
+                new Break()));
+
+        await Assert.That(await RenderLayout(template)).IsEqualTo("before<tab>[PO-2026-17]<br>");
+    }
+
+    [Test]
+    public async Task NonTextContentAroundMidTextTokenStaysOnItsSide()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(
+                new RunProperties(new Bold()),
+                new TabChar(),
+                Preserved("x {{ PurchaseOrder }}"),
+                new Break(),
+                new TabChar(),
+                Preserved(" y {{ Discount }}"),
+                new TabChar()));
+
+        await Assert.That(await RenderLayout(template))
+            .IsEqualTo("<tab>x [PO-2026-17]<br><tab> y [10]<tab>");
+    }
+
+    [Test]
+    public async Task RunEmptiedByTokenIsRemoved()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("PO: ")),
+            new Run(
+                new RunProperties(new Bold()),
+                Preserved("{{ PurchaseOrder }}")),
+            new Run(Preserved(" end")));
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("PO: PO-2026-17 end");
+        await Assert.That(paragraph.Elements<Run>().Count()).IsEqualTo(2);
     }
 
     [Test]
@@ -1045,6 +1228,54 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableBulletListThenOrderedListRoundTrips() =>
+        await AssertHtmlRoundTrips("<ul><li>a</li></ul><ol><li>b</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListThenBulletListRoundTrips() =>
+        await AssertHtmlRoundTrips("<ol><li>a</li><li>b</li></ol><ul><li>c</li></ul>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListNestedInBulletItemRoundTrips() =>
+        await AssertHtmlRoundTrips("<ul><li>a<ol><li>b</li><li>c</li></ol></li><li>d</li></ul>");
+
+    [Test]
+    public async Task HtmlEditableNestedListsOfDifferentKindsRoundTrip() =>
+        await AssertHtmlRoundTrips("<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol></li></ul><ol><li>d</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableAdjacentListsOfTheSameKindExtractAsOne()
+    {
+        // The numbering instance is not a list boundary: Word hands out a new w:numId for bullets
+        // a user sees as one list, so only a change of kind splits.
+        var extracted = await ExtractHtml("<ul><li>a</li></ul><ul><li>b</li></ul>");
+
+        await Assert.That(extracted).IsEqualTo("<ul><li>a</li><li>b</li></ul>");
+    }
+
+    static async Task AssertHtmlRoundTrips(string html)
+    {
+        var extracted = await ExtractHtml(html);
+
+        await Assert.That(extracted).IsEqualTo(html);
+    }
+
+    static async Task<string?> ExtractHtml(string html)
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = html
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        model.Body = "";
+        result.ApplyTo(model);
+        return model.Body;
+    }
+
+    [Test]
     public async Task HtmlEditableEditedContentRoundTrips()
     {
         var model = new EditableArticle
@@ -1161,7 +1392,57 @@ public partial class EditableFieldTests
         return sdt;
     }
 
-    static MemoryStream BuildStraddledTemplate()
+    static MemoryStream BuildStraddledTemplate() =>
+        BuildParagraphTemplate(
+            new Run(Preserved("PO: {{ Purch")),
+            new Run(
+                new RunProperties(new Bold()),
+                Preserved("aseOrder }}")),
+            new Run(Preserved(" end")));
+
+    static Text Preserved(string text) =>
+        new(text)
+        {
+            Space = SpaceProcessingModeValues.Preserve
+        };
+
+    // Renders the single-paragraph template and flattens the paragraph into its content order:
+    // text as-is, each content control as [value], tabs and breaks as <tab> / <br>.
+    static async Task<string> RenderLayout(MemoryStream template)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Single();
+        var builder = new StringBuilder();
+        foreach (var element in paragraph.Descendants())
+        {
+            switch (element)
+            {
+                case SdtRun sdt:
+                    builder.Append($"[{sdt.InnerText}]");
+                    break;
+                case Text text when !text.Ancestors<SdtRun>().Any():
+                    builder.Append(text.Text);
+                    break;
+                case TabChar:
+                    builder.Append("<tab>");
+                    break;
+                case Break:
+                    builder.Append("<br>");
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    static MemoryStream BuildParagraphTemplate(params OpenXmlElement[] children)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -1169,23 +1450,7 @@ public partial class EditableFieldTests
             var mainPart = doc.AddMainDocumentPart();
             mainPart.Document = new(
                 new Body(
-                    new Paragraph(
-                        new Run(
-                            new Text("PO: {{ Purch")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            }),
-                        new Run(
-                            new RunProperties(new Bold()),
-                            new Text("aseOrder }}")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            }),
-                        new Run(
-                            new Text(" end")
-                            {
-                                Space = SpaceProcessingModeValues.Preserve
-                            })),
+                    new Paragraph(children),
                     new SectionProperties(
                         new PageSize
                         {
