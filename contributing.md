@@ -257,7 +257,7 @@ The same template is validated by four separate implementations, and they valida
 Known and deliberate asymmetries, so they are not "fixed" into divergence:
 
 - The docx flow runs its own scope tree rather than liquid's `{% for %}`, so it never populates `forloop`, and `assign` / `capture` are not among its block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so rather than rendering a blank.
-- A loop source that resolves to a real type which is not enumerable is a mistake and throws on all paths. One that does not resolve at all — a range, an assign target — is an unknown, and the loop variable is accepted as untyped.
+- A loop source that resolves to a real type which is not enumerable is a mistake and throws on all paths. One that does not resolve at all — a range, an assign target — is an unknown, and the loop variable is accepted as untyped. A range is recognised by its shape (a source that is not a member path), never by having no references: `(1..Count)` names a member, and that member is a bound to validate, not the thing iterated. The two docx validators have no `untyped` set; each binds such a loop variable to a sentinel in its scope (`ReferenceValidator.untyped`, `ParchmentTemplateGenerator.untypedLoopVariable`), which keeps shadowing and restore on `endfor` on the one code path.
 - A filtered source (`{% for x in Src | filter %}`) never reaches any validator: Fluid rejects it as an invalid `for` tag.
 
 ### Determinism guarantee

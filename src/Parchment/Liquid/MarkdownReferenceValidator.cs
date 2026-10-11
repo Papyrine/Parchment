@@ -156,6 +156,13 @@ class MarkdownReferenceValidator :
     bool TryResolveElementType(Expression source, string loopVariable, [NotNullWhen(true)] out Type? elementType)
     {
         elementType = null;
+        // A range may name members in its bounds — `(1..Count)` — and none of them is the thing
+        // being iterated, so the first reference is only the loop source for a member path.
+        if (source is not MemberExpression)
+        {
+            return false;
+        }
+
         var refs = IdentifierVisitor.Collect(source);
         if (refs.Count == 0)
         {

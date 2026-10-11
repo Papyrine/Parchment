@@ -23,6 +23,21 @@ public class TokenScannerTests
         await Assert.That(tokens[2].Kind).IsEqualTo(TokenKind.ForClose);
     }
 
+    // A range's references are its bounds, so the token has to say that none is the loop source.
+    [Test]
+    public async Task ForLoop_Range()
+    {
+        var tokens = TokenScanner.Scan([
+            "{% for i in (1..count) %}",
+            "{% for line in lines %}"
+        ]);
+        await Assert.That(tokens[0].Kind).IsEqualTo(TokenKind.ForOpen);
+        await Assert.That(tokens[0].LoopVariable).IsEqualTo("i");
+        await Assert.That(tokens[0].LoopSourceIsRange).IsTrue();
+        await Assert.That(tokens[0].References.Count).IsEqualTo(1);
+        await Assert.That(tokens[1].LoopSourceIsRange).IsFalse();
+    }
+
     [Test]
     public async Task IfConditional()
     {

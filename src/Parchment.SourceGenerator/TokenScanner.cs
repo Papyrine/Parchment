@@ -117,7 +117,13 @@ public static class TokenScanner
         }
 
         var references = IdentifierVisitor.Collect(template);
-        return new(TokenKind.ForOpen, source, references, forStatement.Identifier, hasOtherContent);
+        return new(
+            TokenKind.ForOpen,
+            source,
+            references,
+            forStatement.Identifier,
+            hasOtherContent,
+            LoopSourceIsRange: forStatement.Source is not MemberExpression);
     }
 
     static Token BuildConditional(TokenKind kind, string source, string? expression, bool hasOtherContent)

@@ -160,6 +160,111 @@
         await Assert.That(diagnostics).IsEmpty();
     }
 
+    const string rangeModelDocx =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public int Count { get; set; }
+
+            public List<Line> Lines { get; set; } = new();
+        }
+        """;
+
+    // A range has no member path, so the loop variable is untyped: it exists, and members reached
+    // through it are not checked. The generator used to skip the tag without opening a loop, which
+    // left `{{ i }}` an unknown identifier and paired the `{% endfor %}` with an enclosing loop.
+    [Test]
+    public async Task ForLoop_Range_NoDiagnostic()
+    {
+        foreach (var range in new[] { "(1..3)", "(1..Count)" })
+        {
+            var result = GeneratorDriver.Run(
+                rangeModelDocx,
+                $"{{% for i in {range} %}}",
+                "{{ i }} {{ i.Anything }}",
+                "{% if i.Anything %}",
+                "x",
+                "{% endif %}",
+                "{% for inner in i.Anything %}",
+                "{{ inner.Anything }}",
+                "{% endfor %}",
+                "{% endfor %}");
+
+            await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+        }
+    }
+
+    // A member used as a bound is a reference like any other.
+    [Test]
+    public async Task ForLoop_Range_MissingMemberBound_ReportsParch001()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..NoSuchMember) %}",
+            "{{ i }}",
+            "{% endfor %}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH001");
+        await Assert.That(diagnostics[0].GetMessage()).Contains("NoSuchMember");
+    }
+
+    [Test]
+    public async Task ForLoop_Range_VariableDoesNotLeakAfterEndfor()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..3) %}",
+            "{{ i }}",
+            "{% endfor %}",
+            "{{ i }}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH001");
+    }
+
+    // The range's `{% endfor %}` must close the range loop, not the enclosing one: `line` stays
+    // bound until its own `{% endfor %}`.
+    [Test]
+    public async Task ForLoop_RangeNestedInTypedLoop_EndforPairsWithRange()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for line in Lines %}",
+            "{% for i in (1..3) %}",
+            "{{ i }} {{ line.Description }}",
+            "{% endfor %}",
+            "{{ line.Description }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+
+        var typo = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..3) %}",
+            "{% for line in Lines %}",
+            "{{ line.NoSuchMember }}",
+            "{% endfor %}",
+            "{% endfor %}");
+
+        var diagnostics = typo.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].GetMessage()).Contains("line.NoSuchMember");
+    }
+
     [Test]
     public Task ForLoop_SourceNotEnumerable()
     {

@@ -387,6 +387,7 @@ public partial class MarkdownFlowTests
     public partial class LoopModel
     {
         public required IReadOnlyList<Row> Rows { get; init; }
+        public int Count { get; init; }
     }
 
     public class Row
@@ -506,6 +507,20 @@ public partial class MarkdownFlowTests
     [Test]
     public void RangeLoopSourceIsAccepted() =>
         Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
+
+    // A member used as a bound does not make the range a member path. Count is an int, and taking
+    // it for the loop source rejected the loop as iterating something that is not enumerable.
+    [Test]
+    public void RangeLoopSourceWithMemberBoundIsAccepted() =>
+        Register("{% for i in (1..Count) %}{{ i.Anything }}{% endfor %}");
+
+    [Test]
+    public async Task RangeLoopSourceWithUnknownMemberBoundFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for i in (1..NoSuchMember) %}{{ i }}{% endfor %}"));
+        await Assert.That(exception.Message).Contains("NoSuchMember");
+    }
 
     // forloop is scoped to the loop body, so outside one it is still an error — but the message
     // should say what forloop is rather than describing it as a missing model member.

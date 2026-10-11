@@ -336,4 +336,168 @@ public partial class LoopTests
         await Assert.That(paragraphs).Contains("inner=b1");
         await Assert.That(paragraphs).Contains("after-inner=B");
     }
+
+    [ParchmentBindable]
+    public partial class RangeModel
+    {
+        public required int Count { get; init; }
+        public required IReadOnlyList<InnerItem> Inners { get; init; }
+    }
+
+    static async Task<List<string>> RenderRange(string markdown, int count = 0)
+    {
+        using var template = DocxTemplateBuilder.Build(markdown);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<RangeModel>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new RangeModel
+            {
+                Count = count,
+                Inners = [new() { InnerName = "a" }, new() { InnerName = "b" }]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0)
+            .ToList();
+    }
+
+    static void RegisterRange(string markdown)
+    {
+        using var template = DocxTemplateBuilder.Build(markdown);
+        new TemplateStore().RegisterDocxTemplate<RangeModel>(template);
+    }
+
+    // A range has no member path, so nothing about it resolves against the model. That is an
+    // unknown, not a mistake: registration used to reject it as "Loop source '' does not resolve to
+    // an enumerable type", while the markdown flow accepted the same loop.
+    [Test]
+    public async Task RangeLoop_LiteralBounds_Renders()
+    {
+        var paragraphs = await RenderRange(
+            """
+            {% for i in (1..3) %}
+
+            Row {{ i }}
+
+            {% endfor %}
+
+            End.
+            """);
+
+        await Assert.That(paragraphs).IsEquivalentTo(["Row 1", "Row 2", "Row 3", "End."]);
+    }
+
+    [Test]
+    public async Task RangeLoop_MemberBound_Renders()
+    {
+        var paragraphs = await RenderRange(
+            """
+            {% for i in (1..Count) %}
+
+            Row {{ i }}
+
+            {% endfor %}
+            """,
+            count: 2);
+
+        await Assert.That(paragraphs).IsEquivalentTo(["Row 1", "Row 2"]);
+    }
+
+    // A member used as a bound is a reference like any other, so a typo in one still fails.
+    [Test]
+    public async Task RangeLoop_UnknownMemberBound_FailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => RegisterRange(
+                """
+                {% for i in (1..NoSuchMember) %}
+
+                Row {{ i }}
+
+                {% endfor %}
+                """));
+        await Assert.That(exception.Message).Contains("NoSuchMember");
+    }
+
+    // The loop variable is untyped: it exists, but members reached through it are not checked.
+    [Test]
+    public void RangeLoop_LoopVariableMembersAreNotChecked() =>
+        RegisterRange(
+            """
+            {% for i in (1..3) %}
+
+            {{ i.Anything }}
+
+            {% if i.Anything %}
+
+            x
+
+            {% endif %}
+
+            {% for inner in i.Anything %}
+
+            {{ inner.Anything }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """);
+
+    [Test]
+    public async Task RangeLoop_VariableDoesNotLeak_AfterEndfor()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => RegisterRange(
+                """
+                {% for i in (1..3) %}
+
+                Row {{ i }}
+
+                {% endfor %}
+
+                {{ i }}
+                """));
+        await Assert.That(exception.Message).Contains("'i'");
+    }
+
+    // A typed loop nested in a range loop is still checked, and still renders per iteration.
+    [Test]
+    public async Task RangeLoop_NestedTypedLoop_StaysValidated()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => RegisterRange(
+                """
+                {% for i in (1..2) %}
+
+                {% for inner in Inners %}
+
+                {{ inner.NoSuchMember }}
+
+                {% endfor %}
+
+                {% endfor %}
+                """));
+        await Assert.That(exception.Message).Contains("NoSuchMember");
+
+        var paragraphs = await RenderRange(
+            """
+            {% for i in (1..2) %}
+
+            {% for inner in Inners %}
+
+            {{ i }}{{ inner.InnerName }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """);
+
+        await Assert.That(paragraphs).IsEquivalentTo(["1a", "1b", "2a", "2b"]);
+    }
 }
