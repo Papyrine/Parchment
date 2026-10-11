@@ -698,6 +698,11 @@ class ScopeTreeRunner(
         List<OpenXmlElement> bodyElements,
         List<FluidValue> items)
     {
+        // The blank item still binds the loop variable to a default element, so tokens that are not
+        // editable fields resolve as they would for a real item. Its controls are built from no item
+        // at all (see ScopedToItem): a default element's `0` or `false` would otherwise read back as
+        // a value and the untouched row would extract as an item nobody entered.
+        var isBlank = items.Count == 0;
         var effectiveItems = items.Count > 0
             ? items
             : [FluidValue.Create(entry.ElementFactory(), context.Options)];
@@ -709,7 +714,7 @@ class ScopeTreeRunner(
 
         foreach (var fluidItem in effectiveItems)
         {
-            var rawItem = fluidItem.ToObjectValue();
+            var rawItem = isBlank ? null : fluidItem.ToObjectValue();
             context.EnterChildScope();
             try
             {
@@ -751,7 +756,7 @@ class ScopeTreeRunner(
                     itemBody.Add(element);
                 }
 
-                repeatedItems.Add(EditableRepeatingBuilder.BuildItem(itemBody, editableState));
+                repeatedItems.Add(EditableRepeatingBuilder.BuildItem(itemBody, editableState, isBlank));
             }
             finally
             {

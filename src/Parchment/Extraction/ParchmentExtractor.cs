@@ -158,6 +158,7 @@ public static class ParchmentExtractor
         foreach (var itemSdt in RepeatedItems(container))
         {
             var item = entry.ElementFactory();
+            var isBlank = EditableRepeatingBuilder.IsBlankItem(itemSdt);
             var anyValue = false;
             foreach (var elementEntry in entry.ElementMap.Entries)
             {
@@ -172,6 +173,15 @@ public static class ParchmentExtractor
                     elementEntry.CanReach(item))
                 {
                     elementEntry.Setter(item, field.Value);
+
+                    // A checkbox cannot be rendered empty, so in the blank item of an empty
+                    // collection an unchecked box is still the untouched state, not an entry.
+                    if (isBlank &&
+                        field.Value is false)
+                    {
+                        continue;
+                    }
+
                     anyValue = true;
                 }
             }
