@@ -51,6 +51,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         using var stream = DocxCloner.ToWritableStream(template);
         IReadOnlyList<PartScopeTree> parts;
+        var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
@@ -67,6 +68,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 FormFields.ToTokens(root);
 
                 var classifications = TokenScanner.Scan(root, name, uri);
+
+                // After the scan, so the anchors it added are counted, and across every part: a
+                // render numbers what it produces from above this - see BookmarkIds.
+                maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -107,7 +112,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
@@ -159,7 +164,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var bytes = styleSource ?? BlankDocxTemplate;
 
         bytes = NormalizeStyleSource(bytes);
-        var (styleSourceBytes, parts) = ScanNonBodyParts(model, bytes, name);
+        var (styleSourceBytes, parts, maxBookmarkId) = ScanNonBodyParts(model, bytes, name);
 
         var registered = new RegisteredMarkdownTemplate(
             name,
@@ -170,7 +175,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             Policies,
             PageNumbers,
             excelsiorTables,
-            tablePlaceholders);
+            tablePlaceholders,
+            maxBookmarkId);
         templates[model] = registered;
         logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
     }
@@ -188,10 +194,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
     /// again, which is why the rewritten bytes are returned rather than the ones passed in.
     /// </remarks>
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) ScanNonBodyParts(Type model, byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) ScanNonBodyParts(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         List<PartScopeTree> parts;
+        var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
@@ -204,6 +211,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
 
                 var classifications = TokenScanner.Scan(root, name, uri);
+
+                // The body is skipped above because the markdown replaces it, so its bookmarks never
+                // reach the output. Every other part's do, anchors included - see BookmarkIds.
+                maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -216,7 +227,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
             if (!found)
             {
-                return (bytes, []);
+                return (bytes, [], maxBookmarkId);
             }
 
             doc.Save();
@@ -226,7 +237,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             parts.RemoveAll(_ => _.PartUri == bodyUri);
         }
 
-        return (stream.ToArray(), parts);
+        return (stream.ToArray(), parts, maxBookmarkId);
     }
 
     /// <summary>
@@ -275,15 +286,19 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     static byte[] BlankDocxTemplate { get; } = BuildBlankDocx();
 
-    static byte[] BuildBlankDocx()
+    internal static byte[] BuildBlankDocx()
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
+            // Explicit ids: without them the SDK mints random ones, and since this is built once per
+            // process, default markdown output would differ between processes. The package is new,
+            // so nothing can already hold either id.
             var mainPart = doc.AddMainDocumentPart();
+            doc.ChangeIdOfPart(mainPart, "rId1");
             mainPart.Document = new(new Body(new Paragraph()));
 
-            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
+            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>("rIdStyles");
             var styles = new Styles();
             styles.Append(
                 new Style

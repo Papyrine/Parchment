@@ -131,7 +131,7 @@ The body isn't restricted to paragraphs. Anything between the open and close par
 {% endfor %}
 ```
 
-The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell will not pair up.
+The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
 
 ### Conditionals
 
@@ -1178,7 +1178,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L840-L850' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1023-L1033' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1201,7 +1201,7 @@ Protection is applied at registration whenever the model declares at least one `
 ```cs
 store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L485-L487' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L602-L604' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:
@@ -1302,7 +1302,7 @@ var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
 // model.Budgets is the edited list - added rows appear, removed rows are gone
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L129-L134' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L178-L183' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
@@ -1501,6 +1501,8 @@ An annotated member reached by a token carrying anything else — a filter, an e
 `escape_xml`, `bullet_list` and `numbered_list` handle it themselves — the list filters escape each item while keeping their own markers, so an item reading `1. First` is an item and not a nested list.
 
 Quotes and dashes are deliberately *not* escaped, so [smarty pants](#smarty-pants) still applies to bound text. Values landing inside a code span or fence are the one place escaping cannot help: backslash escapes are not processed there, so the escape prints.
+
+A url written in the template with a bound tail — `https://example.com/orders/{{ Id }}`, bare or as `<https://example.com/orders/{{ Id }}>` — is the other place escapes are read verbatim, and there they are removed again, so the link's text and target carry the value as it is. The value is still not syntax: the link ends where a url typed out in full would end — at a space, a `<` or a line break, and before trailing punctuation such as a final `.` — and whatever follows is escaped text. A `file:` url is the exception, left exactly as written because a backslash is a path separator there.
 
 The docx flow needs none of this. It substitutes into Word runs rather than into source, so a value there was always the text it is.
 
@@ -2084,6 +2086,8 @@ Validation covers loop bodies. A loop variable is bound to the element type of w
 
 If `HasVariations` is not a member of the element type, registration throws. Left unchecked this is a silent failure rather than a loud one — liquid resolves the unknown member to nil, the `{% if %}` goes false, and the whole block vanishes from the rendered document with nothing reported.
 
+A collection or a string reaches a template as liquid's own array or string rather than as the CLR object, so the members that bind on one are liquid's: `size`, `first` and `last`, in lower case. `first` and `last` are typed as the element, so `{{ Lines.first.Name }}` is checked like any other path. CLR members such as `Count` and `Length`, and the properties of a model's own collection class, do not bind and are rejected at registration, since `{% if Lines.Count > 0 %}` would otherwise be false for every model; the form that works is `{% if Lines.size > 0 %}`. On a dictionary only `size` is accepted.
+
 **Markdown templates only:** identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws. Docx templates support none of the three: they iterate through Parchment's own scope tree rather than liquid's `{% for %}`, so `forloop` is never populated, and `assign` / `capture` are not among the supported block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so in both cases rather than rendering a blank.
 
 Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{% for row in Rows -%}` behave the same as the plain form. This matters for markdown templates, where `{%-` is often needed to keep a raw-html block free of the blank line that would otherwise end it.
@@ -2475,6 +2479,19 @@ static void ConfigureLines(WordTableBuilder<Line> builder) =>
 ```
 
 
+### `PARCH028` — block tags in different containers
+
+**Docx only.** The paragraphs holding the tags of one block — `{% for %}` and `{% endfor %}`, or `{% if %}`, every `{% elsif %}` / `{% else %}`, and `{% endif %}` — must be siblings: in the same table cell, the same text box, or at the same level of the body. A block's content is everything between its tag paragraphs inside that one container, so a tag stranded elsewhere leaves nothing well-defined to repeat or remove.
+
+```
+[table row 1, cell]  {% for line in Lines %}
+[table row 2, cell]  {{ line.Description }}
+[table row 3, cell]  {% endfor %}     ← a different cell from the opening tag
+```
+
+Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
+
+
 ### `PARCH100` — template carries a second item type
 
 **Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.
@@ -2558,6 +2575,8 @@ dotnet run --project src/Parchment.Benchmarks --configuration Release
 Rendering the same template with the same model produces a byte-identical output. Useful for hash-based caching, dedup, and legal sign-off workflows.
 
 Zip entry timestamps are pinned to a stable date (2020-01-01) rather than taken from the clock. Entries cloned from the registration snapshot keep their stamps through a save, but a part added during the render — the settings part, a numbering part for a list, an image — would otherwise carry the wall-clock time at the zip format's 2-second resolution. Without the pin, byte-identity held only for renders landing inside the same 2-second window, and never across days.
+
+Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. One exception remains: a hyperlink inside `[Html]` content, or inside an Excelsior table cell, is given a random relationship id by the library that renders it, so a document containing one is not byte-identical between renders.
 
 [Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
 
