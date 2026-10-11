@@ -403,6 +403,152 @@ public partial class FormatAttributeTests
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
     }
 
+    static async Task<Body> RenderBody<T>(string templateText, T model)
+        where T : notnull
+    {
+        using var template = DocxTemplateBuilder.Build(templateText);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<T>(template);
+
+        var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return (Body)doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
+    }
+
+    static string ParagraphTexts(Body body) =>
+        string.Join('|', body.Elements<Paragraph>().Select(_ => _.InnerText));
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenBeforeIt()
+    {
+        // The split clones the host into its before/after halves. A token at a lower offset is
+        // applied after the split (tokens run in reverse offset order), so it has to land in the
+        // half that ends up in the document rather than in the discarded host.
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: |one|two| end");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenAfterIt()
+    {
+        var body = await RenderBody(
+            "Start {{ Body }} from {{ Title }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Start |one|two| from Alice end");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokensOnBothSides()
+    {
+        var body = await RenderBody(
+            "{{ Title }} before {{ Body }} after {{ Title }}",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Alice before |one|two| after Alice");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_Table_SubstitutesTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<table><tr><td>cell</td></tr></table>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: | end");
+        await Assert.That(body.Elements<Table>().Single().InnerText).IsEqualTo("cell");
+        await Assert.That(body.ChildElements[1]).IsTypeOf<Table>();
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsLineBreakInTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice\nSmith",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear AliceSmith: |one|two| end");
+        await Assert.That(paragraphs[0].Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(body.Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task NonSoloMarkdown_BlockContent_SubstitutesTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new MarkdownDoc
+            {
+                Title = "Alice",
+                Body = "First paragraph.\n\nSecond paragraph."
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: |First paragraph.|Second paragraph.| end");
+    }
+
+    [Test]
+    public async Task InlineFormatTokenBeforeBlockShapedOne_SplicesIntoBeforeHalf()
+    {
+        var body = await RenderBody(
+            "Prefix {{ A }} between {{ B }} suffix",
+            new TwoHtmlBlockDoc
+            {
+                A = "<b>bold</b>",
+                B = "<p>B1</p><p>B2</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Prefix bold between |B1|B2| suffix");
+        var bolds = body.Elements<Paragraph>()
+            .First()
+            .Descendants<Run>()
+            .Where(_ => _.RunProperties?.Bold is not null)
+            .Select(_ => _.InnerText)
+            .ToList();
+        await Assert.That(bolds).IsEquivalentTo(["bold"]);
+    }
+
+    [Test]
+    public async Task InlineFormatTokenAfterBlockShapedOne_SplicesIntoAfterHalf()
+    {
+        var body = await RenderBody(
+            "Prefix {{ A }} between {{ B }} suffix",
+            new TwoHtmlBlockDoc
+            {
+                A = "<p>A1</p><p>A2</p>",
+                B = "<b>bold</b>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Prefix |A1|A2| between bold suffix");
+    }
+
     static byte[] OnePixelPng() =>
         Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");

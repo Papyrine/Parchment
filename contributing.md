@@ -167,7 +167,7 @@ Parallel to Excelsior but for string properties: a `string`/`string?` property m
 When `[Html]`/`[Markdown]` token shares its host paragraph with other text/tokens, `ScopeTreeRunner.ApplyNonSoloStructural` chooses:
 
 - **Inline splice** — produced list is exactly one Paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown). `ParagraphSplicer.SpliceInline` rebuilds host's children as `[before token] + [produced paragraph's children, minus pPr] + [after token]`. Host's `pPr` preserved; produced `pPr` dropped.
-- **Split** — produced list has multiple block-level elements or a non-paragraph (a table). `ParagraphSplicer.Split` clones the host twice (preserving `pPr` on each), trims first to runs/text before the offset, second to runs/text after `offset+length`, returns `[before, ...produced, after]`.
+- **Split** — produced list has multiple block-level elements or a non-paragraph (a table). `ParagraphSplicer.Split` trims the host in place to runs/text before the offset, builds an `after` paragraph from a host clone (preserving `pPr`) trimmed to runs/text after `offset+length`, and returns `[...produced, after]` to insert after the host (`StructuralReplacement.KeepHost`). The host has to stay the before half: tokens run in reverse offset order, so the ones before the split token are substituted after the split and would be lost on a clone.
 
 Two non-solo block-shaped tokens in the same paragraph throw `ParchmentRenderException` — splits would overlap, no defined composition. Author needs to give one its own paragraph.
 
