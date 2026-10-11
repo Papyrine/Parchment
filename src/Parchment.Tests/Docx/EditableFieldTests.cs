@@ -682,6 +682,62 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public async Task NullParentRendersEmptyControls()
+    {
+        using var stream = await RenderModel(nullParentTemplate, new EditableAccount());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        // The getter short-circuits to null through the null Profile. A checkbox has no placeholder
+        // state, so it renders unchecked; every other kind shows its placeholder.
+        var active = FindSdt(body, "Profile.Active");
+        var checkBox = active.SdtProperties!.GetFirstChild<W14.SdtContentCheckBox>()!;
+        await Assert.That(checkBox.GetFirstChild<W14.Checked>()!.Val!.Value).IsEqualTo(W14.OnOffValues.Zero);
+        await Assert.That(active.InnerText).IsEqualTo("☐");
+        await Assert.That(active.SdtProperties.GetFirstChild<ShowingPlaceholder>()).IsNull();
+
+        await Assert.That(FindSdt(body, "Profile.Seats").InnerText).IsEqualTo("Enter text");
+        await Assert.That(FindSdt(body, "Profile.Joined").InnerText).IsEqualTo("Enter a date");
+        await Assert.That(FindSdt(body, "Profile.Status").InnerText).IsEqualTo("Choose an item");
+        await Assert.That(FindSdt(body, "Profile.Name").InnerText).IsEqualTo("Enter text");
+    }
+
+    [Test]
+    public async Task NullParentCheckboxRoundTrip()
+    {
+        using var stream = await RenderModel(nullParentTemplate, new EditableAccount());
+
+        var result = ParchmentExtractor.Extract<EditableAccount>(stream);
+        await Assert.That(result.AllExtracted).IsTrue();
+
+        // The unchecked box extracts as a real false (a checkbox is never Empty), so applying it
+        // needs a reachable parent - the same reachability rule as any other extracted value.
+        var active = result.Fields.First(_ => _.Path == "Profile.Active");
+        await Assert.That(active.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That((bool)active.Value!).IsFalse();
+        await Assert.That(result.Fields.First(_ => _.Path == "Profile.Seats").State).IsEqualTo(FieldState.Empty);
+
+        var unreachable = new EditableAccount();
+        var exception = await Assert.That(() => result.ApplyTo(unreachable))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("Profile.Active");
+        await Assert.That(unreachable.Profile).IsNull();
+
+        var reachable = new EditableAccount
+        {
+            Profile = new()
+            {
+                Active = true,
+                Seats = 3
+            }
+        };
+        result.ApplyTo(reachable);
+        await Assert.That(reachable.Profile.Active).IsFalse();
+        await Assert.That(reachable.Profile.Seats).IsEqualTo(3);
+    }
+
+    [Test]
     public async Task EditableInsideChosenIfBranchRenders()
     {
         var template =
@@ -1112,6 +1168,43 @@ public partial class EditableFieldTests
         [EditableField]
         public required string ContactEmail { get; set; }
     }
+
+    [ParchmentBindable]
+    public partial class EditableAccount
+    {
+        public EditableProfile? Profile { get; set; }
+    }
+
+    public class EditableProfile
+    {
+        [EditableField]
+        public bool Active { get; set; }
+
+        [EditableField]
+        public int Seats { get; set; }
+
+        [EditableField]
+        public Date Joined { get; set; }
+
+        [EditableField]
+        public QuoteStatus Status { get; set; }
+
+        [EditableField]
+        public string Name { get; set; } = "";
+    }
+
+    const string nullParentTemplate =
+        """
+        Active: {{ Profile.Active }}
+
+        Seats: {{ Profile.Seats }}
+
+        Joined: {{ Profile.Joined }}
+
+        Status: {{ Profile.Status }}
+
+        Name: {{ Profile.Name }}
+        """;
 
     static async Task<MemoryStream> Render(string templateContent, EditableOrder model)
     {

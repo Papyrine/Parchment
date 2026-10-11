@@ -179,6 +179,59 @@ public partial class EditableCollectionTests
         await Assert.That(model.Budgets[1].Amount).IsEqualTo(30m);
     }
 
+    public class ChecklistItem
+    {
+        [EditableField]
+        public string Label { get; set; } = "";
+
+        [EditableField]
+        public bool Done { get; set; }
+    }
+
+    [ParchmentBindable]
+    public partial class Checklist
+    {
+        [EditableField]
+        public List<ChecklistItem> Items { get; set; } = [];
+    }
+
+    [Test]
+    public async Task NullItemRendersUncheckedCheckbox()
+    {
+        var model = new Checklist
+        {
+            Items =
+            [
+                new()
+                {
+                    Label = "First",
+                    Done = true
+                },
+                null!
+            ]
+        };
+        using var stream = await Render(
+            """
+            {% for i in Items %}
+
+            {{ i.Label }}: {{ i.Done }}
+
+            {% endfor %}
+            """,
+            model);
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        var items = RepeatingSection(body, "Items").Descendants<SdtBlock>().Where(IsItem).ToList();
+        await Assert.That(items.Count).IsEqualTo(2);
+        await Assert.That(Control(items[0], "Done").InnerText).IsEqualTo("☒");
+
+        // The null item's getters all yield null: placeholder for the text, an unchecked box.
+        await Assert.That(Control(items[1], "Label").InnerText).IsEqualTo("Enter text");
+        await Assert.That(Control(items[1], "Done").InnerText).IsEqualTo("☐");
+    }
+
     static bool IsItem(OpenXmlElement element) =>
         element is SdtBlock sdt &&
         sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null;
