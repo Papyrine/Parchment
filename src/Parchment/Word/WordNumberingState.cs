@@ -23,7 +23,10 @@ class WordNumberingState(MainDocumentPart mainPart)
         return AppendInstance(numbering, abstractId);
     }
 
-    public int CreateOrderedNumbering(NumberFormatValues format)
+    // The abstractNum is shared by every list of its format, so a list that starts somewhere other
+    // than 1 says so on its own instance. A list starting at 1 writes no override, which keeps its
+    // instance identical to the one written before the start was honored.
+    public int CreateOrderedNumbering(NumberFormatValues format, int ilvl = 0, int start = 1)
     {
         EnsureInitialized();
         var numbering = GetNumbering();
@@ -33,7 +36,21 @@ class WordNumberingState(MainDocumentPart mainPart)
             orderedAbstractNumIds[format] = abstractId;
         }
 
-        return AppendInstance(numbering, abstractId);
+        var numId = AppendInstance(numbering, abstractId);
+        if (start != 1)
+        {
+            numbering.LastChild!.Append(
+                new LevelOverride
+                {
+                    LevelIndex = ilvl,
+                    StartOverrideNumberingValue = new()
+                    {
+                        Val = start
+                    }
+                });
+        }
+
+        return numId;
     }
 
     Numbering GetNumbering()
