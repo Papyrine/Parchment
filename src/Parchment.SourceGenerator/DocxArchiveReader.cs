@@ -1,6 +1,8 @@
 static class DocxArchiveReader
 {
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    static readonly XName paragraphName = w + "p";
+    static readonly XName textName = w + "t";
 
     public static DocxReadResult Read(string filePath)
     {
@@ -37,13 +39,10 @@ static class DocxArchiveReader
             // stable for a given document and a header paragraph never shares one with the body.
             var containerIds = new Dictionary<XElement, int>();
 
-            foreach (var paragraph in doc.Descendants(w + "p"))
+            foreach (var paragraph in doc.Descendants(paragraphName))
             {
                 builder.Clear();
-                foreach (var t in paragraph.Descendants(w + "t"))
-                {
-                    builder.Append(t.Value);
-                }
+                AppendOwnText(paragraph, builder);
 
                 if (builder.Length > 0)
                 {
@@ -76,6 +75,26 @@ static class DocxArchiveReader
 
         ids[parent] = count;
         return count++;
+    }
+
+    // Mirrors the runtime's ParagraphText.Texts: a text box anchored in a paragraph holds
+    // paragraphs of its own, which the outer Descendants walk visits separately, so their text
+    // is not also the anchoring paragraph's.
+    static void AppendOwnText(XElement element, StringBuilder builder)
+    {
+        foreach (var child in element.Elements())
+        {
+            if (child.Name == textName)
+            {
+                builder.Append(child.Value);
+                continue;
+            }
+
+            if (child.Name != paragraphName)
+            {
+                AppendOwnText(child, builder);
+            }
+        }
     }
 
     static bool IsBodyPart(string path) =>

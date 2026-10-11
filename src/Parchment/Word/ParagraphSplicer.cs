@@ -156,7 +156,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<OpenXmlElement>();
 
-        foreach (var element in paragraph.Descendants().ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
             if (element is not Text text)
             {
@@ -206,7 +206,7 @@ static class ParagraphSplicer
         var consumed = 0;
         var toRemove = new List<OpenXmlElement>();
 
-        foreach (var element in paragraph.Descendants().ToList())
+        foreach (var element in ParagraphText.Elements(paragraph).ToList())
         {
             if (element is not Text text)
             {
