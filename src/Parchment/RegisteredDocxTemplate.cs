@@ -7,7 +7,8 @@ class RegisteredDocxTemplate(
     FormatMap formats,
     StringListMap stringLists,
     EditableMap editables,
-    ImagePolicies imagePolicies) :
+    ImagePolicies imagePolicies,
+    int maxBookmarkId) :
     RegisteredTemplate(name, modelType)
 {
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
@@ -31,6 +32,7 @@ class RegisteredDocxTemplate(
 
             var numberingState = new WordNumberingState(mainPart);
             var editableState = new EditableState();
+            var bookmarks = new BookmarkIds(maxBookmarkId);
             // Cache the StyleSet per render — Excelsior / Format / OpenXml / Mutate tokens all
             // need it, but it changes only across registrations, not within a render.
             var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
@@ -43,7 +45,7 @@ class RegisteredDocxTemplate(
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, styles);
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
             }
 
             foreach (var root in partRoots.Values)
@@ -72,7 +74,7 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
     {
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
@@ -91,6 +93,7 @@ class RegisteredDocxTemplate(
             stringLists,
             isBody ? editables : EditableMap.Empty,
             editableState,
+            bookmarks,
             numberingState,
             styles,
             imagePolicies);

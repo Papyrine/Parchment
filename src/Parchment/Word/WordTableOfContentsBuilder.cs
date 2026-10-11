@@ -18,7 +18,7 @@ static partial class WordTableOfContentsBuilder
     // the width it will end up, so filling the real number in cannot rewrap the line.
     internal const string PagePlaceholder = "1";
 
-    public static void WriteEntries(Body body, WordFieldRegion field)
+    public static void WriteEntries(Body body, WordFieldRegion field, BookmarkIds ids)
     {
         var maxLevel = ParseMaxLevel(field.Instruction);
         var headings = CollectHeadings(body, maxLevel);
@@ -28,7 +28,7 @@ static partial class WordTableOfContentsBuilder
             return;
         }
 
-        var bookmarks = new WordBookmarkAllocator(body);
+        var bookmarks = new WordBookmarkAllocator(ids);
         var tabStop = TextWidth(body);
         var entries = new List<Paragraph>();
         foreach (var (paragraph, level, text) in headings)
