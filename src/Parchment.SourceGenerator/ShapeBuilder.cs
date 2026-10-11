@@ -41,13 +41,14 @@ static class ShapeBuilder
             Enqueue(element, visited, queue);
         }
 
+        var liquid = LiquidKindFor(type);
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
 
         // An array's CLR members (Length, IsFixedSize, Array.MaxLength…) are not binding surface,
         // and emitting accessors for them produces illegal casts like `string[].MaxLength`.
         if (type is IArrayTypeSymbol)
         {
-            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
         // KeyValuePair<K, V> is a System type but it's the iteration element for every
@@ -61,7 +62,7 @@ static class ShapeBuilder
             members.Add(new("Value", Fqn(pair.TypeArguments[1])));
             Enqueue(pair.TypeArguments[0], visited, queue);
             Enqueue(pair.TypeArguments[1], visited, queue);
-            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
         if (!IsSystemType(type))
@@ -162,8 +163,55 @@ static class ShapeBuilder
             }
         }
 
-        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type));
+        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid);
     }
+
+    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same three cases off a
+    // System.Type. The order is Fluid's: a dictionary is enumerable too, and is tested for first.
+    static LiquidKind LiquidKindFor(ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String)
+        {
+            return LiquidKind.String;
+        }
+
+        if (type is IArrayTypeSymbol)
+        {
+            return LiquidKind.Array;
+        }
+
+        var enumerable = type.SpecialType == SpecialType.System_Collections_IEnumerable;
+        if (IsDictionary(type))
+        {
+            return LiquidKind.Dictionary;
+        }
+
+        foreach (var i in type.AllInterfaces)
+        {
+            if (IsDictionary(i))
+            {
+                return LiquidKind.Dictionary;
+            }
+
+            if (i.SpecialType == SpecialType.System_Collections_IEnumerable)
+            {
+                enumerable = true;
+            }
+        }
+
+        if (enumerable)
+        {
+            return LiquidKind.Array;
+        }
+
+        return LiquidKind.None;
+    }
+
+    static bool IsDictionary(ITypeSymbol type) =>
+        type.OriginalDefinition.ToDisplayString() is
+            "System.Collections.IDictionary" or
+            "System.Collections.Generic.IDictionary<TKey, TValue>" or
+            "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
 
     // Walked rather than compared to a referenced symbol: the shape is built from whatever the
     // consuming compilation has, and the base chain is enough to recognise one of the token types.

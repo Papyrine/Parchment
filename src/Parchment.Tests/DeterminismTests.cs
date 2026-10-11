@@ -264,6 +264,32 @@ public partial class DeterminismTests
         await Assert.That(first).IsEquivalentTo(second);
     }
 
+    // A url with a bound tail, bare and in angle brackets. The bare form is a LinkInline built by
+    // BoundAutoLinkParser and the angle form an AutolinkInline, so the two take different renderers.
+    [Test]
+    public async Task MarkdownUrlWithBoundTailRenderIsByteIdentical()
+    {
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Linked>(
+            "See https://example.com/orders/{{ Name }} or <https://example.org/orders/{{ Name }}> now");
+
+        var first = await RenderBytes(store, WithEscapedName());
+        var second = await RenderBytes(store, WithEscapedName());
+
+        await Assert.That(first).IsEquivalentTo(second);
+
+        using var document = WordprocessingDocument.Open(new MemoryStream(first), false);
+        await Assert.That(document.MainDocumentPart!.HyperlinkRelationships.Select(_ => _.Uri.OriginalString))
+            .IsEquivalentTo(["https://example.com/orders/A-1_x.y", "https://example.org/orders/A-1_x.y"]);
+    }
+
+    // A value the markdown encoder has to escape, so the unescaped url is what reaches the relationship.
+    static Linked WithEscapedName() =>
+        new()
+        {
+            Name = "A-1_x.y"
+        };
+
     [Test]
     public async Task MarkdownListOnBlankStyleSourceRenderIsByteIdentical()
     {
