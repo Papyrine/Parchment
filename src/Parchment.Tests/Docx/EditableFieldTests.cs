@@ -333,6 +333,123 @@ public partial class EditableFieldTests
         await Assert.That(FindSdt(body, "Text").InnerText).IsEqualTo("Enter text");
     }
 
+    [ParchmentBindable]
+    public partial class StyledPlaceholderModel
+    {
+        [EditableField]
+        public string? Text { get; set; }
+
+        [EditableField(MultiLine = true)]
+        public string? Lines { get; set; }
+
+        [EditableField]
+        public decimal? Amount { get; set; }
+
+        [EditableField]
+        public Date? When { get; set; }
+
+        [EditableField]
+        public DateTimeOffset? SignedAt { get; set; }
+
+        [EditableField]
+        public Time? PickupTime { get; set; }
+
+        [EditableField]
+        public QuoteStatus? Choice { get; set; }
+
+        [Html]
+        [EditableField]
+        public string? Body { get; set; }
+    }
+
+    [Test]
+    public async Task PlaceholderInCharacterStyledRunHasOneRunStyle()
+    {
+        string[] inline = ["Text", "Lines", "Amount", "When", "SignedAt", "PickupTime", "Choice"];
+
+        // Every token sits in a run carrying a character style, the shape Word produces when the
+        // template author styles the token.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Text }}
+
+            {{ Lines }}
+
+            {{ Amount }}
+
+            {{ When }}
+
+            {{ SignedAt }}
+
+            {{ PickupTime }}
+
+            {{ Choice }}
+
+            {{ Body }}
+            """);
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            foreach (var run in doc.MainDocumentPart!.Document!.Body!.Descendants<Run>())
+            {
+                run.RunProperties ??= new();
+                run.RunProperties.RunStyle = new()
+                {
+                    Val = "Strong"
+                };
+            }
+
+            doc.Save();
+        }
+
+        template.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<StyledPlaceholderModel>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(new StyledPlaceholderModel(), stream);
+        stream.Position = 0;
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            foreach (var tag in inline)
+            {
+                var sdt = FindSdt(body, tag);
+                await Assert.That(sdt.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+
+                // The placeholder run is styled as a placeholder only...
+                var styles = sdt.Descendants<Run>().Single().RunProperties!.Elements<RunStyle>().ToList();
+                await Assert.That(styles.Count).IsEqualTo(1);
+                await Assert.That(styles[0].Val!.Value).IsEqualTo("PlaceholderText");
+
+                // ...while the control keeps the site's character style for the text typed over it.
+                var controlStyles = sdt.SdtProperties.GetFirstChild<RunProperties>()!.Elements<RunStyle>().ToList();
+                await Assert.That(controlStyles.Count).IsEqualTo(1);
+                await Assert.That(controlStyles[0].Val!.Value).IsEqualTo("Strong");
+            }
+
+            var block = FindSdtBlock(body, "Body");
+            await Assert.That(block.SdtProperties!.GetFirstChild<ShowingPlaceholder>()).IsNotNull();
+            foreach (var properties in block.Descendants<RunProperties>())
+            {
+                await Assert.That(properties.Elements<RunStyle>().Count()).IsEqualTo(1);
+            }
+
+            var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+            var errors = validator.Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<StyledPlaceholderModel>(stream);
+        foreach (var tag in inline.Append("Body"))
+        {
+            await Assert.That(result.Fields.Single(_ => _.Path == tag).State).IsEqualTo(FieldState.Empty);
+        }
+    }
+
     public enum ReviewStage
     {
         NotYetStarted,
