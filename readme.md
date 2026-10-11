@@ -1502,6 +1502,8 @@ An annotated member reached by a token carrying anything else — a filter, an e
 
 Quotes and dashes are deliberately *not* escaped, so [smarty pants](#smarty-pants) still applies to bound text. Values landing inside a code span or fence are the one place escaping cannot help: backslash escapes are not processed there, so the escape prints.
 
+A url written in the template with a bound tail — `https://example.com/orders/{{ Id }}`, bare or as `<https://example.com/orders/{{ Id }}>` — is the other place escapes are read verbatim, and there they are removed again, so the link's text and target carry the value as it is. The value is still not syntax: the link ends where a url typed out in full would end — at a space, a `<` or a line break, and before trailing punctuation such as a final `.` — and whatever follows is escaped text. A `file:` url is the exception, left exactly as written because a backslash is a path separator there.
+
 The docx flow needs none of this. It substitutes into Word runs rather than into source, so a value there was always the text it is.
 
 #### Line breaks

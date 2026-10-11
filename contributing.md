@@ -58,6 +58,8 @@ Whole `.md` source is one Fluid template parsed once. `[ExcelsiorTable]` tokens 
 
 `MarkdigPipeline` enables: emphasis-extras, grid + pipe tables, autolinks, list-extras (alpha + roman), smarty pants, **generic attributes** (`{.StyleName}` for attaching Word styles to headings/paragraphs — renderer honors first class on each block).
 
+Autolinks are registered by hand rather than through `UseAutoLinks`, so that the parser is `BoundAutoLinkParser` (`Markdown/BoundAutoLinkParser.cs`). An autolink is the one construct that reads a bound value's backslash escapes verbatim *and* still has to work — its text is its target — so the escapes are undone there, after the link has been delimited: `BoundAutoLinkParser` for a bare url, `AutolinkInlineRenderer` for the `<…>` form. Markdig ends a bare url without regard to escapes, which can leave the backslash inside the link and the character it escaped outside; the parser hands that backslash back to the source, so the character stays escaped. A `file:` autolink is left as written, since a backslash is a path separator there.
+
 ### `OpenXmlMarkdownRenderer` — container stack pattern
 
 `Markdown/OpenXmlMarkdownRenderer.cs` subclasses `Markdig.Renderers.RendererBase` (NOT `TextRendererBase` — no `TextWriter`). State is `Stack<ContainerState>` where each holds `{ List<OpenXmlElement> Blocks, List<OpenXmlElement> CurrentRuns }`. Inline renderers append runs to `Top.CurrentRuns`; block renderers call `FlushParagraph()` to wrap accumulated runs into `<w:p>`. Nested constructs (table cells, quote blocks) push/pop new container states. **One renderer per render** — do not cache; the stack is mutable.
