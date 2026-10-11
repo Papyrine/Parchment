@@ -116,7 +116,10 @@ static class ModelValidator
         var property = type.GetProperty(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        if (property != null)
+        // Readable in public, and not an indexer: the generator emits an accessor for nothing else
+        // (ShapeBuilder.TryGetMemberType), so anything else would register and then render blank.
+        if (property is { GetMethod.IsPublic: true } &&
+            property.GetIndexParameters().Length == 0)
         {
             memberType = property.PropertyType;
             return true;
