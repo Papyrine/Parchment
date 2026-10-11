@@ -58,6 +58,11 @@ class ScopeTreeRunner(
             cursor = parent.InsertAfter(produced, cursor);
         }
 
+        if (replacement.KeepHost)
+        {
+            return;
+        }
+
         host.Remove();
     }
 
@@ -248,12 +253,13 @@ class ScopeTreeRunner(
         }
 
         // Block-shaped output in a non-solo context: split the host paragraph and insert the
-        // produced block elements between the resulting before/after halves. We queue this as a
-        // structural replacement so any other in-paragraph substitutions on the same host have
-        // already applied to the host's text by the time we replace it.
+        // produced block elements between the resulting before/after halves. The host itself
+        // becomes the before half, so the lower-offset tokens still to be applied keep running
+        // against a paragraph that stays in the document; higher-offset tokens have already been
+        // applied and are carried into the after half.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
         structuralReplacements ??= [];
-        structuralReplacements.Add(new(host, split));
+        structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
     }
 
@@ -959,5 +965,5 @@ class ScopeTreeRunner(
         return text[start..end];
     }
 
-    sealed record StructuralReplacement(Paragraph Host, IReadOnlyList<OpenXmlElement> Produced);
+    sealed record StructuralReplacement(Paragraph Host, IReadOnlyList<OpenXmlElement> Produced, bool KeepHost = false);
 }
