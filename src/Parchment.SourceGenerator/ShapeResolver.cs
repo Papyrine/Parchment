@@ -37,6 +37,20 @@ static class ShapeResolver
                 return false;
             }
 
+            // The root binds through the model's own accessors whatever else it implements, so
+            // only what is reached past it can be a liquid string, array or dictionary.
+            if (i > 0 &&
+                entry.Liquid != LiquidKind.None)
+            {
+                if (!TryResolveLiquidMember(entry, segments[i], out var liquidFqn))
+                {
+                    return false;
+                }
+
+                currentFqn = liquidFqn;
+                continue;
+            }
+
             string? matched = null;
             foreach (var member in entry.Members)
             {
@@ -56,6 +70,35 @@ static class ShapeResolver
         }
 
         typeFqn = currentFqn;
+        return true;
+    }
+
+    // Lockstep with the runtime's LiquidMembers.TryResolve: Fluid answers member access on these
+    // values itself, with `size` on all three and `first` / `last` on a string or an array, and
+    // compares the name ordinally. None of the type's CLR members bind.
+    static bool TryResolveLiquidMember(TypeEntry entry, string name, [NotNullWhen(true)] out string? typeFqn)
+    {
+        typeFqn = null;
+        if (name == "size")
+        {
+            typeFqn = "int";
+            return true;
+        }
+
+        if (entry.Liquid == LiquidKind.Dictionary ||
+            name is not ("first" or "last"))
+        {
+            return false;
+        }
+
+        if (entry.Liquid == LiquidKind.String)
+        {
+            typeFqn = entry.TypeFullyQualifiedName;
+            return true;
+        }
+
+        // A non-generic enumerable has an element, but nothing is known about it.
+        typeFqn = entry.ElementTypeFullyQualifiedName ?? "object";
         return true;
     }
 
