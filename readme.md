@@ -122,6 +122,8 @@ A `{% for %}` paragraph and its matching `{% endfor %}` repeat the intervening c
 {% endfor %}
 ```
 
+The liquid loop modifiers `limit:`, `offset:` and `reversed` apply as they do in a markdown template: the offset is skipped first, the limit is taken from what remains, and `reversed` flips that window. Both numbers can be model members (`{% for line in Lines limit: PageSize %}`). `offset: continue` is rejected at registration, since it depends on liquid's own loop state.
+
 The body isn't restricted to paragraphs. Anything between the open and close paragraphs at the same nesting level — additional paragraphs, `<w:tbl>` tables, images, section breaks — is captured and cloned per iteration. This makes per-group "heading + table" layouts straightforward: place a styled heading paragraph and a hand-crafted Word table between `{% for %}` and `{% endfor %}`, and reference the loop variable inside the table cells.
 
 ```
@@ -1306,6 +1308,7 @@ result.ApplyTo(model);
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
+- **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
 - **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
 - **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
@@ -2477,6 +2480,19 @@ public List<Line> Lines { get; set; } = new();
 static void ConfigureLines(WordTableBuilder<Line> builder) =>
     ...
 ```
+
+
+### `PARCH027` — loop over an `[EditableField]` collection carries a modifier
+
+**Docx only.** A loop over an [editable collection](#editable-collections) renders as a repeating section, and extraction replaces the whole collection with the rows the document holds. With `limit:`, `offset:` or `reversed` on that loop, the rows rendered would be a window of the collection or its reverse, and that is what extraction would write back.
+
+```
+{% for b in Budgets limit:3 %}   ← Budgets is [EditableField]
+Year: {{ b.Year }} Amount: {{ b.Amount }}
+{% endfor %}
+```
+
+Remove the modifier, or drop `[EditableField]` from the member to render it read-only. A loop nested inside another loop already renders read-only, so a modifier there is applied and not reported.
 
 
 ### `PARCH028` — block tags in different containers

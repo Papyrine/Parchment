@@ -118,6 +118,9 @@ static class ScopeTreeBuilder
             opening.Block!.LoopVariable!,
             loopSource,
             sourceReference,
+            opening.Block.LoopLimit,
+            opening.Block.LoopOffset,
+            opening.Block.LoopReversed,
             body);
     }
 

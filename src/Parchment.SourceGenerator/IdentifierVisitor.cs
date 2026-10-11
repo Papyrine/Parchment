@@ -10,6 +10,17 @@
         return visitor.paths;
     }
 
+    public static List<List<string>> Collect(Expression? expression)
+    {
+        var visitor = new IdentifierVisitor();
+        if (expression != null)
+        {
+            visitor.Visit(expression);
+        }
+
+        return visitor.paths;
+    }
+
     protected override Expression VisitMemberExpression(MemberExpression memberExpression)
     {
         var segments = new List<string>(memberExpression.Segments.Count);

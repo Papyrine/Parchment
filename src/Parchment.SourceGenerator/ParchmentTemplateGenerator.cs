@@ -814,6 +814,22 @@ public sealed class ParchmentTemplateGenerator :
                         }
                     }
 
+                    // Only a top-level loop renders as a repeating section — a nested one runs
+                    // with an empty editable map at runtime and stays read-only — so that is the
+                    // only place a modifier would be written back by extraction.
+                    if (isEditableCollectionLoop &&
+                        token.HasLoopModifiers &&
+                        loopStack.Count == 0)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableCollectionLoopModifier,
+                                location,
+                                templatePath,
+                                token.Source,
+                                string.Join('.', token.References[0])));
+                    }
+
                     loopStack.Push((bound, prior, isEditableCollectionLoop));
                     break;
 
@@ -1104,6 +1120,14 @@ public sealed class ParchmentTemplateGenerator :
                                 location,
                                 templatePath,
                                 token.Source));
+                    }
+
+                    // `limit:` / `offset:` are evaluated before the loop variable is bound, so they
+                    // resolve against the enclosing scope. `offset: continue` lands here too: the
+                    // docx flow has no loop scope to resume from and the runtime rejects it.
+                    if (token.LoopModifierReferences != null)
+                    {
+                        ValidateReferences(context, target, templatePath, location, token.LoopModifierReferences, scope, token.Source);
                     }
 
                     if (token.LoopVariable == null ||
