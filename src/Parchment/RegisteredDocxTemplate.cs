@@ -25,7 +25,7 @@ class RegisteredDocxTemplate(
     {
         cancel.ThrowIfCancellationRequested();
 
-        var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
+        var context = SharedFluid.CreateContext(model, SharedFluid.Options);
         using var stream = DocxCloner.ToWritableStream(canonicalBytes);
         using (var doc = WordprocessingDocument.Open(stream, true))
         {

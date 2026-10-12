@@ -52,6 +52,20 @@ static class ModelValidator
                    "provide it.";
         }
 
+        // A model that is itself a collection is handed to the template as an object (see
+        // SharedFluid.CreateContext), so neither what its collection base declares nor liquid's
+        // array members exist on it. Both read as if they should, which the plain text below
+        // would not explain.
+        if (LiquidMembers.Classify(modelType) != LiquidKind.None &&
+            (root is "size" or "first" or "last" ||
+             TryResolveMember(modelType, root, out _)))
+        {
+            return $"Identifier '{root}' is not available on '{modelType.Name}'. '{modelType.Name}' is the model itself, " +
+                   "which a template reads as an object, not as a collection: only the members the model " +
+                   "declares bind, not those of its collection base type nor liquid's 'size', 'first' and " +
+                   "'last'. Expose the value, or the items, through a member of the model.";
+        }
+
         return $"Identifier '{root}' is not a member of '{modelType.Name}'";
     }
 
@@ -111,7 +125,45 @@ static class ModelValidator
         return LiquidMembers.TryResolve(kind, type, name, out memberType);
     }
 
-    public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)
+    public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType) =>
+        TryResolveMember(type, name, out memberType, out _);
+
+    /// <summary>
+    /// Resolves a name against the model itself, which binds through its own accessors whatever
+    /// else it implements.
+    /// </summary>
+    /// <remarks>
+    /// A model that is a collection is the one case where that is narrower than reflection: the
+    /// generator stops its base-chain walk at the first system base of such a type
+    /// (<c>ShapeBuilder.BuildEntry</c>), so <c>Count</c> or <c>Keys</c> has no accessor and the
+    /// generator reports a token naming one.
+    /// </remarks>
+    public static bool TryResolveRootMember(Type modelType, string name, [NotNullWhen(true)] out Type? memberType)
+    {
+        if (!TryResolveMember(modelType, name, out memberType, out var declaringType))
+        {
+            return false;
+        }
+
+        if (LiquidMembers.Classify(modelType) != LiquidKind.None &&
+            IsSystemType(declaringType))
+        {
+            memberType = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    // Lockstep with the generator's ShapeBuilder.IsSystemType.
+    static bool IsSystemType(Type? type)
+    {
+        var ns = type?.Namespace;
+        return ns == "System" ||
+               ns?.StartsWith("System.", StringComparison.Ordinal) == true;
+    }
+
+    static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType, out Type? declaringType)
     {
         var property = type.GetProperty(
             name,
@@ -122,6 +174,7 @@ static class ModelValidator
             property.GetIndexParameters().Length == 0)
         {
             memberType = property.PropertyType;
+            declaringType = property.DeclaringType;
             return true;
         }
 
@@ -129,6 +182,7 @@ static class ModelValidator
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
         memberType = field?.FieldType;
+        declaringType = field?.DeclaringType;
         return memberType != null;
     }
 
@@ -145,7 +199,7 @@ static class ModelValidator
             return true;
         }
 
-        if (TryResolveMember(modelType, name, out rootType))
+        if (TryResolveRootMember(modelType, name, out rootType))
         {
             return true;
         }

@@ -129,7 +129,7 @@
     {
         pathType = null;
         if (!scope.TryGetValue(path.Root, out var current) &&
-            !ModelValidator.TryResolveMember(modelType, path.Root, out current))
+            !ModelValidator.TryResolveRootMember(modelType, path.Root, out current))
         {
             return false;
         }

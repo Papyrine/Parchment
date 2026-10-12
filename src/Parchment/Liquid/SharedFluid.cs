@@ -80,6 +80,22 @@ static class SharedFluid
     }
 
     /// <summary>
+    /// The context a render evaluates against, with the model held as an object.
+    /// </summary>
+    /// <remarks>
+    /// Handing the model to <c>TemplateContext</c> as it is runs it through
+    /// <c>FluidValue.Create</c>, which makes an <c>ArrayValue</c> or a <c>DictionaryValue</c> of a
+    /// model that is itself a collection (<c>class Order : List&lt;Line&gt;</c>). Those answer only
+    /// to <c>size</c>, <c>first</c> and <c>last</c>, or to a key, so every member the model declares
+    /// rendered blank although all four validators accept it. Wrapped here, the root binds through
+    /// its accessors like any other model. Only the root: the same type reached as a member or as a
+    /// loop element is still converted by Fluid, which is what lets it be looped over, and
+    /// <see cref="LiquidMembers"/> validates it as the array it is there.
+    /// </remarks>
+    public static TemplateContext CreateContext(object model, TemplateOptions options) =>
+        new(new ObjectValue(model), options);
+
+    /// <summary>
     /// Registers a user filter against every option set.
     /// </summary>
     /// <remarks>

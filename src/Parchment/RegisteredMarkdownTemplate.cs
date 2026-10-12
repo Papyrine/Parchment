@@ -22,7 +22,7 @@ class RegisteredMarkdownTemplate(
 
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
-        var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
+        var context = SharedFluid.CreateContext(model, SharedFluid.MarkdownOptions);
         await using var writer = new StringWriter();
 
         // Scoped to the liquid render alone: a value with no markdown form is parked rather than
@@ -169,7 +169,7 @@ class RegisteredMarkdownTemplate(
             partRoots[uri] = root;
         }
 
-        var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
+        var context = SharedFluid.CreateContext(model, SharedFluid.Options);
         var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
 
         foreach (var part in nonBodyParts)
