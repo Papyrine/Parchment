@@ -135,6 +135,7 @@ public sealed class ParchmentTemplateGenerator :
         // The template kind is unknown at compile time, so the shape rules that a docx
         // registration would need are enforced here — an invalid editable member is an authoring
         // mistake regardless of which template it later meets.
+        ValidateShape(context, target, location, editableFields: true);
         ValidateEditableShape(context, target, location);
 
         EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
@@ -498,6 +499,7 @@ public sealed class ParchmentTemplateGenerator :
         var tokens = TokenScanner.Scan(matched.Paragraphs, matched.ParagraphContainers.AsImmutableArray());
         ValidateTokens(context, target, templatePath, tokens, location);
         ValidateBlockContainers(context, templatePath, tokens, location);
+        ValidateShape(context, target, location, editableFields: true);
 
         // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
@@ -533,7 +535,7 @@ public sealed class ParchmentTemplateGenerator :
 
     // IsStringList is inferred from the member's type rather than written by hand, so it is not
     // reported — a static IEnumerable<string> is not a mistake the way a hand-written attribute is.
-    static string? IgnoredStaticAttribute(MemberEntry member)
+    static string? IgnoredStaticAttribute(MemberEntry member, bool editableFields)
     {
         if (member.IsExcelsiorTable)
         {
@@ -550,7 +552,8 @@ public sealed class ParchmentTemplateGenerator :
             return "Markdown";
         }
 
-        if (member.IsEditable)
+        if (editableFields &&
+            member.IsEditable)
         {
             return "EditableField";
         }
@@ -558,10 +561,23 @@ public sealed class ParchmentTemplateGenerator :
         return null;
     }
 
-    static void ValidateEditableShape(
+    /// <summary>
+    /// The shape rules that hold whatever the model is bound to: a render attribute on a static
+    /// member, an <c>[ExcelsiorTable]</c> Configure name that resolves to nothing, and format
+    /// markers that contradict each other or the member's type.
+    /// </summary>
+    /// <remarks>
+    /// All of them describe what the accessor emission does with the member, and that emission is
+    /// the same pass for a docx template, a markdown template and a bindable model. The editable
+    /// rules are separate (<see cref="ValidateEditableShape"/>) because a markdown template has no
+    /// editable fields: <paramref name="editableFields"/> is false there, so a static member
+    /// carrying only <c>[EditableField]</c> is as silent as an instance one.
+    /// </remarks>
+    static void ValidateShape(
         SourceProductionContext context,
         TargetInfo target,
-        Location location)
+        Location location,
+        bool editableFields)
     {
         foreach (var type in target.Shape.Types)
         {
@@ -574,7 +590,7 @@ public sealed class ParchmentTemplateGenerator :
                 // the attribute is dropped. That is silent at runtime, hence the warning.
                 if (member.IsStatic)
                 {
-                    var ignored = IgnoredStaticAttribute(member);
+                    var ignored = IgnoredStaticAttribute(member, editableFields);
                     if (ignored != null)
                     {
                         context.ReportDiagnostic(
@@ -619,11 +635,26 @@ public sealed class ParchmentTemplateGenerator :
                             target.ModelDisplayName,
                             memberDisplay));
                 }
+            }
+        }
+    }
 
-                if (!member.IsEditable)
+    static void ValidateEditableShape(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member.IsStatic ||
+                    !member.IsEditable)
                 {
                     continue;
                 }
+
+                var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
 
                 // [Html] + [EditableField] is supported (renders an editable rich-content block that
                 // extracts back to HTML). [ExcelsiorTable] and [Markdown] remain conflicts.
@@ -1038,6 +1069,11 @@ public sealed class ParchmentTemplateGenerator :
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
         ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
+
+        // Editable fields are a docx-flow feature and are ignored here, so only the rules that
+        // hold in every flow run: the format and Excelsior maps they guard are emitted for a
+        // markdown template exactly as they are for a docx one.
+        ValidateShape(context, target, location, editableFields: false);
 
         // The style source: the dotx named after the type when the project carries one, otherwise
         // the nearest parchment.dotx up the directory tree from the template. Neither is required

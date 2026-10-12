@@ -2404,7 +2404,7 @@ public partial class Order
 
 ### `PARCH019` — render attribute on a static member has no effect
 
-**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time.
+**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time. A markdown template ignores `[EditableField]` on every member, so a static member carrying only that attribute is not reported there.
 
 ```cs
 public partial class Report
@@ -2438,7 +2438,7 @@ More than one `.dotx` `AdditionalFiles` entry is named after the model type — 
 
 ### `PARCH022` — `[EditableField]` collection has an unsupported shape
 
-An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The message names which constraint failed.
+**Docx only.** An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The message names which constraint failed.
 
 
 ### `PARCH023` — member carries conflicting format markers
