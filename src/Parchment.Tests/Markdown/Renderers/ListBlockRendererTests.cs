@@ -1,4 +1,6 @@
 // ReSharper disable PartialTypeWithSinglePart
+using DocumentFormat.OpenXml.Validation;
+
 public partial class ListBlockRendererTests
 {
     [ParchmentBindable]
@@ -263,6 +265,119 @@ public partial class ListBlockRendererTests
 
         var numbering = renderer.MainPart.NumberingDefinitionsPart!.Numbering!;
         await Assert.That(numbering.Descendants<LevelOverride>().Count()).IsEqualTo(1);
+    }
+
+    // An item with nothing in it produced no paragraph, so the bullet vanished and an ordered list
+    // numbered the item after it one too low. Html renders an empty <li>.
+    [Test]
+    [Arguments("1. first\n2.\n3. third")]
+    [Arguments("1. first\n2.   \n3. third")]
+    [Arguments("- first\n- \n- third")]
+    public async Task EmptyItemKeepsItsMarker(string md)
+    {
+        var paragraphs = RenderList(md);
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        var numId = paragraphs[0].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value;
+        foreach (var paragraph in paragraphs)
+        {
+            var properties = paragraph.ParagraphProperties!;
+            await Assert.That(properties.ParagraphStyleId!.Val?.Value).IsEqualTo("ListParagraph");
+            await Assert.That(properties.NumberingProperties!.NumberingId!.Val!.Value).IsEqualTo(numId);
+            await Assert.That(properties.NumberingProperties.NumberingLevelReference!.Val!.Value).IsEqualTo(0);
+        }
+
+        await Assert.That(paragraphs[1].Elements<Run>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task LeadingAndTrailingEmptyItemsKeepTheirMarkers()
+    {
+        var paragraphs = RenderList("1.\n2. second\n3.");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        foreach (var paragraph in paragraphs)
+        {
+            await Assert.That(paragraph.ParagraphProperties!.NumberingProperties).IsNotNull();
+        }
+    }
+
+    [Test]
+    public async Task EmptyItemTakesTheListStyle()
+    {
+        var paragraphs = RenderList("{.ListStyle}\n- first\n-\n- third");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(paragraphs[1].ParagraphProperties!.ParagraphStyleId!.Val?.Value).IsEqualTo("ListStyle");
+    }
+
+    // The outer item's only content is a list whose only item is empty: both are items.
+    [Test]
+    public async Task ItemHoldingOnlyAnEmptyNestedListKeepsBothMarkers()
+    {
+        var paragraphs = RenderList("- first\n- -\n- third");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(4);
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 0, 1, 0]);
+        await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value)
+            .IsEqualTo(paragraphs[0].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value);
+    }
+
+    [Test]
+    public async Task ItemHoldingOnlyANestedListKeepsItsMarker()
+    {
+        var paragraphs = RenderList("1. 1. nested\n2. second");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 1, 0]);
+        await Assert.That(paragraphs[0].Elements<Run>().Any()).IsFalse();
+    }
+
+    // No paragraph to carry the marker, so the item used to go uncounted and "next" took its number.
+    [Test]
+    public async Task ItemHoldingOnlyACodeBlockKeepsItsMarker()
+    {
+        var paragraphs = RenderList("1. ```\n   code\n   ```\n2. next");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(paragraphs[0].ParagraphProperties!.NumberingProperties).IsNotNull();
+        await Assert.That(paragraphs[0].Elements<Run>().Any()).IsFalse();
+        await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties).IsNull();
+        await Assert.That(paragraphs[1].ParagraphProperties!.Indentation!.Left?.Value).IsEqualTo("480");
+        await Assert.That(paragraphs[2].ParagraphProperties!.NumberingProperties).IsNotNull();
+    }
+
+    [Test]
+    [Arguments("1. first\n2.\n3. third")]
+    [Arguments("- first\n- -\n- third")]
+    [Arguments("1. | a | b |\n   |---|---|\n   | 1 | 2 |\n2. next")]
+    [Arguments("> - first\n> -\n> - third")]
+    public async Task EmptyItemsRenderSchemaValid(string md)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(md, styleSource);
+        using var stream = new MemoryStream();
+        await store.Render(new EmptyModel(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+            .Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+
+        var marked = doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Count(_ => _.ParagraphProperties?.NumberingProperties != null);
+        await Assert.That(marked).IsGreaterThanOrEqualTo(2);
     }
 
     static int? ReadStartOverride(Paragraph paragraph, OpenXmlMarkdownRenderer renderer)
