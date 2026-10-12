@@ -82,9 +82,12 @@ public sealed class ParchmentTemplateGenerator :
                 var markdownData = tuple.Left.Left.Right;
                 var dotxData = tuple.Left.Right;
                 var projectDir = tuple.Right;
+                // A shared parchment.dotx is every model's style source in its folder tree, so an
+                // unreadable one is reported against the file once, not once per model.
+                var reportedStyleDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var target in targetInfos)
                 {
-                    Process(productionContext, target, docData, markdownData, dotxData, projectDir);
+                    Process(productionContext, target, docData, markdownData, dotxData, projectDir, reportedStyleDocs);
                 }
             });
 
@@ -375,6 +378,14 @@ public sealed class ParchmentTemplateGenerator :
     {
         try
         {
+            // Opened the way a docx template is, so a file the runtime could not register as a
+            // style source fails the build instead of the first render. Its paragraphs are not
+            // kept: only the package's shape is checked here.
+            if (!DocxArchiveReader.Read(text.Path).HasMainPart)
+            {
+                return new(text.Path, string.Empty, "it has no main document part (word/document.xml), so it is not a Word document or template");
+            }
+
             return new(text.Path, Convert.ToBase64String(ReadBytes(text.Path)), null);
         }
         catch (Exception exception)
@@ -424,7 +435,8 @@ public sealed class ParchmentTemplateGenerator :
         EquatableArray<DocxData> docs,
         EquatableArray<MarkdownData> markdowns,
         EquatableArray<DotxData> dotxes,
-        string? projectDirectory)
+        string? projectDirectory,
+        HashSet<string> reportedStyleDocs)
     {
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
@@ -478,7 +490,7 @@ public sealed class ParchmentTemplateGenerator :
 
         if (markdownCandidates.Count == 1)
         {
-            ProcessMarkdown(context, target, location, markdownCandidates[0], dotxes, projectDirectory);
+            ProcessMarkdown(context, target, location, markdownCandidates[0], dotxes, projectDirectory, reportedStyleDocs);
             return;
         }
 
@@ -1058,7 +1070,8 @@ public sealed class ParchmentTemplateGenerator :
         Location location,
         MarkdownData matched,
         EquatableArray<DotxData> dotxes,
-        string? projectDirectory)
+        string? projectDirectory,
+        HashSet<string> reportedStyleDocs)
     {
         var templatePath = DisplayPath(matched.Path, projectDirectory);
         if (matched.ReadError != null)
@@ -1108,12 +1121,18 @@ public sealed class ParchmentTemplateGenerator :
 
         if (style?.ReadError != null)
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.TemplateReadError,
-                    location,
-                    DisplayPath(style.Path, projectDirectory),
-                    style.ReadError));
+            // Located at the style document, not at the model: the file is what needs fixing, and
+            // every model that inherits it would otherwise repeat the same error.
+            if (reportedStyleDocs.Add(style.Path))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.TemplateReadError,
+                        Location.Create(style.Path, default, default),
+                        DisplayPath(style.Path, projectDirectory),
+                        style.ReadError));
+            }
+
             return;
         }
 
