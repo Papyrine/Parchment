@@ -288,7 +288,7 @@ static class OpenXmlHtmlSerializer
             var relationship = mainPart.HyperlinkRelationships.FirstOrDefault(_ => _.Id == id);
             if (relationship != null)
             {
-                return relationship.Uri.ToString();
+                return relationship.Uri.OriginalString;
             }
         }
 
