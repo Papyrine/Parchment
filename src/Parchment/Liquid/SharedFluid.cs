@@ -53,6 +53,7 @@ static class SharedFluid
 
                 return null;
             });
+        DictionaryLoops.Register(options);
 
         return options;
     }
