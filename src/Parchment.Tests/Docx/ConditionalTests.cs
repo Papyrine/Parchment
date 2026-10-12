@@ -387,6 +387,102 @@ public partial class ConditionalTests
         await Assert.That(exception!.Message).Contains("after '{% else %}'");
     }
 
+    // `{% else if Second %}` used to register as a plain `{% else %}`: everything after the tag
+    // name was dropped, so the branch rendered whenever the first condition was false.
+    [Test]
+    [Arguments("{% else if Second %}", "elsif")]
+    [Arguments("{%- else if Second -%}", "elsif")]
+    [Arguments("{% elseif Second %}", "elsif")]
+    [Arguments("{% elseif %}", "elsif")]
+    [Arguments("{% else Second %}", "'{% else %}' takes no arguments")]
+    [Arguments("{% else extra words %}", "'{% else %}' takes no arguments")]
+    public async Task BranchTagWithArgumentsIsRejected(string tag, string expected)
+    {
+        using var template = DocxTemplateBuilder.Build(
+            $$"""
+            {% if Flag %}
+
+            A
+
+            {{tag}}
+
+            B
+
+            {% endif %}
+            """);
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<TwoFlagModel>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains(expected);
+        await Assert.That(exception.Message).Contains(tag);
+    }
+
+    [Test]
+    [Arguments("{% if Flag %}", "{% endif extra %}", "'{% endif %}' takes no arguments")]
+    [Arguments("{% if Flag %}", "{%- endif Flag -%}", "'{% endif %}' takes no arguments")]
+    [Arguments("{% for item in Items %}", "{% endfor extra %}", "'{% endfor %}' takes no arguments")]
+    [Arguments("{% for item in Items %}", "{% endfor item %}", "'{% endfor %}' takes no arguments")]
+    public async Task ClosingTagWithArgumentsIsRejected(string open, string close, string expected)
+    {
+        using var template = DocxTemplateBuilder.Build(
+            $$"""
+            {{open}}
+
+            A
+
+            {{close}}
+            """);
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<ClosingTagModel>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains(expected);
+        await Assert.That(exception.Message).Contains(close);
+    }
+
+    // The hyphens of `{%-` and `-%}` belong to the delimiter, so they are not arguments.
+    [Test]
+    public async Task WhitespaceControlOnArgumentlessTagsIsAccepted()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {%- for item in Items -%}
+
+            {{ item }}
+
+            {%- endfor -%}
+
+            {%- if Flag -%}
+
+            A
+
+            {%- else -%}
+
+            B
+
+            {%-endif-%}
+            """);
+
+        var texts = await RenderToTexts(
+            template,
+            new ClosingTagModel
+            {
+                Flag = false,
+                Items = ["one"]
+            });
+        await Assert.That(texts).IsEquivalentTo(["one", "B"]);
+    }
+
+    [ParchmentBindable]
+    public partial class ClosingTagModel
+    {
+        public required bool Flag { get; init; }
+        public required List<string> Items { get; init; }
+    }
+
     static async Task<List<string>> RenderToTexts<TModel>(
         Stream template,
         TModel model)

@@ -293,6 +293,60 @@
     }
 
     [Test]
+    [Arguments("{% else if Second %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% elseif Second %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% else Second %}", "'{% else %}' takes no arguments.")]
+    public async Task BranchTagWithArguments(string tag, string expected)
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Flags
+            {
+                public bool First { get; set; }
+                public bool Second { get; set; }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{% if First %}", "a", tag, "b", "{% endif %}");
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH003");
+        var message = diagnostic.GetMessage();
+        await Assert.That(message).Contains(tag);
+        await Assert.That(message).Contains(expected);
+    }
+
+    [Test]
+    [Arguments("{% if First %}", "{% endif extra %}", "'{% endif %}' takes no arguments.")]
+    [Arguments("{% for item in Items %}", "{% endfor item %}", "'{% endfor %}' takes no arguments.")]
+    public async Task ClosingTagWithArguments(string open, string close, string expected)
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Flags
+            {
+                public bool First { get; set; }
+                public List<string> Items { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, open, "a", close);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH003");
+        var message = diagnostic.GetMessage();
+        await Assert.That(message).Contains(close);
+        await Assert.That(message).Contains(expected);
+    }
+
+    [Test]
     public Task TemplateFileMissing()
     {
         var source =

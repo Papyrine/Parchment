@@ -2,13 +2,13 @@
   Diagnostics: [
     {
       Location: : (4,1)-(4,15),
-      Message: Template 'Empty.parchment.docx' uses unsupported block tag '{% foobar %}' (supported: for, endfor, if, elsif, else, endif),
+      Message: Template 'Empty.parchment.docx' uses unsupported block tag '{% foobar %}' (supported: for, endfor, if, elsif, else, endif).,
       Severity: Error,
       Descriptor: {
         Id: PARCH003,
         Title: Unsupported block tag,
         HelpLink: https://github.com/Papyrine/Parchment#parch003--unsupported-block-tag,
-        MessageFormat: Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif),
+        MessageFormat: Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif).{2},
         Category: Parchment,
         DefaultSeverity: Error,
         IsEnabledByDefault: true

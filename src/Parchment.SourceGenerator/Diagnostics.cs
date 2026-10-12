@@ -21,7 +21,7 @@
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
         title: "Unsupported block tag",
-        messageFormat: "Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif)",
+        messageFormat: "Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif).{2}",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

@@ -59,6 +59,31 @@ public class TokenScannerTests
         await Assert.That(tokens[0].Kind).IsEqualTo(TokenKind.UnknownBlock);
     }
 
+    // Lockstep with the runtime scanner, which used to drop everything after these tag names and so
+    // read `{% else if flag %}` as a plain `{% else %}`.
+    [Test]
+    [Arguments("{% else if flag %}", "elsif")]
+    [Arguments("{% elseif flag %}", "elsif")]
+    [Arguments("{% elseif %}", "elsif")]
+    [Arguments("{% else flag %}", "'{% else %}' takes no arguments")]
+    [Arguments("{% endif extra %}", "'{% endif %}' takes no arguments")]
+    [Arguments("{% endfor extra %}", "'{% endfor %}' takes no arguments")]
+    public async Task ArgumentlessTagWithArguments(string tag, string expected)
+    {
+        var tokens = TokenScanner.Scan([tag]);
+        await Assert.That(tokens[0].Kind).IsEqualTo(TokenKind.UnknownBlock);
+        await Assert.That(tokens[0].Problem!).Contains(expected);
+    }
+
+    [Test]
+    public async Task ArgumentlessTags()
+    {
+        var tokens = TokenScanner.Scan(["{% else %}", "{%endif%}", "{% endfor %}", "{% foobar %}"]);
+        await Assert.That(tokens.Select(_ => _.Kind))
+            .IsEquivalentTo([TokenKind.Else, TokenKind.IfClose, TokenKind.ForClose, TokenKind.UnknownBlock]);
+        await Assert.That(tokens.All(_ => _.Problem == null)).IsTrue();
+    }
+
     // The source has to stay References[0] whatever else the tag carries, since that is what the
     // generator resolves the loop variable from.
     [Test]

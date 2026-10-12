@@ -2245,6 +2245,8 @@ public class Letter
 
 Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 
+Also raised for a supported tag written in a form liquid does not have. `else`, `endif` and `endfor` take no arguments, so `{% else if Flag %}` is refused instead of being read as a plain `{% else %}`; the liquid spelling is `{% elsif Flag %}`. `{% elseif Flag %}` is refused for the same reason. A markdown template with any of these fails to parse, which is `PARCH006` carrying the same explanation.
+
 ```
 // Template paragraph — "foobar" is not a recognised tag
 {% foobar %}
