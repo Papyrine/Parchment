@@ -7,9 +7,11 @@ namespace Parchment;
 /// the other half of two-way binding. Content controls are matched by their <c>w:tag</c>
 /// (the dotted model path), so no <see cref="TemplateStore"/> or template registration is
 /// required. Checkbox / date / dropdown controls are read from canonical control state; string
-/// and numeric fields read display text, with numerics parsed using the <c>culture</c> argument —
-/// which must match the render culture (Parchment renders with Fluid's default invariant
-/// culture unless customized, so the default here is also <see cref="CultureInfo.InvariantCulture"/>).
+/// and numeric fields read display text. That text is always rendered with the invariant culture,
+/// and is read back that way first, so an unedited document extracts the rendered values whatever
+/// <c>culture</c> is passed. The <c>culture</c> argument (default
+/// <see cref="CultureInfo.InvariantCulture"/>) describes what a user may type instead: its decimal
+/// separator and date forms. Group separators are never accepted in a number.
 /// </summary>
 public static class ParchmentExtractor
 {
