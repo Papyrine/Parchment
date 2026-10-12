@@ -2,10 +2,10 @@
 /// Builds a primitive-only <see cref="ModelShape"/> from a live <see cref="INamedTypeSymbol"/>
 /// at extract time. Consuming the shape downstream (instead of the symbol) is what makes the
 /// incremental pipeline actually cacheable.
-/// Known limitation: the shape is only rebuilt when the attributed class's own syntax changes,
-/// because <c>ForAttributeWithMetadataName</c> in <see cref="ParchmentTemplateGenerator"/> keys
-/// re-extraction on that class's syntax. Edits to a model type declared in a separate file
-/// will not re-trigger validation until something in the attributed class is touched.
+/// The shape is rebuilt on every new compilation — <c>ForAttributeWithMetadataName</c> in
+/// <see cref="ParchmentTemplateGenerator"/> re-runs the extract each time — so an edit to a model
+/// type declared in a separate file is picked up; the rebuilt shape compares equal by value when
+/// nothing a template can bind has changed, and downstream stages stay cached.
 /// </summary>
 static class ShapeBuilder
 {

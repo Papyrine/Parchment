@@ -7,20 +7,23 @@ Architecture, design decisions, and non-obvious gotchas for people working on Pa
 Two solutions: `src/` (library + source generator + tests + sample model) and `IntegrationTests/` (consumes the packed nuget end-to-end).
 
 ```bash
-dotnet build src --configuration Release
+dotnet build src --configuration Release -p:IsPackable=false
 dotnet build IntegrationTests --configuration Release   # requires src to be built/packed first — Parchment is a PackageReference, not a ProjectReference
 ```
 
 Tests use **TUnit** (not NUnit/xUnit). Each test project is `OutputType=Exe` with `TestingPlatformDotnetTestSupport=true` — run via `dotnet run`, not `dotnet test`:
 
 ```bash
-dotnet run --project src/Parchment.Tests --configuration Release
-dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release
+dotnet run --project src/Parchment.Tests --configuration Release -p:IsPackable=false
+dotnet run --project src/Parchment.SourceGenerator.Tests --configuration Release -p:IsPackable=false
 dotnet run --project IntegrationTests/IntegrationTests --configuration Release
 
-# Single test (TUnit filter syntax)
-dotnet run --project src/Parchment.Tests --configuration Release -- --filter "FullyQualifiedName~Substitution"
+# Single class, then a single test (TUnit tree-node filter: /assembly/namespace/class/test)
+dotnet run --project src/Parchment.Tests --configuration Release -p:IsPackable=false -- --treenode-filter "/*/*/HtmlInlineRendererTests/*"
+dotnet run --project src/Parchment.Tests --configuration Release -p:IsPackable=false -- --treenode-filter "/*/*/HtmlInlineRendererTests/ITagAppliesItalic"
 ```
+
+TUnit narrows with `--treenode-filter`; the VSTest `--filter "FullyQualifiedName~..."` form is not understood. A local `Release` build of anything under `src` needs `-p:IsPackable=false`: packable projects bundle SponsorCheck, which fetches from GitHub and fails the build with `SC100` (HTTP 401) wherever the CI credentials are absent.
 
 Snapshots: **Verify.TUnit + Verify.OpenXml + Morph.Skia**. Failed test writes `*.received.*`; accept by renaming to `*.verified.*`. PNG page renders fire on `net10.0` automatically when `Morph.Skia` is referenced. The `*.verified.png` files are byte-for-byte outputs of Morph's deterministic renderer, so they are coupled to the exact `Morph.Skia` version pinned in `src/Directory.Packages.props`: bumping it changes rendered layout, requiring a re-accept of the PNG snapshots plus a regeneration of the scenario `input.png` files via the `[Explicit]` `ScenarioInputRenderer` test (see "Scenario directories"). PNG-only failures with equal `.docx`/`.txt` snapshots mean the rasterizer changed, not Parchment.
 
@@ -137,7 +140,7 @@ User-facing overview, attribute placement, and PARCH001–PARCH012 are in `readm
 
 ### Excelsior table dispatch (`[ExcelsiorTable]`)
 
-A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered by [Excelsior](https://github.com/Papyrine/Excelsior) instead of default string substitution. Parchment takes a hard `PackageReference` on `Excelsior` (>= 2.3.0); the attribute lives in Parchment (`Parchment.ExcelsiorTableAttribute`), so dep direction is Parchment → Excelsior.
+A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered by [Excelsior](https://github.com/Papyrine/Excelsior) instead of default string substitution. Parchment takes a hard `PackageReference` on `Excelsior` (version pinned in `src/Directory.Packages.props`); the attribute lives in Parchment (`Parchment.ExcelsiorTableAttribute`), so dep direction is Parchment → Excelsior.
 
 **Runtime path** (`src/Parchment/Excelsior/`):
 
@@ -145,7 +148,7 @@ A hook letting `{{ Property }}` resolve to a fully-formatted Word table rendered
 2. `ExcelsiorTokenValidator.Validate` runs immediately after `ReferenceValidator.ValidateTree`. For each substitution token whose first identifier matches a map entry: (a) token must sit alone in its host paragraph, (b) parsed `OutputStatement.Expression` must be exactly a `MemberExpression` (no filters/arithmetic/literals). Both throw `ParchmentRegistrationException`.
 3. `RegisteredDocxTemplate` stores the map and passes both it AND original `object model` to every `ScopeTreeRunner` (including cloned runners in loops/conditionals).
 4. `ScopeTreeRunner.EvaluateTokenAsync` consults `TryResolveExcelsiorTable` FIRST. If matched, calls `entry.Getter(rootModel)`, synthesizes `TokenValue.OpenXml(ctx => [ExcelsiorTableBridge.BuildTable(elementType, data, mainPart)])`. Existing `TokenValue.OpenXml` structural-replacement path handles the rest — which is why the token must sit alone.
-5. `ExcelsiorTableBridge` uses `ConcurrentDictionary<Type, BuilderInvoker>` to cache reflection-built delegates per element type. Each invoker calls `new WordTableBuilder<T>(data).Build(mainPart)` via `ConstructorInfo.Invoke` + `MethodInfo.Invoke`. Reflection cost amortized per element type.
+5. `ExcelsiorTableBridge` uses `ConcurrentDictionary<Type, BuilderInvoker>` to cache reflection-built delegates per element type. Each invoker closes the generic `BuildTable<TElement>` overload over the element type (`MethodInfo.MakeGenericMethod`) and calls it through `MethodInfo.Invoke`; that overload is plain code — `new WordTableBuilder<TElement>(data)`, the attribute's styles, the `Configure` callback, then `Build(mainPart)`. Reflection cost amortized per element type.
 
 **SG path** (`src/Parchment.SourceGenerator/`):
 
@@ -398,7 +401,7 @@ Expressing it needs explicit width syntax, and a table already takes a leading `
   - A fenced code block's language arrives as a synthesised `language-xxx` class. `MarkdownStyle.ResolveCodeBlock` skips it, or every ` ```csharp ` block would get a style called `language-csharp` that nobody defined.
   - An explicit column alignment (`|:-:|`) still applies to a styled table, while the renderer's default borders, cell margins and implicit header centring stand down. The alignment is authored intent; the defaults are supplied on the author's behalf.
   - Equal table columns cannot be stated: equal dash counts are indistinguishable from the conventional `| --- | --- |`, so the heuristic reads them as "no opinion". See "Equal table column widths are deliberately inexpressible" above.
-  - A render attribute on a static member stays a no-op. Both registration routes now report it (`PARCH019` under the generator, an `ILogger` warning at runtime), but the attribute maps still walk instance members only.
+  - A render attribute on a static member stays a no-op. The generator reports it as `PARCH019`; registration at runtime reports nothing (`TemplateStore` logs only the two "Registered … template" information lines), and the attribute maps still walk instance members only.
 
 - **Tokens straddling run boundaries**: Word splits text into multiple `<w:r>` when formatting changes, proofing markers fire, or smart-quote autocorrect runs. `{{ customer.name }}` can land across N runs. Scanner uses `paragraph.InnerText` + `RunMap` (offset → `<w:t>`) so substitutions land correctly. Formatting of the **first run** containing the opening `{{` wins for the entire substitution.
 

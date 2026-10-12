@@ -7,12 +7,13 @@ public sealed class ParchmentTemplateGenerator :
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // ForAttributeWithMetadataName only re-fires ExtractTarget when the attributed class's
-        // own syntax changes. Editing a model class (e.g. adding/removing a property on Invoice)
-        // in a separate file will NOT re-validate templates that reference it until the
-        // attributed class is touched. The tradeoff: combining with CompilationProvider would
-        // make the extract re-run every compilation and defeat the point of the primitive-only
-        // pipeline below. Kicking the attributed file forces revalidation in the meantime.
+        // ForAttributeWithMetadataName re-runs ExtractTarget for every attributed class on each
+        // new compilation, so the shape always reflects the current symbols: editing a model
+        // class in a separate file (e.g. adding/removing a property on Customer) changes the
+        // extracted TargetInfo and re-validates the templates that reference it. What keeps the
+        // pipeline cheap is that TargetInfo is primitive-only and compared by value — an edit
+        // that leaves the shape alone yields an equal TargetInfo and everything downstream
+        // stays cached.
         var targets = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 attributeFullName,
