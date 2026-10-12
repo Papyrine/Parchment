@@ -288,6 +288,142 @@ public partial class MarkdownExcelsiorTableTests
             .Snapshot("Parchment registration failed for template 'QuoteModel': '{{ Lines | reverse }}' renders the [ExcelsiorTable] 'Lines' as a Word table, which is built from the model rather than from Fluid's output, so the token has to be a plain member access. Filters and expressions cannot be applied to it.");
     }
 
+    static async Task<Body> RenderShadowed(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ShadowedQuoteModel>(markdown, styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ShadowedQuoteModel
+            {
+                Order = Quote(),
+                Orders =
+                [
+                    new()
+                    {
+                        Lines = 3
+                    }
+                ]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return (Body) doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
+    }
+
+    // Whitespace control and a line break inside the braces are spellings of the same token. They
+    // used to miss the rewrite and print the row type's name once per row.
+    [Test]
+    [Arguments("{{- Lines -}}")]
+    [Arguments("{{- Lines }}")]
+    [Arguments("{{ Lines -}}")]
+    [Arguments("{{-Lines-}}")]
+    [Arguments("{{\n  Lines\n}}")]
+    [Arguments("  {{-\r\n  Lines\r\n-}}  ")]
+    [Arguments("# Quote\n\n{{ Lines -}}")]
+    [Arguments("{{- Lines }}\n\nThank you.")]
+    [Arguments("# Quote\r\n\r\n{{\r\n  Lines\r\n}}\r\n\r\nThank you.")]
+    public async Task EverySpellingRendersAsAWordTable(string markdown)
+    {
+        using var stream = await Render(markdown);
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        await Assert.That(body.Descendants<Table>().Single().InnerText).Contains("Site survey");
+
+        var outside = string.Concat(body.Elements<Paragraph>().Select(_ => _.InnerText));
+        await Assert.That(outside.Replace("Quote", "").Replace("Thank you.", "")).IsEqualTo("");
+    }
+
+    // `Order['Lines']` is `Order.Lines` to Fluid, so it is the same table.
+    [Test]
+    [Arguments("{{ Order['Lines'] }}")]
+    [Arguments("{{ Order[\"Lines\"] }}")]
+    [Arguments("{{- Order['Lines'] -}}")]
+    [Arguments("{{\n  Order['Lines']\n}}")]
+    public async Task BracketAccessRendersAsAWordTable(string markdown)
+    {
+        var body = await RenderShadowed(markdown);
+
+        await Assert.That(body.Descendants<Table>().Single().InnerText).Contains("Site survey");
+        await Assert.That(string.Concat(body.Elements<Paragraph>().Select(_ => _.InnerText))).IsEqualTo("");
+    }
+
+    // The marker inherits the token's dashes. Between tags that is what keeps it a block of its
+    // own; against text it joins the text's paragraph, which the swap refuses at render.
+    [Test]
+    public async Task TableTokenKeepsItsWhitespaceControl()
+    {
+        using var stream = await Render("Before\n\n{% if Reference %}\n\n   {{- Lines -}}   \n\n{% endif %}\n\nAfter");
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        await Assert.That(body.Descendants<Table>().Count()).IsEqualTo(1);
+        await Assert.That(body.Elements<Paragraph>().Select(_ => _.InnerText).Where(_ => _.Length > 0))
+            .IsEquivalentTo(["Before", "After"]);
+
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<QuoteModel>("Before\n\n{{- Lines }}", styleSource);
+        using var target = new MemoryStream();
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(() => store.Render(Quote(), target));
+        await Assert.That(exception!.Message).Contains("has to be alone in its block");
+    }
+
+    // The loop variable still wins in the other spellings, alone on its line or not.
+    [Test]
+    [Arguments("{{- order.Lines -}}")]
+    [Arguments("{{ order['Lines'] }}")]
+    [Arguments("{{\n  order.Lines\n}}")]
+    [Arguments("{{- order.Lines | plus: 0 -}}")]
+    [Arguments("{{ order.Lines }}{{- '' -}}")]
+    public async Task LoopVariableReadsTheItemInEverySpelling(string token)
+    {
+        var body = await RenderShadowed($"{{% for order in Orders %}}\n\n{token}\n\n{{% endfor %}}");
+
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(body.InnerText).IsEqualTo("3");
+    }
+
+    [Test]
+    [Arguments("Lines: {{- Order.Lines -}}")]
+    [Arguments("{{ Order['Lines'] }} follow")]
+    [Arguments("{{ Order['Lines'] }}{{ Order.Lines }}")]
+    [Arguments("Lines: {{\n  Order.Lines\n}}")]
+    [Arguments("{{\n  Order.Lines\n}} follow")]
+    [Arguments("Count: {{ Order['Lines'] | size }}")]
+    public async Task TokenSharingItsLineIsRejectedInEverySpelling(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<ShadowedQuoteModel>(markdown, styleSource));
+
+        await Assert.That(exception.Message)
+            .Contains("'{{ Order.Lines }}' renders an [ExcelsiorTable] as a Word table, which replaces the whole block it sits in, so it has to be alone on its line.");
+    }
+
+    [Test]
+    [Arguments("{{- Order.Lines | reverse -}}")]
+    [Arguments("{{ Order['Lines'] | size }}")]
+    [Arguments("{{\n  Order.Lines\n  | reverse\n}}")]
+    [Arguments("{{ Order['Lines'][0] }}")]
+    public async Task FilteredTokenIsRejectedInEverySpelling(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<ShadowedQuoteModel>(markdown, styleSource));
+
+        await Assert.That(exception.Message)
+            .Contains($"'{markdown}' renders the [ExcelsiorTable] 'Order.Lines' as a Word table");
+    }
+
     // A null collection leaves no marker text behind: the paragraph goes, and no table takes its
     // place.
     [Test]

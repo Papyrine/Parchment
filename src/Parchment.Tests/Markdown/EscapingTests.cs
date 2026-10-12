@@ -756,6 +756,92 @@ public partial class EscapingTests
         await Assert.That(paragraph.InnerText).IsEqualTo("## HEADING");
     }
 
+    // Whitespace control and a line break inside the braces are spellings of the same token, so
+    // the annotation reaches them too. They used to print the member's source as text.
+    [Test]
+    [Arguments("{{- Marked -}}")]
+    [Arguments("{{- Marked }}")]
+    [Arguments("{{ Marked -}}")]
+    [Arguments("{{-Marked-}}")]
+    [Arguments("{{\n  Marked\n}}")]
+    [Arguments("{{-\r\n  Marked\r\n-}}")]
+    public async Task AnnotationIsHonouredInEverySpelling(string template)
+    {
+        var body = await RenderAnnotated(
+            template,
+            new()
+            {
+                Marked = "## Heading"
+            });
+
+        var paragraph = body.Elements<Paragraph>().Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("Heading");
+        await Assert.That(paragraph.ParagraphProperties!.ParagraphStyleId!.Val?.Value).IsEqualTo("Heading2");
+    }
+
+    // `Customer['Notes']` is `Customer.Notes` to Fluid, so it is the same annotated member.
+    [Test]
+    [Arguments("{{ Customer['Notes'] }}")]
+    [Arguments("{{ Customer[\"Notes\"] }}")]
+    [Arguments("{{- Customer['Notes'] -}}")]
+    [Arguments("{{\n  Customer['Notes']\n}}")]
+    public async Task AnnotationIsHonouredThroughBracketAccess(string template)
+    {
+        var body = await RenderShadowed(template);
+
+        var paragraph = body.Elements<Paragraph>().Single(_ => _.InnerText.Length > 0);
+        await Assert.That(paragraph.InnerText).IsEqualTo("ROOT");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
+    }
+
+    // The rewritten token keeps its dashes: the lines around it still join it.
+    [Test]
+    public async Task AnnotatedTokenKeepsItsWhitespaceControl()
+    {
+        var body = await RenderAnnotated(
+            """
+            Before:
+            {{- Marked -}}
+            :after
+            """,
+            new()
+            {
+                Marked = "*slanted*"
+            });
+
+        var paragraph = body.Elements<Paragraph>().Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("Before:slanted:after");
+        await Assert.That(paragraph.Descendants<Italic>().Any()).IsTrue();
+    }
+
+    // The loop variable still wins in the other spellings: the item's member carries no annotation.
+    [Test]
+    [Arguments("{{- customer.Notes -}}")]
+    [Arguments("{{ customer['Notes'] }}")]
+    [Arguments("{{\n  customer.Notes\n}}")]
+    public async Task LoopVariableStaysTextInEverySpelling(string token)
+    {
+        var body = await RenderShadowed($"{{% for customer in Customers %}}\n\n{token}\n\n{{% endfor %}}");
+
+        var paragraph = body.Elements<Paragraph>().Single(_ => _.InnerText.Length > 0);
+        await Assert.That(paragraph.InnerText).IsEqualTo("<b>one</b>");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsFalse();
+    }
+
+    // A filter still makes the value the filter's output, however the token is spelled.
+    [Test]
+    [Arguments("{{- Customer.Notes | upcase -}}")]
+    [Arguments("{{ Customer['Notes'] | upcase }}")]
+    [Arguments("{{\n  Customer.Notes\n  | upcase\n}}")]
+    public async Task FilteredAnnotatedMemberIsStillEscapedInEverySpelling(string template)
+    {
+        var body = await RenderShadowed(template);
+
+        var paragraph = body.Elements<Paragraph>().Single(_ => _.InnerText.Length > 0);
+        await Assert.That(paragraph.InnerText).IsEqualTo("<B>ROOT</B>");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsFalse();
+    }
+
     // A bound value can land inside the template's own link syntax, where the escaping shows up in
     // the destination. CommonMark processes backslash escapes there too, so the anchor still
     // resolves to the bookmark it names.

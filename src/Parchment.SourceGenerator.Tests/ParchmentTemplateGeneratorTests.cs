@@ -593,6 +593,50 @@
         }
         """;
 
+    // The runtime takes a token for the table in every spelling Fluid reads as the same token, so
+    // the two rules have to be read off every spelling here too. See the runtime's
+    // MarkdownExcelsiorTableTests.*InEverySpelling for the other half of each case.
+    [Test]
+    [Arguments("{{- Order.Lines -}}")]
+    [Arguments("{{- Order.Lines }}")]
+    [Arguments("{{ Order.Lines -}}")]
+    [Arguments("{{ Order['Lines'] }}")]
+    [Arguments("{{ Order[\"Lines\"] }}")]
+    [Arguments("{{\n  Order.Lines\n}}")]
+    [Arguments("# Invoice\r\n\r\n  {{-\r\n  Order['Lines']\r\n-}}  \r\n\r\nThank you.")]
+    [Arguments("{% for order in Orders %}\n{{- order.Lines -}} of {{ order['Lines'] | plus: 1 }}\n{% endfor %}")]
+    public async Task Markdown_ExcelsiorToken_EverySpelling_NoDiagnostics(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Select(_ => _.Id)).IsEmpty();
+    }
+
+    [Test]
+    [Arguments("Lines: {{- Order.Lines -}}")]
+    [Arguments("{{ Order['Lines'] }} follow")]
+    [Arguments("Lines: {{\n  Order.Lines\n}}")]
+    [Arguments("{{\n  Order.Lines\n}} follow")]
+    [Arguments("Count: {{ Order['Lines'] | size }}")]
+    public async Task Markdown_ExcelsiorToken_EverySpelling_SharingItsLine_Diagnostic(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Select(_ => _.Id)).IsEquivalentTo(["PARCH007"]);
+    }
+
+    [Test]
+    [Arguments("{{- Order.Lines | reverse -}}")]
+    [Arguments("{{ Order['Lines'] | size }}")]
+    [Arguments("{{\n  Order.Lines\n  | reverse\n}}")]
+    [Arguments("{{ Order['Lines'][0] }}")]
+    public async Task Markdown_ExcelsiorToken_EverySpelling_WithFilter_Diagnostic(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Select(_ => _.Id)).IsEquivalentTo(["PARCH008"]);
+    }
+
     static readonly string[] attributeRuleIds = ["PARCH007", "PARCH008", "PARCH010", "PARCH024"];
 
     // Inside the loop the tokens read the item, so none of the root members' rules apply: not
