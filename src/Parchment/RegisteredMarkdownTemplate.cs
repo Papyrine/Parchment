@@ -8,7 +8,8 @@ class RegisteredMarkdownTemplate(
     IPageNumberResolver? pageNumbers,
     ExcelsiorTableMap excelsiorTables,
     IReadOnlyList<MarkdownExcelsiorTables.Placeholder> tablePlaceholders,
-    int maxBookmarkId) :
+    int maxBookmarkId,
+    bool compatibilityBaked) :
     RegisteredTemplate(name, modelType)
 {
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
@@ -48,10 +49,11 @@ class RegisteredMarkdownTemplate(
             var body = mainPart.Document!.Body
                 ?? throw new ParchmentRenderException(Name, "Document has no body");
 
-            var sectPr = body.Elements<SectionProperties>().LastOrDefault()
-                         ?? body.Descendants<SectionProperties>().LastOrDefault();
+            // The snapshot's body was emptied at registration and holds nothing but the section to
+            // preserve - see TemplateStore.BakeStyleSource. It is detached from this render's own
+            // copy, because SectionBreaks rewrites it in place.
+            var sectPr = body.GetFirstChild<SectionProperties>();
             sectPr?.Remove();
-            body.RemoveAllChildren();
 
             cancel.ThrowIfCancellationRequested();
             var numberingState = new WordNumberingState(mainPart);
@@ -99,7 +101,11 @@ class RegisteredMarkdownTemplate(
 
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
             // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
-            SettingsCompatibility.Apply(mainPart);
+            // A style source with a settings part of its own had it stamped at registration.
+            if (!compatibilityBaked)
+            {
+                SettingsCompatibility.Apply(mainPart);
+            }
 
             if (properties != null)
             {

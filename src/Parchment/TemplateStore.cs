@@ -164,7 +164,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var bytes = styleSource ?? BlankDocxTemplate;
 
         bytes = NormalizeStyleSource(bytes);
-        var (styleSourceBytes, parts, maxBookmarkId) = ScanNonBodyParts(model, bytes, name);
+        var (scanned, parts, maxBookmarkId) = ScanNonBodyParts(model, bytes, name);
+        var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(scanned);
 
         var registered = new RegisteredMarkdownTemplate(
             name,
@@ -176,7 +177,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             PageNumbers,
             excelsiorTables,
             tablePlaceholders,
-            maxBookmarkId);
+            maxBookmarkId,
+            compatibilityBaked);
         templates[model] = registered;
         logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
     }
@@ -238,6 +240,56 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         return (stream.ToArray(), parts, maxBookmarkId);
+    }
+
+    /// <summary>
+    /// Empties the style source's body and stamps the compatibility setting, so a render starts
+    /// from a package already in the state every render used to rebuild.
+    /// </summary>
+    /// <remarks>
+    /// The markdown replaces the body, and a style source authored in Word can carry a whole sample
+    /// document there: parsing that on every render only to discard it was the larger part of a
+    /// small render. Neither step depends on the model, so both belong at registration. What is
+    /// left in the body is the one <c>w:sectPr</c> a render preserves, as a direct child, which is
+    /// where a render looks for it. Parts the discarded body referenced stay in the package, as
+    /// they always have.
+    /// </remarks>
+    internal static (byte[] Bytes, bool CompatibilityBaked) BakeStyleSource(byte[] bytes)
+    {
+        bool compatibilityBaked;
+        using var stream = DocxCloner.ToWritableStream(bytes);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var mainPart = doc.MainDocumentPart;
+            if (mainPart?.Document?.Body is not { } body)
+            {
+                // Left as supplied, so a render reports the missing body as it always has.
+                return (bytes, false);
+            }
+
+            var sectPr = body.Elements<SectionProperties>().LastOrDefault()
+                         ?? body.Descendants<SectionProperties>().LastOrDefault();
+            sectPr?.Remove();
+            body.RemoveAllChildren();
+            if (sectPr != null)
+            {
+                body.AppendChild(sectPr);
+            }
+
+            // Only into a settings part the style source already has. One created here would sit
+            // ahead of whatever a render adds - numbering, images - in the package and in the
+            // relationships, where a render has always added it after them, and the output would
+            // no longer be the same bytes. Creating it is cheap; parsing an authored one is not.
+            compatibilityBaked = mainPart.DocumentSettingsPart != null;
+            if (compatibilityBaked)
+            {
+                SettingsCompatibility.Apply(mainPart);
+            }
+
+            doc.Save();
+        }
+
+        return (stream.ToArray(), compatibilityBaked);
     }
 
     /// <summary>
