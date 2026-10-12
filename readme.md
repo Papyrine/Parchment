@@ -2058,6 +2058,8 @@ Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy 
 
 Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
 
+Numbers and dates are written culture-invariantly, so the current culture's calendar and separators never reach the part. A date property is a UTC instant: a `DateOnly` is written as midnight UTC of that day, a `DateTime` of kind `Utc` or `Unspecified` is written with its clock reading unchanged, and only a `DateTime` of kind `Local` is converted from the machine's time zone to UTC. A `Local` value keeps the instant it names, which makes the output depend on the machine's zone; pass `Utc` or `Unspecified` values where the [determinism](#determinism) guarantee matters.
+
 Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
 
 <!-- snippet: ClearBuiltIn -->

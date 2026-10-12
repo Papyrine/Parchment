@@ -1,4 +1,4 @@
-using CustomProps = DocumentFormat.OpenXml.CustomProperties;
+using CustomProps =DocumentFormat.OpenXml.CustomProperties;
 using ExtendedProps = DocumentFormat.OpenXml.ExtendedProperties;
 // ReSharper disable PartialTypeWithSinglePart
 
@@ -392,5 +392,103 @@ public partial class DocumentPropertiesTests
             });
 
         await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
+    }
+
+    // A culture whose default calendar is not Gregorian, or whose separators differ, must not
+    // reach the part: th-TH wrote the year 2026 as 2569.
+    [Test]
+    [Arguments("th-TH")]
+    [Arguments("ar-SA")]
+    [Arguments("fa-IR")]
+    [Arguments("de-DE")]
+    public async Task CustomValuesIgnoreTheCurrentCulture(string cultureName)
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new(cultureName);
+        try
+        {
+            using var doc = await Render(
+                new()
+                {
+                    Custom =
+                    {
+                        ["Date"] = new Date(2026, 3, 1),
+                        ["Time"] = new DateTime(2026, 3, 1, 13, 5, 9, DateTimeKind.Utc),
+                        ["Int"] = -5,
+                        ["Long"] = -5000000000L,
+                        ["Double"] = -1234.5d,
+                        ["Float"] = 0.5f,
+                        ["Decimal"] = 1234.5m
+                    }
+                });
+
+            await Assert.That(Custom(doc, "Date")).IsEqualTo("2026-03-01T00:00:00Z");
+            await Assert.That(Custom(doc, "Time")).IsEqualTo("2026-03-01T13:05:09Z");
+            await Assert.That(Custom(doc, "Int")).IsEqualTo("-5");
+            await Assert.That(Custom(doc, "Long")).IsEqualTo("-5000000000");
+            await Assert.That(Custom(doc, "Double")).IsEqualTo("-1234.5");
+            await Assert.That(Custom(doc, "Float")).IsEqualTo("0.5");
+            await Assert.That(Custom(doc, "Decimal")).IsEqualTo("1234.5");
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    // The machine's zone cannot be set from a test, so the writer takes it as a parameter. Fixed
+    // offsets, so the expectation does not depend on the zone data installed.
+    static readonly TimeZoneInfo ahead = TimeZoneInfo.CreateCustomTimeZone("Ahead", TimeSpan.FromHours(11), "Ahead", "Ahead");
+    static readonly TimeZoneInfo behind = TimeZoneInfo.CreateCustomTimeZone("Behind", TimeSpan.FromHours(-8), "Behind", "Behind");
+
+    static string FileTime(DateTime time, TimeZoneInfo zone) =>
+        DocumentPropertiesWriter.ToVariant("Time", time, zone).InnerText;
+
+    // An Unspecified value names no zone, so the machine's must not be applied to it: the same
+    // model would otherwise write a different value on a different machine.
+    [Test]
+    public async Task UnspecifiedDateTimeIsNotShiftedByTheZone()
+    {
+        var time = new DateTime(2026, 3, 1, 13, 5, 9, DateTimeKind.Unspecified);
+
+        await Assert.That(FileTime(time, ahead)).IsEqualTo("2026-03-01T13:05:09Z");
+        await Assert.That(FileTime(time, behind)).IsEqualTo("2026-03-01T13:05:09Z");
+        await Assert.That(FileTime(time, TimeZoneInfo.Utc)).IsEqualTo("2026-03-01T13:05:09Z");
+    }
+
+    [Test]
+    public async Task UtcDateTimeIsWrittenAsIs()
+    {
+        var time = new DateTime(2026, 3, 1, 13, 5, 9, DateTimeKind.Utc);
+
+        await Assert.That(FileTime(time, ahead)).IsEqualTo("2026-03-01T13:05:09Z");
+        await Assert.That(FileTime(time, behind)).IsEqualTo("2026-03-01T13:05:09Z");
+    }
+
+    // A Local value is a reading of the machine's clock, so it alone is converted to the instant
+    // it names.
+    [Test]
+    public async Task LocalDateTimeIsConvertedToItsInstant()
+    {
+        var time = new DateTime(2026, 3, 1, 13, 5, 9, DateTimeKind.Local);
+
+        await Assert.That(FileTime(time, ahead)).IsEqualTo("2026-03-01T02:05:09Z");
+        await Assert.That(FileTime(time, behind)).IsEqualTo("2026-03-01T21:05:09Z");
+    }
+
+    // The public path, on whatever zone the machine has: an Unspecified value comes out as given.
+    [Test]
+    public async Task UnspecifiedDateTimeRendersAsGiven()
+    {
+        using var doc = await Render(
+            new()
+            {
+                Custom =
+                {
+                    ["Time"] = new DateTime(2026, 3, 1, 13, 5, 9)
+                }
+            });
+
+        await Assert.That(Custom(doc, "Time")).IsEqualTo("2026-03-01T13:05:09Z");
     }
 }
