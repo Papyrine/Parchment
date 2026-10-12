@@ -28,14 +28,30 @@
                 public static implicit operator TokenValue(string text) => null!;
             }
 
+            // The public members are the real ones: a token type without them would hide a generator
+            // that reads members off a token.
             public class HtmlToken : TokenValue
             {
                 public HtmlToken(string html) { }
+
+                public string Source { get; } = "";
             }
 
             public class MarkdownToken : TokenValue
             {
                 public MarkdownToken(string markdown) { }
+
+                public string Source { get; } = "";
+            }
+
+            public class OpenXmlToken : TokenValue
+            {
+                public System.Func<object, System.Collections.Generic.IEnumerable<object>> Render { get; } = null!;
+            }
+
+            public class MutateToken : TokenValue
+            {
+                public System.Action<object, object> Apply { get; } = null!;
             }
 
             [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]

@@ -65,7 +65,11 @@ static class ShapeBuilder
             return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
-        if (!IsSystemType(type))
+        // A token is printed, never read: the markdown flow hands Fluid the text it renders as, so a
+        // member recorded here validates `{{ Body.Source }}` and then renders blank. Lockstep with
+        // the runtime's ModelValidator.TryResolveSegment.
+        if (!IsSystemType(type) &&
+            !IsTokenValue(type))
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var current = type;
