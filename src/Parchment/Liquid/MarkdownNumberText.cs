@@ -36,7 +36,7 @@ class MarkdownNumberText :
         }
 
         static async ValueTask<FluidValue> Awaited(ValueTask<FluidValue> pending) =>
-            Convert(await pending);
+            Convert(await pending.ConfigureAwait(false));
 
         static FluidValue Convert(FluidValue value)
         {
