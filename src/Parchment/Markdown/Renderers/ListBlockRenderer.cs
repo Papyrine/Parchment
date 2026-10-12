@@ -39,15 +39,17 @@ class ListBlockRenderer :
                 // {.StyleName} on an item ("- text{.Caption}") attaches to the item's own leaf;
                 // one before the list attaches to the ListBlock and covers every item. The item
                 // wins where both are present.
-                var styleId = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph";
-                var properties = new ParagraphProperties
+                var heading = leaf as HeadingBlock;
+                var properties = new ParagraphProperties();
+                if (heading == null)
                 {
-                    ParagraphStyleId = new()
+                    properties.ParagraphStyleId = new()
                     {
-                        Val = styleId
-                    },
-                    ContextualSpacing = new()
-                };
+                        Val = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph"
+                    };
+                    properties.ContextualSpacing = new();
+                }
+
                 if (numbered)
                 {
                     // Without a numPr none of the level's indentation applies, so the paragraph
@@ -69,6 +71,14 @@ class ListBlockRenderer :
                             Val = numId
                         });
                     numbered = true;
+                }
+
+                if (heading != null)
+                {
+                    // A heading takes the marker and the indent like any other item text, but
+                    // under its own style rather than the list's, so it is still a heading.
+                    HeadingBlockRenderer.Write(renderer, heading, properties);
+                    continue;
                 }
 
                 renderer.WriteLeafInline(leaf);
