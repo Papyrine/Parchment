@@ -769,6 +769,154 @@ public partial class EditableFieldTests
         await Assert.That(FindSdt(body, "PurchaseOrder").InnerText).IsEqualTo("PO-2026-17");
     }
 
+    public static IEnumerable<Func<(string Name, Func<OpenXmlElement[], OpenXmlElement> Wrap)>> InlineWrappers()
+    {
+        yield return () => ("hyperlink", _ => new Hyperlink(_)
+        {
+            Anchor = "top"
+        });
+        yield return () => ("sdt", _ => new SdtRun(
+            new SdtProperties(
+                new Tag
+                {
+                    Val = "author"
+                }),
+            new SdtContentRun(_)));
+        yield return () => ("ins", _ => new InsertedRun(_)
+        {
+            Id = "901",
+            Author = "author"
+        });
+        yield return () => ("moveTo", _ => new MoveToRun(_)
+        {
+            Id = "902",
+            Author = "author"
+        });
+        yield return () => ("fldSimple", _ => new SimpleField(_)
+        {
+            Instruction = " AUTHOR "
+        });
+        yield return () => ("dir", _ => new BidirectionalEmbedding(_)
+        {
+            Val = DirectionValues.Ltr
+        });
+        yield return () => ("bdo", _ => new BidirectionalOverride(_)
+        {
+            Val = DirectionValues.Ltr
+        });
+    }
+
+    [Test]
+    [MethodDataSource(nameof(InlineWrappers))]
+    public async Task TokenInsideInlineWrapperStaysInPlace(string name, Func<OpenXmlElement[], OpenXmlElement> wrap)
+    {
+        // The token's run is a child of the wrapper, not of the paragraph. The control has to
+        // land between the wrapper's own "link: " and " here", not after the wrapper's text.
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            wrap([new Run(Preserved("link: {{ PurchaseOrder }} here"))]),
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo($"Dear <{name}>link: [PO-2026-17] here</{name}> end");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(InlineWrappers))]
+    public async Task TokenFillingInlineWrapperStaysInside(string name, Func<OpenXmlElement[], OpenXmlElement> wrap)
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            wrap([new Run(Preserved("{{ PurchaseOrder }}"))]),
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo($"Dear <{name}>[PO-2026-17]</{name}> end");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(InlineWrappers))]
+    public async Task TokenSplitAcrossRunsInsideInlineWrapper(string name, Func<OpenXmlElement[], OpenXmlElement> wrap)
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            wrap(
+            [
+                new Run(Preserved("link: {{ Purch")),
+                new Run(
+                    new RunProperties(new Bold()),
+                    Preserved("aseOrder }} here"))
+            ]),
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo($"Dear <{name}>link: [PO-2026-17] here</{name}> end");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(InlineWrappers))]
+    public async Task TokenStartingInsideInlineWrapperLandsInside(string name, Func<OpenXmlElement[], OpenXmlElement> wrap)
+    {
+        // A token straddling the wrapper's edge: the control goes where the token starts.
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            wrap([new Run(Preserved("link: {{ Purch"))]),
+            new Run(Preserved("aseOrder }} end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo($"Dear <{name}>link: [PO-2026-17]</{name}> end");
+    }
+
+    [Test]
+    [MethodDataSource(nameof(InlineWrappers))]
+    public async Task TokenStartingBeforeInlineWrapperLandsBefore(string name, Func<OpenXmlElement[], OpenXmlElement> wrap)
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear {{ Purch")),
+            wrap([new Run(Preserved("aseOrder }} here"))]),
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo($"Dear [PO-2026-17]<{name}> here</{name}> end");
+    }
+
+    [Test]
+    public async Task TwoTokensInsideOneInlineWrapper()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("{{ Discount }} ")),
+            new Hyperlink(
+                new Run(Preserved("a {{ PurchaseOrder }} b {{ Delivery }} c")))
+            {
+                Anchor = "top"
+            },
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo("[10] <hyperlink>a [PO-2026-17] b [2026-07-06] c</hyperlink> end");
+    }
+
+    [Test]
+    public async Task TokenInsideNestedInlineWrappersStaysInPlace()
+    {
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            new Hyperlink(
+                new InsertedRun(
+                    new Run(Preserved("link: {{ PurchaseOrder }} here")))
+                {
+                    Id = "901",
+                    Author = "author"
+                })
+            {
+                Anchor = "top"
+            },
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo("Dear <hyperlink><ins>link: [PO-2026-17] here</ins></hyperlink> end");
+    }
+
     [Test]
     public async Task TabAfterTokenInSameRunIsKept()
     {
@@ -1533,6 +1681,71 @@ public partial class EditableFieldTests
         }
 
         return builder.ToString();
+    }
+
+    // As RenderLayout, but nested: an inline wrapper shows as <name>...</name> around what it
+    // holds, and a control's editable range has to open and close in the control's own
+    // container. Also checks the output is schema-valid and the control still extracts.
+    static async Task<string> RenderWrapperLayout(MemoryStream template)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        var builder = new StringBuilder();
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+                .Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+
+            var paragraph = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Single();
+            foreach (var sdt in paragraph.Descendants<SdtRun>().Where(_ => _.SdtProperties?.GetFirstChild<SdtLock>() != null))
+            {
+                await Assert.That(sdt.PreviousSibling()).IsTypeOf<PermStart>();
+                await Assert.That(sdt.NextSibling()).IsTypeOf<PermEnd>();
+            }
+
+            AppendWrapperLayout(paragraph, builder);
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableOrder>(stream);
+        var field = result.Fields.Single(_ => _.Path == "PurchaseOrder");
+        await Assert.That(field.Value).IsEqualTo("PO-2026-17");
+
+        return builder.ToString();
+    }
+
+    static void AppendWrapperLayout(OpenXmlElement container, StringBuilder builder)
+    {
+        foreach (var element in container.ChildElements)
+        {
+            switch (element)
+            {
+                case SdtRun sdt when sdt.SdtProperties?.GetFirstChild<SdtLock>() != null:
+                    builder.Append($"[{sdt.InnerText}]");
+                    break;
+                case SdtRun sdt:
+                    builder.Append("<sdt>");
+                    AppendWrapperLayout(sdt.SdtContentRun!, builder);
+                    builder.Append("</sdt>");
+                    break;
+                case Run run:
+                    builder.Append(run.InnerText);
+                    break;
+                case OpenXmlCompositeElement composite when composite is not ParagraphProperties:
+                    builder.Append($"<{composite.LocalName}>");
+                    AppendWrapperLayout(composite, builder);
+                    builder.Append($"</{composite.LocalName}>");
+                    break;
+            }
+        }
     }
 
     static MemoryStream BuildParagraphTemplate(params OpenXmlElement[] children)
