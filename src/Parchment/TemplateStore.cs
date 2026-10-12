@@ -88,6 +88,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // the render's own pass, which never sees a token-free part.
                 TableCells.EnsureFinalParagraph(root);
 
+                // An anchor the template arrived with names nothing in this registration, and in a
+                // part without tokens no render would ever reach it to take it out.
+                Anchors.StripArrived(root);
+
                 var classifications = TokenScanner.Scan(root, name, uri);
 
                 // After the scan, so the anchors it added are counted, and across every part: a
@@ -226,9 +230,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     ///
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
     /// again, which is why the rewritten bytes are returned rather than the ones passed in. When
-    /// neither step changed anything — an already-document style source with no tokens outside its
-    /// body, which includes <see cref="BlankDocxTemplate"/> — the input is handed back untouched and
-    /// nothing is serialized.
+    /// nothing changed — an already-document style source with no tokens outside its body and no
+    /// anchor left in it from an earlier registration, which includes
+    /// <see cref="BlankDocxTemplate"/> — the input is handed back untouched and nothing is
+    /// serialized.
     /// </remarks>
     [RequiresUnreferencedCode(Unsupported.Trimming)]
     static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
@@ -243,12 +248,18 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
+            var stripped = false;
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
                 if (uri == bodyUri)
                 {
                     continue;
                 }
+
+                // An anchor the style source arrived with names nothing in this registration. A
+                // render reads only the parts listed below, so it is taken out here, into the bytes
+                // every render clones, and is a reason to rewrite the package even with no token.
+                stripped |= Anchors.StripArrived(root);
 
                 var classifications = TokenScanner.Scan(root, name, uri);
 
@@ -263,22 +274,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
                 new ReferenceValidator(model, name, uri).ValidateTree(tree);
                 parts.Add(new(uri, tree));
-
-                // A part holding nothing but anchors the style source arrived with has no token to
-                // bind, so on its own it is no reason to rewrite the package.
-                found |= classifications.Any(_ => _.Kind != ParagraphKind.Static);
+                found = true;
             }
 
-            if (!found)
+            if (!found &&
+                !retyped &&
+                !stripped)
             {
-                if (!retyped)
-                {
-                    return (bytes, [], maxBookmarkId);
-                }
-
-                // Retyping alone leaves no token to bind, so no part is listed, as when nothing
-                // was rewritten at all.
-                parts.Clear();
+                return (bytes, [], maxBookmarkId);
             }
 
             doc.Save();
