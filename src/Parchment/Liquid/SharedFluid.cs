@@ -1,3 +1,4 @@
+using DateTimeValue = Fluid.Values.DateTimeValue;
 using StringValue = Fluid.Values.StringValue;
 
 /// <summary>
@@ -35,9 +36,29 @@ static class SharedFluid
         // have. MaxRecursion is the limit that message belongs to, and it stays.
         var options = new TemplateOptions
         {
-            MaxRecursion = 100
+            MaxRecursion = 100,
+            // Fluid defaults this to TimeZoneInfo.Local and uses it to read a string or a unix
+            // timestamp handed to the `date` filter, so the same template and model printed a
+            // different time on a machine in another zone.
+            TimeZone = TimeZoneInfo.Utc
         };
         Filters.Register(options.Filters);
+        // A DateTime of Kind Unspecified names no zone. Fluid stores every date as a
+        // DateTimeOffset and gets there through the implicit conversion, which reads an
+        // Unspecified value as machine-local time: a bare token then printed it shifted to UTC
+        // by whatever offset the rendering machine had. Pinning the offset to zero keeps the
+        // value's own wall clock. Utc already converts that way. Local is left to Fluid — it is
+        // an instant on the machine that built it, which no fixed offset can stand in for.
+        options.ValueConverters
+            .Add(static value =>
+            {
+                if (value is DateTime { Kind: DateTimeKind.Unspecified } dateTime)
+                {
+                    return new DateTimeValue(new DateTimeOffset(dateTime.Ticks, TimeSpan.Zero));
+                }
+
+                return null;
+            });
         // Route enum substitutions through Excelsior so inline `{{ Model.Status }}` tokens
         // render with the same humanization (Display attribute / source-gen switch /
         // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
