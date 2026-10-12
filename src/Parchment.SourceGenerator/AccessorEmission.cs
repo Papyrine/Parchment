@@ -60,7 +60,7 @@ static class AccessorEmission
                 continue;
             }
 
-            fluidBlocks.Add(("_Accessors_" + Sanitize(type.TypeFullyQualifiedName), type));
+            fluidBlocks.Add(("_Accessors_" + ToIdentifier(type.TypeFullyQualifiedName), type));
         }
 
         // Excelsior / Format / StringList walks: dotted-path traversal from the root TModel,
@@ -240,7 +240,7 @@ static class AccessorEmission
         {
             fields.Append(
                 $$"""
-                static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] {{fieldName}} =
+                static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] {{fieldName}} =
                 {
 
                 """);
@@ -638,19 +638,48 @@ static class AccessorEmission
         }
     }
 
-    static string Sanitize(string fqn)
+    /// <summary>
+    /// Folds a fully qualified type name into identifier characters, with no two names folding to
+    /// the same text: <c>global::Sample.A_B</c> and <c>global::Sample.A.B</c> are both legal in one
+    /// model graph, and each needs a field of its own.
+    /// </summary>
+    /// <remarks>
+    /// Letters and digits pass through, <c>.</c> becomes <c>_</c>, <c>::</c> becomes <c>__</c>, and
+    /// every other character — an underscore included — becomes its code between underscores
+    /// (<c>_95_</c>). Reading the result back is unambiguous because an identifier cannot start
+    /// with a digit: an underscore followed by a digit always opens a code, and any other
+    /// underscore is a separator. Names without an underscore read the way they always did.
+    /// </remarks>
+    public static string ToIdentifier(string fqn)
     {
         var builder = new StringBuilder(fqn.Length);
-        foreach (var c in fqn)
+        for (var i = 0; i < fqn.Length; i++)
         {
+            var c = fqn[i];
             if (char.IsLetterOrDigit(c))
             {
                 builder.Append(c);
+                continue;
             }
-            else
+
+            if (c == '.')
             {
                 builder.Append('_');
+                continue;
             }
+
+            if (c == ':' &&
+                i + 1 < fqn.Length &&
+                fqn[i + 1] == ':')
+            {
+                builder.Append("__");
+                i++;
+                continue;
+            }
+
+            builder.Append('_');
+            builder.Append(((int) c).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            builder.Append('_');
         }
 
         return builder.ToString();
