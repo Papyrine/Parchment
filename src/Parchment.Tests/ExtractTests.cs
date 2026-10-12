@@ -18,6 +18,19 @@ public partial class ExtractTests
         public string Title { get; set; } = "";
     }
 
+    [ParchmentBindable]
+    public partial class OffsetFormatsModel
+    {
+        [EditableField(DateFormat = "yyyy-MM-dd HH:mm")]
+        public DateTimeOffset NoOffset { get; set; }
+
+        [EditableField(DateFormat = "HH:mm")]
+        public DateTimeOffset NoDate { get; set; }
+
+        [EditableField(DateFormat = "dd/MM/yy")]
+        public DateTimeOffset ShortYear { get; set; }
+    }
+
     [Test]
     public async Task ExtractingANeverGeneratedModelSaysSo()
     {
@@ -378,6 +391,147 @@ public partial class ExtractTests
         await Assert.That(result.AllExtracted).IsFalse();
     }
 
+    [Test]
+    [Arguments("09:00")]
+    [Arguments("09:00:00+10:00")]
+    [Arguments("6 July 09:00")]
+    [Arguments("07/06/26 09:00")]
+    public async Task DateTimeOffsetTextWithoutAYearReportsParseFailed(string text)
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        // The framework parser would fill the gap with today's date (or the current year) and
+        // the machine's offset, so the value would change with the day and machine of extraction.
+        Edit(stream, body => EditSdtText(body, "SignedAt", text));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var signed = Field(result, "SignedAt");
+
+        await Assert.That(signed.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(signed.Value).IsNull();
+        await Assert.That(signed.RawText).IsEqualTo(text);
+    }
+
+    [Test]
+    [Arguments("2026-12-01T23:15:00")]
+    [Arguments("2026-12-01 23:15")]
+    [Arguments("1 December 2026 23:15")]
+    public async Task DateTimeOffsetTextWithoutAnOffsetReadsAsZeroOffset(string text)
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(stream, body => EditSdtText(body, "SignedAt", text));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var signed = (DateTimeOffset)Field(result, "SignedAt").Value!;
+
+        await Assert.That(signed.DateTime).IsEqualTo(new(2026, 12, 1, 23, 15, 0));
+        await Assert.That(signed.Offset).IsEqualTo(TimeSpan.Zero);
+    }
+
+    [Test]
+    public async Task DateTimeOffsetFormatsWithoutOffsetDateOrFullYear()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ NoOffset }}
+
+            {{ NoDate }}
+
+            {{ ShortYear }}
+            """);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<OffsetFormatsModel>(template);
+        var instant = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(10));
+        using var stream = new MemoryStream();
+        await store.Render(
+            new OffsetFormatsModel
+            {
+                NoOffset = instant,
+                NoDate = instant,
+                ShortYear = instant
+            },
+            stream);
+        stream.Position = 0;
+
+        var result = ParchmentExtractor.Extract<OffsetFormatsModel>(stream);
+
+        // The format drops the offset, so it cannot come back: zero, never the machine's.
+        var noOffset = (DateTimeOffset)Field(result, "NoOffset").Value!;
+        await Assert.That(noOffset.DateTime).IsEqualTo(new(2026, 7, 6, 9, 0, 0));
+        await Assert.That(noOffset.Offset).IsEqualTo(TimeSpan.Zero);
+
+        // A format with no year has nothing to rebuild the date from.
+        await Assert.That(Field(result, "NoDate").State).IsEqualTo(FieldState.ParseFailed);
+
+        // A declared two digit year is read with the extraction culture's pivot.
+        var shortYear = (DateTimeOffset)Field(result, "ShortYear").Value!;
+        await Assert.That(shortYear.DateTime).IsEqualTo(new(2026, 7, 6));
+        await Assert.That(shortYear.Offset).IsEqualTo(TimeSpan.Zero);
+    }
+
+    [Test]
+    [Arguments("Delivery", "09:00")]
+    [Arguments("Delivery", "6 July")]
+    [Arguments("Delivery", "07/06/26")]
+    [Arguments("DispatchedAt", "09:00")]
+    [Arguments("DispatchedAt", "07-06 09:00")]
+    public async Task DateTextWithoutAYearReportsParseFailed(string tag, string text)
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(
+            stream,
+            body =>
+            {
+                ClearFullDate(body, tag);
+                EditSdtText(body, tag, text);
+            });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var field = Field(result, tag);
+
+        await Assert.That(field.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(field.RawText).IsEqualTo(text);
+    }
+
+    [Test]
+    public async Task DateTextIsReadAsTypedWhenFullDateIsAbsent()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(
+            stream,
+            body =>
+            {
+                ClearFullDate(body, "Delivery");
+                ClearFullDate(body, "DispatchedAt");
+                // A DateOnly given a date and time keeps the date.
+                EditSdtText(body, "Delivery", "2027-01-31 16:45");
+                // An offset in the text is not converted to the machine's zone.
+                EditSdtText(body, "DispatchedAt", "2027-01-31T23:30:00-05:00");
+            });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "Delivery").Value).IsEqualTo(new Date(2027, 1, 31));
+        var dispatched = (DateTime)Field(result, "DispatchedAt").Value!;
+        await Assert.That(dispatched).IsEqualTo(new(2027, 1, 31, 23, 30, 0));
+        await Assert.That(dispatched.Kind).IsEqualTo(DateTimeKind.Unspecified);
+    }
+
+    [Test]
+    public async Task TimeGivenADateAndTimeReportsParseFailed()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(stream, body => EditSdtText(body, "PickupTime", "2026-07-06 16:45:30"));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PickupTime").State).IsEqualTo(FieldState.ParseFailed);
+    }
+
     static async Task<MemoryStream> RenderOrder(EditableFieldTests.EditableOrder model)
     {
         using var template = DocxTemplateBuilder.Build(
@@ -475,5 +629,11 @@ public partial class ExtractTests
     {
         var sdt = FindSdt(body, tag);
         sdt.SdtProperties!.GetFirstChild<SdtContentDate>()!.FullDate = value;
+    }
+
+    static void ClearFullDate(Body body, string tag)
+    {
+        var sdt = FindSdt(body, tag);
+        sdt.SdtProperties!.GetFirstChild<SdtContentDate>()!.FullDate = null;
     }
 }
