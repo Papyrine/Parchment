@@ -167,7 +167,16 @@ static class MarkdownExcelsiorTables
                 continue;
             }
 
-            var data = entry.Getter(model);
+            var token = $"{{{{ {placeholder.DottedPath} }}}}";
+            object? data;
+            try
+            {
+                data = entry.Getter(model);
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                throw RenderFailure.Wrap(exception, templateName, tokenSource: token);
+            }
 
             // Materialized before mutating: the swap edits the tree being walked. A marker inside a
             // loop appears once per iteration, and a marker inside a false conditional not at all,
@@ -187,7 +196,15 @@ static class MarkdownExcelsiorTables
                         $"Markdown parsed it into a paragraph reading: {host.InnerText.Trim()}");
                 }
 
-                Replace(host, data, entry, mainPart, bookmarks);
+                try
+                {
+                    Replace(host, data, entry, mainPart, bookmarks);
+                }
+                catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+                {
+                    // The build, a row getter it reads, or the Configure hook.
+                    throw RenderFailure.Wrap(exception, templateName, tokenSource: token);
+                }
             }
         }
     }

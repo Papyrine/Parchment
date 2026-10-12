@@ -43,6 +43,13 @@ class RegisteredMarkdownTemplate(
                 // A Fluid value converter cannot see the template name, so it is attached here.
                 throw new ParchmentRenderException(Name, exception.Message);
             }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                // Liquid renders the whole template in this one call, so a model member, a filter
+                // or a loop modifier that throws has no token to be reported against, only the
+                // template.
+                throw RenderFailure.Wrap(exception, Name);
+            }
 
             tokenBlocks = scope.Pending;
         }
@@ -63,64 +70,73 @@ class RegisteredMarkdownTemplate(
             var sectPr = body.GetFirstChild<SectionProperties>();
             sectPr?.Remove();
 
-            cancel.ThrowIfCancellationRequested();
-            var numberingState = new WordNumberingState(mainPart);
-            // Lazy because only an OpenXmlToken asks for it, and most renders have none.
-            var bodyStyles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
-            // One counter for the whole render, seeded above what the headers, footers and notes
-            // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
-            var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
-            foreach (var element in elements)
+            try
             {
-                body.AppendChild(element);
+                cancel.ThrowIfCancellationRequested();
+                var numberingState = new WordNumberingState(mainPart);
+                // Lazy because only an OpenXmlToken asks for it, and most renders have none.
+                var bodyStyles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
+                // One counter for the whole render, seeded above what the headers, footers and notes
+                // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
+                var bookmarks = new BookmarkIds(maxBookmarkId);
+                var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
+                foreach (var element in elements)
+                {
+                    body.AppendChild(element);
+                }
+
+                // Before anything measures or numbers the document: a table is taller than the marker
+                // paragraph it replaces, so every page number after it moves.
+                MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, bookmarks, Name);
+
+                // Same reason, and what a parked token produces is likewise taller than the marker it
+                // replaces.
+                MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, bookmarks, Name);
+
+                // A pipe-table cell whose value rendered to a table ends with that table, and Word
+                // wants a paragraph after it. Here rather than later because the added paragraph has
+                // height, like the swaps above.
+                TableCells.EnsureFinalParagraph(body);
+
+                // Before the trailing section is attached, because the last [SECTION] in the template
+                // is what that section describes — see SectionBreaks. Skipped when nothing in the body can
+                // be a marker: the markdown walk wrote none and converted no html, and neither swap above
+                // ran, those being where caller code - an OpenXmlToken, an Excelsior Configure hook - can
+                // put in a paragraph this render did not build.
+                if (mayHoldSections ||
+                    tokenBlocks.Count > 0 ||
+                    tablePlaceholders.Count > 0)
+                {
+                    SectionBreaks.Apply(body, sectPr, Name);
+                }
+
+                if (sectPr != null)
+                {
+                    body.AppendChild(sectPr);
+                }
+
+                // Before anything measures the document: a table of contents that grows from a
+                // placeholder to its entries afterwards would move every heading below it.
+                if (pageNumbers != null)
+                {
+                    WordFieldResolution.WriteTableOfContents(body, bookmarks);
+                }
+
+                await RenderNonBodyParts(doc, mainPart, model, numberingState, bookmarks, cancel);
+
+                // Stamp compatibilityMode=15 so Word opens the output normally instead of in
+                // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
+                // A style source with a settings part of its own had it stamped at registration.
+                if (!compatibilityBaked)
+                {
+                    SettingsCompatibility.Apply(mainPart);
+                }
             }
-
-            // Before anything measures or numbers the document: a table is taller than the marker
-            // paragraph it replaces, so every page number after it moves.
-            MarkdownExcelsiorTables.Apply(body, tablePlaceholders, excelsiorTables, model, mainPart, bookmarks, Name);
-
-            // Same reason, and what a parked token produces is likewise taller than the marker it
-            // replaces.
-            MarkdownTokenBlocks.Apply(body, tokenBlocks, mainPart, numberingState, bodyStyles, imagePolicies, bookmarks, Name);
-
-            // A pipe-table cell whose value rendered to a table ends with that table, and Word
-            // wants a paragraph after it. Here rather than later because the added paragraph has
-            // height, like the swaps above.
-            TableCells.EnsureFinalParagraph(body);
-
-            // Before the trailing section is attached, because the last [SECTION] in the template
-            // is what that section describes — see SectionBreaks. Skipped when nothing in the body can
-            // be a marker: the markdown walk wrote none and converted no html, and neither swap above
-            // ran, those being where caller code - an OpenXmlToken, an Excelsior Configure hook - can
-            // put in a paragraph this render did not build.
-            if (mayHoldSections ||
-                tokenBlocks.Count > 0 ||
-                tablePlaceholders.Count > 0)
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
             {
-                SectionBreaks.Apply(body, sectPr, Name);
-            }
-
-            if (sectPr != null)
-            {
-                body.AppendChild(sectPr);
-            }
-
-            // Before anything measures the document: a table of contents that grows from a
-            // placeholder to its entries afterwards would move every heading below it.
-            if (pageNumbers != null)
-            {
-                WordFieldResolution.WriteTableOfContents(body, bookmarks);
-            }
-
-            await RenderNonBodyParts(doc, mainPart, model, numberingState, bookmarks, cancel);
-
-            // Stamp compatibilityMode=15 so Word opens the output normally instead of in
-            // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
-            // A style source with a settings part of its own had it stamped at registration.
-            if (!compatibilityBaked)
-            {
-                SettingsCompatibility.Apply(mainPart);
+                // Whatever had a token or a part to name wrapped its own. Document properties are
+                // applied outside this - they are the caller's argument, not the template's.
+                throw RenderFailure.Wrap(exception, Name);
             }
 
             if (properties != null)
@@ -136,7 +152,15 @@ class RegisteredMarkdownTemplate(
         // about when the file opens.
         if (pageNumbers != null)
         {
-            await WordFieldResolution.Resolve(stream, pageNumbers, cancel);
+            try
+            {
+                await WordFieldResolution.Resolve(stream, pageNumbers, cancel);
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                // The resolver is the caller's code.
+                throw RenderFailure.Wrap(exception, Name);
+            }
         }
 
         // A part added during this render — settings here, numbering or images elsewhere — is
@@ -196,9 +220,16 @@ class RegisteredMarkdownTemplate(
                 numberingState,
                 styles,
                 imagePolicies);
-            await runner.RunAsync(part.Nodes);
-            runner.ApplyStructural();
-            runner.SeparateProducedTables();
+            try
+            {
+                await runner.RunAsync(part.Nodes);
+                runner.ApplyStructural();
+                runner.SeparateProducedTables();
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                throw RenderFailure.Wrap(exception, Name, part.PartUri);
+            }
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based

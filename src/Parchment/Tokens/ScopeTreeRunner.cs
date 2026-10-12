@@ -175,67 +175,76 @@ class ScopeTreeRunner(
         for (var i = tokenCount - 1; i >= 0; i--)
         {
             var token = node.Tokens[i];
-            var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
-            if (evaluated is EditableToken editable)
+            try
             {
-                if (editable.Entry.Kind == EditableFieldKind.Html)
+                var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
+                if (evaluated is EditableToken editable)
                 {
-                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    if (editable.Entry.Kind == EditableFieldKind.Html)
+                    {
+                        QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                        continue;
+                    }
+
+                    EditableSplicer.Insert(
+                        host,
+                        token.Offset,
+                        token.Length,
+                        sitePr => EditableFieldBuilder.Build(editable.Entry, editable.Value, sitePr, editableState, context.CultureInfo));
+                    cachedText = null;
                     continue;
                 }
 
-                EditableSplicer.Insert(
-                    host,
-                    token.Offset,
-                    token.Length,
-                    sitePr => EditableFieldBuilder.Build(editable.Entry, editable.Value, sitePr, editableState, context.CultureInfo));
-                cachedText = null;
-                continue;
-            }
-
-            if (evaluated is MarkdownToken or HtmlToken or OpenXmlToken)
-            {
-                hasEditableSibling ??= HasEditableToken(node);
-                if (hasEditableSibling.Value)
+                if (evaluated is MarkdownToken or HtmlToken or OpenXmlToken)
                 {
-                    // Structural splice/split clones paragraph halves, which would corrupt the
-                    // editable field's perm-range markers. Statically-known cases are rejected
-                    // at registration; this guards TokenValue-typed properties that only turn
-                    // out structural at render time.
-                    throw new ParchmentRenderException(
-                        templateName,
-                        $"Token '{token.Source}' produced structural content in a paragraph that also contains an editable field. Move one of them to its own paragraph.",
-                        partUri,
-                        Snippet(host, token),
-                        token.Source);
-                }
+                    hasEditableSibling ??= HasEditableToken(node);
+                    if (hasEditableSibling.Value)
+                    {
+                        // Structural splice/split clones paragraph halves, which would corrupt the
+                        // editable field's perm-range markers. Statically-known cases are rejected
+                        // at registration; this guards TokenValue-typed properties that only turn
+                        // out structural at render time.
+                        throw new ParchmentRenderException(
+                            templateName,
+                            $"Token '{token.Source}' produced structural content in a paragraph that also contains an editable field. Move one of them to its own paragraph.",
+                            partUri,
+                            Snippet(host, token),
+                            token.Source);
+                    }
 
-                if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
-                {
-                    // Whole host paragraph is the token — queue for replacement after every
-                    // other in-paragraph substitution has run.
-                    soloStructuralTokens ??= [];
-                    soloStructuralTokens.Add((token, evaluated));
+                    if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
+                    {
+                        // Whole host paragraph is the token — queue for replacement after every
+                        // other in-paragraph substitution has run.
+                        soloStructuralTokens ??= [];
+                        soloStructuralTokens.Add((token, evaluated));
+                        continue;
+                    }
+
+                    ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
+                    cachedText = null;
                     continue;
                 }
 
-                ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
-                cachedText = null;
-                continue;
-            }
+                if (evaluated is MutateToken mutate)
+                {
+                    // Clear the token text, then hand the paragraph to the caller for in-place mutation.
+                    Text().Replace(token.Offset, token.Length, string.Empty);
+                    var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
+                    mutate.Apply(host, ctx);
+                    cachedText = null;
+                    continue;
+                }
 
-            if (evaluated is MutateToken mutate)
+                var replacement = ToDisplayString(evaluated);
+                Text().Replace(token.Offset, token.Length, replacement);
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
             {
-                // Clear the token text, then hand the paragraph to the caller for in-place mutation.
-                Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
-                mutate.Apply(host, ctx);
-                cachedText = null;
-                continue;
+                // Everything a token does after it has a value: a block-shaped value building its
+                // content, a MutateToken or OpenXmlToken delegate, an [ExcelsiorTable] build.
+                throw WrapException(exception, host, token);
             }
-
-            var replacement = ToDisplayString(evaluated);
-            Text().Replace(token.Offset, token.Length, replacement);
         }
 
         if (soloStructuralTokens is { Count: > 0 })
@@ -327,9 +336,16 @@ class ScopeTreeRunner(
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
     {
         var result = new List<OpenXmlElement>();
-        foreach (var (_, value) in tokens)
+        foreach (var (site, value) in tokens)
         {
-            result.AddRange(RenderTokenValue(value, host));
+            try
+            {
+                result.AddRange(RenderTokenValue(value, host));
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                throw WrapException(exception, host, site);
+            }
         }
 
         return result;
@@ -411,11 +427,7 @@ class ScopeTreeRunner(
 
             return AwaitFluidValue(pending, host, site);
         }
-        catch (ParchmentException)
-        {
-            throw;
-        }
-        catch (Exception exception)
+        catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
         {
             throw WrapException(exception, host, site);
         }
@@ -443,24 +455,21 @@ class ScopeTreeRunner(
         {
             return InterpretFluidValue(await pending);
         }
-        catch (ParchmentException)
-        {
-            throw;
-        }
-        catch (Exception exception)
+        catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
         {
             throw WrapException(exception, host, site);
         }
     }
 
     ParchmentRenderException WrapException(Exception exception, Paragraph host, DocxTokenSite site) =>
-        new(
-            templateName,
-            exception.Message,
-            partUri,
-            Snippet(host, site),
-            site.Source,
-            inner: exception);
+        RenderFailure.Wrap(exception, templateName, partUri, Snippet(host, site), site.Source);
+
+    // A block tag owns its paragraph, so the paragraph's text is the tag.
+    ParchmentRenderException WrapTagException(Exception exception, Paragraph tag) =>
+        RenderFailure.Wrap(exception, templateName, partUri, tokenSource: TagText(tag));
+
+    static string TagText(Paragraph tag) =>
+        ParagraphText.Build(tag).InnerText.Trim();
 
     OpenXmlToken? TryResolveExcelsiorTable(DocxTokenSite site)
     {
@@ -622,7 +631,21 @@ class ScopeTreeRunner(
             return;
         }
 
-        var items = await ResolveIterableAsync(loop);
+        try
+        {
+            await ProcessLoopAsync(loop, open, close, parent);
+        }
+        catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+        {
+            // The source, a modifier, or a lazily produced item. Whatever failed inside the body
+            // was wrapped there, with its own token, and passes through.
+            throw WrapTagException(exception, open);
+        }
+    }
+
+    async Task ProcessLoopAsync(LoopNode loop, Paragraph open, Paragraph close, OpenXmlElement parent)
+    {
+        var items = await ResolveIterableAsync(loop, open);
         var bodyElements = CaptureBetween(open, close);
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
@@ -887,7 +910,7 @@ class ScopeTreeRunner(
         }
     }
 
-    async Task<IEnumerable<FluidValue>> ResolveIterableAsync(LoopNode loop)
+    async Task<IEnumerable<FluidValue>> ResolveIterableAsync(LoopNode loop, Paragraph open)
     {
         // Hand the loop source straight to Fluid: ForStatement.Source is an Expression that, when
         // evaluated, yields a FluidValue we can enumerate. This honors filters, complex paths,
@@ -902,13 +925,13 @@ class ScopeTreeRunner(
             return items;
         }
 
-        return await ApplyLoopModifiersAsync(loop, items.ToList());
+        return await ApplyLoopModifiersAsync(loop, items.ToList(), open);
     }
 
     // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
     // first, then limit, and `reversed` flips the window those two selected rather than the source,
     // whatever order the tag lists them in. A negative limit drops that many items from the end.
-    async Task<IEnumerable<FluidValue>> ApplyLoopModifiersAsync(LoopNode loop, List<FluidValue> items)
+    async Task<IEnumerable<FluidValue>> ApplyLoopModifiersAsync(LoopNode loop, List<FluidValue> items, Paragraph open)
     {
         var start = 0;
         if (loop.Offset != null)
@@ -916,13 +939,13 @@ class ScopeTreeRunner(
             var offset = await loop.Offset.EvaluateAsync(context);
             // Fluid indexes the source with a negative offset and throws. Nothing precedes the
             // first item, so the docx flow starts there instead.
-            start = Math.Max(0, (int)offset.ToNumberValue());
+            start = Math.Max(0, ModifierValue("offset", offset, open));
         }
 
         var count = Math.Max(0, items.Count - start);
         if (loop.Limit != null)
         {
-            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            var limit = ModifierValue("limit", await loop.Limit.EvaluateAsync(context), open);
             if (limit >= 0)
             {
                 count = Math.Min(count, limit);
@@ -947,6 +970,23 @@ class ScopeTreeRunner(
         return window;
     }
 
+    // The window is counted in ints, as the list it is cut from is. A value beyond that is
+    // reported as what it is rather than left to overflow the cast.
+    int ModifierValue(string modifier, FluidValue value, Paragraph open)
+    {
+        var number = value.ToNumberValue();
+        if (number is >= int.MinValue and <= int.MaxValue)
+        {
+            return (int)number;
+        }
+
+        throw new ParchmentRenderException(
+            templateName,
+            $"The loop's '{modifier}' is {number.ToString(CultureInfo.InvariantCulture)}, which is outside the range a loop can be windowed by ({int.MinValue} to {int.MaxValue}).",
+            partUri,
+            tokenSource: TagText(open));
+    }
+
     async Task ProcessIfAsync(IfNode ifNode)
     {
         if (!anchorMap.TryGetValue(ifNode.OpenAnchorName, out var open) ||
@@ -964,7 +1004,19 @@ class ScopeTreeRunner(
         var chosenIndex = -1;
         for (var i = 0; i < ifNode.Branches.Count; i++)
         {
-            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition))
+            var branch = ifNode.Branches[i];
+            bool met;
+            try
+            {
+                met = await EvaluateConditionAsync(branch.Condition);
+            }
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+            {
+                // The paragraph of the branch's own tag, so an {% elsif %} is named as itself.
+                throw WrapTagException(exception, anchorMap.GetValueOrDefault(branch.TagAnchorName, open));
+            }
+
+            if (!met)
             {
                 continue;
             }
@@ -1077,9 +1129,11 @@ class ScopeTreeRunner(
 
     static string Snippet(Paragraph host, DocxTokenSite site)
     {
+        // Clamped at both ends: a failure can be reported after the token's text has been replaced
+        // or its paragraph mutated, when the site's offsets no longer describe the paragraph.
         var text = ParagraphText.Build(host).InnerText;
-        var start = Math.Max(0, site.Offset - 40);
-        var end = Math.Min(text.Length, site.Offset + site.Length + 40);
+        var start = Math.Clamp(site.Offset - 40, 0, text.Length);
+        var end = Math.Clamp(site.Offset + site.Length + 40, start, text.Length);
         return text[start..end];
     }
 

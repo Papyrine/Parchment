@@ -49,26 +49,36 @@ class RegisteredDocxTemplate(
             // need it, but it changes only across registrations, not within a render.
             var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
 
-            foreach (var part in parts)
+            try
             {
-                cancel.ThrowIfCancellationRequested();
-                if (!partRoots.TryGetValue(part.PartUri, out var root))
+                foreach (var part in parts)
                 {
-                    continue;
+                    cancel.ThrowIfCancellationRequested();
+                    if (!partRoots.TryGetValue(part.PartUri, out var root))
+                    {
+                        continue;
+                    }
+
+                    await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
+                foreach (var root in partRoots.Values)
+                {
+                    Anchors.StripAll(root);
+                    // Once every substitution in the part has run, so splitting a w:t can no longer
+                    // disturb the offsets the substitutions were driven by.
+                    LineBreaks.Apply(root);
+                    // A removed branch, an empty loop or a structural token can take a cell's only
+                    // paragraph with it, or leave a nested table as the cell's last block.
+                    TableCells.EnsureFinalParagraph(root);
+                }
             }
-
-            foreach (var root in partRoots.Values)
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
             {
-                Anchors.StripAll(root);
-                // Once every substitution in the part has run, so splitting a w:t can no longer
-                // disturb the offsets the substitutions were driven by.
-                LineBreaks.Apply(root);
-                // A removed branch, an empty loop or a structural token can take a cell's only
-                // paragraph with it, or leave a nested table as the cell's last block.
-                TableCells.EnsureFinalParagraph(root);
+                // The last resort: a failure with a token or a tag to name was wrapped where it
+                // happened, and anything else inside a part by RenderPartAsync. Document properties
+                // are applied outside it - they are the caller's argument, not the template's.
+                throw RenderFailure.Wrap(exception, Name);
             }
 
             // compatibilityMode=15 is baked into the registration snapshot (see
@@ -112,8 +122,15 @@ class RegisteredDocxTemplate(
             numberingState,
             styles,
             imagePolicies);
-        await runner.RunAsync(part.Nodes);
-        runner.ApplyStructural();
-        runner.SeparateProducedTables();
+        try
+        {
+            await runner.RunAsync(part.Nodes);
+            runner.ApplyStructural();
+            runner.SeparateProducedTables();
+        }
+        catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+        {
+            throw RenderFailure.Wrap(exception, Name, part.PartUri);
+        }
     }
 }
