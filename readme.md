@@ -1049,7 +1049,7 @@ Behavior:
 - The auto path is **opportunistic, not strict**: it only fires when the token sits alone in its paragraph and has no filter chain. Otherwise the substitution falls through to standard Fluid evaluation — so existing `{{ Tags | bullet_list }}` and `{{ Tags | numbered_list }}` filter usage keeps working unchanged.
 - A null collection renders as empty (no error). An empty collection renders as no paragraphs.
 - Properties marked `[ExcelsiorTable]` keep ownership — the Excelsior path runs first. `[ExcelsiorTable]` on an `IEnumerable<string>` itself is [`PARCH034`](#parch034--excelsiortable-member-is-not-a-collection-of-rows): a string has no columns to tabulate.
-- Only a sequence counts: `string[]`, a jagged `string[][]` reached one row at a time, and anything else implementing `IEnumerable<string>`. A multi-dimensional `string[,]` is not an `IEnumerable<string>`, so it is not a string list.
+- Only a sequence of strings counts: `string[]` and anything else implementing `IEnumerable<string>`. A multi-dimensional `string[,]` is not an `IEnumerable<string>` and a jagged `string[][]` is a sequence of arrays, so neither is a string list.
 - Loop-scoped tokens fall through. The detection map is keyed on dotted paths from the root model only, matching the `[ExcelsiorTable]` and `[Html]`/`[Markdown]` limitations. Inside `{% for c in Customers %}{{ c.Tags }}{% endfor %}`, use the explicit `bullet_list` filter.
 - Numbered output: opt out of the auto path with `{{ Tags | numbered_list }}`.
 
@@ -2518,7 +2518,7 @@ Move the tags into one container. To repeat a whole table, put both tags in body
 public Customer Owner { get; set; }        // a single object, not a collection
 
 [ExcelsiorTable]
-public List<string> Tags { get; set; }     // strings, numbers, dates and enums have no columns
+public List<string> Tags { get; set; }     // strings, numbers and enums have no columns
 
 [ExcelsiorTable]
 public Line[,] Grid { get; set; }          // a multi-dimensional array is not an IEnumerable<T>
