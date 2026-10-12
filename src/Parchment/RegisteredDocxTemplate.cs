@@ -8,7 +8,8 @@ class RegisteredDocxTemplate(
     StringListMap stringLists,
     EditableMap editables,
     ImagePolicies imagePolicies,
-    int maxBookmarkId) :
+    int maxBookmarkId,
+    NoteReferences noteReferences) :
     RegisteredTemplate(name, modelType)
 {
     // The parts a render has work in. A part outside this set carries no anchor bookmark, so
@@ -69,6 +70,16 @@ class RegisteredDocxTemplate(
                 // A removed branch, an empty loop or a structural token can take a cell's only
                 // paragraph with it, or leave a nested table as the cell's last block.
                 TableCells.EnsureFinalParagraph(root);
+            }
+
+            // After every part has rendered and been cleaned up, the notes parts included: a loop
+            // repeats a footnote reference and an unchosen branch removes one, and the copy of a
+            // note made here has to be of its final content. A body with no scope tree was never
+            // touched, so its references still pair with their notes.
+            if (!noteReferences.IsEmpty &&
+                partRoots.TryGetValue(mainPartUri, out var body))
+            {
+                noteReferences.Apply(mainPart, body);
             }
 
             // compatibilityMode=15 is baked into the registration snapshot (see

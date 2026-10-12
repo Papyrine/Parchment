@@ -133,6 +133,8 @@ The body isn't restricted to paragraphs. Anything between the open and close par
 {% endfor %}
 ```
 
+A footnote or endnote whose reference sits in the repeated content is repeated with it: every iteration gets a note of its own, numbered in reading order. The note's text binds against the model like any other footnote, so it cannot use the loop variable. A reference removed by an empty loop or an unchosen `{% if %}` branch takes its note with it.
+
 The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
 
 ### Conditionals
