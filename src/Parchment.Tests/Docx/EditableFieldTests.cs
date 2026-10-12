@@ -1164,6 +1164,40 @@ public partial class EditableFieldTests
         await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
     }
 
+    [Test]
+    public async Task HtmlEditableHoldingTableAloneInTableCellIsFollowedByParagraph()
+    {
+        const string html = "<p>intro</p><table><tr><td>x</td></tr></table>";
+        using var stream = await RenderTableModel(
+            "Body:",
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = html
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            // The control's content ends with the table, and Word wants the cell to end with a
+            // paragraph. It goes after the control and not into it, where it would be read back
+            // as part of the value.
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            await Assert.That(sdt.SdtContentBlock!.LastChild).IsTypeOf<Table>();
+            var cell = (TableCell)sdt.Parent!;
+            await Assert.That(cell.ChildElements.Count).IsEqualTo(2);
+            await Assert.That(cell.LastChild).IsTypeOf<Paragraph>();
+            await Assert.That(cell.LastChild!.InnerText).IsEqualTo("");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        var field = result.Fields.Single(_ => _.Path == "Body");
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        // What the same value reads back as from a control in the body, where nothing is added.
+        await Assert.That(field.Value).IsEqualTo(await ExtractHtml(html));
+    }
+
     [ParchmentBindable]
     public partial class RichTextShapes
     {
