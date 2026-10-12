@@ -9,6 +9,7 @@ class RegisteredMarkdownTemplate(
     ExcelsiorTableMap excelsiorTables,
     IReadOnlyList<MarkdownExcelsiorTables.Placeholder> tablePlaceholders,
     int maxBookmarkId,
+    TemplateIds templateIds,
     bool compatibilityBaked) :
     RegisteredTemplate(name, modelType)
 {
@@ -171,6 +172,8 @@ class RegisteredMarkdownTemplate(
 
         var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
         var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
+        // One for all of them, as with the bookmarks: the ids are unique across the document.
+        var cloneIds = CloneIds.For(templateIds);
 
         foreach (var part in nonBodyParts)
         {
@@ -193,6 +196,7 @@ class RegisteredMarkdownTemplate(
                 EditableMap.Empty,
                 new(),
                 bookmarks,
+                cloneIds,
                 numberingState,
                 styles,
                 imagePolicies);
@@ -204,6 +208,12 @@ class RegisteredMarkdownTemplate(
             // A header or footer is a docx part, so its substitutions go through the text-based
             // path and its line breaks are materialized the same way the docx flow's are.
             LineBreaks.Apply(root);
+            // A loop copies a comment's anchors with its body, here as in the docx flow.
+            if (templateIds.HoldsComments)
+            {
+                CommentAnchors.KeepFirst(root);
+            }
+
             // And a header or footer table cell can lose its only paragraph the same way.
             TableCells.EnsureFinalParagraph(root);
         }

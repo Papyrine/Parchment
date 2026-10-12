@@ -8,7 +8,8 @@ class RegisteredDocxTemplate(
     StringListMap stringLists,
     EditableMap editables,
     ImagePolicies imagePolicies,
-    int maxBookmarkId) :
+    int maxBookmarkId,
+    TemplateIds templateIds) :
     RegisteredTemplate(name, modelType)
 {
     // The parts a render has work in. A part outside this set carries no anchor bookmark, so
@@ -45,6 +46,7 @@ class RegisteredDocxTemplate(
             var numberingState = new WordNumberingState(mainPart);
             var editableState = new EditableState();
             var bookmarks = new BookmarkIds(maxBookmarkId);
+            var cloneIds = CloneIds.For(templateIds);
             // Cache the StyleSet per render — Excelsior / Format / OpenXml / Mutate tokens all
             // need it, but it changes only across registrations, not within a render.
             var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
@@ -57,7 +59,7 @@ class RegisteredDocxTemplate(
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles);
             }
 
             foreach (var root in partRoots.Values)
@@ -66,6 +68,12 @@ class RegisteredDocxTemplate(
                 // Once every substitution in the part has run, so splitting a w:t can no longer
                 // disturb the offsets the substitutions were driven by.
                 LineBreaks.Apply(root);
+                // A loop copies a comment's anchors with its body, and a comment has one range.
+                if (templateIds.HoldsComments)
+                {
+                    CommentAnchors.KeepFirst(root);
+                }
+
                 // A removed branch, an empty loop or a structural token can take a cell's only
                 // paragraph with it, or leave a nested table as the cell's last block.
                 TableCells.EnsureFinalParagraph(root);
@@ -89,7 +97,7 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, CloneIds? cloneIds, Lazy<StyleSet> styles)
     {
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
@@ -109,6 +117,7 @@ class RegisteredDocxTemplate(
             isBody ? editables : EditableMap.Empty,
             editableState,
             bookmarks,
+            cloneIds,
             numberingState,
             styles,
             imagePolicies);
