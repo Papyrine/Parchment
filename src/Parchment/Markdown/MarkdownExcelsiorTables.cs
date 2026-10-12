@@ -207,6 +207,7 @@ static class MarkdownExcelsiorTables
             entry.ElementType,
             data,
             mainPart,
+            bookmarks.Names,
             entry.HeadingParagraphStyle,
             entry.BodyParagraphStyle,
             entry.TableStyle,
