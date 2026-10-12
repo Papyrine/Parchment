@@ -301,7 +301,7 @@ static class OpenXmlHtmlSerializer
         return "#" + anchor;
     }
 
-    static bool IsOn(OnOffType? toggle) =>
+    internal static bool IsOn(OnOffType? toggle) =>
         toggle != null &&
         (toggle.Val == null || toggle.Val.Value);
 
