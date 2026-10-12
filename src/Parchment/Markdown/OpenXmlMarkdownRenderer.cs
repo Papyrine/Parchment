@@ -107,7 +107,7 @@ class OpenXmlMarkdownRenderer :
             if (paragraph.LastChild is Run last &&
                 SoleText(last) is { } previous &&
                 SoleText(run) is { } incoming &&
-                SameProperties(last, (Run) run))
+                RunPropertiesComparer.Same(last.RunProperties, ((Run) run).RunProperties))
             {
                 previous.Text += incoming.Text;
                 continue;
@@ -191,20 +191,6 @@ class OpenXmlMarkdownRenderer :
         }
 
         return text;
-    }
-
-    static bool SameProperties(Run left, Run right)
-    {
-        var leftProperties = left.RunProperties;
-        var rightProperties = right.RunProperties;
-
-        if (leftProperties == null)
-        {
-            return rightProperties == null;
-        }
-
-        return rightProperties != null &&
-               leftProperties.OuterXml == rightProperties.OuterXml;
     }
 
     internal void PushInlineHtmlFormat(string tagName, Action<RunProperties> apply) =>
