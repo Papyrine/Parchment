@@ -1,7 +1,13 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (4,1)-(4,15),
+      Location: /*
+
+[ParchmentModel]
+ ^^^^^^^^^^^^^^
+public partial class Empty;
+*/
+ : (4,1)-(4,15),
       Message: Template 'Empty.parchment.docx' uses unsupported block tag '{% foobar %}' (supported: for, endfor, if, elsif, else, endif),
       Severity: Error,
       Descriptor: {

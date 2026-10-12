@@ -17,12 +17,12 @@ public sealed class ParchmentTemplateGenerator :
             .ForAttributeWithMetadataName(
                 attributeFullName,
                 static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
-                ExtractTarget)
+                static (context, cancel) => Locate(context, ExtractTarget(context, cancel)))
             .Where(static _ => _ != null)
             .Select(static (target, _) => target!)
             .WithTrackingName(Stages.Targets)
             .Collect()
-            .Select(static (array, _) => new EquatableArray<TargetInfo>(array))
+            .Select(static (array, _) => new EquatableArray<LocatedTarget>(array))
             .WithTrackingName(Stages.TargetsCollected);
 
         // Filtered to the marked files before anything reads them. An unmarked .md AdditionalFile
@@ -94,7 +94,7 @@ public sealed class ParchmentTemplateGenerator :
             .ForAttributeWithMetadataName(
                 bindableAttributeFullName,
                 static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
-                ExtractBindableTarget)
+                static (context, cancel) => Locate(context, ExtractBindableTarget(context, cancel)))
             .Where(static _ => _ != null)
             .Select(static (target, _) => target!)
             .WithTrackingName(Stages.Bindables);
@@ -102,6 +102,20 @@ public sealed class ParchmentTemplateGenerator :
         context.RegisterSourceOutput(
             bindables,
             static (productionContext, target) => ProcessBindable(productionContext, target));
+    }
+
+    // Pairs the primitive snapshot with the syntax tree its attribute sits in, so the diagnostics
+    // can be reported at a real source location. Only that one tree is carried, never the
+    // compilation: the tree instance is replaced when its own file is edited and reused
+    // otherwise, so an edit anywhere else still finds every stage cached.
+    static LocatedTarget? Locate(GeneratorAttributeSyntaxContext context, TargetInfo? target)
+    {
+        if (target == null)
+        {
+            return null;
+        }
+
+        return new(target, context.Attributes.FirstOrDefault()?.ApplicationSyntaxReference?.SyntaxTree);
     }
 
     static TargetInfo? ExtractBindableTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
@@ -117,9 +131,10 @@ public sealed class ParchmentTemplateGenerator :
         return ExtractTarget(context, cancel);
     }
 
-    static void ProcessBindable(SourceProductionContext context, TargetInfo target)
+    static void ProcessBindable(SourceProductionContext context, LocatedTarget located)
     {
-        var location = target.Location.ToLocation();
+        var target = located.Target;
+        var location = target.Location.ToLocation(located.Tree);
 
         if (target.ExtractError != null)
         {
@@ -403,13 +418,14 @@ public sealed class ParchmentTemplateGenerator :
 
     static void Process(
         SourceProductionContext context,
-        TargetInfo target,
+        LocatedTarget located,
         EquatableArray<DocxData> docs,
         EquatableArray<MarkdownData> markdowns,
         EquatableArray<DotxData> dotxes,
         string? projectDirectory)
     {
-        var location = target.Location.ToLocation();
+        var target = located.Target;
+        var location = target.Location.ToLocation(located.Tree);
 
         if (target.ExtractError != null)
         {
