@@ -19,20 +19,30 @@ static class ShapeBuilder
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<ITypeSymbol>();
+        // Sorted, so the pragma the ids end up in reads the same whatever order the walk met them.
+        var suppressed = new SortedSet<string>(StringComparer.Ordinal);
+        var pending = new List<string>();
 
         Enqueue(root, visited, queue);
         while (queue.Count > 0)
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue));
+            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue, suppressed, pending));
         }
 
-        return new(Fqn(root), new(entries.ToImmutable()));
+        return new(Fqn(root), new(entries.ToImmutable()), new(suppressed.ToImmutableArray()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
+    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue, SortedSet<string> suppressed, List<string> pending)
     {
+        // Every type in the shape is named by the generated code (a cast, a typeof), the root
+        // included. One that is obsolete as an error only gets here as the root, where there is no
+        // member to leave out.
+        pending.Clear();
+        UseSiteDiagnostics.TryCollectType(type, pending);
+        suppressed.UnionWith(pending);
+
         string? elementFqn = null;
         if (type.SpecialType != SpecialType.System_String &&
             ModelSymbolResolver.TryGetElementType(type, out var element))
@@ -92,6 +102,28 @@ static class ShapeBuilder
                     {
                         continue;
                     }
+
+                    // A member obsolete as an error, or typed as something that is, has no legal
+                    // reference: CS0619 cannot be suppressed. It is left out of the shape, so a
+                    // token naming it is PARCH001 rather than a compile error in generated code.
+                    // Anything milder stays bindable, with its diagnostic id carried to the pragma
+                    // at the top of the generated file. The name is claimed first either way, so a
+                    // base member it hides is not bound in its place.
+                    pending.Clear();
+                    if (!UseSiteDiagnostics.TryCollectMember(member, pending) ||
+                        !UseSiteDiagnostics.TryCollectType(memberType, pending))
+                    {
+                        continue;
+                    }
+
+                    // An inherited member is read through its declaring type's attributes too: an
+                    // experimental base class makes each of its members experimental.
+                    if (!SymbolEqualityComparer.Default.Equals(current, type))
+                    {
+                        UseSiteDiagnostics.TryCollectType(current, pending);
+                    }
+
+                    suppressed.UnionWith(pending);
 
                     var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure);
                     // Resolved here, where the declaring symbol is at hand: the generated code
