@@ -222,13 +222,7 @@ class MarkdownValidator
             }
 
             context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.MissingMember,
-                    location,
-                    templatePath,
-                    sourceForDiagnostic,
-                    string.Join('.', path),
-                    target.ModelDisplayName));
+                Diagnostics.UnknownMember(target, templatePath, location, sourceForDiagnostic, path, scope));
         }
     }
 

@@ -1184,13 +1184,7 @@ public sealed class ParchmentTemplateGenerator :
                     if (!ShapeResolver.TryResolve(target.Shape, token.References[0], scope, out var sourceFqn))
                     {
                         context.ReportDiagnostic(
-                            Diagnostic.Create(
-                                Diagnostics.MissingMember,
-                                location,
-                                templatePath,
-                                token.Source,
-                                string.Join('.', token.References[0]),
-                                target.ModelDisplayName));
+                            Diagnostics.UnknownMember(target, templatePath, location, token.Source, token.References[0], scope));
                         break;
                     }
 
@@ -1482,13 +1476,7 @@ public sealed class ParchmentTemplateGenerator :
             }
 
             context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.MissingMember,
-                    location,
-                    templatePath,
-                    tokenSource,
-                    string.Join('.', reference),
-                    target.ModelDisplayName));
+                Diagnostics.UnknownMember(target, templatePath, location, tokenSource, reference, scope));
         }
     }
 
