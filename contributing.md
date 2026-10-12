@@ -343,6 +343,14 @@ User-facing summary in `readme.md` → "Source generator (recommended)". The SG 
 
 Token validation is the deliberate exception: `ModelValidator` / `ReferenceValidator` / `MarkdownReferenceValidator` still reflect over the model at registration, because a runtime-supplied template was never seen by the generator and its tokens must still be checked against the model. That reflection is registration-time only and touches member *types*, not values.
 
+**Trimming and NativeAOT.** Because of that exception and two more, the library is not NativeAOT-compatible and is not marked `IsTrimmable`. A consumer published with `PublishAot` fails registration ("Identifier 'Name' is not a member of 'Letter'", the property metadata is gone) and renders an `[ExcelsiorTable]` with an empty header and empty cells; a `PublishTrimmed` / `TrimMode=full` consumer rendered correctly when measured, with IL2104. The sites the analyzers report:
+
+- `ModelValidator.TryResolveMember` (`GetProperty` / `GetField`) and `ModelValidator.TryResolveElementType` / `LiquidMembers.IsDictionary` (`GetInterfaces`) — token validation, IL2070.
+- `ExcelsiorTableBridge.CreateInvoker` (`MakeGenericMethod`) — IL2060 / IL3050. Excelsior's `WordTableBuilder<T>` then reflects over `T` for its columns, which no annotation in this repo can see.
+- `ParchmentExtractor.ReconstructCollection` (`MakeGenericType` for `List<T>`, `Array.CreateInstance`) — IL3050.
+
+`Parchment.csproj` sets `EnableTrimAnalyzer` and `EnableAotAnalyzer` (not `IsTrimmable` / `IsAotCompatible`, which would stamp the assembly as compatible), and those sites are covered by `[RequiresUnreferencedCode]` / `[RequiresDynamicCode]` carried up to the public `TemplateStore` and `ParchmentExtractor` methods, with the messages in `Unsupported.cs`. Whole classes carry the attributes where an override or a field initializer could not (`MarkdownReferenceValidator` overrides Fluid's `AstVisitor`; the three `RegisteredTemplate` types share an abstract `Render`). A new reflection call outside such a scope is an IL warning, and so a build error, here; annotate the caller chain instead of suppressing it — `UnconditionalSuppressMessage` would hide the site from a consumer's publish. Consumers that do not publish trimmed or AOT have no analyzer running and see nothing.
+
 **Pipeline.** `AccessorEmission.Emit(target.Shape, rootFqn)` walks `ModelShape` and produces parallel datasets:
 
 1. **Fluid accessors**: `KeyValuePair<string, IMemberAccessor>[]` per non-empty type (one `DelegateAccessor` per public property/field), registered via `GeneratedRegistration.RegisterFluidAccessors(typeof(T), arr)` → `SharedFluid.registeredTypes` + `Options.MemberAccessStrategy.Register`. The root type's block is emitted even when member-less — its registration is what marks the model SG-known to `EnsureModelRegistered`.

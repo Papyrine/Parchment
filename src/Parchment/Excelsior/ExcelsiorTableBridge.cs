@@ -3,6 +3,8 @@
 /// for a model element type known only at runtime, then renders the table against the host
 /// <see cref="MainDocumentPart"/>.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 static class ExcelsiorTableBridge
 {
     static readonly ConcurrentDictionary<Type, BuilderInvoker> invokerCache = new();

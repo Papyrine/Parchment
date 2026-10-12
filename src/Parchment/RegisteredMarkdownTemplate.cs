@@ -1,3 +1,5 @@
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class RegisteredMarkdownTemplate(
     string name,
     Type modelType,

@@ -2,6 +2,7 @@
 /// Reflection-based validator that walks an <see cref="IdentifierPath"/> against a .NET type
 /// to ensure every segment resolves to a real member. Used by the runtime registration path.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class ModelValidator
 {
     public static void Validate(

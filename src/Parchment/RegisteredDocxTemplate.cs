@@ -1,3 +1,5 @@
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class RegisteredDocxTemplate(
     string name,
     Type modelType,
