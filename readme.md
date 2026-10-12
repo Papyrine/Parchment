@@ -623,7 +623,7 @@ await store.Render(
 
 #### Mutate paragraph
 
-Use `new MutateToken(...)` to receive the host paragraph and modify it in place. The token text is cleared before the callback runs, so the original paragraph structure (properties, styles) is preserved:
+Use `new MutateToken(...)` to receive the host paragraph and modify it in place. The token text is cleared before the callback runs, so the original paragraph structure (properties, styles) is preserved. Any other tokens in the paragraph are substituted first, so the callback sees their values and is free to change anything in the paragraph:
 
 Model:
 
