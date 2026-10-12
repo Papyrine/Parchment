@@ -86,6 +86,56 @@ public partial class MarkdownExcelsiorTableTests
         await Assert.That(string.Join(", ", headings)).IsEqualTo("Deliverable, Qty, Unit Price");
     }
 
+    [ParchmentBindable]
+    public partial class EngagementModel
+    {
+        public required EngagementSection Section { get; init; }
+    }
+
+    public partial class EngagementSection
+    {
+        [ExcelsiorTable(Configure = nameof(Configure))]
+        public required IReadOnlyList<QuoteLine> Lines { get; init; }
+
+        static void Configure(WordTableBuilder<QuoteLine> builder) =>
+            builder.Column(_ => _.Description, _ => _.Heading = "Deliverable");
+    }
+
+    // The method is private to a type the model only reaches, which the registration nested in the
+    // model cannot see. It is called through a forwarder the generator adds to that type's partial
+    // part, so this compiling and the heading changing are both the test.
+    [Test]
+    public async Task ConfigureOnAReachedTypeShapesTheBuilder()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EngagementModel>("{{ Section.Lines }}", styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new EngagementModel
+            {
+                Section = new()
+                {
+                    Lines = Quote().Lines
+                }
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var headings = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<Table>()
+            .Single()
+            .Elements<TableRow>()
+            .First()
+            .Elements<TableCell>()
+            .Select(_ => _.InnerText)
+            .ToList();
+
+        await Assert.That(string.Join(", ", headings)).IsEqualTo("Deliverable, Qty, Unit Price");
+    }
+
     static async Task<MemoryStream> Render(string markdown, QuoteModel? model = null)
     {
         using var styleSource = DocxTemplateBuilder.Build();

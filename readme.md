@@ -832,6 +832,8 @@ public partial class ConfiguredQuoteModel
 
 The name is resolved at compile time: the source generator emits a direct call, so a missing method is [`PARCH026`](#parch026--excelsiortable-configure-method-not-found) on the member that named it, and a wrong signature is an ordinary compile error.
 
+The method can be private when the member sits on the model itself, or on a `partial` type the model reaches (a nested object's class, or a base class). On a type that is not `partial` it has to be `internal` or wider, since the generated registration lives in the model and calls it from there; a private one is `PARCH026` too.
+
 #### Loop-scoped or fully-custom tables
 
 `[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
@@ -2480,6 +2482,8 @@ public List<Line> Lines { get; set; } = new();
 static void ConfigureLines(WordTableBuilder<Line> builder) =>
     ...
 ```
+
+The same id is reported when the method exists but the generated code cannot call it. The registration is generated into the model, so it sees a private method of the model and of nothing else. For a member on any other type — a class the model reaches through a property, or a base class — the generator adds a forwarding method to a `partial` part of that type, which needs the type, and every type enclosing it, to be declared `partial`. Where it is not, either make it `partial` or make the method `internal`. A type in another assembly cannot be given a part, so its method has to be accessible from the model's assembly.
 
 
 ### `PARCH027` — loop over an `[EditableField]` collection carries a modifier

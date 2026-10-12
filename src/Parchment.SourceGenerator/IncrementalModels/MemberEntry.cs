@@ -29,4 +29,11 @@
     // set and this holds the raw name for the diagnostic; emission skips it, so the clean report is
     // the only error rather than the first of a cascade.
     string? ExcelsiorConfigure = null,
-    bool ExcelsiorConfigureMissing = false);
+    bool ExcelsiorConfigureMissing = false,
+    // Non-null when the method exists but the generated code can neither call it nor be given a
+    // partial part of its type to call it from: the type the method was looked up on, for the
+    // diagnostic. Emission skips the call, as it does for a missing method.
+    string? ExcelsiorConfigureInaccessibleOn = null,
+    // What has to be added to the declaring type for ExcelsiorConfigure to be callable. Empty when
+    // the method is called directly.
+    EquatableArray<ConfigureForwarder> ExcelsiorConfigureForwarders = default);

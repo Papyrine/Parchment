@@ -235,6 +235,19 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
 
+    // The same id for the other way the name fails to become a call: the method is there, but the
+    // generated code sits in a type nested in the model and cannot see it, and the type declaring
+    // it cannot be given a partial part to call it from. One id because it is one mistake from the
+    // author's side - Configure names something the registration cannot call.
+    public static readonly DiagnosticDescriptor ExcelsiorConfigureInaccessible = new(
+        id: "PARCH026",
+        title: "[ExcelsiorTable] Configure method not found",
+        messageFormat: "Model '{0}' member '{1}' names '{2}' in [ExcelsiorTable(Configure)], which the generated code cannot call: the method is not accessible from the model, and '{3}' cannot be given a generated partial part to call it from. Declare '{3}' and every type enclosing it partial, or make '{2}' internal (public when '{3}' is in another assembly).",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
+
     // Extraction is replace-all: the rows in the document become the collection. A window or a
     // reversal on the loop that rendered them would therefore be written back as data.
     public static readonly DiagnosticDescriptor EditableCollectionLoopModifier = new(
