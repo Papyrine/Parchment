@@ -555,8 +555,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     [RequiresDynamicCode(Unsupported.DynamicCode)]
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
-        await using var file = File.Create(path);
-        await Render(model, file, properties, cancel).ConfigureAwait(false);
+        var file = File.Create(path);
+        await using (file.ConfigureAwait(false))
+        {
+            await Render(model, file, properties, cancel).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
