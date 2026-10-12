@@ -27,7 +27,7 @@ static class WordFieldResolution
     public static async Task Resolve(MemoryStream document, IPageNumberResolver resolver, Cancel cancel)
     {
         using var copy = new MemoryStream(document.ToArray(), false);
-        var pages = await resolver.Resolve(copy, cancel);
+        var pages = await resolver.Resolve(copy, cancel).ConfigureAwait(false);
         cancel.ThrowIfCancellationRequested();
         if (pages.Count == 0)
         {

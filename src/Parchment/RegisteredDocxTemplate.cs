@@ -57,7 +57,7 @@ class RegisteredDocxTemplate(
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles).ConfigureAwait(false);
             }
 
             foreach (var root in partRoots.Values)
@@ -86,7 +86,7 @@ class RegisteredDocxTemplate(
         // renders landed in the same 2-second zip quantum. See ZipTimestamps.
         ZipTimestamps.Pin(stream);
         stream.Position = 0;
-        await stream.CopyToAsync(output, cancel);
+        await stream.CopyToAsync(output, cancel).ConfigureAwait(false);
     }
 
     async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
@@ -112,7 +112,7 @@ class RegisteredDocxTemplate(
             numberingState,
             styles,
             imagePolicies);
-        await runner.RunAsync(part.Nodes);
+        await runner.RunAsync(part.Nodes).ConfigureAwait(false);
         runner.ApplyStructural();
         runner.SeparateProducedTables();
     }

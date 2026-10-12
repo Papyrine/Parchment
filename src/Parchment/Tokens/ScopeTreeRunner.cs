@@ -131,7 +131,7 @@ class ScopeTreeRunner(
     {
         foreach (var node in nodes)
         {
-            await ProcessAsync(node);
+            await ProcessAsync(node).ConfigureAwait(false);
         }
     }
 
@@ -175,7 +175,7 @@ class ScopeTreeRunner(
         for (var i = tokenCount - 1; i >= 0; i--)
         {
             var token = node.Tokens[i];
-            var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
+            var evaluated = await EvaluateTokenAsync(token, host, tokenCount).ConfigureAwait(false);
             if (evaluated is EditableToken editable)
             {
                 if (editable.Entry.Kind == EditableFieldKind.Html)
@@ -441,7 +441,7 @@ class ScopeTreeRunner(
     {
         try
         {
-            return InterpretFluidValue(await pending);
+            return InterpretFluidValue(await pending.ConfigureAwait(false));
         }
         catch (ParchmentException)
         {
@@ -622,7 +622,7 @@ class ScopeTreeRunner(
             return;
         }
 
-        var items = await ResolveIterableAsync(loop);
+        var items = await ResolveIterableAsync(loop).ConfigureAwait(false);
         var bodyElements = CaptureBetween(open, close);
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
@@ -634,7 +634,7 @@ class ScopeTreeRunner(
             loop.SourceReference is { } sourceReference &&
             editables.TryGetCollection(sourceReference, out var collectionEntry))
         {
-            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
+            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList()).ConfigureAwait(false);
             foreach (var element in bodyElements)
             {
                 element.Remove();
@@ -713,7 +713,7 @@ class ScopeTreeRunner(
                 // names the registration-time tree references, so no per-iteration tree rebuild
                 // (Remap) is needed. Multiple iterations leave duplicate-named bookmarks in the
                 // live docx — that's fine because StripAll runs before Save and removes them all.
-                await clonedRunner.RunAsync(loop.Body);
+                await clonedRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 clonedRunner.ApplyStructural();
 
                 // Snapshot scratch's children before mutating, so remove+insert doesn't break
@@ -809,7 +809,7 @@ class ScopeTreeRunner(
                 {
                     loopVariables = itemLoopVariables
                 };
-                await itemRunner.RunAsync(loop.Body);
+                await itemRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 itemRunner.ApplyStructural();
 
                 var itemBody = new List<OpenXmlElement>();
@@ -893,7 +893,7 @@ class ScopeTreeRunner(
         // evaluated, yields a FluidValue we can enumerate. This honors filters, complex paths,
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
-        var sourceValue = await loop.LoopSource.EvaluateAsync(context);
+        var sourceValue = await loop.LoopSource.EvaluateAsync(context).ConfigureAwait(false);
         var items = sourceValue.Enumerate(context);
         if (loop.Limit == null &&
             loop.Offset == null &&
@@ -902,7 +902,7 @@ class ScopeTreeRunner(
             return items;
         }
 
-        return await ApplyLoopModifiersAsync(loop, items.ToList());
+        return await ApplyLoopModifiersAsync(loop, items.ToList()).ConfigureAwait(false);
     }
 
     // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
@@ -913,7 +913,7 @@ class ScopeTreeRunner(
         var start = 0;
         if (loop.Offset != null)
         {
-            var offset = await loop.Offset.EvaluateAsync(context);
+            var offset = await loop.Offset.EvaluateAsync(context).ConfigureAwait(false);
             // Fluid indexes the source with a negative offset and throws. Nothing precedes the
             // first item, so the docx flow starts there instead.
             start = Math.Max(0, (int)offset.ToNumberValue());
@@ -922,7 +922,7 @@ class ScopeTreeRunner(
         var count = Math.Max(0, items.Count - start);
         if (loop.Limit != null)
         {
-            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            var limit = (int)(await loop.Limit.EvaluateAsync(context).ConfigureAwait(false)).ToNumberValue();
             if (limit >= 0)
             {
                 count = Math.Min(count, limit);
@@ -964,7 +964,7 @@ class ScopeTreeRunner(
         var chosenIndex = -1;
         for (var i = 0; i < ifNode.Branches.Count; i++)
         {
-            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition))
+            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition).ConfigureAwait(false))
             {
                 continue;
             }
@@ -1018,7 +1018,7 @@ class ScopeTreeRunner(
         {
             loopVariables = loopVariables
         };
-        await innerRunner.RunAsync(chosen);
+        await innerRunner.RunAsync(chosen).ConfigureAwait(false);
         innerRunner.ApplyStructural();
 
         var keep = new HashSet<OpenXmlElement>(keepElements);
@@ -1065,7 +1065,7 @@ class ScopeTreeRunner(
     }
 
     async Task<bool> EvaluateConditionAsync(Expression condition) =>
-        (await condition.EvaluateAsync(context)).ToBooleanValue();
+        (await condition.EvaluateAsync(context).ConfigureAwait(false)).ToBooleanValue();
 
     static string ToDisplayString(object value) =>
         value switch
