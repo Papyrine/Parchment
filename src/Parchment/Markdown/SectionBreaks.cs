@@ -91,20 +91,35 @@ static class SectionBreaks
     /// Rewrite every marker written by <see cref="TryWrite"/> into a real section derived from
     /// <paramref name="baseSection"/>, which is mutated in place to become the document-final section.
     /// </summary>
+    /// <remarks>
+    /// A paragraph can also carry a <c>w:sectPr</c> this class did not write: one an
+    /// <c>OpenXmlToken</c> returned, or one converted html produced. That one is a finished section
+    /// rather than a request for one, so it is left exactly as written. It ends the section before
+    /// it and says nothing about what follows, so the next marker and the document-final section
+    /// carry on from the settings that were in force - which also restates the style source's header
+    /// and footer references after it - and, being a section, it counts as one when deciding which
+    /// section is the first and may keep a page number start.
+    /// </remarks>
     public static void Apply(Body body, SectionProperties? baseSection, string name)
     {
-        var markers = body
+        var sections = body
             .Descendants<Paragraph>()
             .Where(_ => _.ParagraphProperties?.SectionProperties != null)
             .ToList();
 
-        if (markers.Count == 0)
+        if (sections.Count == 0)
         {
             return;
         }
 
         if (baseSection == null)
         {
+            // Nothing to derive from is only a problem for a marker.
+            if (!sections.Any(_ => IsDeclared(_.ParagraphProperties!.SectionProperties!)))
+            {
+                return;
+            }
+
             throw new ParchmentRenderException(
                 name,
                 $"'{Marker}' needs a style source to derive its page setup from, and this template has none.");
@@ -114,11 +129,26 @@ static class SectionBreaks
         // declared, so the marker after it — or the document-final section — inherits from there
         // rather than from the style source.
         var current = (SectionProperties) baseSection.CloneNode(true);
+        var first = true;
 
-        for (var index = 0; index < markers.Count; index++)
+        foreach (var paragraph in sections)
         {
-            var marker = markers[index];
-            if (!ReferenceEquals(marker.Parent, body))
+            var properties = paragraph.ParagraphProperties!;
+            var declared = properties.SectionProperties!;
+            var topLevel = ReferenceEquals(paragraph.Parent, body);
+
+            if (!IsDeclared(declared))
+            {
+                // Not a section of the body anywhere else, so only a top level one is counted.
+                if (topLevel)
+                {
+                    first = false;
+                }
+
+                continue;
+            }
+
+            if (!topLevel)
             {
                 throw new ParchmentRenderException(
                     name,
@@ -126,23 +156,25 @@ static class SectionBreaks
                     "One inside a list, a table cell or a block quote is not a section break Word can express.");
             }
 
-            var properties = marker.ParagraphProperties!;
-            var declared = properties.SectionProperties!;
             var next = Derive(current, declared);
 
             // Page numbering restarts wherever w:pgNumType carries a start, so only the first
             // section keeps the style source's. Every later one continues from the section before
             // it, which is what inserting a section break in Word gives you.
-            if (index > 0)
+            if (!first)
             {
                 StripPageNumberStart(current);
             }
 
+            first = false;
             properties.SectionProperties = current;
             current = next;
         }
 
-        StripPageNumberStart(current);
+        if (!first)
+        {
+            StripPageNumberStart(current);
+        }
 
         // The caller appends baseSection after this returns, so the last declared settings have to
         // land on that instance rather than on a replacement for it.
@@ -151,6 +183,19 @@ static class SectionBreaks
         {
             baseSection.AppendChild(child.CloneNode(true));
         }
+    }
+
+    // What TryWrite writes and nothing a finished section looks like: a w:pgSz naming an orientation
+    // and no size, with at most a w:pgMar beside it. Told apart by shape rather than by identity
+    // because the paragraph may have been cloned or parsed back from xml on its way here.
+    static bool IsDeclared(SectionProperties sectPr)
+    {
+        if (sectPr.GetFirstChild<PageSize>() is not { Orient: not null, Width: null, Height: null })
+        {
+            return false;
+        }
+
+        return sectPr.ChildElements.All(_ => _ is PageSize or PageMargin);
     }
 
     // An unresolved "[SECTION]" reaches the renderer as plain text, but not necessarily as one run of
