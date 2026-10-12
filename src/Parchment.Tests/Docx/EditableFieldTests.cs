@@ -1284,20 +1284,20 @@ public partial class EditableFieldTests
     }
 
     [Test]
-    public async Task HtmlEditableBulletListThenOrderedListRoundTrips() =>
-        await AssertHtmlRoundTrips("<ul><li>a</li></ul><ol><li>b</li></ol>");
+    public Task HtmlEditableBulletListThenOrderedListRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a</li></ul><ol><li>b</li></ol>");
 
     [Test]
-    public async Task HtmlEditableOrderedListThenBulletListRoundTrips() =>
-        await AssertHtmlRoundTrips("<ol><li>a</li><li>b</li></ol><ul><li>c</li></ul>");
+    public Task HtmlEditableOrderedListThenBulletListRoundTrips() =>
+        AssertHtmlRoundTrips("<ol><li>a</li><li>b</li></ol><ul><li>c</li></ul>");
 
     [Test]
-    public async Task HtmlEditableOrderedListNestedInBulletItemRoundTrips() =>
-        await AssertHtmlRoundTrips("<ul><li>a<ol><li>b</li><li>c</li></ol></li><li>d</li></ul>");
+    public Task HtmlEditableOrderedListNestedInBulletItemRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a<ol><li>b</li><li>c</li></ol></li><li>d</li></ul>");
 
     [Test]
-    public async Task HtmlEditableNestedListsOfDifferentKindsRoundTrip() =>
-        await AssertHtmlRoundTrips("<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol></li></ul><ol><li>d</li></ol>");
+    public Task HtmlEditableNestedListsOfDifferentKindsRoundTrip() =>
+        AssertHtmlRoundTrips("<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol></li></ul><ol><li>d</li></ol>");
 
     [Test]
     public async Task HtmlEditableAdjacentListsOfTheSameKindExtractAsOne()

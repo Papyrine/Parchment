@@ -40,7 +40,7 @@ public partial class LiquidMemberTests
         public IEnumerator<Line> GetEnumerator() =>
             lines.GetEnumerator();
 
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+        IEnumerator IEnumerable.GetEnumerator() =>
             GetEnumerator();
     }
 

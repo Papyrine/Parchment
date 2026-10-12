@@ -25,7 +25,7 @@ public partial class TextBoxTokenTests
     [Test]
     public async Task TokenIsSubstitutedOnceWhenTheValueIsShorter()
     {
-        using var template = Build(new Paragraph(new Run(VmlTextBox("{{ Title }}"))));
+        using var template = Build(new(new Run(VmlTextBox("{{ Title }}"))));
 
         var texts = await Render(template, "Al");
 
@@ -35,7 +35,7 @@ public partial class TextBoxTokenTests
     [Test]
     public async Task TokenIsSubstitutedOnceWhenTheValueIsLonger()
     {
-        using var template = Build(new Paragraph(new Run(VmlTextBox("{{ Title }}"))));
+        using var template = Build(new(new Run(VmlTextBox("{{ Title }}"))));
 
         var texts = await Render(template, "Alexandria the Great");
 
@@ -51,7 +51,7 @@ public partial class TextBoxTokenTests
             """
             <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml"><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline><wp:extent cx="100" cy="100"/><wp:docPr id="1" name="tb"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr/><wps:txbx><w:txbxContent><w:p><w:r><w:t>{{ Title }}</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>{{ Title }}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>
             """;
-        using var template = Build(new Paragraph(xml));
+        using var template = Build(new(xml));
 
         var texts = await Render(template, "Alexandria the Great");
 
@@ -62,7 +62,7 @@ public partial class TextBoxTokenTests
     public async Task AnchoringParagraphKeepsItsOwnTokens()
     {
         using var template = Build(
-            new Paragraph(
+            new(
                 new Run(Preserved("Dear {{ Title }}")),
                 new Run(VmlTextBox("Aside for {{ Title }}")),
                 new Run(Preserved(", welcome"))));
@@ -78,7 +78,7 @@ public partial class TextBoxTokenTests
     public async Task BlockTagsInsideATextBoxAreNotAttributedToTheAnchoringParagraph()
     {
         using var template = Build(
-            new Paragraph(
+            new(
                 new Run(Preserved("Label")),
                 new Run(VmlTextBox("{% if Show %}", "shown to {{ Title }}", "{% endif %}"))));
 
@@ -93,7 +93,7 @@ public partial class TextBoxTokenTests
     public async Task LoopInsideATextBoxRepeatsItsBody()
     {
         using var template = Build(
-            new Paragraph(
+            new(
                 new Run(Preserved("Label")),
                 new Run(VmlTextBox("{% for tag in Tags %}", "{{ tag }}", "{% endfor %}"))));
 
@@ -117,7 +117,7 @@ public partial class TextBoxTokenTests
     {
         var aside = new Paragraph(new Run(new TabChar(), Preserved("aside")));
         using var template = Build(
-            new Paragraph(
+            new(
                 new Run(new Picture(new V.Shape(new V.TextBox(new TextBoxContent(aside))))),
                 new Run(Preserved("Intro {{ Body }} outro"))));
 

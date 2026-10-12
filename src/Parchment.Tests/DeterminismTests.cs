@@ -389,7 +389,7 @@ public partial class DeterminismTests
         var second = BlankRelationshipIds();
 
         await Assert.That(first).IsEquivalentTo(second);
-        await Assert.That(first).IsEquivalentTo(new[] { "rId1", "rIdStyles" });
+        await Assert.That(first).IsEquivalentTo(["rId1", "rIdStyles"]);
     }
 
     static string[] BlankRelationshipIds()
