@@ -1310,7 +1310,7 @@ result.ApplyTo(model);
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
 - **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
 - **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
-- **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
+- **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member declared as `List<T>`, `T[]`, or an interface `List<T>` implements ([`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape)). One nesting level — an element type cannot itself hold an editable collection.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
 - **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
 
@@ -2438,7 +2438,7 @@ More than one `.dotx` `AdditionalFiles` entry is named after the model type — 
 
 ### `PARCH022` — `[EditableField]` collection has an unsupported shape
 
-An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The message names which constraint failed.
+An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The rebuilt collection is a `List<T>`, or a `T[]` for an array member, so the member must be declared as `List<T>`, `T[]`, or an interface `List<T>` implements (`IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`); a `HashSet<T>`, `Collection<T>`, `ObservableCollection<T>`, immutable collection or class deriving from `List<T>` is rejected. The message names which constraint failed.
 
 
 ### `PARCH023` — member carries conflicting format markers

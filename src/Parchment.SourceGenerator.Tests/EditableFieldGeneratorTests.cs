@@ -238,6 +238,83 @@ public class EditableFieldGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH022" && _.GetMessage().Contains("nested"))).IsTrue();
     }
 
+    // Extraction rebuilds an editable collection as a List<T> (a T[] for an array member) and the
+    // generated setter casts it to the declared type, so a declared type that cannot hold one
+    // used to compile, render, extract, and then throw InvalidCastException from ApplyTo.
+    [Test]
+    [Arguments("HashSet<Line>")]
+    [Arguments("SortedSet<Line>")]
+    [Arguments("LinkedList<Line>")]
+    [Arguments("Collection<Line>")]
+    [Arguments("ObservableCollection<Line>")]
+    [Arguments("ImmutableArray<Line>")]
+    [Arguments("ImmutableList<Line>")]
+    [Arguments("IImmutableList<Line>")]
+    [Arguments("ISet<Line>")]
+    [Arguments("LineList")]
+    [Arguments("ILineList")]
+    [Arguments("Line[,]")]
+    public async Task CollectionTypeThatCannotHoldTheRebuiltList_ReportsParch022(string type)
+    {
+        var result = GeneratorDriver.Run(CollectionTypeModel(type), "x");
+        var runResult = result.Results.Single();
+        var diagnostic = runResult.Diagnostics.Single(_ => _.Id.StartsWith("PARCH", StringComparison.Ordinal));
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH022");
+        await Assert.That(diagnostic.GetMessage()).Contains("cannot hold the rebuilt list");
+
+        // No entry is emitted, so the setter whose cast would fail does not exist.
+        var generated = string.Concat(runResult.GeneratedSources.Select(_ => _.SourceText.ToString()));
+        await Assert.That(generated).DoesNotContain("_EditableCollections");
+    }
+
+    [Test]
+    [Arguments("List<Line>")]
+    [Arguments("Line[]")]
+    [Arguments("IList<Line>")]
+    [Arguments("ICollection<Line>")]
+    [Arguments("IEnumerable<Line>")]
+    [Arguments("IReadOnlyList<Line>")]
+    [Arguments("IReadOnlyCollection<Line>")]
+    [Arguments("List<Line>?")]
+    public async Task CollectionTypeThatHoldsTheRebuiltList_EmitsCollectionEntry(string type)
+    {
+        var result = GeneratorDriver.Run(CollectionTypeModel(type), "x");
+        var runResult = result.Results.Single();
+        var ids = runResult.Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Any(_ => _.StartsWith("PARCH", StringComparison.Ordinal))).IsFalse();
+
+        var generated = string.Concat(runResult.GeneratedSources.Select(_ => _.SourceText.ToString()));
+        await Assert.That(generated).Contains("_EditableCollections");
+    }
+
+    static string CollectionTypeModel(string type) =>
+        $$"""
+          #nullable enable
+          using System.Collections.Generic;
+          using System.Collections.Immutable;
+          using System.Collections.ObjectModel;
+          using Parchment;
+
+          namespace Sample;
+
+          public class Line
+          {
+              [EditableField]
+              public string Note { get; set; } = "";
+          }
+
+          public class LineList : List<Line>;
+
+          public interface ILineList : IList<Line>;
+
+          [ParchmentModel]
+          public partial class Order
+          {
+              [EditableField]
+              public {{type}} Lines { get; set; } = default!;
+          }
+          """;
+
     [Test]
     public async Task ConflictingFormatMarkers_ReportsParch023()
     {

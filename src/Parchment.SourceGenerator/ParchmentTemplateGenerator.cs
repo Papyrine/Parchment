@@ -696,6 +696,16 @@ public sealed class ParchmentTemplateGenerator :
         string memberDisplay,
         MemberEntry member)
     {
+        if (!member.EditableCollectionAssignable)
+        {
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
+                $"its type '{Display(member.TypeFullyQualifiedName)}' cannot hold the rebuilt list — extraction builds a List<T> (a T[] for an array member), so declare the member as List<T>, T[], or an interface List<T> implements such as IList<T> or IReadOnlyList<T>");
+        }
+
         TypeEntry? element = null;
         foreach (var type in target.Shape.Types)
         {

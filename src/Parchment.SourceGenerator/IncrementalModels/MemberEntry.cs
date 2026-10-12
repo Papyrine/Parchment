@@ -29,4 +29,7 @@
     // set and this holds the raw name for the diagnostic; emission skips it, so the clean report is
     // the only error rather than the first of a cascade.
     string? ExcelsiorConfigure = null,
-    bool ExcelsiorConfigureMissing = false);
+    bool ExcelsiorConfigureMissing = false,
+    // False when an [EditableField] collection is declared as a type that cannot hold the List<T>
+    // or T[] extraction rebuilds - reported as PARCH022 and excluded from emission.
+    bool EditableCollectionAssignable = true);
