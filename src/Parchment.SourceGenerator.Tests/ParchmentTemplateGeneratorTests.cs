@@ -1,4 +1,4 @@
-﻿public class ParchmentTemplateGeneratorTests
+public class ParchmentTemplateGeneratorTests
 {
     const string letterModelDocx =
         """
@@ -292,6 +292,72 @@
         return Verify(result);
     }
 
+    // PARCH003 used to fire for every dashed tag, on a template the runtime registers and renders.
+    [Test]
+    public async Task WhitespaceControlOnBlockTags_ReportsNothing()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                public List<Line> Lines { get; set; } = new();
+                public bool Flag { get; set; }
+                public bool Other { get; set; }
+                public string Name { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{%- for line in Lines -%}",
+            "{{- line.Description -}}",
+            "{%-endfor-%}",
+            "{%- for line in Lines %}",
+            "{{ line.Description -}}",
+            "{% endfor -%}",
+            "{%- if Flag -%}",
+            "{{- Name }}",
+            "{%- elsif Other -%}",
+            "b",
+            "{%- else -%}",
+            "c",
+            "{%- endif -%}");
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+    }
+
+    // A missing member behind a dashed tag is still found, so the hyphens hide nothing.
+    [Test]
+    public async Task WhitespaceControlOnBlockTags_StillValidatesTheExpression()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Empty;
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{%- if Missing -%}",
+            "a",
+            "{%- endif -%}",
+            "{%- foobar -%}");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).IsEquivalentTo(["PARCH001", "PARCH003"]);
+    }
+
     [Test]
     public Task TemplateFileMissing()
     {
@@ -412,6 +478,105 @@
         await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH006");
     }
 
+    // A word processor keeps the document it is editing open with write access, whichever way it
+    // shares it. The generator only reads, so that is not a PARCH006: the template is validated
+    // (the PARCH001 below) and the bytes on disk are the ones embedded.
+    [Test]
+    [Arguments(FileShare.Read)]
+    [Arguments(FileShare.ReadWrite)]
+    public async Task DocxOpenForWritingElsewhere_IsStillRead(FileShare share)
+    {
+        var bytes = GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!", "{{ Missing }}");
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            letterModelDocx,
+            new TemplateFile("Letter.parchment.docx", bytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(setup.DocxPath, FileMode.Open, FileAccess.ReadWrite, share))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH001"]);
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(bytes));
+    }
+
+    // Saving replaces the file, which takes a handle with delete access. DeleteOnClose is the
+    // way to hold one from here.
+    [Test]
+    public async Task DocxOpenForDeletionElsewhere_IsStillRead()
+    {
+        var bytes = GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!", "{{ Missing }}");
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            letterModelDocx,
+            new TemplateFile("Letter.parchment.docx", bytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(
+                   setup.DocxPath,
+                   FileMode.Open,
+                   FileAccess.ReadWrite,
+                   FileShare.ReadWrite | FileShare.Delete,
+                   bufferSize: 1,
+                   FileOptions.DeleteOnClose))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH001"]);
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(bytes));
+    }
+
+    // The style document of a markdown template is read the same way as a docx template.
+    [Test]
+    [Arguments(FileShare.Read)]
+    [Arguments(FileShare.ReadWrite)]
+    public async Task StyleDocOpenForWritingElsewhere_IsStillRead(FileShare share)
+    {
+        var styleBytes = GeneratorDriver.BuildDocxBytes("styled");
+        var setup = GeneratorDriver.CreateDriverWithFiles(
+            letterModelMd,
+            new TemplateFile("Letter.parchment.md", "Hello {{ Customer.Name }}!"u8.ToArray()),
+            new TemplateFile("Letter.parchment.dotx", styleBytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(setup.DocxPaths[1], FileMode.Open, FileAccess.ReadWrite, share))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics).IsEmpty();
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(styleBytes));
+    }
+
+    [Test]
+    public async Task StyleDocOpenForDeletionElsewhere_IsStillRead()
+    {
+        var styleBytes = GeneratorDriver.BuildDocxBytes("styled");
+        var setup = GeneratorDriver.CreateDriverWithFiles(
+            letterModelMd,
+            new TemplateFile("Letter.parchment.md", "Hello {{ Customer.Name }}!"u8.ToArray()),
+            new TemplateFile("Letter.parchment.dotx", styleBytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(
+                   setup.DocxPaths[1],
+                   FileMode.Open,
+                   FileAccess.ReadWrite,
+                   FileShare.ReadWrite | FileShare.Delete,
+                   bufferSize: 1,
+                   FileOptions.DeleteOnClose))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics).IsEmpty();
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(styleBytes));
+    }
+
+    static string GeneratedText(GeneratorDriverRunResult result) =>
+        string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+
     [Test]
     public async Task RemovePersonalInformation_Missing_EmitsWarning()
     {
@@ -487,6 +652,28 @@
         // Token in the same paragraph as other text must trip PARCH007. The SG asserts diagnostic
         // id directly instead of snapshotting because diagnostic messages may reword over time.
         var result = GeneratorDriver.Run(excelsiorModel, "Prefix {{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
+    // Lockstep with the runtime's ExcelsiorTokenValidator: both ask TokenScan.IsSolo, so padding
+    // around the token is fine and a second token in the paragraph is not.
+    [Test]
+    [Arguments("{{ Lines }} ")]
+    [Arguments(" {{ Lines }}")]
+    public async Task ExcelsiorToken_PaddedWithWhitespace_NoDiagnostics(string paragraph)
+    {
+        var result = GeneratorDriver.Run(excelsiorModel, paragraph);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+    }
+
+    [Test]
+    [Arguments("{{ Lines }}{{ Lines }}")]
+    [Arguments("{{ Lines }} {{ Lines }}")]
+    public async Task ExcelsiorToken_SharingParagraphWithAnotherToken_Diagnostic(string paragraph)
+    {
+        var result = GeneratorDriver.Run(excelsiorModel, paragraph);
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
     }
