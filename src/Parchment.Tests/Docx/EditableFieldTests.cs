@@ -509,6 +509,114 @@ public partial class EditableFieldTests
         await Assert.That(result.Fields.Single(_ => _.Path == "Stage").Value).IsEqualTo(ReviewStage.InProgress);
     }
 
+    public enum AliasedLevel
+    {
+        Low = 1,
+        Minor = 1,
+
+        [Display(Name = "Top")]
+        High = 2,
+        VeryHigh = 2,
+        Other = 3
+    }
+
+    public enum SameLabelChoice
+    {
+        [Display(Name = "Same")]
+        First,
+
+        [Display(Name = "Same")]
+        Second,
+        Third
+    }
+
+    [ParchmentBindable]
+    public partial class AliasedModel
+    {
+        [EditableField]
+        public AliasedLevel Level { get; set; }
+
+        [EditableField]
+        public AliasedLevel? Optional { get; set; }
+
+        [EditableField]
+        public SameLabelChoice Choice { get; set; }
+    }
+
+    static List<(string Text, string Value)> DropDownItems(SdtRun sdt) =>
+        sdt.SdtProperties!.GetFirstChild<SdtContentDropDownList>()!
+            .Elements<ListItem>()
+            .Select(_ => (_.DisplayText!.Value!, _.Value!.Value!))
+            .ToList();
+
+    static void PickDropDownText(Stream stream, string tag, string text)
+    {
+        using var doc = WordprocessingDocument.Open(stream, true);
+        var sdt = FindSdt(doc.MainDocumentPart!.Document!.Body!, tag);
+        var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+        content.RemoveAllChildren();
+        content.AppendChild(new Run(new Text(text)));
+        doc.Save();
+    }
+
+    [Test]
+    public async Task DropDownGivesEachNameOfASharedEnumValueItsOwnLabel()
+    {
+        // Minor is an alias of Low and VeryHigh of High; the model holds the alias both times.
+        using var stream = await RenderModel(
+            "{{ Level }} {{ Optional }}",
+            new AliasedModel { Level = AliasedLevel.Minor, Optional = AliasedLevel.VeryHigh });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var level = FindSdt(body, "Level");
+            var items = DropDownItems(level);
+            await Assert.That(items.Select(_ => _.Value)).IsEquivalentTo(["Low", "Minor", "High", "VeryHigh", "Other"]);
+            await Assert.That(items.Select(_ => _.Text)).IsEquivalentTo(["Low", "Minor", "Top", "Very high", "Other"]);
+
+            // The selection is the first declared name of the value.
+            await Assert.That(level.InnerText).IsEqualTo("Low");
+            await Assert.That(FindSdt(body, "Optional").InnerText).IsEqualTo("Top");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Level").Value).IsEqualTo(AliasedLevel.Low);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Optional").Value).IsEqualTo(AliasedLevel.High);
+
+        // Picking an alias entry extracts its value.
+        stream.Position = 0;
+        PickDropDownText(stream, "Level", "Very high");
+        stream.Position = 0;
+        result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Level").Value).IsEqualTo(AliasedLevel.High);
+    }
+
+    [Test]
+    public async Task DropDownKeepsMembersWithTheSameLabelDistinguishable()
+    {
+        using var stream = await RenderModel("{{ Choice }}", new AliasedModel { Choice = SameLabelChoice.Second });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var choice = FindSdt(doc.MainDocumentPart!.Document!.Body!, "Choice");
+            await Assert.That(DropDownItems(choice).Select(_ => _.Text)).IsEquivalentTo(["Same", "Same (Second)", "Third"]);
+            await Assert.That(choice.InnerText).IsEqualTo("Same (Second)");
+        }
+
+        // Second used to read back as First, the first item showing "Same".
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Choice").Value).IsEqualTo(SameLabelChoice.Second);
+
+        stream.Position = 0;
+        PickDropDownText(stream, "Choice", "Same");
+        stream.Position = 0;
+        result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Choice").Value).IsEqualTo(SameLabelChoice.First);
+    }
+
     [Test]
     public async Task TemporalKindsRenderWithCorrectControls()
     {
