@@ -2535,6 +2535,12 @@ A property declared with a body on an interface — e.g. `interface IDocument { 
 
 Extension properties compile to static methods on the extension container class, not as instance properties of the target type. `typeof(Customer).GetProperties(...)` does not return them, and `ITypeSymbol.GetMembers()` on the target returns only members declared on the type symbol. Neither the runtime walkers nor `ShapeBuilder` see them. Workaround: declare the property on the model class itself — the model already pays the partial-class / Parchment-reference cost, so helper / computed properties belong there.
 
+### Members of system types
+
+Accessors are generated for the types a model is built from, not for a type in the `System` namespace or one beneath it, so the CLR members of such a type are not bound: `{{ When.Year }}` on a `DateTime`, `{{ Maybe.Value }}` and `{{ Maybe.HasValue }}` on an `int?`, `{{ Pair.Item1 }}` on a tuple. A nullable struct is a `Nullable<T>` as well, so the members of the struct are not reached through it. The value itself binds as usual (`{{ When }}`, `{{ Maybe }}`). The exceptions are liquid's own `size`, `first` and `last` on a string or a collection (see [Registration-time validation](#registration-time-validation)), and `Key` and `Value` on a `KeyValuePair`. Workaround: expose the value as a computed property on the model, such as `public int Year => When.Year;`.
+
+The model has no name of its own inside a template either. Its members are the root identifiers, so `{{ model.Name }}` and `{{ Invoice.Name }}` are unknown members; the form that binds is `{{ Name }}`.
+
 
 ## Benchmarks
 

@@ -87,28 +87,63 @@ static class ModelValidator
     static string MissingMemberMessage(Type type, string name)
     {
         var kind = LiquidMembers.Classify(type);
-        if (kind == LiquidKind.None)
+        if (kind != LiquidKind.None)
         {
-            return $"Member '{name}' is not a property or field of '{type.Name}'";
+            return LiquidMembers.MissingMessage(kind, type, name);
         }
 
-        return LiquidMembers.MissingMessage(kind, type, name);
+        if (HasNoAccessors(type))
+        {
+            return $"Member '{name}' of '{type.Name}' is not available to a template. " +
+                   "No member of a system type is bound; expose the value as a member of the model instead.";
+        }
+
+        return $"Member '{name}' is not a property or field of '{type.Name}'";
     }
 
     /// <summary>
     /// Resolves a segment after the first. Unlike the root, which binds through the model's own
     /// accessors, what such a segment is read from may be a string or a collection, and those
     /// answer to liquid's members rather than their CLR ones — see <see cref="LiquidMembers"/>.
+    /// It may also be a system type, which has no accessors at all.
     /// </summary>
     public static bool TryResolveSegment(Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
         var kind = LiquidMembers.Classify(type);
-        if (kind == LiquidKind.None)
+        if (kind != LiquidKind.None)
         {
-            return TryResolveMember(type, name, out memberType);
+            return LiquidMembers.TryResolve(kind, type, name, out memberType);
         }
 
-        return LiquidMembers.TryResolve(kind, type, name, out memberType);
+        if (HasNoAccessors(type))
+        {
+            memberType = null;
+            return false;
+        }
+
+        return TryResolveMember(type, name, out memberType);
+    }
+
+    // The generator emits accessors for the model's own types and stops at a system one
+    // (ShapeBuilder.IsSystemType): Year on a DateTime, Value on a Nullable<T> and Item1 on a tuple
+    // are all there to reflect on, and all render blank. KeyValuePair<K, V> is the one system type
+    // it surfaces members for, Key and Value, which are also all that type declares.
+    static bool HasNoAccessors(Type type)
+    {
+        if (type.IsGenericType &&
+            type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            return false;
+        }
+
+        var ns = type.Namespace;
+        if (ns == null)
+        {
+            return false;
+        }
+
+        return ns == "System" ||
+               ns.StartsWith("System.", StringComparison.Ordinal);
     }
 
     public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)
@@ -145,21 +180,8 @@ static class ModelValidator
             return true;
         }
 
-        if (TryResolveMember(modelType, name, out rootType))
-        {
-            return true;
-        }
-
-        if (MatchesRootIdentifier(modelType, name))
-        {
-            rootType = modelType;
-            return true;
-        }
-
-        return false;
+        // Nothing else names the model: it is the scope a root identifier is read from, so a
+        // `model.` or type-name prefix is one more unknown member, and renders blank.
+        return TryResolveMember(modelType, name, out rootType);
     }
-
-    static bool MatchesRootIdentifier(Type modelType, string name) =>
-        string.Equals(name, modelType.Name, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "model", StringComparison.OrdinalIgnoreCase);
 }
