@@ -30,6 +30,8 @@
     <None Include="nuget-readme.md" Pack="true" PackagePath="\" />
     <!-- buildTransitive as well as build, so a project that reaches Parchment through a project
          reference gets the template item types too. -->
+    <None Include="build\Parchment.props" Pack="true" PackagePath="build\" Visible="false" />
+    <None Include="build\Parchment.props" Pack="true" PackagePath="buildTransitive\" Visible="false" />
     <None Include="build\Parchment.targets" Pack="true" PackagePath="build\" Visible="false" />
     <None Include="build\Parchment.targets" Pack="true" PackagePath="buildTransitive\" Visible="false" />
   </ItemGroup>

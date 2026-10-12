@@ -113,6 +113,29 @@ public class TargetsTests
     public async Task DiscoversAnUndeclaredTemplate() =>
         await Assert.That(AdditionalFileItems).Contains("DiscoveredModel.parchment.md");
 
+    // The globs run ahead of the project body, so the fixture's <ParchmentTemplate Remove="Drafts\**" />
+    // has something to act on. Drafts holds a namesake of DiscoveredModel's template: were it still
+    // discovered, the model would match two files and FixtureBuilds would fail on PARCH020.
+    [Test]
+    public async Task RemoveTakesATemplateOutOfDiscovery()
+    {
+        await Assert.That(AdditionalFileItems).DoesNotContain("Drafts");
+        await Assert.That(BuildOutput).DoesNotContain("PARCH020");
+    }
+
+    // CopiedModel.parchment.md is both discovered and declared. The generator must be handed it
+    // once: twice is two candidates for one model.
+    [Test]
+    public async Task ADeclaredTemplateIsNotAlsoDiscovered()
+    {
+        // One Identity line per item; the other metadata of an item repeats the file name.
+        var entries = AdditionalFileItems
+            .Split('\n')
+            .Count(_ => _.Contains("\"Identity\"") &&
+                        _.Contains("CopiedModel.parchment.md"));
+        await Assert.That(entries).IsEqualTo(1);
+    }
+
     // An unmarked markdown file is not swept in, which is the whole reason globbing is safe.
     [Test]
     public async Task DoesNotDiscoverUnmarkedMarkdown() =>

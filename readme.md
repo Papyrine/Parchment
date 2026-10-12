@@ -2183,6 +2183,16 @@ Discovery covers the project folder. A template outside it, or under a path the 
 
 `ParchmentTemplate` expands to `AdditionalFiles` and nothing else. `<AdditionalFiles>` directly works the same way; the dedicated item type is there so a file listing says what the files are for. Set `EnableDefaultParchmentTemplates` to `false` to take the globs off entirely and declare every template by hand.
 
+A discovered template is an ordinary `ParchmentTemplate` item by the time the project file is read, so `Remove` takes a file or a folder out of discovery — a drafts folder, say, whose templates would otherwise collide with the real ones as [`PARCH020`](#parch020--model-matches-more-than-one-template-file):
+
+```xml
+<ItemGroup>
+  <ParchmentTemplate Remove="Drafts\**" />
+</ItemGroup>
+```
+
+The item to remove from is `ParchmentTemplate`, not `AdditionalFiles`: the package copies the templates across only after the project file has been read, so an `<AdditionalFiles Remove="..." />` written there finds nothing to remove.
+
 **A template should carry exactly one item type.** Listing the same file as an `<AdditionalFiles>` entry and also as `<EmbeddedResource>` or `<Content>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--no-template-found-for-model) that a command-line build cannot reproduce. Since the template is embedded into the generated source, the second item type is never needed. A hand-written second identity is reported as `PARCH100`; the `None` item the SDK's default glob adds to every template is the exception and is left in place: `None` is never handed to the compiler, so it cannot shadow the template, and it is what keeps the file listed in the IDE's solution explorer.
 
 #### How a template is found
