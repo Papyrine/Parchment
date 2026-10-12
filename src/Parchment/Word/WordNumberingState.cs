@@ -23,9 +23,11 @@ class WordNumberingState(MainDocumentPart mainPart)
         return AppendInstance(numbering, abstractId);
     }
 
-    // The abstractNum is shared by every list of its format, so a list that starts somewhere other
-    // than 1 says so on its own instance. A list starting at 1 writes no override, which keeps its
-    // instance identical to the one written before the start was honored.
+    // The abstractNum is shared by every list of its format, and Word runs one count per level
+    // through every instance of an abstractNum: a list carries on from the one before it unless its
+    // own instance restarts the level. So every list states its start on its instance, a start of 1
+    // included, on the level its items use. A nested list is an instance of its own, so that one
+    // level is all an instance ever numbers.
     public int CreateOrderedNumbering(NumberFormatValues format, int ilvl = 0, int start = 1)
     {
         EnsureInitialized();
@@ -37,18 +39,15 @@ class WordNumberingState(MainDocumentPart mainPart)
         }
 
         var numId = AppendInstance(numbering, abstractId);
-        if (start != 1)
-        {
-            numbering.LastChild!.Append(
-                new LevelOverride
+        numbering.LastChild!.Append(
+            new LevelOverride
+            {
+                LevelIndex = ilvl,
+                StartOverrideNumberingValue = new()
                 {
-                    LevelIndex = ilvl,
-                    StartOverrideNumberingValue = new()
-                    {
-                        Val = start
-                    }
-                });
-        }
+                    Val = start
+                }
+            });
 
         return numId;
     }
