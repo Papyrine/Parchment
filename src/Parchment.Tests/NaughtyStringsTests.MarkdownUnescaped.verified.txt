@@ -649,7 +649,7 @@ undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | Fal
       Number: 37,
       Text:
 • {% print ‘x’ * 64 * 1024**3 %}
-• {{ "".class.mro[2].subclasses()40.read() }}
+• {{ "".class.mro[2].subclasses()40 ("/etc/passwd").read() }}
 • En dash –
 • Em dash —
 • Horizontal bar ―
@@ -666,11 +666,11 @@ undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | Fal
 • Paragraph ¶
 • Ellipsis …
 • Optional hyphen ¬
-• Non-breaking hyphen ߛ
     },
     {
       Number: 38,
       Text:
+• Non-breaking hyphen ߛ
 • Em space ߓ
 • En space ߒ
 • Quarter space ߕ
