@@ -246,6 +246,185 @@ public partial class SectionBreakTests
         await Assert.That(exception!.Message).Contains("style source");
     }
 
+    // A token can return a paragraph carrying a section of its own. It is a finished section, not a
+    // marker, so it is left as written, and the markers around it behave as if it were any other
+    // section: the first marker after it is no longer the first section of the document.
+    [Test]
+    public async Task ACallersSectionBeforeAnyMarkerIsLeftAlone()
+    {
+        using var styleSource = StyleSourceNumberedFromOne();
+        var sections = await Sections(
+            """
+            One.
+
+            {{ Break }}
+
+            Two.
+
+            [SECTION]{orientation=landscape}
+
+            Three.
+            """,
+            styleSource);
+
+        await Assert.That(sections.Count).IsEqualTo(3);
+        await AssertCallers(sections[0]);
+        await Assert.That(Orientation(sections[1])).IsEqualTo("portrait");
+        await Assert.That(sections[1].GetFirstChild<PageBorders>()).IsNotNull();
+        await Assert.That(sections[1].GetFirstChild<PageNumberType>()).IsNull();
+        await Assert.That(Orientation(sections[2])).IsEqualTo("landscape");
+        await Assert.That(sections[2].GetFirstChild<PageNumberType>()).IsNull();
+    }
+
+    // It ends the section before it and says nothing about what follows, so the second marker
+    // starts from what the first declared rather than from the caller's page or the style source.
+    [Test]
+    public async Task ACallersSectionBetweenTwoMarkersDoesNotChangeWhatTheSecondInherits()
+    {
+        using var styleSource = StyleSourceNumberedFromOne();
+        var sections = await Sections(
+            """
+            One.
+
+            [SECTION]{orientation=landscape margins=100,200,300,400}
+
+            Two.
+
+            {{ Break }}
+
+            Three.
+
+            [SECTION]{orientation=portrait}
+
+            Four.
+            """,
+            styleSource);
+
+        await Assert.That(sections.Count).IsEqualTo(4);
+        await Assert.That(sections[0].GetFirstChild<PageNumberType>()!.Start!.Value).IsEqualTo(1);
+        await AssertCallers(sections[1]);
+        await Assert.That(Orientation(sections[2])).IsEqualTo("landscape");
+        await Assert.That(sections[2].GetFirstChild<PageSize>()!.Width!.Value).IsEqualTo(8000u);
+        await Assert.That(sections[2].GetFirstChild<PageMargin>()!.Top!.Value).IsEqualTo(100);
+        await Assert.That(Orientation(sections[3])).IsEqualTo("portrait");
+        await Assert.That(sections[3].GetFirstChild<PageSize>()!.Width!.Value).IsEqualTo(6500u);
+        await Assert.That(sections[3].GetFirstChild<PageMargin>()!.Top!.Value).IsEqualTo(100);
+        await Assert.That(sections[3].GetFirstChild<PageBorders>()).IsNotNull();
+    }
+
+    [Test]
+    public async Task ACallersSectionAfterTheLastMarkerLeavesTheRestOfTheDocumentToTheMarker()
+    {
+        var sections = await Sections(
+            """
+            One.
+
+            [SECTION]{orientation=landscape}
+
+            Two.
+
+            {{ Break }}
+
+            Three.
+            """);
+
+        await Assert.That(sections.Count).IsEqualTo(3);
+        await Assert.That(Orientation(sections[0])).IsEqualTo("portrait");
+        await AssertCallers(sections[1]);
+        await Assert.That(Orientation(sections[2])).IsEqualTo("landscape");
+        await Assert.That(sections[2].GetFirstChild<PageBorders>()).IsNotNull();
+    }
+
+    // No marker at all: the document-final section is the style source's, less the page number
+    // start that only the first section of a document keeps.
+    [Test]
+    public async Task ACallersSectionWithNoMarkerLeavesTheStyleSourcesSectionLast()
+    {
+        using var styleSource = StyleSourceNumberedFromOne();
+        var sections = await Sections("One.\n\n{{ Break }}\n\nTwo.", styleSource);
+
+        await Assert.That(sections.Count).IsEqualTo(2);
+        await AssertCallers(sections[0]);
+        await Assert.That(sections[1].GetFirstChild<PageSize>()!.Width!.Value).IsEqualTo(6500u);
+        await Assert.That(sections[1].GetFirstChild<PageBorders>()).IsNotNull();
+        await Assert.That(sections[1].GetFirstChild<PageNumberType>()).IsNull();
+    }
+
+    [Test]
+    public async Task ACallersSectionInsideALoopIsLeftAlonePerIteration()
+    {
+        var sections = await Sections(
+            """
+            {% for item in Items %}
+
+            {{ item }}
+
+            {{ Break }}
+
+            [SECTION]{orientation=landscape}
+
+            {% endfor %}
+
+            End.
+            """);
+
+        await Assert.That(sections.Count).IsEqualTo(5);
+        await AssertCallers(sections[0]);
+        await Assert.That(Orientation(sections[1])).IsEqualTo("portrait");
+        await AssertCallers(sections[2]);
+        await Assert.That(Orientation(sections[3])).IsEqualTo("landscape");
+        await Assert.That(Orientation(sections[4])).IsEqualTo("landscape");
+    }
+
+    // Nothing to derive from is only a problem for a marker. A caller's section asks for nothing.
+    [Test]
+    public async Task ACallersSectionNeedsNoStyleSource()
+    {
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<BreakModel>("One.\n\n{{ Break }}\n\nTwo.");
+
+        using var stream = new MemoryStream();
+        await store.Render(new BreakModel(), stream);
+        stream.Position = 0;
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var sections = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<SectionProperties>()
+            .ToList();
+
+        await AssertCallers(sections[0]);
+    }
+
+    [ParchmentBindable]
+    public partial class BreakModel
+    {
+        public List<string> Items = ["a", "b"];
+
+        public OpenXmlToken Break = new(_ =>
+        [
+            new Paragraph(
+                new ParagraphProperties(
+                    new SectionProperties(
+                        new PageSize
+                        {
+                            Width = 5000,
+                            Height = 4000
+                        },
+                        new PageNumberType
+                        {
+                            Start = 7
+                        })))
+        ]);
+    }
+
+    static async Task AssertCallers(SectionProperties section)
+    {
+        await Assert.That(section.ChildElements.Count).IsEqualTo(2);
+        var size = section.GetFirstChild<PageSize>()!;
+        await Assert.That(size.Width!.Value).IsEqualTo(5000u);
+        await Assert.That(size.Height!.Value).IsEqualTo(4000u);
+        await Assert.That(section.GetFirstChild<PageNumberType>()!.Start!.Value).IsEqualTo(7);
+    }
+
     static async Task<string> Text(string markdown)
     {
         using var stream = await Render(markdown);
@@ -268,10 +447,10 @@ public partial class SectionBreakTests
     {
         using var built = styleSource == null ? DocxTemplateBuilder.Build() : null;
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource ?? built);
+        store.RegisterMarkdownTemplate<BreakModel>(markdown, styleSource ?? built);
 
         var stream = new MemoryStream();
-        await store.Render(new EmptyModel(), stream);
+        await store.Render(new BreakModel(), stream);
         stream.Position = 0;
         return stream;
     }
