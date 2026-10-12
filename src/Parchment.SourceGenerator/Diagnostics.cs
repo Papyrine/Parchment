@@ -257,6 +257,18 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch028--block-tags-in-different-containers");
 
+    // The message is the runtime ScopeTreeBuilder's own, so a build and a registration that trip
+    // over the same template say the same thing. Markdown reports this through PARCH006: Fluid
+    // parses the whole file and names the unclosed tag itself.
+    public static readonly DiagnosticDescriptor UnbalancedBlockTags = new(
+        id: "PARCH035",
+        title: "Block tags are not balanced",
+        messageFormat: "Template '{0}' has unbalanced block tags: {1}",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch035--block-tags-are-not-balanced");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",

@@ -4,7 +4,11 @@ public static class TokenScanner
 
     // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
     // onto its tokens. Omitted, every token reports container 0.
-    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
+    // parts runs parallel the same way: the index of the part each paragraph came from.
+    public static List<Token> Scan(
+        IEnumerable<string> paragraphs,
+        IReadOnlyList<int>? containers = null,
+        IReadOnlyList<int>? parts = null)
     {
         var result = new List<Token>();
         var index = -1;
@@ -18,10 +22,19 @@ public static class TokenScanner
             }
 
             var hasOtherContent = TokenScan.HasContentOutsideSites(paragraph, sites);
+            // The runtime rejects a block tag that shares its paragraph with anything: text, a
+            // substitution, or another block tag. Only the first is content outside the sites.
+            var blockHasOtherContent = hasOtherContent || sites.Count > 1;
             var container = 0;
             if (containers != null)
             {
                 container = containers[index];
+            }
+
+            var part = 0;
+            if (parts != null)
+            {
+                part = parts[index];
             }
 
             foreach (var site in sites)
@@ -29,12 +42,11 @@ public static class TokenScanner
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
+                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container, Part = part });
+                    continue;
                 }
-                else
-                {
-                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
-                }
+
+                result.Add(ParseBlockTag(source, blockHasOtherContent) with { Container = container, Part = part });
             }
         }
 
@@ -43,9 +55,9 @@ public static class TokenScanner
 
     static Token ParseSubstitution(string source, bool hasOtherContent)
     {
-        if (!parser.TryParse(source, out var template, out _))
+        if (!parser.TryParse(source, out var template, out var error))
         {
-            return new(TokenKind.Substitution, source, [], null, hasOtherContent);
+            return new(TokenKind.Substitution, source, [], null, hasOtherContent, ParseError: error);
         }
 
         var references = IdentifierVisitor.Collect(template);

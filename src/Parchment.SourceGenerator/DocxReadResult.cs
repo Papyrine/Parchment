@@ -5,10 +5,13 @@
 /// runtime only dispatches editable fields in the body — the same token in a header renders as
 /// plain read-only text by design. <paramref name="ParagraphContainers"/> runs parallel to
 /// <paramref name="Paragraphs"/>: two paragraphs carry the same id exactly when they share a parent
-/// element, which is what the block-tag sibling rule (PARCH028) compares.
+/// element, which is what the block-tag sibling rule (PARCH028) compares. <paramref name="ParagraphParts"/>
+/// runs parallel too: the index of the part each paragraph came from, since block tags pair within
+/// one part only (PARCH035).
 /// </summary>
 readonly record struct DocxReadResult(
     List<string> Paragraphs,
     List<string> BodyParagraphs,
     List<int> ParagraphContainers,
+    List<int> ParagraphParts,
     bool HasRemovePersonalInformation);

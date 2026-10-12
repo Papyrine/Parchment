@@ -9,7 +9,9 @@ static class DocxArchiveReader
         var paragraphs = new List<string>();
         var bodyParagraphs = new List<string>();
         var containers = new List<int>();
+        var parts = new List<int>();
         var containerCount = 0;
+        var partCount = 0;
         var hasRemovePersonalInformation = false;
         var builder = new StringBuilder();
         using var archive = ZipFile.OpenRead(filePath);
@@ -38,6 +40,7 @@ static class DocxArchiveReader
             // Numbered in order of first appearance and never reset between parts, so the ids are
             // stable for a given document and a header paragraph never shares one with the body.
             var containerIds = new Dictionary<XElement, int>();
+            var part = partCount++;
 
             foreach (var paragraph in doc.Descendants(paragraphName))
             {
@@ -49,6 +52,7 @@ static class DocxArchiveReader
                     var text = builder.ToString();
                     paragraphs.Add(text);
                     containers.Add(ContainerId(paragraph, containerIds, ref containerCount));
+                    parts.Add(part);
                     if (isBody)
                     {
                         bodyParagraphs.Add(text);
@@ -57,7 +61,7 @@ static class DocxArchiveReader
             }
         }
 
-        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, containers, parts, hasRemovePersonalInformation);
     }
 
     static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)

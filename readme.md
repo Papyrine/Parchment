@@ -2286,7 +2286,7 @@ A correct `FullPath` in that output means the build is right and the IDE's proje
 
 ### `PARCH005` — block tag shares a paragraph
 
-**Docx only.** Block tags (`{% for %}`, `{% if %}`, etc.) must sit alone in their own paragraph. Mixing a block tag with other text on the same line is rejected. Markdown templates are exempt — Fluid parses the whole file as one template, so inline block tags like `Hello {% if x %}World{% endif %}` are legal.
+**Docx only.** Block tags (`{% for %}`, `{% if %}`, etc.) must sit alone in their own paragraph. Mixing a block tag with other text, a `{{ ... }}` token or another block tag in the same paragraph is rejected. Markdown templates are exempt — Fluid parses the whole file as one template, so inline block tags like `Hello {% if x %}World{% endif %}` are legal.
 
 ```
 // Template paragraphs — "prefix" is on the same line as the for tag
@@ -2298,7 +2298,7 @@ prefix {% for line in Lines %}
 
 ### `PARCH006` — template file unreadable
 
-The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error.
+The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error. For docx, it also fires for a `{{ ... }}` token Fluid cannot parse, such as an empty `{{ }}` or method-call syntax (`{{ Name.ToUpper() }}`); the message carries the parser error and the token.
 
 
 ### `PARCH007` — `[ExcelsiorTable]` token not alone in its block
@@ -2506,6 +2506,21 @@ Remove the modifier, or drop `[EditableField]` from the member to render it read
 ```
 
 Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
+
+
+### `PARCH035` — block tags are not balanced
+
+**Docx only.** Every `{% for %}` needs its `{% endfor %}` and every `{% if %}` its `{% endif %}`, blocks must nest and not cross, `{% elsif %}` / `{% else %}` belong inside an `{% if %}`, and nothing but `{% endif %}` follows an `{% else %}`. Tags pair within one part: a block opened in a header cannot be closed in the body. The message is the one registration would otherwise throw at run time, and names the first tag that does not fit; the tags after it cannot be paired reliably, so each part is reported once.
+
+```
+{% for line in Lines %}
+{% if line.Description %}
+{{ line.Description }}
+{% endfor %}                 ← closes the loop while the if is still open
+{% endif %}
+```
+
+A markdown template reports the same mistakes through [`PARCH006`](#parch006--template-file-unreadable), with the Fluid parser's wording.
 
 
 ### `PARCH100` — template carries a second item type

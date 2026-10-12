@@ -12,4 +12,9 @@
     int Container = 0,
     // A `for` over a range such as `(1..Count)`. References are then the range's bounds rather
     // than the thing iterated, and the loop variable is untyped.
-    bool LoopSourceIsRange = false);
+    bool LoopSourceIsRange = false,
+    // The index of the part the token's paragraph sits in. The runtime builds one scope tree per
+    // part, so block tags only pair within a part.
+    int Part = 0,
+    // Substitution only: the error Fluid gave for a token it could not parse.
+    string? ParseError = null);
