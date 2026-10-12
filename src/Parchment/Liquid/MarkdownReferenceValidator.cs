@@ -43,6 +43,20 @@ class MarkdownReferenceValidator :
         // before the loop variable is introduced.
         Visit(forStatement.Source);
 
+        // So are `limit:` and `offset:`, which liquid evaluates before the first iteration: a name
+        // that does not resolve there is nil, and the loop renders nothing or everything. `offset:
+        // continue` is liquid's own keyword, which Fluid parses as a member path.
+        if (forStatement.Limit != null)
+        {
+            Visit(forStatement.Limit);
+        }
+
+        if (forStatement.Offset != null &&
+            !forStatement.OffsetIsContinue)
+        {
+            Visit(forStatement.Offset);
+        }
+
         var resolved = TryResolveElementType(forStatement.Source, forStatement.Identifier, out var elementType);
 
         var hadScope = scope.TryGetValue(forStatement.Identifier, out var previousScope);
