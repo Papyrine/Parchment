@@ -12,12 +12,12 @@ public static partial class ModuleInitializer
         // is asserted by the convention tests within a single run.
         VerifierSettings.AddScrubber(builder =>
         {
-            var scrubbed = Base64Literal().Replace(builder.ToString(), "FromBase64String(\"scrubbed\")");
+            var scrubbed = Base64Literal().Replace(builder.ToString(), "EmbeddedBytes(\"scrubbed\")");
             builder.Clear();
             builder.Append(scrubbed);
         });
     }
 
-    [GeneratedRegex("""FromBase64String\("[A-Za-z0-9+/=]+"\)""")]
+    [GeneratedRegex("""EmbeddedBytes\("[A-Za-z0-9+/=]+"\)""")]
     private static partial Regex Base64Literal();
 }

@@ -308,7 +308,7 @@ public class TemplateConventionTests
         await Assert.That(Codes(result)).IsEmpty();
         // The style source is embedded as the second registration argument.
         await Assert.That(Generated(result)).Contains("RegisterMarkdownTemplate");
-        await Assert.That(Generated(result)).Contains("FromBase64String");
+        await Assert.That(Generated(result)).Contains("EmbeddedBytes(\"");
     }
 
     [Test]
@@ -331,7 +331,7 @@ public class TemplateConventionTests
             new TemplateFile("Templates/parchment.dotx", GeneratorDriver.BuildDocxBytes("styled")));
 
         await Assert.That(Codes(result)).IsEmpty();
-        await Assert.That(Generated(result)).Contains("FromBase64String");
+        await Assert.That(Generated(result)).Contains("EmbeddedBytes(\"");
     }
 
     // The nearest ancestor's parchment.dotx wins over one further up.

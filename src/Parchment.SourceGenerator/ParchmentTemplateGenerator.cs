@@ -2005,6 +2005,14 @@ public sealed class ParchmentTemplateGenerator :
     // literal — and a module initializer hands it to GeneratedRegistration when the model's
     // assembly loads. There is nothing to deploy beside the assembly and nothing to read at
     // runtime; a TemplateStore materializes the definition on the model's first render.
+    //
+    // The base64 is the argument of an [EmbeddedBytes] attribute on the generated type, not a
+    // string in the method body. A string the code loads lives in the metadata user-string heap,
+    // which all of an assembly's literals share and which stops at 2^24 bytes of UTF-16: the
+    // templates of a project could total about 6.2 MB before the build failed with CS8103, an
+    // error with no location. An attribute argument is stored in the blob heap as UTF-8 — half
+    // the size, no shared ceiling, still one copy however many models carry the same bytes — and
+    // is not touched until a store asks for it, so the initializer registers the type alone.
     static string GenerateDocxRegistration(TargetInfo target, DocxData matched)
     {
         var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
@@ -2015,10 +2023,10 @@ public sealed class ParchmentTemplateGenerator :
             $"""
               {registrationsBlock}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
                   typeof({target.ModelFullyQualifiedName}),
-                  global::System.Convert.FromBase64String("{matched.ContentBase64}"){protection});
+                  typeof({NestedTypeName(target)}){protection});
               """;
 
-        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements, matched.ContentBase64);
     }
 
     static bool IsDefined(ProtectionMode protection) =>
@@ -2049,7 +2057,7 @@ public sealed class ParchmentTemplateGenerator :
         var markdown = SymbolDisplay.FormatLiteral(matched.Text, quote: true);
         var styleArgument = style == null
             ? ""
-            : $",\n    global::System.Convert.FromBase64String(\"{style.ContentBase64}\")";
+            : $",\n    typeof({NestedTypeName(target)})";
         var statements =
             $"""
               {registrationsBlock}  global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
@@ -2057,7 +2065,7 @@ public sealed class ParchmentTemplateGenerator :
                   {markdown}{styleArgument});
               """;
 
-        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements, style?.ContentBase64);
     }
 
     const string templateInitializer = "InitializeParchmentTemplate";
@@ -2067,7 +2075,10 @@ public sealed class ParchmentTemplateGenerator :
     // Wraps the initializer in `partial {kind} {name} { ... }` declarations: namespace (if any),
     // then each enclosing type outermost-first, then the target itself. Indentation isn't strictly
     // necessary for correctness but keeps the generated source readable in obj/.../generated.
-    static string BuildPartialSource(TargetInfo target, string fieldsBlock, string initializer, string statements)
+    //
+    // `embeddedBase64`, when the model carries bytes (a docx template, or a markdown template's
+    // style document), becomes the [EmbeddedBytes] attribute of the nested type.
+    static string BuildPartialSource(TargetInfo target, string fieldsBlock, string initializer, string statements, string? embeddedBase64 = null)
     {
         // A private or protected nested model, or a model inside one, cannot carry the module
         // initializer itself (CS8814). The registration still has to live in the model, where the
@@ -2141,6 +2152,14 @@ public sealed class ParchmentTemplateGenerator :
         // because a module initializer has to be reachable from the module, which a private nested
         // type is not.
         builder.Indent(depth + 1).AppendLine(excludeFromCoverageAttribute);
+        if (embeddedBase64 != null)
+        {
+            builder.Indent(depth + 1)
+                .Append("[global::Parchment.Generated.EmbeddedBytes(\"")
+                .Append(embeddedBase64)
+                .AppendLine("\")]");
+        }
+
         builder.Indent(depth + 1).AppendLine($"internal static class {NestedTypeName(target)}");
         builder.Indent(depth + 1).AppendLine("{");
         foreach (var line in body.Split('\n'))
