@@ -2056,7 +2056,9 @@ Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy 
 
 **Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
 
-Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+Supported `Custom` value types are `string`, `char`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws a `ParchmentRenderException` naming the property and the type rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+A character XML cannot carry (a control character, an unpaired surrogate) is dropped from every property value and from `Custom` names, the same as from substituted token text.
 
 Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
 

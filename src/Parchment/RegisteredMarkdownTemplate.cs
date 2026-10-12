@@ -125,7 +125,7 @@ class RegisteredMarkdownTemplate(
 
             if (properties != null)
             {
-                DocumentPropertiesWriter.Apply(doc, properties);
+                DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
             doc.Save();
