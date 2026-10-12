@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Globalization;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 // ReSharper disable PartialTypeWithSinglePart
@@ -295,6 +296,188 @@ public partial class ExtractTests
         using var stream = new MemoryStream([1, 2, 3, 4]);
         await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
             .Throws<ParchmentExtractionException>();
+    }
+
+    [Test]
+    public async Task EmptyStreamIsRejected()
+    {
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.InnerException).IsNotNull();
+    }
+
+    [Test]
+    public async Task ZipThatIsNotAWordPackageIsRejected()
+    {
+        using var stream = new MemoryStream();
+        using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, true))
+        {
+            using var entry = zip.CreateEntry("hello.txt").Open();
+            entry.Write("hi"u8);
+        }
+
+        stream.Position = 0;
+        await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+    }
+
+    [Test]
+    public async Task PackageWithoutAMainDocumentPartIsRejected()
+    {
+        using var stream = new MemoryStream();
+        using (WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+        }
+
+        stream.Position = 0;
+        var exception = await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("no main body");
+    }
+
+    [Test]
+    public async Task MalformedMainPartIsRejected()
+    {
+        using var rendered = await RenderOrder(EditableFieldTests.NewOrder());
+        using var stream = ReplacePart(
+            rendered,
+            "word/document.xml",
+            _ => "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p></w:body>");
+
+        var exception = await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("not well-formed XML");
+        await Assert.That(exception.Message).Contains("w:body");
+        await Assert.That(exception.InnerException).IsTypeOf<System.Xml.XmlException>();
+    }
+
+    [Test]
+    public async Task TruncatedMainPartIsRejected()
+    {
+        using var rendered = await RenderOrder(EditableFieldTests.NewOrder());
+        using var stream = ReplacePart(rendered, "word/document.xml", _ => _[..(_.Length / 2)]);
+
+        var exception = await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.InnerException).IsTypeOf<System.Xml.XmlException>();
+    }
+
+    [Test]
+    public async Task StrictConformanceMainPartIsRejected()
+    {
+        // Word's "Strict Open XML Document" save uses the purl.oclc.org namespaces, which a
+        // read-only open does not translate — the main part's root is then not a w:document.
+        using var rendered = await RenderOrder(EditableFieldTests.NewOrder());
+        using var stream = ReplacePart(
+            rendered,
+            "word/document.xml",
+            _ => _.Replace(
+                "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                "http://purl.oclc.org/ooxml/wordprocessingml/main"));
+
+        var exception = await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+        await Assert.That(exception!.Message).Contains("could not be read");
+        await Assert.That(exception.InnerException).IsTypeOf<InvalidDataException>();
+    }
+
+    [Test]
+    public async Task NonSeekableStreamHoldingAMalformedDocumentIsRejected()
+    {
+        using var rendered = await RenderOrder(EditableFieldTests.NewOrder());
+        using var malformed = ReplacePart(rendered, "word/document.xml", _ => _[..(_.Length / 2)]);
+        using var stream = new ForwardOnlyStream(malformed);
+
+        await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream))
+            .Throws<ParchmentExtractionException>();
+    }
+
+    [Test]
+    public async Task NonSeekableStreamIsRead()
+    {
+        using var rendered = await RenderOrder(EditableFieldTests.NewOrder());
+        using var stream = new ForwardOnlyStream(rendered);
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("PO-2026-17");
+    }
+
+    [Test]
+    [Arguments(WordprocessingDocumentType.MacroEnabledDocument)]
+    [Arguments(WordprocessingDocumentType.Template)]
+    [Arguments(WordprocessingDocumentType.MacroEnabledTemplate)]
+    public async Task OtherWordDocumentTypesAreRead(WordprocessingDocumentType type)
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            doc.ChangeDocumentType(type);
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("PO-2026-17");
+    }
+
+    // Caller mistakes, not unusable documents: these keep their own exception types.
+    [Test]
+    public async Task NullAndDisposedStreamsAreCallerErrors()
+    {
+        await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>((Stream)null!))
+            .Throws<ArgumentNullException>();
+
+        var disposed = await RenderOrder(EditableFieldTests.NewOrder());
+        disposed.Dispose();
+        await Assert.That(() => ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(disposed))
+            .Throws<ObjectDisposedException>();
+    }
+
+    static MemoryStream ReplacePart(MemoryStream docx, string name, Func<string, string> rewrite)
+    {
+        var copy = new MemoryStream();
+        copy.Write(docx.ToArray());
+        using (var zip = new ZipArchive(copy, ZipArchiveMode.Update, true))
+        {
+            var entry = zip.GetEntry(name)!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+            {
+                xml = reader.ReadToEnd();
+            }
+
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+            writer.Write(rewrite(xml));
+        }
+
+        copy.Position = 0;
+        return copy;
+    }
+
+    sealed class ForwardOnlyStream(MemoryStream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Flush()
+        {
+        }
     }
 
     [Test]
