@@ -297,6 +297,7 @@ class ScopeTreeRunner(
         if (ParagraphSplicer.IsInlineEquivalent(produced))
         {
             ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
+            RepointNestedAnchors(host);
             return;
         }
 
@@ -319,9 +320,26 @@ class ScopeTreeRunner(
         // against a paragraph that stays in the document; higher-offset tokens have already been
         // applied and are carried into the after half.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
+        RepointNestedAnchors(split[^1]);
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
+    }
+
+    /// <summary>
+    /// The splicer builds the halves of a host from clones, so a text box anchored in a run that
+    /// was carried over is a copy, and the paragraphs inside it are no longer the ones the anchor
+    /// map holds. Their tokens are still to be processed — the nodes of a text box follow the node
+    /// of the paragraph it is anchored in — and would be substituted into the discarded originals.
+    /// Points the map at the copies. The spliced paragraph itself is left alone: the after half of
+    /// a split carries a copy of the host's anchor, and the host stays the paragraph it names.
+    /// </summary>
+    void RepointNestedAnchors(OpenXmlElement spliced)
+    {
+        foreach (var paragraph in spliced.Descendants<Paragraph>())
+        {
+            CollectFromParagraph(paragraph, anchorMap);
+        }
     }
 
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)

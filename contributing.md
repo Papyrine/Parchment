@@ -176,6 +176,8 @@ When `[Html]`/`[Markdown]` token shares its host paragraph with other text/token
 - **Inline splice** — produced list is exactly one Paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown). `ParagraphSplicer.SpliceInline` rebuilds host's children as `[before token] + [produced paragraph's children, minus pPr] + [after token]`. Host's `pPr` preserved; produced `pPr` dropped.
 - **Split** — produced list has multiple block-level elements or a non-paragraph (a table). `ParagraphSplicer.Split` trims the host in place to runs/text before the offset, builds an `after` paragraph from a host clone (preserving `pPr`) trimmed to runs/text after `offset+length`, and returns `[...produced, after]` to insert after the host (`StructuralReplacement.KeepHost`). The host has to stay the before half: tokens run in reverse offset order, so the ones before the split token are substituted after the split and would be lost on a clone.
 
+Both modes build halves from clones, so a text box anchored in a carried-over run is a copy and the paragraphs inside it are no longer the ones in the anchor map — and their nodes run after the host's. `ScopeTreeRunner.RepointNestedAnchors` re-indexes the nested paragraphs of the spliced result after either mode; anything new that clones part of a host has to do the same. Tests: `TextBoxTokenTests.TokensInATextBoxAnchoredInASplicedParagraphAreSubstitutedOnce`.
+
 Two non-solo block-shaped tokens in the same paragraph throw `ParchmentRenderException` — splits would overlap, no defined composition. Author needs to give one its own paragraph.
 
 **SG path** (`src/Parchment.SourceGenerator/`):
