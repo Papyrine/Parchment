@@ -11,6 +11,7 @@
 /// <see cref="ReferenceValidator"/> already does for the docx flow and what the source generator
 /// does for markdown at compile time.
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 class MarkdownReferenceValidator :
     AstVisitor
 {

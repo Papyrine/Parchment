@@ -28,6 +28,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     ImagePolicies Policies => new(LocalImages, WebImages);
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterDocxTemplate<TModel>(string path, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -35,6 +37,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         RegisterDocxTemplate<TModel>(file, protection);
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
         RegisterDocxTemplate(typeof(TModel), DocxCloner.ToWritableStream(template), protection);
 
@@ -47,6 +51,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// result as the snapshot every render starts from. Taking the clone rather than making one
     /// spares the source-generator path a round-trip, since a definition already holds bytes.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void RegisterDocxTemplate(Type modelType, MemoryStream clone, ProtectionMode protection)
     {
         var name = modelType.Name;
@@ -134,6 +140,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
         RegisterMarkdownTemplate(typeof(TModel), markdown, styleSource == null ? null : DocxCloner.ToBytes(styleSource));
 
@@ -148,6 +156,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// registered template keeps. The caller's array is never written to, which matters most for
     /// the source-generator path, where it belongs to a definition that outlives every store.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void RegisterMarkdownTemplate(Type model, string markdown, byte[]? styleSource)
     {
         var name = model.Name;
@@ -213,6 +223,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// body, which includes <see cref="BlankDocxTemplate"/> — the input is handed back untouched and
     /// nothing is serialized.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
     static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
@@ -501,6 +512,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 })
         };
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
         Render(model, output, null, cancel);
 
@@ -514,6 +527,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// through the definition the source generator's module initializer stored for it, so there is
     /// nothing further for the caller to name.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
     {
         var template = Resolve(typeof(TModel));
@@ -529,10 +544,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task RenderToFile<TModel>(TModel model, string path, Cancel cancel = default) =>
         RenderToFile(model, path, null, cancel);
 
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
         await using var file = File.Create(path);
@@ -547,6 +566,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// A definition holds raw content only — the generator's module initializer stores bytes and
     /// text, and the scan/validate work runs here, once per store, under this store's policies.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     internal RegisteredTemplate Resolve(Type modelType)
     {
         // Walk the inheritance chain so a template registered against an abstract base renders a
@@ -577,6 +598,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         throw new ParchmentRenderException(modelType.Name, $"No template is registered for {modelType.Name}");
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void Materialize(Type modelType, TemplateDefinition definition)
     {
         switch (definition)
