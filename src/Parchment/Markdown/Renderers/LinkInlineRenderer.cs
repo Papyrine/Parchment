@@ -105,6 +105,7 @@ class LinkInlineRenderer :
 
         var settings = renderer.ImagePolicies.BuildSettings();
         var elements = WordHtmlConverter.ToElements(html, renderer.MainPart, settings);
+        renderer.MayHoldBookmarks = true;
         foreach (var element in elements)
         {
             if (element is Paragraph paragraph)

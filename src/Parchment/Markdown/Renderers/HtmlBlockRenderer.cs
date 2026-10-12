@@ -13,6 +13,8 @@ class HtmlBlockRenderer :
         var html = block.Lines.ToString();
         var settings = renderer.ImagePolicies.BuildSettings(headingOffset: renderer.HeadingOffset);
         var elements = WordHtmlConverter.ToElements(html, renderer.MainPart, settings);
+        renderer.MayHoldBookmarks = true;
+        renderer.MayHoldSections = true;
         var indent = renderer.CurrentIndent;
         foreach (var element in elements)
         {
