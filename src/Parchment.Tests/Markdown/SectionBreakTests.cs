@@ -1,3 +1,5 @@
+using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 public partial class SectionBreakTests
 {
@@ -156,6 +158,102 @@ public partial class SectionBreakTests
         await Assert.That(sections[1].GetFirstChild<PageMargin>()!.Header!.Value).IsEqualTo(720u);
     }
 
+    // A top or bottom margin below zero is one Word has a meaning for - the text stays put whatever
+    // the header or footer grows to - and w:top and w:bottom are signed to hold it.
+    [Test]
+    public async Task ANegativeTopOrBottomMarginIsKept()
+    {
+        using var stream = await Render(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait margins=-400,300,-200,300}
+
+            Fixed.
+            """);
+
+        await AssertValid(stream);
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var margins = doc.MainDocumentPart!.Document!.Body!.Descendants<PageMargin>().Last();
+        await Assert.That(margins.Top!.Value).IsEqualTo(-400);
+        await Assert.That(margins.Bottom!.Value).IsEqualTo(-200);
+    }
+
+    // w:left and w:right are unsigned, so a negative one used to wrap round to 4294966576 twips.
+    // It parses, so it is not a typo to step over: the render is refused, naming what was written.
+    [Test]
+    [Arguments("margins=100,-720,100,100", "right margin of -720 twips")]
+    [Arguments("margins=100,100,100,-720", "left margin of -720 twips")]
+    [Arguments("margins=100,31681,100,100", "right margin of 31681 twips")]
+    [Arguments("margins=-31681,100,100,100", "top margin of -31681 twips")]
+    [Arguments("margins=100,100,99999999999999999999,100", "bottom margin of 99999999999999999999 twips")]
+    [Arguments("header=4000000000", "header distance of 4000000000 twips")]
+    [Arguments("footer=31681", "footer distance of 31681 twips")]
+    public async Task AnOutOfRangeMeasurementIsRejected(string attribute, string expected)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(
+            $$"""
+              Portrait.
+
+              [SECTION]{orientation=portrait {{attribute}}}
+
+              After.
+              """,
+            styleSource);
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(() => store.Render(new EmptyModel(), stream));
+
+        await Assert.That(exception!.Message).Contains(attribute);
+        await Assert.That(exception.Message).Contains(expected);
+    }
+
+    [Test]
+    public async Task TheLargestPageWordAllowsIsInRange()
+    {
+        var sections = await Sections(
+            """
+            Portrait.
+
+            [SECTION]{orientation=portrait margins=-31680,31680,31680,0 header=0 footer=31680}
+
+            After.
+            """);
+
+        var margins = sections[1].GetFirstChild<PageMargin>()!;
+        await Assert.That(margins.Top!.Value).IsEqualTo(-31680);
+        await Assert.That(margins.Right!.Value).IsEqualTo(31680u);
+        await Assert.That(margins.Left!.Value).IsEqualTo(0u);
+        await Assert.That(margins.Footer!.Value).IsEqualTo(31680u);
+    }
+
+    // w:sectPr is a strict sequence. A style source that says nothing about margins, or about the
+    // page size, can still carry the elements that have to come after them.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task MarginsAndPageSizeAreWrittenInSchemaOrder(bool withPageSize)
+    {
+        using var styleSource = StyleSourceWithColumnsAndGrid(withPageSize);
+        using var stream = await Render(
+            """
+            Portrait.
+
+            [SECTION]{orientation=landscape margins=100,200,300,400 header=50}
+
+            Landscape.
+            """,
+            styleSource);
+
+        await AssertValid(stream);
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var sections = doc.MainDocumentPart!.Document!.Body!.Descendants<SectionProperties>().ToList();
+        var order = string.Join(',', sections[1].Elements().Select(_ => _.LocalName));
+        await Assert.That(order).IsEqualTo("pgSz,pgMar,cols,docGrid");
+    }
+
     // Page numbering restarts wherever a section says it starts, so only the first section may keep
     // the style source's start. Otherwise every landscape page in a report would be page 1.
     [Test]
@@ -286,6 +384,55 @@ public partial class SectionBreakTests
         }
 
         return "portrait";
+    }
+
+    static async Task AssertValid(Stream stream)
+    {
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+                .Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+        }
+
+        stream.Position = 0;
+    }
+
+    static MemoryStream StyleSourceWithColumnsAndGrid(bool withPageSize)
+    {
+        var stream = DocxTemplateBuilder.Build();
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var section = doc.MainDocumentPart!.Document!.Body!
+                .Elements<SectionProperties>()
+                .Single();
+            section.RemoveAllChildren();
+            if (withPageSize)
+            {
+                section.AppendChild(
+                    new PageSize
+                    {
+                        Width = 6500,
+                        Height = 8000
+                    });
+            }
+
+            section.AppendChild(
+                new Columns
+                {
+                    Space = "708"
+                });
+            section.AppendChild(
+                new DocGrid
+                {
+                    LinePitch = 360
+                });
+        }
+
+        stream.Position = 0;
+        return stream;
     }
 
     static MemoryStream StyleSourceNumberedFromOne()
