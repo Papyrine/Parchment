@@ -198,7 +198,7 @@ class RegisteredMarkdownTemplate(
                 imagePolicies);
             await runner.RunAsync(part.Nodes);
             runner.ApplyStructural();
-            runner.SeparateProducedTables();
+            runner.SeparateTables();
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based

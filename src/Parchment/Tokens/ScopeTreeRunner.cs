@@ -22,10 +22,12 @@ class ScopeTreeRunner(
 {
     List<StructuralReplacement>? structuralReplacements;
 
-    // Every table a structural replacement put at block level, shared with the runners created
-    // for loop iterations and if branches. Whether one ends up beside another table is only
-    // known once the tag paragraphs around it are gone, so the root runner checks at the end.
-    readonly List<Table> producedTables = tables ?? [];
+    // Every table that got a different block before it: one a structural replacement put at block
+    // level, one that followed a block the render took out, one a loop iteration opens with.
+    // Shared with the runners created for loop iterations and if branches. Whether one ends up
+    // directly after another table is only known once the tag paragraphs around it are gone, so
+    // the root runner checks at the end.
+    readonly List<Table> tablesToCheck = tables ?? [];
 
     // The loop variables open around the nodes this runner walks. A token that starts with one
     // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
@@ -51,53 +53,90 @@ class ScopeTreeRunner(
 
     /// <summary>
     /// Word merges two <c>w:tbl</c> siblings into one table. Run on the root runner once the whole
-    /// tree has been processed: any produced table left directly beside another table — one from
-    /// a neighbouring token or loop iteration, or one already in the template — gets an empty
-    /// paragraph between them.
+    /// tree has been processed: any table the render left directly after another table — one a
+    /// token produced, the copy a loop iteration opens with, or a table of the template that lost
+    /// the paragraphs keeping it apart — gets an empty paragraph before it. Two tables with
+    /// nothing between them in the template are never recorded, and stay as authored.
     /// </summary>
-    public void SeparateProducedTables()
+    public void SeparateTables()
     {
-        foreach (var table in producedTables)
+        if (tablesToCheck.Count == 0)
         {
-            if (table.Parent == null)
-            {
-                continue;
-            }
+            return;
+        }
 
-            if (NeighbouringBlock(table, forward: false) is Table)
+        var recorded = new HashSet<OpenXmlElement>(tablesToCheck);
+        var containers = new HashSet<OpenXmlElement>();
+        foreach (var table in tablesToCheck)
+        {
+            // A table recorded and then removed with its branch or loop body has no parent.
+            if (table.Parent is { } container &&
+                containers.Add(container))
             {
-                table.InsertBeforeSelf(new Paragraph());
-            }
-
-            if (NeighbouringBlock(table, forward: true) is Table)
-            {
-                table.InsertAfterSelf(new Paragraph());
+                SeparateTablesIn(container, recorded);
             }
         }
 
-        producedTables.Clear();
+        tablesToCheck.Clear();
+    }
+
+    // One pass over the container rather than asking each table for its previous sibling, which
+    // the SDK answers by walking from the first child.
+    static void SeparateTablesIn(OpenXmlElement container, HashSet<OpenXmlElement> recorded)
+    {
+        OpenXmlElement? previous = null;
+        var afterTable = false;
+        for (var child = container.FirstChild; child != null; child = child.NextSibling())
+        {
+            if (!IsRangeMarker(child))
+            {
+                if (afterTable &&
+                    child is Table &&
+                    recorded.Contains(child))
+                {
+                    container.InsertAfter(new Paragraph(), previous);
+                }
+
+                afterTable = child is Table;
+            }
+
+            previous = child;
+        }
     }
 
     // Range markers can sit between two blocks without keeping their tables apart.
-    static OpenXmlElement? NeighbouringBlock(OpenXmlElement element, bool forward)
+    static bool IsRangeMarker(OpenXmlElement element) =>
+        element is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError;
+
+    /// <summary>
+    /// Records the table that follows <paramref name="element"/>, when the render is about to
+    /// change what comes before that table: by removing the element, or by having just put it
+    /// there.
+    /// </summary>
+    void RecordTableAfter(OpenXmlElement element)
     {
-        var cursor = Step(element, forward);
-        while (cursor is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError)
+        var cursor = element.NextSibling();
+        while (cursor != null &&
+               IsRangeMarker(cursor))
         {
-            cursor = Step(cursor, forward);
+            cursor = cursor.NextSibling();
         }
 
-        return cursor;
+        if (cursor is Table table)
+        {
+            tablesToCheck.Add(table);
+        }
     }
 
-    static OpenXmlElement? Step(OpenXmlElement element, bool forward)
+    /// <summary>
+    /// Takes a block out of the document. Every removal of a tag paragraph, of a branch that was
+    /// not chosen or of a loop body goes through here, since any of them can be all that kept two
+    /// tables apart.
+    /// </summary>
+    void Remove(OpenXmlElement element)
     {
-        if (forward)
-        {
-            return element.NextSibling();
-        }
-
-        return element.PreviousSibling();
+        RecordTableAfter(element);
+        element.Remove();
     }
 
     void ApplyOne(StructuralReplacement replacement)
@@ -115,9 +154,13 @@ class ScopeTreeRunner(
             cursor = parent.InsertAfter(produced, cursor);
             if (produced is Table table)
             {
-                producedTables.Add(table);
+                tablesToCheck.Add(table);
             }
         }
+
+        // What follows now comes after the last produced block or, when the token produced
+        // nothing, after whatever preceded the host.
+        RecordTableAfter(cursor);
 
         if (replacement.KeepHost)
         {
@@ -637,11 +680,11 @@ class ScopeTreeRunner(
             await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
             foreach (var element in bodyElements)
             {
-                element.Remove();
+                Remove(element);
             }
 
-            open.Remove();
-            close.Remove();
+            Remove(open);
+            Remove(close);
             return;
         }
 
@@ -676,7 +719,7 @@ class ScopeTreeRunner(
             numberingState,
             styles,
             imagePolicies,
-            producedTables)
+            tablesToCheck)
         {
             loopVariables = [..loopVariables, loop.LoopVariable]
         };
@@ -724,11 +767,15 @@ class ScopeTreeRunner(
                     pendingMoves.Add(element);
                 }
 
+                var iterationAnchor = insertAnchor;
                 foreach (var produced in pendingMoves)
                 {
                     produced.Remove();
                     insertAnchor = parent.InsertAfter(produced, insertAnchor);
                 }
+
+                // The block this iteration opens with now follows the previous iteration's last.
+                RecordTableAfter(iterationAnchor);
             }
             finally
             {
@@ -738,11 +785,11 @@ class ScopeTreeRunner(
 
         foreach (var element in bodyElements)
         {
-            element.Remove();
+            Remove(element);
         }
 
-        open.Remove();
-        close.Remove();
+        Remove(open);
+        Remove(close);
     }
 
     /// <summary>
@@ -805,7 +852,7 @@ class ScopeTreeRunner(
                     numberingState,
                     styles,
                     imagePolicies,
-                    producedTables)
+                    tablesToCheck)
                 {
                     loopVariables = itemLoopVariables
                 };
@@ -991,11 +1038,11 @@ class ScopeTreeRunner(
         {
             foreach (var element in allBranchElements)
             {
-                element.Remove();
+                Remove(element);
             }
 
-            open.Remove();
-            close.Remove();
+            Remove(open);
+            Remove(close);
             return;
         }
 
@@ -1014,7 +1061,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, tablesToCheck)
         {
             loopVariables = loopVariables
         };
@@ -1026,12 +1073,12 @@ class ScopeTreeRunner(
         {
             if (!keep.Contains(element))
             {
-                element.Remove();
+                Remove(element);
             }
         }
 
-        open.Remove();
-        close.Remove();
+        Remove(open);
+        Remove(close);
     }
 
     /// <summary>

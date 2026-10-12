@@ -133,6 +133,8 @@ The body isn't restricted to paragraphs. Anything between the open and close par
 {% endfor %}
 ```
 
+Each copy of a table is a table of its own. Word joins two tables that have nothing between them, so an empty paragraph is written between one copy and the next when the loop body starts and ends with a table. The same applies to any two tables of the template left with nothing between them once the tag paragraphs of a loop or a conditional are removed. For one table with a row per item, bind the collection as an [Excelsior table](#excelsior-tables) instead of looping over a one-row table.
+
 The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
 
 ### Conditionals
