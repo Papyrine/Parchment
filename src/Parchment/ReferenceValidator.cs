@@ -43,7 +43,17 @@
                 else if (sourceRefs.Count > 0 &&
                          TryResolvePathType(sourceRefs[0], scope, out var iterableType))
                 {
-                    ModelValidator.TryResolveElementType(iterableType, out elementType);
+                    if (iterableType == untyped)
+                    {
+                        // Reached through an index that says nothing about what it yields: an
+                        // unknown too, where typing the variable from the member indexed into
+                        // would reject its real members.
+                        elementType = untyped;
+                    }
+                    else
+                    {
+                        ModelValidator.TryResolveElementType(iterableType, out elementType);
+                    }
                 }
 
                 if (elementType == null)
@@ -136,6 +146,19 @@
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
+            if (path.Segments[i] == IdentifierPath.Index)
+            {
+                // A dictionary key, say: what it yields is only known at render.
+                if (!LiquidMembers.TryResolveIndex(current, out var element))
+                {
+                    pathType = untyped;
+                    return true;
+                }
+
+                current = element;
+                continue;
+            }
+
             if (!ModelValidator.TryResolveSegment(current, path.Segments[i], out var next))
             {
                 return false;

@@ -800,7 +800,7 @@ public sealed class ParchmentTemplateGenerator :
                     string? prior = null;
                     var isEditableCollectionLoop = false;
                     if (token.LoopVariable != null &&
-                        IsUntypedLoop(token, scope))
+                        IsUntypedLoop(target.Shape, token, scope))
                     {
                         // Bound so the variable shadows a model member of the same name, as it
                         // does at render.
@@ -962,6 +962,14 @@ public sealed class ParchmentTemplateGenerator :
             {
                 var body = match.Groups["body"].Value.Trim();
                 var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
+                // An indexer reads an element of what the path names. `{{ Rows[0].Item }}` is one
+                // row's value, which Fluid renders, and not the table.
+                if (end >= 0 &&
+                    body[end] == '[')
+                {
+                    continue;
+                }
+
                 var path = (end < 0 ? body : body[..end]).Replace(" ", "").Replace("\t", "");
                 if (path.Length == 0)
                 {
@@ -1097,20 +1105,33 @@ public sealed class ParchmentTemplateGenerator :
             SourceText.From(source, Encoding.UTF8));
     }
 
-    // Scope binding for a loop variable whose source is not statically known: a range, or a path
-    // rooted at another such variable. The variable exists, but members reached through it are not
-    // checked. Mirrors `untyped` in the runtime ReferenceValidator and the set in MarkdownValidator.
-    const string untypedLoopVariable = "";
+    // Scope binding for a loop variable whose source is not statically known: a range, a path
+    // rooted at another such variable, or one that passes an index the shape cannot see through.
+    // The variable exists, but members reached through it are not checked. Mirrors `untyped` in
+    // the runtime ReferenceValidator and the set in MarkdownValidator.
+    const string untypedLoopVariable = ShapeResolver.Untyped;
 
-    static bool IsUntypedLoop(Token token, IReadOnlyDictionary<string, string> scope)
+    static bool IsUntypedLoop(ModelShape shape, Token token, IReadOnlyDictionary<string, string> scope)
     {
         if (token.LoopSourceIsRange)
         {
             return true;
         }
 
-        return token.References.Count > 0 &&
-               IsUntyped(token.References[0], scope);
+        if (token.References.Count == 0)
+        {
+            return false;
+        }
+
+        if (IsUntyped(token.References[0], scope))
+        {
+            return true;
+        }
+
+        // Reached through an index that says nothing about what it yields, a dictionary key for
+        // one: the path is valid as far as it goes and the element is only known at render.
+        return ShapeResolver.TryResolve(shape, token.References[0], scope, out var sourceFqn) &&
+               sourceFqn == ShapeResolver.Untyped;
     }
 
     static bool IsUntyped(IReadOnlyList<string> reference, IReadOnlyDictionary<string, string> scope) =>
@@ -1164,7 +1185,7 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    if (IsUntypedLoop(token, scope))
+                    if (IsUntypedLoop(target.Shape, token, scope))
                     {
                         // Nothing to resolve an element type from, which is an unknown, not a
                         // mistake. Members used as range bounds are still references like any
@@ -1189,7 +1210,7 @@ public sealed class ParchmentTemplateGenerator :
                                 location,
                                 templatePath,
                                 token.Source,
-                                string.Join('.', token.References[0]),
+                                SegmentNames.Join(token.References[0]),
                                 target.ModelDisplayName));
                         break;
                     }
@@ -1487,7 +1508,7 @@ public sealed class ParchmentTemplateGenerator :
                     location,
                     templatePath,
                     tokenSource,
-                    string.Join('.', reference),
+                    SegmentNames.Join(reference),
                     target.ModelDisplayName));
         }
     }

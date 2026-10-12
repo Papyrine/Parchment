@@ -110,6 +110,14 @@ static class MarkdownExcelsiorTables
 
             // The leading path, up to whatever ends it — a filter pipe, an operator, a space.
             var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
+            // An indexer reads an element of what the path names. `{{ Rows[0].Item }}` is one
+            // row's value, which Fluid renders, and not the table.
+            if (end >= 0 &&
+                body[end] == '[')
+            {
+                continue;
+            }
+
             var leading = Normalize(end < 0 ? body : body[..end]);
             // A token that starts with a loop variable reads the loop item, whatever root path
             // it happens to spell: Fluid renders it, and neither rule below is its to break.

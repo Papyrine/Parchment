@@ -64,6 +64,19 @@ static class LiquidMembers
         return true;
     }
 
+    /// <summary>
+    /// What <see cref="IdentifierPath.Index"/> yields on a value of <paramref name="type"/>, where
+    /// the type can say: the element of an array. A dictionary is read by key and an object by a
+    /// member named at render, so neither says what comes back, and a string has no index at all.
+    /// False leaves everything past the index unknown rather than wrong.
+    /// </summary>
+    public static bool TryResolveIndex(Type type, [NotNullWhen(true)] out Type? elementType)
+    {
+        elementType = null;
+        return Classify(type) == LiquidKind.Array &&
+               ModelValidator.TryResolveElementType(type, out elementType);
+    }
+
     public static string MissingMessage(LiquidKind kind, Type type, string name)
     {
         var prefix = $"Member '{name}' of '{type.Name}' is not available to a template. ";

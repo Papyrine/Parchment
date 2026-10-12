@@ -25,6 +25,18 @@ static class ModelValidator
         for (var i = 1; i < path.Segments.Count; i++)
         {
             var segment = path.Segments[i];
+            if (segment == IdentifierPath.Index)
+            {
+                // Past an index the type cannot see through, nothing is known to check against.
+                if (!LiquidMembers.TryResolveIndex(currentType, out var element))
+                {
+                    return;
+                }
+
+                currentType = element;
+                continue;
+            }
+
             if (!TryResolveSegment(currentType, segment, out var next))
             {
                 throw new ParchmentRegistrationException(

@@ -108,15 +108,23 @@ class MarkdownValidator
         var sourceIsUntyped = sourcePath != null && untyped.Contains(sourcePath[0]);
         if (sourcePath != null &&
             !sourceIsUntyped &&
-            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn) &&
-            !ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
+            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn))
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.LoopSourceNotEnumerable,
-                    location,
-                    templatePath,
-                    sourceText));
+            if (sourceFqn == ShapeResolver.Untyped)
+            {
+                // Reached through an index that says nothing about what it yields, a dictionary
+                // key for one. Unknown in the same way, and not a source to report.
+                sourceIsUntyped = true;
+            }
+            else if (!ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.LoopSourceNotEnumerable,
+                        location,
+                        templatePath,
+                        sourceText));
+            }
         }
 
         var loopVariable = forStatement.Identifier;
@@ -227,7 +235,7 @@ class MarkdownValidator
                     location,
                     templatePath,
                     sourceForDiagnostic,
-                    string.Join('.', path),
+                    SegmentNames.Join(path),
                     target.ModelDisplayName));
         }
     }
@@ -259,8 +267,10 @@ class MarkdownValidator
                 member.Name));
     }
 
-    // Returns null for a source with no static member path — a range, or an indexer whose key is
-    // itself an expression. WalkFor treats that as untyped rather than binding to the root model.
+    // Returns null for a source with no static member path — a range. WalkFor treats that as
+    // untyped rather than binding to the root model. An indexer whose key is not a string literal
+    // stays in the path as SegmentNames.Index, and whether the loop variable can be typed through
+    // it is ShapeResolver.TryResolve's to say.
     // A filtered source needs no handling here: Fluid rejects `{% for x in Src | filter %}` as an
     // invalid for tag, so it never reaches validation on either the runtime or the generator path.
     static List<string>? TryGetMemberPath(Expression expression)
