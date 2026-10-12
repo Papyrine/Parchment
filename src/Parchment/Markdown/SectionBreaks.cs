@@ -25,6 +25,12 @@
 /// one the settings that were in force <em>before</em> it, and the settings the last marker declared
 /// land on the document-final <c>w:sectPr</c> instead.
 /// </para>
+/// <para>
+/// A markdown value rendered by the docx flow goes through the same walk, so it can hold a marker
+/// too, but there the document already has sections of its own and the paragraphs carrying their
+/// <c>w:sectPr</c> are not markers. So the runner <see cref="Collect"/>s the markers each value
+/// wrote, and <see cref="ApplyInPart"/> derives each from the section of the template it landed in.
+/// </para>
 /// </remarks>
 static class SectionBreaks
 {
@@ -95,7 +101,7 @@ static class SectionBreaks
     {
         var markers = body
             .Descendants<Paragraph>()
-            .Where(_ => _.ParagraphProperties?.SectionProperties != null)
+            .Where(IsMarker)
             .ToList();
 
         if (markers.Count == 0)
@@ -110,8 +116,106 @@ static class SectionBreaks
                 $"'{Marker}' needs a style source to derive its page setup from, and this template has none.");
         }
 
-        // The settings in force at the top of the document. Each marker replaces this with what it
-        // declared, so the marker after it — or the document-final section — inherits from there
+        Rewrite(body, markers, baseSection, name, partUri: null);
+    }
+
+    /// <summary>
+    /// The docx flow's <see cref="Apply"/>: rewrite the <paramref name="markers"/> that markdown
+    /// values wrote into a part that already has sections of its own.
+    /// </summary>
+    /// <remarks>
+    /// Each run of markers is derived from the <c>w:sectPr</c> that ends the section it landed in -
+    /// the next one in document order, on a paragraph of the template's or at the end of the body -
+    /// and that <c>w:sectPr</c> is mutated in place to whatever the run's last marker declared. So a
+    /// marker still reads "from here on", as far as the template's next section break, where the
+    /// page setup the template gave the following section takes over again.
+    /// </remarks>
+    public static void ApplyInPart(OpenXmlCompositeElement root, List<Paragraph> markers, string name, string partUri)
+    {
+        if (root is not Body body)
+        {
+            throw new ParchmentRenderException(
+                name,
+                $"'{Marker}' is a section break, and only the document body can hold one. " +
+                "A header, a footer, a footnote or an endnote cannot.",
+                partUri);
+        }
+
+        // Every paragraph ending a section, the template's own and the markers alike, listed before
+        // anything is rewritten: only a walk of the document says which section each marker is in.
+        var written = new HashSet<Paragraph>(markers);
+        var breaks = body
+            .Descendants<Paragraph>()
+            .Where(IsMarker)
+            .ToList();
+
+        var pending = new List<Paragraph>();
+        foreach (var paragraph in breaks)
+        {
+            if (written.Contains(paragraph))
+            {
+                pending.Add(paragraph);
+                continue;
+            }
+
+            Rewrite(body, pending, paragraph.ParagraphProperties!.SectionProperties!, name, partUri);
+            pending.Clear();
+        }
+
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        if (body.GetFirstChild<SectionProperties>() is not { } final)
+        {
+            throw new ParchmentRenderException(
+                name,
+                $"'{Marker}' needs a section to derive its page setup from, and the template's body does not end with a w:sectPr.",
+                partUri);
+        }
+
+        Rewrite(body, pending, final, name, partUri);
+    }
+
+    /// <summary>
+    /// Add every marker in <paramref name="produced"/> - what one markdown value rendered to - to
+    /// <paramref name="markers"/>. Only for elements <c>MarkdownRendering.Render</c> returned: a
+    /// paragraph carrying a <c>w:sectPr</c> is a marker there and nowhere else in the docx flow.
+    /// </summary>
+    public static void Collect(IEnumerable<OpenXmlElement> produced, List<Paragraph> markers)
+    {
+        foreach (var element in produced)
+        {
+            if (element is Paragraph paragraph)
+            {
+                if (IsMarker(paragraph))
+                {
+                    markers.Add(paragraph);
+                }
+
+                continue;
+            }
+
+            // Inside a table the value built. It cannot become a section, and ApplyInPart says so.
+            markers.AddRange(element.Descendants<Paragraph>().Where(IsMarker));
+        }
+    }
+
+    public static bool IsMarker(OpenXmlElement element) =>
+        element is Paragraph { ParagraphProperties.SectionProperties: not null };
+
+    // Gives each marker the settings in force before it and leaves what the last one declared on
+    // baseSection, which stays where it is.
+    static void Rewrite(Body body, List<Paragraph> markers, SectionProperties baseSection, string name, string? partUri)
+    {
+        if (markers.Count == 0)
+        {
+            return;
+        }
+
+        // The settings in force at the top of the section. Each marker replaces this with what it
+        // declared, so the marker after it — or the end of the section — inherits from there
         // rather than from the style source.
         var current = (SectionProperties) baseSection.CloneNode(true);
 
@@ -123,7 +227,8 @@ static class SectionBreaks
                 throw new ParchmentRenderException(
                     name,
                     $"'{Marker}' has to be a paragraph of its own at the top level of the document. " +
-                    "One inside a list, a table cell or a block quote is not a section break Word can express.");
+                    "One inside a list, a table cell or a block quote is not a section break Word can express.",
+                    partUri);
             }
 
             var properties = marker.ParagraphProperties!;
@@ -144,8 +249,9 @@ static class SectionBreaks
 
         StripPageNumberStart(current);
 
-        // The caller appends baseSection after this returns, so the last declared settings have to
-        // land on that instance rather than on a replacement for it.
+        // baseSection is the instance the document keeps - the markdown flow appends it after this
+        // returns, the docx flow's is already in place - so the last declared settings have to land
+        // on it rather than on a replacement for it.
         baseSection.RemoveAllChildren();
         foreach (var child in current.ChildElements.ToList())
         {
