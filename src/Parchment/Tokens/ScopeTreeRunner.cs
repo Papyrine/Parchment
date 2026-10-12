@@ -153,8 +153,8 @@ class ScopeTreeRunner(
 
         // Cache the ParagraphText across token replacements. Tokens are applied in reverse-offset
         // order, so a higher-offset Replace doesn't disturb the spans/offsets used for the next
-        // lower-offset token. Structural ops (splice/split) and MutateToken arbitrary mutation do
-        // invalidate the cache — clear it after those.
+        // lower-offset token. Structural ops (splice/split) do invalidate the cache — clear it
+        // after those.
         ParagraphText? cachedText = null;
         ParagraphText Text() => cachedText ??= ParagraphText.Build(host);
 
@@ -171,6 +171,10 @@ class ScopeTreeRunner(
         // paragraph, and that is the rare path — so defer the scan until one actually appears
         // rather than running HasEditableToken on every substitution node.
         bool? hasEditableSibling = null;
+        // A MutateToken delegate can do anything to its paragraph, and every offset in node.Tokens
+        // was measured before any of it. So only the token text is cleared in offset order; the
+        // delegates run once nothing is left that depends on an offset.
+        List<(MutateToken Mutate, Paragraph Target)>? mutations = null;
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
@@ -219,23 +223,44 @@ class ScopeTreeRunner(
                     continue;
                 }
 
-                ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
+                var afterHalf = ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
                 cachedText = null;
+                if (afterHalf != null &&
+                    mutations != null)
+                {
+                    // The tokens already seen sit above the split, so their text went to the
+                    // after half: that is the paragraph their delegates are owed.
+                    for (var j = 0; j < mutations.Count; j++)
+                    {
+                        mutations[j] = (mutations[j].Mutate, afterHalf);
+                    }
+                }
+
                 continue;
             }
 
             if (evaluated is MutateToken mutate)
             {
-                // Clear the token text, then hand the paragraph to the caller for in-place mutation.
+                // Clear the token text now, while its offset still holds. The paragraph is handed
+                // to the caller for in-place mutation after the loop.
                 Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
-                mutate.Apply(host, ctx);
-                cachedText = null;
+                mutations ??= [];
+                mutations.Add((mutate, host));
                 continue;
             }
 
             var replacement = ToDisplayString(evaluated);
             Text().Replace(token.Offset, token.Length, replacement);
+        }
+
+        if (mutations != null)
+        {
+            // In the order the tokens were reached: the last one in the paragraph first.
+            foreach (var (mutate, target) in mutations)
+            {
+                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, target);
+                mutate.Apply(target, ctx);
+            }
         }
 
         if (soloStructuralTokens is { Count: > 0 })
@@ -282,22 +307,22 @@ class ScopeTreeRunner(
     /// Splice or split the host paragraph for a non-solo structural token. Inline-equivalent
     /// output (single produced paragraph) is unwrapped and spliced in place; anything else
     /// (multiple blocks, a table) splits the host paragraph at the token offset and inserts
-    /// the produced elements between the two halves.
+    /// the produced elements between the two halves. Returns the after half when it split.
     /// </summary>
-    void ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
+    Paragraph? ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
         var produced = RenderTokenValue(value, host);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
             ParagraphText.Build(host).Replace(token.Offset, token.Length, string.Empty);
-            return;
+            return null;
         }
 
         if (ParagraphSplicer.IsInlineEquivalent(produced))
         {
             ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
-            return;
+            return null;
         }
 
         if (splitQueued)
@@ -322,6 +347,7 @@ class ScopeTreeRunner(
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
+        return (Paragraph)split[^1];
     }
 
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
