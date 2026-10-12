@@ -136,9 +136,10 @@ public partial class TableOfContentsSectionTests
         await Assert.That(tabs).IsEquivalentTo([portrait, portrait, landscape, landscape]);
     }
 
-    // A cell is narrower than the page, and nothing here measures a cell. What this pins is which
-    // section is asked: the one the table is in, found from a paragraph that is not itself a child
-    // of the body.
+    // The entries are fitted to the cell, which takes its width from the section the table is in: a
+    // one-column table is that section's text width less the 216 TableRenderer puts either side of a
+    // cell's text. What this pins is which section is asked, found from a paragraph that is not itself
+    // a child of the body.
     [Test]
     public async Task InsideATableTheTabIsTheTablesSections()
     {
@@ -155,7 +156,7 @@ public partial class TableOfContentsSectionTests
             # Second
             """);
 
-        await Assert.That(tabs).IsEquivalentTo([portrait, portrait]);
+        await Assert.That(tabs).IsEquivalentTo([portrait - 216, portrait - 216]);
     }
 
     [Test]
