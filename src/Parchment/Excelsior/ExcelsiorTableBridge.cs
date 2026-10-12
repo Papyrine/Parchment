@@ -48,7 +48,29 @@ static class ExcelsiorTableBridge
         // everything the attribute cannot say.
         configure?.Invoke(builder);
 
-        return builder.Build(mainPart);
+        var hadStylesPart = mainPart.StyleDefinitionsPart != null;
+        var table = builder.Build(mainPart);
+        if (!hadStylesPart)
+        {
+            PinStylesPartId(mainPart);
+        }
+
+        return table;
+    }
+
+    // Excelsior writes its built-in table styles into the styles part and, for a template or style
+    // source that has none, adds the part without an id, so the SDK mints a random one. Renaming
+    // afterwards rather than adding the part up front leaves it to Excelsior whether a styles part
+    // is needed at all (it is not for a caller-supplied table style).
+    static void PinStylesPartId(MainDocumentPart mainPart)
+    {
+        var stylesPart = mainPart.StyleDefinitionsPart;
+        if (stylesPart == null)
+        {
+            return;
+        }
+
+        mainPart.ChangeIdOfPart(stylesPart, RelationshipIds.Named(mainPart, "rIdStyles"));
     }
 
     static BuilderInvoker CreateInvoker(Type elementType)

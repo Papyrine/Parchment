@@ -483,4 +483,96 @@ public partial class DeterminismTests
         await Assert.That(mainPart.HyperlinkRelationships.Single(_ => _.Id == id).Uri.OriginalString)
             .IsEqualTo("https://example.com");
     }
+
+    [ParchmentBindable]
+    public partial class Tabled
+    {
+        public TokenValue Rich { get; set; } = new HtmlToken("<ul><li>a</li><li>b</li></ul>");
+
+        [ExcelsiorTable]
+        public IReadOnlyList<TabledRow> Rows { get; set; } =
+        [
+            new()
+            {
+                Name = "a"
+            }
+        ];
+    }
+
+    public class TabledRow
+    {
+        public required string Name { get; init; }
+    }
+
+    [Test]
+    public async Task ExcelsiorTableWithoutStylesPartRenderIsByteIdentical()
+    {
+        // Excelsior writes its TableGrid style into the styles part and adds the part when the
+        // template has none.
+        using var template = BareDocx("{{ Rows }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Tabled>(template);
+
+        var first = await RenderBytes(store, new Tabled());
+        var second = await RenderBytes(store, new Tabled());
+
+        await Assert.That(first).IsEquivalentTo(second);
+        await AssertStylesPartId(first, "rIdStyles");
+    }
+
+    [Test]
+    public async Task MarkdownExcelsiorTableWithoutStylesPartRenderIsByteIdentical()
+    {
+        using var styleSource = BareDocx("");
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Tabled>("{{ Rows }}\n", styleSource);
+
+        var first = await RenderBytes(store, new Tabled());
+        var second = await RenderBytes(store, new Tabled());
+
+        await Assert.That(first).IsEquivalentTo(second);
+        await AssertStylesPartId(first, "rIdStyles");
+    }
+
+    [Test]
+    public async Task ExcelsiorStylesPartStepsPastAnIdTheTemplateAlreadyUses()
+    {
+        using var template = BareDocx(
+            "{{ Rows }}",
+            mainPart => mainPart.AddHyperlinkRelationship(new("https://example.com/own"), true, "rIdStyles"));
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Tabled>(template);
+
+        var first = await RenderBytes(store, new Tabled());
+        var second = await RenderBytes(store, new Tabled());
+
+        await Assert.That(first).IsEquivalentTo(second);
+        await AssertStylesPartId(first, "rIdStyles2");
+    }
+
+    static async Task AssertStylesPartId(byte[] bytes, string expected)
+    {
+        using var document = WordprocessingDocument.Open(new MemoryStream(bytes), false);
+        var mainPart = document.MainDocumentPart!;
+        var stylesPart = mainPart.StyleDefinitionsPart!;
+        await Assert.That(mainPart.GetIdOfPart(stylesPart)).IsEqualTo(expected);
+        await Assert.That(stylesPart.Styles!.Elements<Style>().Any(_ => _.StyleId == "TableGrid")).IsTrue();
+        await Assert.That(new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365).Validate(document)).IsEmpty();
+    }
+
+    [Test]
+    public async Task HtmlListWithoutNumberingPartRenderIsByteIdentical()
+    {
+        using var template = BareDocx("{{ Rich }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Tabled>(template);
+
+        var first = await RenderBytes(store, new Tabled());
+        var second = await RenderBytes(store, new Tabled());
+
+        await Assert.That(first).IsEquivalentTo(second);
+
+        using var document = WordprocessingDocument.Open(new MemoryStream(first), false);
+        await Assert.That(document.MainDocumentPart!.NumberingDefinitionsPart).IsNotNull();
+    }
 }
