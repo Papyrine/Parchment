@@ -136,6 +136,7 @@ public sealed class ParchmentTemplateGenerator :
         // registration would need are enforced here — an invalid editable member is an authoring
         // mistake regardless of which template it later meets.
         ValidateEditableShape(context, target, location);
+        ValidateFormatMarkerTypes(context, target, location);
 
         EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
     }
@@ -503,6 +504,7 @@ public sealed class ParchmentTemplateGenerator :
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
         // at RegisterDocxTemplate regardless of whether a token references the member.
         ValidateEditableShape(context, target, location);
+        ValidateFormatMarkerTypes(context, target, location);
         if (HasEditableMembers(target.Shape))
         {
             // Token rules are body-scoped: the runtime dispatches editable fields only in the
@@ -556,6 +558,37 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// PARCH029: a format marker on a member that is not a string. Both flows read the marker, so
+    /// this runs for a docx model, a markdown model and a bindable type alike. A static member is
+    /// skipped: its marker is already reported as ignored.
+    /// </summary>
+    static void ValidateFormatMarkerTypes(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member.IsStatic ||
+                    !member.FormatMarkerOnNonString)
+                {
+                    continue;
+                }
+
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.FormatMarkerOnNonString,
+                        location,
+                        target.ModelDisplayName,
+                        $"{Display(type.TypeFullyQualifiedName)}.{member.Name}",
+                        Display(member.TypeFullyQualifiedName)));
+            }
+        }
     }
 
     static void ValidateEditableShape(
@@ -1037,6 +1070,7 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
+        ValidateFormatMarkerTypes(context, target, location);
         ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
 
         // The style source: the dotx named after the type when the project carries one, otherwise

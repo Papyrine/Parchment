@@ -120,6 +120,12 @@ static class ShapeBuilder
                     // on top of it is the same claim made twice — and applying both converts the
                     // placeholder the first one produced. See PARCH025.
                     var markerOnToken = (isHtml || isMarkdown) && IsTokenValue(memberType);
+                    // The conversion reads a string, so a marker on anything else has nothing to
+                    // convert. An unresolved type is left to the compiler's own error. See PARCH029.
+                    var markerOnNonString = (isHtml || isMarkdown) &&
+                                            !markerOnToken &&
+                                            memberType.SpecialType != SpecialType.System_String &&
+                                            memberType.TypeKind != TypeKind.Error;
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -165,7 +171,8 @@ static class ShapeBuilder
                         editableDateFormat,
                         editableCollectionElementFqn,
                         excelsiorConfigureCall,
-                        excelsiorConfigureMissing));
+                        excelsiorConfigureMissing,
+                        markerOnNonString));
                     Enqueue(memberType, visited, queue);
                 }
 

@@ -29,4 +29,8 @@
     // set and this holds the raw name for the diagnostic; emission skips it, so the clean report is
     // the only error rather than the first of a cascade.
     string? ExcelsiorConfigure = null,
-    bool ExcelsiorConfigureMissing = false);
+    bool ExcelsiorConfigureMissing = false,
+    // [Html]/[Markdown]/[StringSyntax] on a member that is neither a string nor a TokenValue —
+    // reported as PARCH029 and excluded from format-map emission, since the conversion reads a
+    // string and there is none to read.
+    bool FormatMarkerOnNonString = false);

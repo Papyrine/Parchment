@@ -2508,6 +2508,18 @@ Remove the modifier, or drop `[EditableField]` from the member to render it read
 Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
 
 
+### `PARCH029` — format marker on a member that is not a string
+
+An `[Html]` / `[Markdown]` / `[StringSyntax]` marker converts a string, so it belongs on a `string` or `string?` member. On anything else — an `int`, a `decimal?`, an `object`, a class — there is no string to convert, and the member would render as nothing while the rest of the document looked complete.
+
+```cs
+[Html]
+public int Count { get; set; }   ← not a string
+```
+
+Type the member as a `string`, or remove the marker. Reported for docx models, markdown models and `[ParchmentBindable]` types alike. A member typed `HtmlToken` or `MarkdownToken` is [`PARCH025`](#parch025--format-marker-on-a-member-already-typed-as-a-token) instead.
+
+
 ### `PARCH100` — template carries a second item type
 
 **Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.
