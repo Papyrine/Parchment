@@ -82,12 +82,15 @@ A template authored as a Word *form* holds its placeholders as legacy `FORMTEXT`
 tokens. Registration rewrites each one into a `{{ FieldName }}` token, so such a template binds with no
 change to the document: name the form field after the model member and it substitutes like any other
 token. The run properties of the field result are kept, so the substituted text is formatted as the
-field displayed.
+field displayed. A field inside a hyperlink, a tracked insertion or a content control is rewritten the
+same way, and a field nested in the result of a form field is replaced along with it.
 
-Two kinds are left untouched, because neither can be a substitution site:
+These are left untouched, because none can be a substitution site:
 
  * Checkbox and dropdown fields, whose values Word manages itself.
  * A field whose name could not be a member reference — `Due date` rather than `DueDate`.
+ * A field that begins in one paragraph and ends in a later one.
+ * A field inside a tracked deletion.
 
 
 ### Render
