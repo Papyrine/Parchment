@@ -259,7 +259,7 @@ undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | Fal
 • 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘
 • 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐
 • ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢
-• scriptalert(1);/script
+• <script>alert('1');</script>
 • <svg><script>123<1>alert(3)</script>
 • "><script>alert(4)</script>
 • '><script>alert(5)</script>
@@ -511,7 +511,7 @@ undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | Fal
 • <img src=x\x11onerror="javascript:alert(189)">
 • <img src=x\x12onerror="javascript:alert(190)">
 • <img src=x\x13onerror="javascript:alert(191)">
-• <img[a]b][c]src[d]=x[e]onerror=[f]"alert(192)">
+• <img[a][b][c]src[d]=x[e]onerror=[f]"alert(192)">
 • <img src=x onerror=\x09"javascript:alert(193)">
 • <img src=x onerror=\x10"javascript:alert(194)">
 • <img src=x onerror=\x11"javascript:alert(195)">
@@ -637,8 +637,8 @@ undefined | undef | null | NULL | (null) | nil | NIL | true | false | True | Fal
 • Dick Van Dyke
 • basement
 • If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you.
-• Roses are 0;31mred0m, violets are 0;34mblue. Hope you enjoy terminal hue
-• But now...20Cfor my greatest trick...8m
+• Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue
+• But now...[20Cfor my greatest trick...[8m
 • The quick brown fox… [Beeeep]
 • Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗
 • 🏳0🌈️

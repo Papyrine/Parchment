@@ -79,7 +79,7 @@
     },
     {
       Number: 20,
-      Text: src=x\x12onerror="javascript:alert(190)"> | <img src=x\x13onerror="javascript:alert(191)"> | <img[a]b][c]src[d]=x[e]onerror=[f]"alert(192)"> | <img src=x onerror=\x09"javascript:alert(193)"> | <img src=x onerror=\x10"javascript:alert(194)"> | <img src=x onerror=\x11"javascript:alert(195)"> | <img src=x onerror=\x12"javascript:alert(196)"> | <img src=x onerror=\x32"javascript:alert(197)"> | <img src=x onerror=\x00"javascript:alert(198)"> | <a href=java&#1&#2&#3&#4&#5&#6&#7&#8&#11&#12script:javascript:alert(199)>XXX</a> | <img src=“x <script>javascript:alert(200)</script>" > | <img src onerror /” '"= alt=javascript:alert(201)//"> | <title onpropertychange=javascript:alert(202)></title><title title=> | <a href=http://foo.bar/#x=y></a><img alt="><img src=x:x onerror=javascript:alert(203)></a>"> | <!-- [if]><script>javascript:alert(204)</script --> | <!--[if<img src=x onerror=javascript:alert(205)//]> --> | <script src="/\%(jscript)s"></script> | <script
+      Text: src=x\x12onerror="javascript:alert(190)"> | <img src=x\x13onerror="javascript:alert(191)"> | <img[a][b][c]src[d]=x[e]onerror=[f]"alert(192)"> | <img src=x onerror=\x09"javascript:alert(193)"> | <img src=x onerror=\x10"javascript:alert(194)"> | <img src=x onerror=\x11"javascript:alert(195)"> | <img src=x onerror=\x12"javascript:alert(196)"> | <img src=x onerror=\x32"javascript:alert(197)"> | <img src=x onerror=\x00"javascript:alert(198)"> | <a href=java&#1&#2&#3&#4&#5&#6&#7&#8&#11&#12script:javascript:alert(199)>XXX</a> | <img src=“x <script>javascript:alert(200)</script>" > | <img src onerror /” '"= alt=javascript:alert(201)//"> | <title onpropertychange=javascript:alert(202)></title><title title=> | <a href=http://foo.bar/#x=y></a><img alt="><img src=x:x onerror=javascript:alert(203)></a>"> | <!-- [if]><script>javascript:alert(204)</script --> | <!--[if<img src=x onerror=javascript:alert(205)//]> --> | <script src="/\%(jscript)s"></script> | <script
     },
     {
       Number: 21,
@@ -96,7 +96,7 @@
     {
       Number: 24,
       Text:
-If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you. | Roses are 0;31mred0m, violets are 0;34mblue. Hope you enjoy terminal hue | But now...20Cfor my greatest trick...8m | The quick brown fox… [Beeeep] | Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗 | 🏳0🌈️ | జ్ఞ‌ా | گچپژ | {% print ‘x’ * 64 * 1024**3 %} | {{ "".class.mro[2].subclasses()40.read() }} | En dash – | Em dash — | Horizontal bar ― | Figure dash ‒ | Swung dash ⁓ | Single opening quote ‘ | Single closing quote ’ | Double opening quote “ | Double closing quote ” | Copyright © | Registered ® | Trademark ™ | Section § | Paragraph ¶ | Ellipsis … | Optional hyphen ¬ | Non- breaking hyphen ߛ | Em space ߓ | En space ߒ | Quarter space ߕ
+If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue | But now...[20Cfor my greatest trick...[8m | The quick brown fox… [Beeeep] | Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗 | 🏳0🌈️ | జ్ఞ‌ా | گچپژ | {% print ‘x’ * 64 * 1024**3 %} | {{ "".class.mro[2].subclasses()40.read() }} | En dash – | Em dash — | Horizontal bar ― | Figure dash ‒ | Swung dash ⁓ | Single opening quote ‘ | Single closing quote ’ | Double opening quote “ | Double closing quote ” | Copyright © | Registered ® | Trademark ™ | Section § | Paragraph ¶ | Ellipsis … | Optional hyphen ¬ | Non- breaking hyphen ߛ | Em space ߓ | En space ߒ | Quarter space ߕ
 undefined
 undef
     },
@@ -367,7 +367,7 @@ Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮
 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘
 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐
 ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢
-scriptalert(1);/script
+<script>alert('1');</script>
 <svg><script>123<1>alert(3)</script>
 "><script>alert(4)</script>
 '><script>alert(5)</script>
@@ -627,7 +627,7 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <img src=x\x11onerror="javascript:alert(189)">
 <img src=x\x12onerror="javascript:alert(190)">
 <img src=x\x13onerror="javascript:alert(191)">
-<img[a]b][c]src[d]=x[e]onerror=[f]"alert(192)">
+<img[a][b][c]src[d]=x[e]onerror=[f]"alert(192)">
 <img src=x onerror=\x09"javascript:alert(193)">
 <img src=x onerror=\x10"javascript:alert(194)">
 <img src=x onerror=\x11"javascript:alert(195)">
@@ -762,8 +762,8 @@ basement
       Number: 67,
       Text:
 If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you.
-Roses are 0;31mred0m, violets are 0;34mblue. Hope you enjoy terminal hue
-But now...20Cfor my greatest trick...8m
+Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue
+But now...[20Cfor my greatest trick...[8m
 The quick brown fox… [Beeeep]
 Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗
 🏳0🌈️

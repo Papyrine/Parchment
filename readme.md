@@ -1652,6 +1652,7 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 |---|---|
 | `'text'` | \u2018text\u2019 (curly single quotes) |
 | `"text"` | \u201Ctext\u201D (curly double quotes) |
+| `<<text>>` | \u00ABtext\u00BB (angle quotes) |
 | `--` | \u2013 (en-dash) |
 | `---` | \u2014 (em-dash) |
 | `...` | \u2026 (ellipsis) |
