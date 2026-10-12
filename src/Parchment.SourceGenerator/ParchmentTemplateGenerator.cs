@@ -1271,7 +1271,8 @@ public sealed class ParchmentTemplateGenerator :
                             Diagnostics.UnsupportedBlockTag,
                             location,
                             templatePath,
-                            token.Source));
+                            token.Source,
+                            Diagnostics.DocxBlockTags));
                     break;
             }
         }

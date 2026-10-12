@@ -2250,6 +2250,8 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 {% foobar %}
 ```
 
+A markdown template accepts liquid's other tags (`assign`, `capture`, `unless`, `case` and so on), with one exception: `{% render %}` and `{% include %}` load a partial from a file, and a template is a single file with nowhere to load one from. Both are reported here, and rejected by `RegisterMarkdownTemplate`.
+
 
 ### `PARCH004` — no template found for model
 

@@ -120,6 +120,20 @@ class MarkdownReferenceValidator :
         return captureStatement;
     }
 
+    // Both tags parse, and both load another template through `TemplateOptions.FileProvider`. A
+    // markdown template is registered as one piece of text and no provider is ever set, so Fluid's
+    // null provider answers every name with a FileNotFoundException, at render.
+    protected override Statement VisitIncludeStatement(IncludeStatement includeStatement) =>
+        throw UnsupportedPartial("include");
+
+    protected override Statement VisitRenderStatement(RenderStatement renderStatement) =>
+        throw UnsupportedPartial("render");
+
+    ParchmentRegistrationException UnsupportedPartial(string tag) =>
+        new(
+            templateName,
+            $"Unsupported tag '{tag}'. A markdown template is a single file: there is nothing to load a partial from, so '{{% render %}}' and '{{% include %}}' cannot work.");
+
     protected override Expression VisitMemberExpression(MemberExpression expression)
     {
         var segments = new List<string>(expression.Segments.Count);

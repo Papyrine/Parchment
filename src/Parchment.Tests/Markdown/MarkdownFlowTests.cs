@@ -508,6 +508,26 @@ public partial class MarkdownFlowTests
     public void RangeLoopSourceIsAccepted() =>
         Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
 
+    // A partial is loaded through a file provider, and a template is registered as one piece of
+    // text with none. Both tags parse, so without a check the first sign of trouble was a
+    // FileNotFoundException out of Fluid at render.
+    [Test]
+    [Arguments("{% render 'part' %}", "render")]
+    [Arguments("{% include 'part' %}", "include")]
+    [Arguments("{%- render 'part', row: Rows -%}", "render")]
+    [Arguments("{% include Rows %}", "include")]
+    [Arguments("{% for row in Rows %}{% render 'part' %}{% endfor %}", "render")]
+    [Arguments("{% for row in Rows %}{% else %}{% include 'part' %}{% endfor %}", "include")]
+    [Arguments("{% if Count > 1 %}{% else %}{% include 'part' %}{% endif %}", "include")]
+    [Arguments("{% unless Count > 1 %}{% render 'part' %}{% endunless %}", "render")]
+    [Arguments("{% case Count %}{% when 1 %}{% include 'part' %}{% endcase %}", "include")]
+    [Arguments("{% capture text %}{% render 'part' %}{% endcapture %}", "render")]
+    public async Task PartialTagFailsRegistration(string markdown, string tag)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register(markdown));
+        await Assert.That(exception.Message).Contains($"Unsupported tag '{tag}'");
+    }
+
     // A member used as a bound does not make the range a member path. Count is an int, and taking
     // it for the loop source rejected the loop as iterating something that is not enumerable.
     [Test]

@@ -8,8 +8,9 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
+///   PARCH003 — UnsupportedBlockTag, for the partial tags `render` and `include` only
 ///   PARCH024 — FormatMarkerThroughLoopVariable
-/// PARCH003 / PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
+/// PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
 /// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
 /// replacement.
 ///
@@ -56,7 +57,51 @@ class MarkdownValidator
         IFluidTemplate template)
     {
         var validator = new MarkdownValidator(context, target, templatePath, location);
+        validator.ReportPartialTags(template);
         validator.WalkStatements(((FluidTemplate) template).Statements);
+    }
+
+    // `{% render %}` and `{% include %}` parse, and then load another template through a file
+    // provider nothing configures, so the runtime refuses them at registration. Found with a
+    // visitor of their own rather than in WalkStatement, which descends into the statements it
+    // validates references in and no others: a partial is unsupported wherever it sits.
+    void ReportPartialTags(IFluidTemplate template)
+    {
+        foreach (var tag in PartialTagCollector.Collect(template))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedBlockTag,
+                    location,
+                    templatePath,
+                    $"{{% {tag} ... %}}",
+                    Diagnostics.MarkdownPartialTag));
+        }
+    }
+
+    sealed class PartialTagCollector :
+        AstVisitor
+    {
+        List<string> tags = [];
+
+        public static List<string> Collect(IFluidTemplate template)
+        {
+            var collector = new PartialTagCollector();
+            collector.VisitTemplate(template);
+            return collector.tags;
+        }
+
+        protected override Statement VisitIncludeStatement(IncludeStatement includeStatement)
+        {
+            tags.Add("include");
+            return includeStatement;
+        }
+
+        protected override Statement VisitRenderStatement(RenderStatement renderStatement)
+        {
+            tags.Add("render");
+            return renderStatement;
+        }
     }
 
     void WalkStatements(IReadOnlyList<Statement> statements)
