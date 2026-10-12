@@ -24,6 +24,7 @@
     <Compile Include="..\Parchment\Tokens\TokenScan.cs" Link="TokenScan.cs" />
     <Compile Include="..\Parchment\Tokens\TokenSite.cs" Link="TokenSite.cs" />
     <Compile Include="..\Parchment\Tokens\TokenSiteKind.cs" Link="TokenSiteKind.cs" />
+    <Compile Include="..\Parchment\Liquid\TokenFilterOrder.cs" Link="TokenFilterOrder.cs" />
     <PackageReference Include="Polyfill" PrivateAssets="all" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />

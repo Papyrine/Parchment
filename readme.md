@@ -374,6 +374,8 @@ await store.Render(
 
 Both approaches produce the same structural replacement — the host paragraph is swapped with the rendered markdown elements when the token is the entire paragraph. If the token shares its paragraph with other text or with sibling tokens, the runtime falls back to inline splicing (single produced paragraph → its runs are extracted and merged into the host) or paragraph splitting (multiple produced blocks → host is split at the token offset and the produced blocks slot between the two halves). See [Inline-aware structural replacement](#inline-aware-structural-replacement) for the full rules.
 
+**Filter order**: `markdown`, `html`, `bullet_list` and `numbered_list` turn the value into Word content, so each has to be the last filter of its token. Filters that work on the text go before it — `{{ Content | upcase | markdown }}` — and one placed after it fails registration ([`PARCH037`](#parch037--filter-after-a-format-filter), which also covers how a markdown template differs).
+
 **Markdown templates**: the filter is needed here too. A markdown template's substitutions are escaped — see [Bound values are escaped](#bound-values-are-escaped) — so a plain `string` property containing markdown syntax prints that syntax instead of applying it. `| markdown` is what says the value is source, and a `[Markdown]` annotation or a `MarkdownToken` says the same thing at the model:
 
 Model:
@@ -2506,6 +2508,28 @@ Remove the modifier, or drop `[EditableField]` from the member to render it read
 ```
 
 Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
+
+
+### `PARCH037` — filter after a format filter
+
+A filter that turns a value into Word content has to be the last filter of its token. What it hands on is that content rather than text, so a filter placed after it has no text to work on.
+
+In a docx template the filters concerned are `markdown`, `html`, `bullet_list` and `numbered_list`. A filter after one would be handed the content object, and the token would print that object's type name.
+
+```
+// Template paragraph — upcase would be handed the rendered markdown, not the text
+{{ Notes | markdown | upcase }}
+```
+
+In a markdown template it is `html` alone: the value is held aside for conversion, and a filter after it would be handed the placeholder standing in for it. `markdown`, `bullet_list` and `numbered_list` write markdown source there, which is still text, so a filter after one of those is accepted and transforms that source. A header or footer taken from the style source follows the docx rule.
+
+Put the filters that work on the text first, and the format filter last:
+
+```
+{{ Notes | upcase | markdown }}
+```
+
+The runtime throws `ParchmentRegistrationException` for the same token at registration.
 
 
 ### `PARCH100` — template carries a second item type

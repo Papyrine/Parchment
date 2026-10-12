@@ -12,4 +12,8 @@
     int Container = 0,
     // A `for` over a range such as `(1..Count)`. References are then the range's bounds rather
     // than the thing iterated, and the loop variable is untyped.
-    bool LoopSourceIsRange = false);
+    bool LoopSourceIsRange = false,
+    // Substitution only, and set together: a filter that produces a token, and the filter applied
+    // after it. See TokenFilterOrder.
+    string? TokenFilter = null,
+    string? FilterAfterTokenFilter = null);

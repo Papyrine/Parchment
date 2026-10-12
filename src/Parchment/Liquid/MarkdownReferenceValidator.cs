@@ -120,6 +120,24 @@ class MarkdownReferenceValidator :
         return captureStatement;
     }
 
+    // `html` is the one filter that produces a token in this flow: it parks its value and writes a
+    // placeholder, which a filter after it would be handed in place of the value. The scan of a
+    // style source's headers and footers applies the docx form of the rule — see TokenScanner.
+    // PARCH037 in the source generator.
+    protected override Expression VisitFilterExpression(FilterExpression expression)
+    {
+        if (TokenFilterOrder.TryFind(expression, markdownFlow: true, out var tokenFilter, out var following))
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                TokenFilterOrder.Message(tokenFilter, following),
+                null,
+                TokenFilterOrder.Describe(expression));
+        }
+
+        return base.VisitFilterExpression(expression);
+    }
+
     protected override Expression VisitMemberExpression(MemberExpression expression)
     {
         var segments = new List<string>(expression.Segments.Count);

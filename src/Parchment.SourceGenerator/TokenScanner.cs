@@ -50,7 +50,24 @@ public static class TokenScanner
 
         var references = IdentifierVisitor.Collect(template);
         var isPlain = IsPlainMemberAccess(template);
-        return new(TokenKind.Substitution, source, references, null, hasOtherContent, isPlain);
+        var token = new Token(TokenKind.Substitution, source, references, null, hasOtherContent, isPlain);
+
+        // The docx form of the rule, where every one of these filters produces a token: this
+        // scanner only ever reads a docx template. Lockstep with the runtime's
+        // TokenScanner.RequireTokenFilterLast.
+        var statements = ((FluidTemplate) template).Statements;
+        if (statements.Count > 0 &&
+            statements[0] is OutputStatement output &&
+            TokenFilterOrder.TryFind(output.Expression, markdownFlow: false, out var tokenFilter, out var following))
+        {
+            return token with
+            {
+                TokenFilter = tokenFilter,
+                FilterAfterTokenFilter = following
+            };
+        }
+
+        return token;
     }
 
     // A "plain" substitution is `{{ a.b.c }}` — just an OutputStatement wrapping a MemberExpression,

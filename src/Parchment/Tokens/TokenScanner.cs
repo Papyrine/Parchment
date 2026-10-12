@@ -106,8 +106,31 @@ static class TokenScanner
                 source);
         }
 
+        RequireTokenFilterLast(template, source, templateName, partUri);
+
         var refs = IdentifierVisitor.Collect(template);
         return new(offset, source.Length, source, template, refs);
+    }
+
+    // Here rather than in a validator of its own because every part that renders through the scope
+    // tree is scanned here — the parts of a docx template, and the headers, footers and notes a
+    // markdown template takes from its style source — and the rule is about the token's own shape,
+    // not about the model. PARCH037 in the source generator.
+    static void RequireTokenFilterLast(IFluidTemplate template, string source, string templateName, string partUri)
+    {
+        var statements = ((Fluid.Parser.FluidTemplate) template).Statements;
+        if (statements.Count == 0 ||
+            statements[0] is not OutputStatement output ||
+            !TokenFilterOrder.TryFind(output.Expression, markdownFlow: false, out var tokenFilter, out var following))
+        {
+            return;
+        }
+
+        throw new ParchmentRegistrationException(
+            templateName,
+            TokenFilterOrder.Message(tokenFilter, following),
+            partUri,
+            source);
     }
 
     static BlockMarker ParseBlockTag(string source, string templateName, string partUri)
