@@ -8,11 +8,31 @@
     assembly and nothing is embedded as a manifest resource; the generated module initializer
     carries the template itself.
 
-    <ParchmentTemplate Include="Invoice.docx" />
+    A template names itself: Invoice.parchment.md, Invoice.parchment.docx, Invoice.parchment.dotx.
+    The marker is what makes the glob below safe — a readme, a changelog, or a design note named
+    after a model cannot be mistaken for a template — so a template needs no csproj entry at all.
 
-    declares a template (or a .dotx style document) the convenient way. It maps to AdditionalFiles
-    and nothing else, so an IDE that models one build action per file keeps the file visible to
-    the generator.
+    Set EnableDefaultParchmentTemplates to false to take the globs off and declare every template
+    by hand.
+  -->
+  <ItemGroup Condition="'$(EnableDefaultParchmentTemplates)' != 'false'">
+    <!-- The shared style document is parchment.dotx with no stem, so it needs its own pattern:
+         *.parchment.dotx wants a name and a separating dot in front of the marker. -->
+    <_ParchmentDiscovered Include="**\*.parchment.md;
+                                   **\*.parchment.docx;
+                                   **\*.parchment.dotx;
+                                   **\parchment.dotx"
+                          Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);@(ParchmentTemplate);@(AdditionalFiles)" />
+    <ParchmentTemplate Include="@(_ParchmentDiscovered)" />
+  </ItemGroup>
+
+  <!--
+    <ParchmentTemplate Include="..\Shared\Invoice.parchment.docx" />
+
+    declares a template the globs cannot reach — one outside the project folder, or under a path
+    the default excludes cover. It maps to AdditionalFiles and nothing else, so an IDE that models
+    one build action per file keeps the file visible to the generator. The name still carries the
+    marker: declaring a file says where it is, not what it binds to.
   -->
   <ItemGroup>
     <AdditionalFiles Include="@(ParchmentTemplate)" />
@@ -25,7 +45,9 @@
     AdditionalFiles to report on, and a command-line build never reproduces it.
 
     Scoped to template extensions, since another analyzer's additional files are none of Parchment's
-    business.
+    business. And scoped to EmbeddedResource and Content: the None item the SDK's default glob gives
+    every template is deliberately not counted — None is never handed to the compiler, so it cannot
+    hide the file from the generator, and it is what keeps a template listed in a solution explorer.
   -->
   <Target Name="ParchmentWarnOnDualItemTypes"
           BeforeTargets="CoreCompile"

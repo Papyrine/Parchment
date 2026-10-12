@@ -1,4 +1,4 @@
-static class GeneratorDriver
+﻿static class GeneratorDriver
 {
     const string attributeSource =
         """
@@ -23,8 +23,32 @@ static class GeneratorDriver
 
             public sealed class TemplateStore { }
 
+            public abstract class TokenValue
+            {
+                public static implicit operator TokenValue(string text) => null!;
+            }
+
+            public class HtmlToken : TokenValue
+            {
+                public HtmlToken(string html) { }
+            }
+
+            public class MarkdownToken : TokenValue
+            {
+                public MarkdownToken(string markdown) { }
+            }
+
             [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
-            public sealed class ExcelsiorTableAttribute : System.Attribute { }
+            public sealed class ExcelsiorTableAttribute : System.Attribute
+            {
+                public string? HeadingParagraphStyle { get; set; }
+
+                public string? BodyParagraphStyle { get; set; }
+
+                public string? TableStyle { get; set; }
+
+                public string? Configure { get; set; }
+            }
 
             [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
             public sealed class EditableFieldAttribute : System.Attribute
@@ -42,10 +66,10 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
-    // The convention names the template after the model type, so the default file name is read
-    // off the [ParchmentModel] target in the source under test.
+    // The convention names the template after the model type, plus the .parchment marker, so the
+    // default file name is read off the [ParchmentModel] target in the source under test.
     public static DriverSetup CreateDriver(string userSource, params string[] templateParagraphs) =>
-        CreateDriverWithDocxes(userSource, new TemplateFile($"{ModelTypeName(userSource)}.docx", BuildDocx(templateParagraphs)));
+        CreateDriverWithDocxes(userSource, new TemplateFile($"{ModelTypeName(userSource)}.parchment.docx", BuildDocx(templateParagraphs)));
 
     /// <summary>
     /// The name of the first <c>[ParchmentModel]</c>-decorated type in the source under test —
@@ -85,6 +109,29 @@ static class GeneratorDriver
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
+    /// <summary>
+    /// Strips CR from a markdown template before it is written.
+    /// </summary>
+    /// <remarks>
+    /// A markdown template's text is embedded verbatim into the generated source, newlines escaped,
+    /// so a CRLF template produces "\r\n" in the snapshot — as the two literal characters, which
+    /// git's eol=lf normalization cannot touch. These templates come from raw string literals in
+    /// the test sources, so their newlines are whatever the checkout used, and a working copy that
+    /// picked up CRLF would rewrite every markdown snapshot into a form CI can never match.
+    /// Normalizing here keeps the snapshots a property of the template rather than of the clone.
+    /// </remarks>
+    static byte[] NormalizeNewlines(string name, byte[] bytes)
+    {
+        // Markdown only. A docx is a zip, and stripping bytes out of one would corrupt it.
+        if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        {
+            return bytes;
+        }
+
+        return Encoding.UTF8.GetBytes(
+            Encoding.UTF8.GetString(bytes).Replace("\r\n", "\n"));
+    }
+
     public static DriverSetup CreateDriverWithDocxes(
         string userSource,
         TemplateFile[] docxes,
@@ -101,7 +148,7 @@ static class GeneratorDriver
             var path = Path.Combine(directory, name);
             // A template may be given a nested path, so its folder has to exist first.
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, bytes);
+            File.WriteAllBytes(path, NormalizeNewlines(name, bytes));
             texts.Add(new PathAdditionalText(path));
             paths.Add(path);
         }
@@ -186,7 +233,28 @@ static class GeneratorDriver
         return stream.ToArray();
     }
 
-    static Paragraph BuildParagraph(string text) =>
+    /// <summary>
+    /// A docx whose body is the given blocks as-is — for templates where it matters which element
+    /// a paragraph sits in (a table cell as opposed to the body).
+    /// </summary>
+    public static byte[] BuildDocxBytesFromBlocks(params OpenXmlElement[] blocks)
+    {
+        using var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(new Body(blocks));
+
+            var settingsPart = mainPart.AddNewPart<DocumentSettingsPart>();
+            settingsPart.Settings = new(
+                new RemovePersonalInformation(),
+                new RemoveDateAndTime());
+        }
+
+        return stream.ToArray();
+    }
+
+    public static Paragraph BuildParagraph(string text) =>
         new(
             new Run(
                 new Text(text)
@@ -207,7 +275,7 @@ static class GeneratorDriver
     {
         var setup = CreateDriverWithFiles(
             userSource,
-            new TemplateFile(fileName ?? $"{ModelTypeName(userSource)}.md", Encoding.UTF8.GetBytes(markdown)));
+            new TemplateFile(fileName ?? $"{ModelTypeName(userSource)}.parchment.md", Encoding.UTF8.GetBytes(markdown)));
         return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 
@@ -226,14 +294,6 @@ static class GeneratorDriver
         public string DocxPath => DocxPaths[0];
     }
 
-    static string WriteDocx(string[] paragraphs)
-    {
-        var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "template.docx");
-        File.WriteAllBytes(path, BuildDocx(paragraphs));
-        return path;
-    }
 
     static byte[] BuildDocx(string[] paragraphs, bool removePersonalInformation = true)
     {

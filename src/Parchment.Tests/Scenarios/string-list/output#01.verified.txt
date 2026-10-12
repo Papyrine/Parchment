@@ -1,6 +1,0 @@
-﻿Person: Ada Lovelace
-Tags:
-Author
-Mathematician
-Engineer
-End.

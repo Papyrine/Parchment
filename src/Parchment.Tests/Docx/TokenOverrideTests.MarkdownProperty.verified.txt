@@ -1,6 +1,15 @@
-﻿# Weekly summary
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+# Weekly summary
 Highlights
-Shipped the new feature
-Closed several bugs
-Ran a code review
+• Shipped the new feature
+• Closed several bugs
+• Ran a code review
 Stay the course
+    }
+  ]
+}

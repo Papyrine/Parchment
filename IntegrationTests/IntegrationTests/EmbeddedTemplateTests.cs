@@ -30,7 +30,7 @@ public partial class EmbeddedTemplateTests
     // The point of embedding into the generated source: nothing loose to deploy.
     [Test]
     public async Task TheTemplateIsNotCopiedBesideTheAssembly() =>
-        await Assert.That(File.Exists(Path.Combine(AppContext.BaseDirectory, "EmbeddedReportModel.md"))).IsFalse();
+        await Assert.That(File.Exists(Path.Combine(AppContext.BaseDirectory, "EmbeddedReportModel.parchment.md"))).IsFalse();
 
     // And no manifest resource either — the old embedding mechanism is gone.
     [Test]

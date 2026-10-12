@@ -6,17 +6,11 @@
 /// A table-of-contents entry has to link somewhere, and most headings were never given an id by the
 /// template author. Generated names follow Word's own <c>_Toc…</c> convention, which is what Word
 /// writes when it builds a table of contents and what it recognises as one of its own.
+/// Ids come from the render's <see cref="BookmarkIds"/>, which everything else in the document was
+/// numbered from, so no walk of the body is needed to find a free one.
 /// </remarks>
-class WordBookmarkAllocator
+class WordBookmarkAllocator(BookmarkIds ids)
 {
-    int next;
-
-    public WordBookmarkAllocator(Body body) =>
-        next = body.Descendants<BookmarkStart>()
-            .Select(_ => int.TryParse(_.Id?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : 0)
-            .DefaultIfEmpty(0)
-            .Max();
-
     public string Ensure(Paragraph paragraph)
     {
         var existing = paragraph.Descendants<BookmarkStart>().FirstOrDefault()?.Name?.Value;
@@ -25,7 +19,7 @@ class WordBookmarkAllocator
             return existing;
         }
 
-        var id = (++next).ToString(CultureInfo.InvariantCulture);
+        var id = ids.Next();
         var name = $"_Toc{id}";
         var start = new BookmarkStart
         {

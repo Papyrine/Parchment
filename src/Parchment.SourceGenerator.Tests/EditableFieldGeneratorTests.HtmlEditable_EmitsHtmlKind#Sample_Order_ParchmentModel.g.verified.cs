@@ -6,22 +6,26 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Order
 {
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+  [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  internal static class ParchmentGeneratedOrder
   {
-    new("Body", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Body)),
-  };
-  static readonly global::Parchment.Generated.EditableFieldMapEntry[] _Editables =
-  {
-    new("Body", global::Parchment.Generated.EditableFieldKind.Html, typeof(string), false, o => ((global::Sample.Order)o).Body, (o, v) => { ((global::Sample.Order)o).Body = (string)v!; }, static o => true, false, null),
-  };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+    {
+      new("Body", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Body)),
+    };
+    static readonly global::Parchment.Generated.EditableFieldMapEntry[] _Editables =
+    {
+      new("Body", global::Parchment.Generated.EditableFieldKind.Html, typeof(string), false, o => ((global::Sample.Order)o).Body, (o, v) => { ((global::Sample.Order)o).Body = (string)v!; }, static o => true, false, null),
+    };
 
-  [global::System.Runtime.CompilerServices.ModuleInitializer]
-  internal static void InitializeParchmentTemplate()
-  {
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
-    global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof(global::Sample.Order), _Editables);
-    global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
-      typeof(global::Sample.Order),
-      global::System.Convert.FromBase64String("scrubbed"));
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitializeParchmentTemplate()
+    {
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
+      global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof(global::Sample.Order), _Editables);
+      global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+        typeof(global::Sample.Order),
+        global::System.Convert.FromBase64String("scrubbed"));
+    }
   }
 }

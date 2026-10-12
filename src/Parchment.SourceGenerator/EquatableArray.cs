@@ -10,12 +10,30 @@ readonly struct EquatableArray<T>(ImmutableArray<T> array) :
 {
     public static readonly EquatableArray<T> Empty = new(ImmutableArray<T>.Empty);
 
-    public int Count => array.IsDefault ? 0 : array.Length;
+    public int Count
+    {
+        get
+        {
+            if (array.IsDefault)
+            {
+                return 0;
+            }
+
+            return array.Length;
+        }
+    }
 
     public T this[int index] => array[index];
 
-    public ImmutableArray<T> AsImmutableArray() =>
-        array.IsDefault ? ImmutableArray<T>.Empty : array;
+    public ImmutableArray<T> AsImmutableArray()
+    {
+        if (array.IsDefault)
+        {
+            return ImmutableArray<T>.Empty;
+        }
+
+        return array;
+    }
 
     public bool Equals(EquatableArray<T> other)
     {

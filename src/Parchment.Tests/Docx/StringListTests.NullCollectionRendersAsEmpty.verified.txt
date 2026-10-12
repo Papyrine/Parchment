@@ -1,2 +1,11 @@
-﻿Header
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Header
 Footer
+    }
+  ]
+}

@@ -9,9 +9,7 @@ public class ScenarioInputRenderer
     [Test, Explicit]
     public async Task RenderAllInputDocxesToPng()
     {
-        var scenariosDir = Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(SourcePath())!,
-            ".."));
+        var scenariosDir = Path.GetFullPath(ProjectFiles.ProjectDirectory);
 
         var inputs = Directory.GetFiles(scenariosDir, "input.docx", SearchOption.AllDirectories);
         await Assert.That(inputs.Length).IsGreaterThan(0);
@@ -29,6 +27,4 @@ public class ScenarioInputRenderer
             await File.WriteAllBytesAsync(pngPath, pages[0]);
         }
     }
-
-    static string SourcePath([CallerFilePath] string path = "") => path;
 }

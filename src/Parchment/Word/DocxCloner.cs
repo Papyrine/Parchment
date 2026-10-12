@@ -65,7 +65,15 @@ static class DocxCloner
         return stream.ToArray();
     }
 
-    public static IEnumerable<(string uri, OpenXmlCompositeElement root)> EnumerateParts(WordprocessingDocument doc)
+    /// <summary>
+    /// The parts that can carry tokens, each with its root element.
+    /// </summary>
+    /// <remarks>
+    /// Reading a part's root makes the SDK parse the part, and a parsed part is written out again
+    /// on save whether or not anything in it changed. <paramref name="only"/> names, by uri, the
+    /// parts a caller has work in, so the rest stay as the bytes the package was opened with.
+    /// </remarks>
+    public static IEnumerable<(string uri, OpenXmlCompositeElement root)> EnumerateParts(WordprocessingDocument doc, IReadOnlySet<string>? only = null)
     {
         var main = doc.MainDocumentPart;
         if (main == null)
@@ -73,35 +81,55 @@ static class DocxCloner
             yield break;
         }
 
-        if (main.Document?.Body is { } body)
+        var mainUri = main.Uri.ToString();
+        if (Wanted(only, mainUri) &&
+            main.Document?.Body is { } body)
         {
-            yield return (main.Uri.ToString(), body);
+            yield return (mainUri, body);
         }
 
         foreach (var headerPart in main.HeaderParts)
         {
-            if (headerPart.Header is { } header)
+            var uri = headerPart.Uri.ToString();
+            if (Wanted(only, uri) &&
+                headerPart.Header is { } header)
             {
-                yield return (headerPart.Uri.ToString(), header);
+                yield return (uri, header);
             }
         }
 
         foreach (var footerPart in main.FooterParts)
         {
-            if (footerPart.Footer is { } footer)
+            var uri = footerPart.Uri.ToString();
+            if (Wanted(only, uri) &&
+                footerPart.Footer is { } footer)
             {
-                yield return (footerPart.Uri.ToString(), footer);
+                yield return (uri, footer);
             }
         }
 
-        if (main.FootnotesPart?.Footnotes is { } footnotes)
+        if (main.FootnotesPart is { } footnotesPart)
         {
-            yield return (main.FootnotesPart.Uri.ToString(), footnotes);
+            var uri = footnotesPart.Uri.ToString();
+            if (Wanted(only, uri) &&
+                footnotesPart.Footnotes is { } footnotes)
+            {
+                yield return (uri, footnotes);
+            }
         }
 
-        if (main.EndnotesPart?.Endnotes is { } endnotes)
+        if (main.EndnotesPart is { } endnotesPart)
         {
-            yield return (main.EndnotesPart.Uri.ToString(), endnotes);
+            var uri = endnotesPart.Uri.ToString();
+            if (Wanted(only, uri) &&
+                endnotesPart.Endnotes is { } endnotes)
+            {
+                yield return (uri, endnotes);
+            }
         }
     }
+
+    static bool Wanted(IReadOnlySet<string>? only, string uri) =>
+        only == null ||
+        only.Contains(uri);
 }

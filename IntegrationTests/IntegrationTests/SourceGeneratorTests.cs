@@ -49,7 +49,10 @@ public partial class SourceGeneratorTests
             new SgInvoiceModel
             {
                 Number = "SG-001",
-                Customer = new() { Name = "Acme" }
+                Customer = new()
+                {
+                    Name = "Acme"
+                }
             },
             stream);
 
@@ -65,11 +68,20 @@ public partial class SourceGeneratorTests
         await store.Render(
             new SgReportModel
             {
-                Customer = new() { Name = "Acme" },
+                Customer = new()
+                {
+                    Name = "Acme"
+                },
                 Lines =
                 [
-                    new() { Description = "Widget" },
-                    new() { Description = "Sprocket" }
+                    new()
+                    {
+                        Description = "Widget"
+                    },
+                    new()
+                    {
+                        Description = "Sprocket"
+                    }
                 ]
             },
             stream);

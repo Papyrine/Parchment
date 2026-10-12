@@ -59,7 +59,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var editableMap = EditableMap.Build(modelType);
 
         using var stream = clone;
-        IReadOnlyList<PartScopeTree> parts;
+        var parts = new List<PartScopeTree>();
+        var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
@@ -75,7 +76,16 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // docx template — the mutation is baked into the registration snapshot below.
                 FormFields.ToTokens(root);
 
+                // A render reads only the parts that carry tokens, so a cell the template itself
+                // left without a closing paragraph is closed here, in every part, and not left to
+                // the render's own pass, which never sees a token-free part.
+                TableCells.EnsureFinalParagraph(root);
+
                 var classifications = TokenScanner.Scan(root, name, uri);
+
+                // After the scan, so the anchors it added are counted, and across every part: a
+                // render numbers what it produces from above this - see BookmarkIds.
+                maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -87,6 +97,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 ExcelsiorTokenValidator.Validate(classifications, excelsiorMap, name, uri);
                 FormatTokenValidator.Validate(classifications, formatMap, name, uri);
                 EditableTokenValidator.Validate(classifications, editableMap, excelsiorMap, formatMap, name, uri, isBody: uri == bodyUri);
+
+                // The tree that was just validated is the one the render walks. It names the
+                // anchors this scan wrote into the package saved below, so nothing has to be read
+                // back out of the package to build it.
+                parts.Add(new(uri, tree));
             }
 
             if (!editableMap.IsEmpty &&
@@ -111,12 +126,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
 
             doc.Save();
-
-            parts = ExtractParts(doc, name);
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
@@ -131,9 +144,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// <remarks>
     /// The style source arrives as an array rather than a stream so that
     /// <see cref="PrepareStyleSource"/> can hand it straight back when it has nothing to rewrite —
-    /// which is the common case, and which lets the registered template share the caller's array
-    /// instead of taking a copy of it. That matters most for the source-generator path, where the
-    /// array belongs to a definition that outlives every store.
+    /// which is the common case — and <see cref="BakeStyleSource"/> then makes the one copy the
+    /// registered template keeps. The caller's array is never written to, which matters most for
+    /// the source-generator path, where it belongs to a definition that outlives every store.
     /// </remarks>
     void RegisterMarkdownTemplate(Type model, string markdown, byte[]? styleSource)
     {
@@ -141,7 +154,16 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         GuardBindingModel(model, name);
         SharedFluid.EnsureModelRegistered(model, name);
 
-        if (!SharedFluid.Parser.TryParse(markdown, out var template, out var error))
+        // Excelsior tokens become markers before the source is parsed, so the cached template
+        // carries the markers and a render never has to re-scan the markdown.
+        var excelsiorTables = ExcelsiorTableMap.Build(model);
+        var (rewritten, tablePlaceholders) = MarkdownExcelsiorTables.Rewrite(markdown, excelsiorTables, name);
+
+        // [Html] / [Markdown] members become filtered tokens for the same reason, and after the
+        // Excelsior pass so a marked line is already a marker and cannot match as a plain token.
+        rewritten = MarkdownFormats.Rewrite(rewritten, FormatMap.Build(model));
+
+        if (!SharedFluid.Parser.TryParse(rewritten, out var template, out var error))
         {
             throw new ParchmentRegistrationException(
                 name,
@@ -150,9 +172,21 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         MarkdownReferenceValidator.Validate(template, model, name);
 
-        var (styleSourceBytes, parts) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
+        var (prepared, parts, maxBookmarkId) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
+        var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(prepared);
 
-        var registered = new RegisteredMarkdownTemplate(name, model, styleSourceBytes, parts, template, Policies, PageNumbers);
+        var registered = new RegisteredMarkdownTemplate(
+            name,
+            model,
+            styleSourceBytes,
+            parts,
+            template,
+            Policies,
+            PageNumbers,
+            excelsiorTables,
+            tablePlaceholders,
+            maxBookmarkId,
+            compatibilityBaked);
         templates[model] = registered;
         logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
     }
@@ -179,10 +213,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// body, which includes <see cref="BlankDocxTemplate"/> — the input is handed back untouched and
     /// nothing is serialized.
     /// </remarks>
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts) PrepareStyleSource(Type model, byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
-        List<PartScopeTree> parts;
+        var parts = new List<PartScopeTree>();
+        var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             var retyped = doc.DocumentType != WordprocessingDocumentType.Document;
@@ -198,6 +233,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 }
 
                 var classifications = TokenScanner.Scan(root, name, uri);
+
+                // The body is skipped above because the markdown replaces it, so its bookmarks never
+                // reach the output. Every other part's do, anchors included - see BookmarkIds.
+                maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -205,25 +244,79 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
                 new ReferenceValidator(model, name, uri).ValidateTree(tree);
-                found = true;
+                parts.Add(new(uri, tree));
+
+                // A part holding nothing but anchors the style source arrived with has no token to
+                // bind, so on its own it is no reason to rewrite the package.
+                found |= classifications.Any(_ => _.Kind != ParagraphKind.Static);
             }
 
-            if (!found &&
-                !retyped)
+            if (!found)
             {
-                return (bytes, []);
+                if (!retyped)
+                {
+                    return (bytes, [], maxBookmarkId);
+                }
+
+                // Retyping alone leaves no token to bind, so no part is listed, as when nothing
+                // was rewritten at all.
+                parts.Clear();
             }
 
             doc.Save();
-
-            // ExtractParts walks every part. The body was never scanned, so whatever it found there
-            // belongs to the markdown that replaces it, not to this pass. Retyping alone leaves
-            // nothing to extract.
-            parts = found ? ExtractParts(doc, name) : [];
-            parts.RemoveAll(_ => _.PartUri == bodyUri);
         }
 
-        return (stream.ToArray(), parts);
+        return (stream.ToArray(), parts, maxBookmarkId);
+    }
+
+    /// <summary>
+    /// Empties the style source's body and stamps the compatibility setting, so a render starts
+    /// from a package already in the state every render used to rebuild.
+    /// </summary>
+    /// <remarks>
+    /// The markdown replaces the body, and a style source authored in Word can carry a whole sample
+    /// document there: parsing that on every render only to discard it was the larger part of a
+    /// small render. Neither step depends on the model, so both belong at registration. What is
+    /// left in the body is the one <c>w:sectPr</c> a render preserves, as a direct child, which is
+    /// where a render looks for it. Parts the discarded body referenced stay in the package, as
+    /// they always have.
+    /// </remarks>
+    internal static (byte[] Bytes, bool CompatibilityBaked) BakeStyleSource(byte[] bytes)
+    {
+        bool compatibilityBaked;
+        using var stream = DocxCloner.ToWritableStream(bytes);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var mainPart = doc.MainDocumentPart;
+            if (mainPart?.Document?.Body is not { } body)
+            {
+                // Left as supplied, so a render reports the missing body as it always has.
+                return (bytes, false);
+            }
+
+            var sectPr = body.Elements<SectionProperties>().LastOrDefault()
+                         ?? body.Descendants<SectionProperties>().LastOrDefault();
+            sectPr?.Remove();
+            body.RemoveAllChildren();
+            if (sectPr != null)
+            {
+                body.AppendChild(sectPr);
+            }
+
+            // Only into a settings part the style source already has. One created here would sit
+            // ahead of whatever a render adds - numbering, images - in the package and in the
+            // relationships, where a render has always added it after them, and the output would
+            // no longer be the same bytes. Creating it is cheap; parsing an authored one is not.
+            compatibilityBaked = mainPart.DocumentSettingsPart != null;
+            if (compatibilityBaked)
+            {
+                SettingsCompatibility.Apply(mainPart);
+            }
+
+            doc.Save();
+        }
+
+        return (stream.ToArray(), compatibilityBaked);
     }
 
     /// <summary>
@@ -255,15 +348,19 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     static byte[] BlankDocxTemplate { get; } = BuildBlankDocx();
 
-    static byte[] BuildBlankDocx()
+    internal static byte[] BuildBlankDocx()
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
+            // Explicit ids: without them the SDK mints random ones, and since this is built once per
+            // process, default markdown output would differ between processes. The package is new,
+            // so nothing can already hold either id.
             var mainPart = doc.AddMainDocumentPart();
+            doc.ChangeIdOfPart(mainPart, "rId1");
             mainPart.Document = new(new Body(new Paragraph()));
 
-            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
+            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>("rIdStyles");
             var styles = new Styles();
             styles.Append(
                 new Style
@@ -450,7 +547,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// A definition holds raw content only — the generator's module initializer stores bytes and
     /// text, and the scan/validate work runs here, once per store, under this store's policies.
     /// </remarks>
-    RegisteredTemplate Resolve(Type modelType)
+    internal RegisteredTemplate Resolve(Type modelType)
     {
         // Walk the inheritance chain so a template registered against an abstract base renders a
         // concrete subclass instance — the documented polymorphic binding surface. Nearest type
@@ -497,151 +594,4 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     public static void AddFilter(string name, FilterDelegate filter) =>
         SharedFluid.AddFilter(name, filter);
-
-    static List<PartScopeTree> ExtractParts(WordprocessingDocument doc, string name)
-    {
-        var parts = new List<PartScopeTree>();
-        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
-        {
-            var classifications = new List<ParagraphClassification>();
-            foreach (var paragraph in root.Descendants<Paragraph>())
-            {
-                var anchorName = paragraph
-                    .Elements<BookmarkStart>()
-                    .FirstOrDefault(_ => _.Name?.Value?.StartsWith(Anchors.Prefix, StringComparison.Ordinal) == true)
-                    ?.Name?.Value;
-                if (anchorName == null)
-                {
-                    continue;
-                }
-
-                var reclassified = RestoreClassification(paragraph, anchorName);
-                classifications.Add(reclassified);
-            }
-
-            if (classifications.Count == 0)
-            {
-                continue;
-            }
-
-            var tree = ScopeTreeBuilder.Build(classifications, name, uri);
-            parts.Add(new(uri, tree));
-        }
-
-        return parts;
-    }
-
-    static ParagraphClassification RestoreClassification(
-        Paragraph paragraph,
-        string anchorName)
-    {
-        var text = ParagraphText.Build(paragraph);
-        var innerText = text.InnerText;
-        var sites = TokenScan.Scan(innerText);
-        if (sites.Count == 0)
-        {
-            return new(paragraph, anchorName, ParagraphKind.Static, [], null);
-        }
-
-        var substitutions = new List<DocxTokenSite>();
-        BlockMarker? block = null;
-        foreach (var site in sites)
-        {
-            var source = innerText.Substring(site.Offset, site.Length);
-            if (site.Kind == TokenSiteKind.Substitution)
-            {
-                if (SharedFluid.Parser.TryParse(source, out var template, out _))
-                {
-                    var refs = IdentifierVisitor.Collect(template);
-                    substitutions.Add(new(site.Offset, site.Length, source, template, refs));
-                }
-            }
-            else
-            {
-                block = ParseBlock(source);
-            }
-        }
-
-        if (block != null)
-        {
-            return new(paragraph, anchorName, ParagraphKind.Block, [], block);
-        }
-
-        return new(paragraph, anchorName, ParagraphKind.Substitution, substitutions, null);
-    }
-
-    static BlockMarker? ParseBlock(string source)
-    {
-        if (!BlockTagParser.TryParse(source, out var tag, out var expression))
-        {
-            return null;
-        }
-
-        var expr = expression.IsEmpty ? null : expression.ToString();
-
-        return tag switch
-        {
-            "for" => RebuildFor(source, expr),
-            "endfor" => new(BlockTagKind.EndFor, source, null, null, null),
-            "if" => RebuildIf(source, expr),
-            "elsif" or "elseif" => RebuildElsif(source, expr),
-            "else" => new(BlockTagKind.Else, source, null, null, null),
-            "endif" => new(BlockTagKind.EndIf, source, null, null, null),
-            _ => null
-        };
-    }
-
-    static BlockMarker? RebuildFor(string source, string? expression)
-    {
-        if (expression == null)
-        {
-            return null;
-        }
-
-        var liquid = $"{{% for {expression} %}}{{% endfor %}}";
-        if (!SharedFluid.Parser.TryParse(liquid, out var template, out _))
-        {
-            return null;
-        }
-
-        var forStatement = ((Fluid.Parser.FluidTemplate)template).Statements
-            .OfType<ForStatement>()
-            .FirstOrDefault();
-        if (forStatement == null)
-        {
-            return null;
-        }
-
-        return new(BlockTagKind.For, source, null, forStatement.Identifier, forStatement.Source);
-    }
-
-    static BlockMarker? RebuildIf(string source, string? expression) =>
-        RebuildConditional(BlockTagKind.If, source, expression);
-
-    static BlockMarker? RebuildElsif(string source, string? expression) =>
-        RebuildConditional(BlockTagKind.ElsIf, source, expression);
-
-    static BlockMarker? RebuildConditional(BlockTagKind kind, string source, string? expression)
-    {
-        if (expression == null)
-        {
-            return null;
-        }
-
-        var liquid = $"{{% if {expression} %}}{{% endif %}}";
-        if (!SharedFluid.Parser.TryParse(liquid, out var template, out _))
-        {
-            return null;
-        }
-
-        var ifStatement = ((Fluid.Parser.FluidTemplate)template).Statements
-            .OfType<IfStatement>()
-            .FirstOrDefault();
-        if (ifStatement == null)
-        {
-            return null;
-        }
-
-        return new(kind, source, ifStatement.Condition, null, null);
-    }
 }

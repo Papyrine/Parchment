@@ -60,6 +60,87 @@ public class EmphasisInlineRendererTests
         await Assert.That(highlight.Val?.Value).IsEqualTo(HighlightColorValues.Yellow);
     }
 
+    [Test]
+    [Arguments("**[text](https://example.com)**")]
+    [Arguments("**[text](#place)**")]
+    [Arguments("**<https://example.com>**")]
+    public async Task BoldAroundLinkReachesTheRunInsideTheHyperlink(string markdown)
+    {
+        var run = RenderLinkRuns(markdown).Single();
+        await Assert.That(run.RunProperties!.Bold).IsNotNull();
+        await Assert.That(run.RunProperties.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task ItalicAroundLinkReachesTheRunInsideTheHyperlink()
+    {
+        var run = RenderLinkRuns("*[text](https://example.com)*").Single();
+        await Assert.That(run.RunProperties!.Italic).IsNotNull();
+        await Assert.That(run.RunProperties.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task StrikeAroundLinkReachesTheRunInsideTheHyperlink()
+    {
+        var run = RenderLinkRuns("~~[text](https://example.com)~~").Single();
+        await Assert.That(run.RunProperties!.Strike).IsNotNull();
+        await Assert.That(run.RunProperties.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task NestedEmphasisAroundLinkAppliesBoth()
+    {
+        var run = RenderLinkRuns("***[text](https://example.com)***").Single();
+        await Assert.That(run.RunProperties!.Bold).IsNotNull();
+        await Assert.That(run.RunProperties.Italic).IsNotNull();
+        await Assert.That(run.RunProperties.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task EmphasisAroundTextAndLinkReachesEveryRun()
+    {
+        var paragraph = RenderParagraph("**see [text](https://example.com) now**");
+        var runs = paragraph.Descendants<Run>().ToList();
+        await Assert.That(string.Join('|', runs.Select(_ => _.InnerText))).IsEqualTo("see |text| now");
+        foreach (var run in runs)
+        {
+            await Assert.That(run.RunProperties!.Bold).IsNotNull();
+        }
+
+        await Assert.That(runs[0].RunProperties!.RunStyle).IsNull();
+        await Assert.That(runs[1].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+    }
+
+    [Test]
+    public async Task StyleOnEmphasisAroundLinkLeavesTheHyperlinkStyle()
+    {
+        var paragraph = RenderParagraph("**see [text](https://example.com)**{.Lead}");
+        var runs = paragraph.Descendants<Run>().ToList();
+        await Assert.That(runs[0].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Lead");
+        await Assert.That(runs[1].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+        await Assert.That(runs[1].RunProperties!.Bold).IsNotNull();
+    }
+
+    static List<Run> RenderLinkRuns(string markdown) =>
+        RenderParagraph(markdown).Descendants<Hyperlink>().Single().Elements<Run>().ToList();
+
+    // Through the whole pipeline rather than a lone inline, so the paragraph can be checked
+    // against the schema: rPr is a strict sequence, and a link run already carries an rStyle.
+    static Paragraph RenderParagraph(string markdown)
+    {
+        var paragraph = (Paragraph)RendererHarness.RenderMarkdown(markdown).Single();
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013)
+            .Validate(paragraph)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        if (errors.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
+        }
+
+        return paragraph;
+    }
+
     static Run RenderEmphasis(string markdown)
     {
         var paragraph = (ParagraphBlock)RendererHarness.Parse(markdown)[0];

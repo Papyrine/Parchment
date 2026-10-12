@@ -1,1 +1,9 @@
-﻿Role: Solutions Architect
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text: Role: Solutions Architect
+    }
+  ]
+}

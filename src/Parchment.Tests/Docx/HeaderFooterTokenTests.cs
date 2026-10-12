@@ -157,6 +157,136 @@ public partial class HeaderFooterTokenTests
         await Assert.That(headerText).IsEqualTo("Plain header");
     }
 
+    // Each part's scope tree is built once, by the pass that validates it, and names the anchors
+    // that pass wrote. Blocks in the body, a header and the footnotes of one template only render
+    // if every one of those trees matches the anchors in the registered package.
+    [Test]
+    public async Task BlocksInBodyHeaderAndFootnotesAllRender()
+    {
+        using var template = BuildDocxWithHeaderFooter(
+            bodyText: "{% if Title %}",
+            headerText: "{% for i in (1..2) %}",
+            footerText: "Footer by {{ Author }}");
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var mainPart = doc.MainDocumentPart!;
+            mainPart.Document!.Body!.InsertAt(BuildParagraph("{% endif %}"), 1);
+            mainPart.Document.Body.InsertAt(BuildParagraph("Body: {{ Title }}"), 1);
+            mainPart.HeaderParts.Single().Header!.Append(
+                BuildParagraph("Header {{ i }}: {{ Title }};"),
+                BuildParagraph("{% endfor %}"));
+
+            var footnotesPart = mainPart.AddNewPart<FootnotesPart>("rIdFootnotes");
+            footnotesPart.Footnotes = new(
+                new Footnote(
+                    BuildParagraph("{% if Author %}"),
+                    BuildParagraph("Footnote: {{ FootnoteText }}"),
+                    BuildParagraph("{% else %}"),
+                    BuildParagraph("No author"),
+                    BuildParagraph("{% endif %}"))
+                {
+                    Id = 1
+                });
+        }
+
+        template.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new Doc
+            {
+                Title = "Annual Report",
+                Author = "Ada Lovelace",
+                FootnoteText = "see ref 4",
+                EndnoteText = "en"
+            },
+            stream);
+        stream.Position = 0;
+
+        using var rendered = WordprocessingDocument.Open(stream, false);
+        var main = rendered.MainDocumentPart!;
+        var bodyText = string.Concat(main.Document!.Body!.Descendants<Text>().Select(_ => _.Text));
+        var headerText = string.Concat(main.HeaderParts.Single().Header!.Descendants<Text>().Select(_ => _.Text));
+        var footerText = string.Concat(main.FooterParts.Single().Footer!.Descendants<Text>().Select(_ => _.Text));
+        var footnoteText = string.Concat(main.FootnotesPart!.Footnotes!.Descendants<Text>().Select(_ => _.Text));
+
+        await Assert.That(bodyText).IsEqualTo("Body: Annual Report");
+        await Assert.That(headerText).IsEqualTo("Header 1: Annual Report;Header 2: Annual Report;");
+        await Assert.That(footerText).IsEqualTo("Footer by Ada Lovelace");
+        await Assert.That(footnoteText).IsEqualTo("Footnote: see ref 4");
+    }
+
+    // An anchor is Parchment's own bookmark, so one that arrives with the template on a paragraph
+    // holding no token is still taken out of the output, in either flow.
+    [Test]
+    public async Task AnchorTheTemplateArrivedWithIsStripped()
+    {
+        byte[] template;
+        using (var built = BuildDocxWithHeaderFooter(
+                   bodyText: "Body: {{ Title }}",
+                   headerText: "Header: {{ Title }}",
+                   footerText: "Plain footer"))
+        {
+            using (var doc = WordprocessingDocument.Open(built, true))
+            {
+                var paragraph = doc.MainDocumentPart!.FooterParts.Single().Footer!.GetFirstChild<Paragraph>()!;
+                paragraph.InsertAt(
+                    new BookmarkEnd
+                    {
+                        Id = "7"
+                    },
+                    0);
+                paragraph.InsertAt(
+                    new BookmarkStart
+                    {
+                        Id = "7",
+                        Name = "parchment-anchor-arrived"
+                    },
+                    0);
+            }
+
+            template = built.ToArray();
+        }
+
+        var docxStore = new TemplateStore();
+        using (var stream = new MemoryStream(template))
+        {
+            docxStore.RegisterDocxTemplate<Doc>(stream);
+        }
+
+        var markdownStore = new TemplateStore();
+        using (var stream = new MemoryStream(template))
+        {
+            markdownStore.RegisterMarkdownTemplate<Doc>("# {{ Title }}", stream);
+        }
+
+        foreach (var store in new[] { docxStore, markdownStore })
+        {
+            using var stream = new MemoryStream();
+            await store.Render(
+                new Doc
+                {
+                    Title = "T",
+                    Author = "A",
+                    FootnoteText = "fn",
+                    EndnoteText = "en"
+                },
+                stream);
+            stream.Position = 0;
+
+            using var rendered = WordprocessingDocument.Open(stream, false);
+            var footer = rendered.MainDocumentPart!.FooterParts.Single().Footer!;
+            var headerText = string.Concat(rendered.MainDocumentPart.HeaderParts.Single().Header!.Descendants<Text>().Select(_ => _.Text));
+
+            await Assert.That(headerText).IsEqualTo("Header: T");
+            await Assert.That(footer.InnerText).IsEqualTo("Plain footer");
+            await Assert.That(footer.Descendants<BookmarkStart>().Count()).IsEqualTo(0);
+            await Assert.That(footer.Descendants<BookmarkEnd>().Count()).IsEqualTo(0);
+        }
+    }
+
     static MemoryStream BuildDocxWithHeaderFooter(string bodyText, string headerText, string footerText)
     {
         var stream = new MemoryStream();

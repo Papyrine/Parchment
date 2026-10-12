@@ -25,7 +25,7 @@ class ParagraphText
         StringBuilder? builder = null;
         string? singleValue = null;
 
-        foreach (var text in paragraph.Descendants<Text>())
+        foreach (var text in Texts(paragraph))
         {
             var value = text.Text;
             var offset = builder?.Length ?? singleValue?.Length ?? 0;
@@ -53,12 +53,69 @@ class ParagraphText
     }
 
     /// <summary>
+    /// The <c>w:t</c> elements that belong to <paramref name="paragraph"/> itself, in document
+    /// order. Everything that turns a token offset back into a text element has to enumerate
+    /// through here, or its offsets drift from the ones the scan produced.
+    /// </summary>
+    public static IEnumerable<Text> Texts(Paragraph paragraph)
+    {
+        foreach (var element in Elements(paragraph))
+        {
+            if (element is Text text)
+            {
+                yield return text;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every descendant that belongs to <paramref name="paragraph"/> itself, in document order.
+    /// A text box anchored in one of its runs holds paragraphs of its own; those are scanned and
+    /// substituted as their own paragraphs, so the walk stops at a nested paragraph — neither it
+    /// nor anything inside it is returned.
+    /// </summary>
+    public static IEnumerable<OpenXmlElement> Elements(Paragraph paragraph)
+    {
+        var current = paragraph.FirstChild;
+        while (current != null)
+        {
+            OpenXmlElement? next = null;
+            if (current is not Paragraph)
+            {
+                yield return current;
+                next = current.FirstChild;
+            }
+
+            while (next == null)
+            {
+                next = current.NextSibling();
+                if (next != null)
+                {
+                    break;
+                }
+
+                current = current.Parent;
+                if (current == null ||
+                    current == paragraph)
+                {
+                    yield break;
+                }
+            }
+
+            current = next;
+        }
+    }
+
+    /// <summary>
     /// Replaces a character range in the InnerText with the given replacement, preserving the formatting
     /// of the run that owns the first character of the range. Intermediate runs inside the range are deleted.
     /// </summary>
     public void Replace(int offset, int length, string replacement)
     {
-        var cleaned = XmlCharSanitizer.Strip(replacement);
+        // Marked after the strip, never before: the marker is one of the characters the strip
+        // removes, which is what guarantees a marker in the tree came from here and not from a
+        // model value. See LineBreaks.
+        var cleaned = LineBreaks.Mark(XmlChars.Strip(replacement));
 
         if (length < 0)
         {

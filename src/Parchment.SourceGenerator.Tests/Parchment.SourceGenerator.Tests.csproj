@@ -19,6 +19,7 @@
     <PackageReference Include="EmptyFiles" />
     <PackageReference Include="SimpleInfoName" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
+    <PackageReference Include="ProjectFiles" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj" />
   </ItemGroup>
 </Project>

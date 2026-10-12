@@ -40,7 +40,7 @@ public class DiagnosticHelpLinkTests
     // a space or a hyphen, then turning spaces into hyphens.
     static List<string> ReadmeAnchors()
     {
-        var path = Path.Combine(SolutionDirectory(), "..", "readme.md");
+        var path = Path.Combine(ProjectFiles.SolutionDirectory, "..", "readme.md");
         var anchors = new List<string>();
         foreach (var line in File.ReadAllLines(path))
         {
@@ -69,7 +69,4 @@ public class DiagnosticHelpLinkTests
 
         return anchors;
     }
-
-    static string SolutionDirectory([CallerFilePath] string file = "") =>
-        Path.GetDirectoryName(Path.GetDirectoryName(file))!;
 }

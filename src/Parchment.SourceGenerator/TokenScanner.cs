@@ -2,11 +2,15 @@ public static class TokenScanner
 {
     static readonly FluidParser parser = new();
 
-    public static List<Token> Scan(IEnumerable<string> paragraphs)
+    // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
+    // onto its tokens. Omitted, every token reports container 0.
+    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
     {
         var result = new List<Token>();
+        var index = -1;
         foreach (var paragraph in paragraphs)
         {
+            index++;
             var sites = TokenScan.Scan(paragraph);
             if (sites.Count == 0)
             {
@@ -14,17 +18,22 @@ public static class TokenScanner
             }
 
             var hasOtherContent = TokenScan.HasContentOutsideSites(paragraph, sites);
+            var container = 0;
+            if (containers != null)
+            {
+                container = containers[index];
+            }
 
             foreach (var site in sites)
             {
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent));
+                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent));
+                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
                 }
             }
         }
@@ -116,8 +125,21 @@ public static class TokenScanner
             return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent);
         }
 
-        var references = IdentifierVisitor.Collect(template);
-        return new(TokenKind.ForOpen, source, references, forStatement.Identifier, hasOtherContent);
+        var references = IdentifierVisitor.Collect(forStatement.Source);
+        var modifierReferences = IdentifierVisitor.Collect(forStatement.Limit);
+        modifierReferences.AddRange(IdentifierVisitor.Collect(forStatement.Offset));
+        var hasModifiers = forStatement.Limit != null ||
+                           forStatement.Offset != null ||
+                           forStatement.Reversed;
+        return new(
+            TokenKind.ForOpen,
+            source,
+            references,
+            forStatement.Identifier,
+            hasOtherContent,
+            LoopModifierReferences: modifierReferences,
+            HasLoopModifiers: hasModifiers,
+            LoopSourceIsRange: forStatement.Source is not MemberExpression);
     }
 
     static Token BuildConditional(TokenKind kind, string source, string? expression, bool hasOtherContent)

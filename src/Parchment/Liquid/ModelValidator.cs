@@ -25,11 +25,11 @@ static class ModelValidator
         for (var i = 1; i < path.Segments.Count; i++)
         {
             var segment = path.Segments[i];
-            if (!TryResolveMember(currentType, segment, out var next))
+            if (!TryResolveSegment(currentType, segment, out var next))
             {
                 throw new ParchmentRegistrationException(
                     templateName,
-                    $"Member '{segment}' is not a property or field of '{currentType.Name}'",
+                    MissingMemberMessage(currentType, segment),
                     partUri,
                     tokenSource,
                     path.ToString());
@@ -84,12 +84,42 @@ static class ModelValidator
         return false;
     }
 
+    static string MissingMemberMessage(Type type, string name)
+    {
+        var kind = LiquidMembers.Classify(type);
+        if (kind == LiquidKind.None)
+        {
+            return $"Member '{name}' is not a property or field of '{type.Name}'";
+        }
+
+        return LiquidMembers.MissingMessage(kind, type, name);
+    }
+
+    /// <summary>
+    /// Resolves a segment after the first. Unlike the root, which binds through the model's own
+    /// accessors, what such a segment is read from may be a string or a collection, and those
+    /// answer to liquid's members rather than their CLR ones — see <see cref="LiquidMembers"/>.
+    /// </summary>
+    public static bool TryResolveSegment(Type type, string name, [NotNullWhen(true)] out Type? memberType)
+    {
+        var kind = LiquidMembers.Classify(type);
+        if (kind == LiquidKind.None)
+        {
+            return TryResolveMember(type, name, out memberType);
+        }
+
+        return LiquidMembers.TryResolve(kind, type, name, out memberType);
+    }
+
     public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
         var property = type.GetProperty(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        if (property != null)
+        // Readable in public, and not an indexer: the generator emits an accessor for nothing else
+        // (ShapeBuilder.TryGetMemberType), so anything else would register and then render blank.
+        if (property is { GetMethod.IsPublic: true } &&
+            property.GetIndexParameters().Length == 0)
         {
             memberType = property.PropertyType;
             return true;

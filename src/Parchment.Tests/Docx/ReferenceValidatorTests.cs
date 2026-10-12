@@ -237,6 +237,37 @@ public partial class ReferenceValidatorTests
         public new string Title { get; init; } = "derived";
     }
 
+    public class Sealed
+    {
+        public string Name { get; set; } = "";
+
+        public string Hidden { private get; set; } = "";
+
+        public string WriteOnly
+        {
+            set => Name = value;
+        }
+    }
+
+    [ParchmentBindable]
+    public partial class Envelope
+    {
+        public Sealed Sealed { get; init; } = new();
+    }
+
+    // The generator emits no accessor for a property it cannot read, so one that registered would
+    // render blank.
+    [Test]
+    [Arguments("Sealed.Hidden")]
+    [Arguments("Sealed.WriteOnly")]
+    public async Task UnreadableMember_FailsRegistration(string path)
+    {
+        using var template = DocxTemplateBuilder.Build($"{{{{ {path} }}}}");
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => new TemplateStore().RegisterDocxTemplate<Envelope>(template));
+        await Assert.That(exception.Message).Contains(path[(path.IndexOf('.') + 1)..]);
+    }
+
     [Test]
     public async Task InheritedMember_RegistersAndRenders()
     {

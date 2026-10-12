@@ -18,7 +18,7 @@ static partial class WordTableOfContentsBuilder
     // the width it will end up, so filling the real number in cannot rewrap the line.
     internal const string PagePlaceholder = "1";
 
-    public static void WriteEntries(Body body, WordFieldRegion field)
+    public static void WriteEntries(Body body, WordFieldRegion field, BookmarkIds ids)
     {
         var maxLevel = ParseMaxLevel(field.Instruction);
         var headings = CollectHeadings(body, maxLevel);
@@ -28,7 +28,7 @@ static partial class WordTableOfContentsBuilder
             return;
         }
 
-        var bookmarks = new WordBookmarkAllocator(body);
+        var bookmarks = new WordBookmarkAllocator(ids);
         var tabStop = TextWidth(body);
         var entries = new List<Paragraph>();
         foreach (var (paragraph, level, text) in headings)
@@ -48,10 +48,14 @@ static partial class WordTableOfContentsBuilder
         var end = source.Elements<Run>()
             .LastOrDefault(_ => _.GetFirstChild<FieldChar>()?.FieldCharType?.Value == FieldCharValues.End);
 
+        // After the entry's properties rather than at the front of it: w:pPr has to stay the
+        // paragraph's first child, and Word discards the whole of it when a run comes first — so the
+        // first entry alone would lose its TOC style and the tab stop its dot leader hangs off.
+        var anchor = entries[0].ParagraphProperties!;
         for (var i = leading.Count - 1; i >= 0; i--)
         {
             leading[i].Remove();
-            entries[0].InsertAt(leading[i], 0);
+            anchor.InsertAfterSelf(leading[i]);
         }
 
         if (end != null)

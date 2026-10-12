@@ -1,8 +1,6 @@
 // ReSharper disable PartialTypeWithSinglePart
 public partial class FormatAttributeTests
 {
-    static string SourcePath([CallerFilePath] string path = "") => path;
-
     static string ScenarioPath(string scenarioName) =>
         Path.Combine(
             ProjectFiles.ProjectDirectory,
@@ -403,6 +401,320 @@ public partial class FormatAttributeTests
         var exception = await Assert.That(() => store.Render(model, stream))
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
+    }
+
+    static async Task<Body> RenderBody<T>(string templateText, T model)
+        where T : notnull
+    {
+        using var template = DocxTemplateBuilder.Build(templateText);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<T>(template);
+
+        var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return (Body)doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
+    }
+
+    static string ParagraphTexts(Body body) =>
+        string.Join('|', body.Elements<Paragraph>().Select(_ => _.InnerText));
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenBeforeIt()
+    {
+        // The split clones the host into its before/after halves. A token at a lower offset is
+        // applied after the split (tokens run in reverse offset order), so it has to land in the
+        // half that ends up in the document rather than in the discarded host.
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: |one|two| end");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenAfterIt()
+    {
+        var body = await RenderBody(
+            "Start {{ Body }} from {{ Title }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Start |one|two| from Alice end");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokensOnBothSides()
+    {
+        var body = await RenderBody(
+            "{{ Title }} before {{ Body }} after {{ Title }}",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Alice before |one|two| after Alice");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_Table_SubstitutesTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice",
+                Body = "<table><tr><td>cell</td></tr></table>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: | end");
+        await Assert.That(body.Elements<Table>().Single().InnerText).IsEqualTo("cell");
+        await Assert.That(body.ChildElements[1]).IsTypeOf<Table>();
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsLineBreakInTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new HtmlDoc
+            {
+                Title = "Alice\nSmith",
+                Body = "<p>one</p><p>two</p>"
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear AliceSmith: |one|two| end");
+        await Assert.That(paragraphs[0].Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(body.Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task NonSoloMarkdown_BlockContent_SubstitutesTokenBeforeIt()
+    {
+        var body = await RenderBody(
+            "Dear {{ Title }}: {{ Body }} end",
+            new MarkdownDoc
+            {
+                Title = "Alice",
+                Body = "First paragraph.\n\nSecond paragraph."
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear Alice: |First paragraph.|Second paragraph.| end");
+    }
+
+    [Test]
+    public async Task InlineFormatTokenBeforeBlockShapedOne_SplicesIntoBeforeHalf()
+    {
+        var body = await RenderBody(
+            "Prefix {{ A }} between {{ B }} suffix",
+            new TwoHtmlBlockDoc
+            {
+                A = "<b>bold</b>",
+                B = "<p>B1</p><p>B2</p>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Prefix bold between |B1|B2| suffix");
+        var bolds = body.Elements<Paragraph>()
+            .First()
+            .Descendants<Run>()
+            .Where(_ => _.RunProperties?.Bold is not null)
+            .Select(_ => _.InnerText)
+            .ToList();
+        await Assert.That(bolds).IsEquivalentTo(["bold"]);
+    }
+
+    [Test]
+    public async Task InlineFormatTokenAfterBlockShapedOne_SplicesIntoAfterHalf()
+    {
+        var body = await RenderBody(
+            "Prefix {{ A }} between {{ B }} suffix",
+            new TwoHtmlBlockDoc
+            {
+                A = "<p>A1</p><p>A2</p>",
+                B = "<b>bold</b>"
+            });
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Prefix |A1|A2| between bold suffix");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsTabRunBeforeTokenOnce()
+    {
+        // A run holding only a tab carries no text, so a text-driven trim keeps it in both the
+        // before and the after half. It sits before the token and must land there exactly once.
+        using var template = BuildSingleParagraphTemplate(
+            new Run(new Text("Label")),
+            new Run(new TabChar()),
+            PreservedRun("{{ Body }} tail"));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("Labelx tail");
+        await Assert.That(paragraph.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<TabChar>().Single())).IsEqualTo("Label");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsBreakAfterTokenInSameRunOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(
+                new Text("pre {{ Body }} post")
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                },
+                new Break()));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("pre x post");
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<Break>().Single())).IsEqualTo("pre x post");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_InlineContent_KeepsNonTextContentAroundTokenInSameRun()
+    {
+        // The token's own run carries a tab before the token text and a break after it; the run
+        // has no other text, so removing the token text must not take either element with it.
+        using var template = BuildSingleParagraphTemplate(
+            PreservedRun("pre "),
+            new Run(
+                new TabChar(),
+                new Text("{{ Body }}"),
+                new Break()),
+            PreservedRun(" post"));
+
+        var paragraph = (await RenderBodyParagraphs(template, "<b>x</b>")).Single();
+
+        await Assert.That(paragraph.InnerText).IsEqualTo("pre x post");
+        await Assert.That(paragraph.Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(paragraph.Descendants<Break>().Count()).IsEqualTo(1);
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<TabChar>().Single())).IsEqualTo("pre ");
+        await Assert.That(TextBefore(paragraph, paragraph.Descendants<Break>().Single())).IsEqualTo("pre x");
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsTabRunBeforeTokenOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(new Text("Label")),
+            new Run(new TabChar()),
+            PreservedRun("{{ Body }} tail"));
+
+        var paragraphs = await RenderBodyParagraphs(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("Label|one|two| tail");
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<TabChar>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[0].Descendants<TabChar>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsBreakAfterTokenInSameRunOnce()
+    {
+        using var template = BuildSingleParagraphTemplate(
+            new Run(
+                new Text("pre {{ Body }} post")
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                },
+                new Break()));
+
+        var paragraphs = await RenderBodyParagraphs(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("pre |one|two| post");
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<Break>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[^1].Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenBeforeItAndKeepsTabAndBreakOnce()
+    {
+        // The host is trimmed in place as the before half: the leading tab stays there with the
+        // substituted token, and the break after the block-shaped token goes to the after half.
+        using var template = BuildSingleParagraphTemplate(
+            new Run(new TabChar()),
+            PreservedRun("Dear {{ Title }}: {{ Body }}"),
+            new Run(new Break()),
+            PreservedRun(" end"));
+
+        var paragraphs = await RenderBodyParagraphs(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("Dear T: |one|two| end");
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<TabChar>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[0].Descendants<TabChar>().Count()).IsEqualTo(1);
+        await Assert.That(paragraphs.Sum(_ => _.Descendants<Break>().Count())).IsEqualTo(1);
+        await Assert.That(paragraphs[^1].Descendants<Break>().Count()).IsEqualTo(1);
+    }
+
+    static Run PreservedRun(string text) =>
+        new(
+            new Text(text)
+            {
+                Space = SpaceProcessingModeValues.Preserve
+            });
+
+    static string TextBefore(Paragraph paragraph, OpenXmlElement element) =>
+        string.Concat(
+            paragraph
+                .Descendants()
+                .TakeWhile(_ => _ != element)
+                .OfType<Text>()
+                .Select(_ => _.Text));
+
+    static async Task<List<Paragraph>> RenderBodyParagraphs(MemoryStream template, string html)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = html
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Select(_ => (Paragraph)_.CloneNode(true))
+            .ToList();
+    }
+
+    static MemoryStream BuildSingleParagraphTemplate(params OpenXmlElement[] children)
+    {
+        var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var mainPart = doc.AddMainDocumentPart();
+            mainPart.Document = new(
+                new Body(
+                    new Paragraph(children),
+                    new SectionProperties(
+                        new PageSize
+                        {
+                            Width = 6500,
+                            Height = 8000
+                        })));
+        }
+
+        stream.Position = 0;
+        return stream;
     }
 
     static byte[] OnePixelPng() =>

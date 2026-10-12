@@ -1,3 +1,12 @@
-﻿Start
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Start
 Preferred customer: Globex Corporation
 End
+    }
+  ]
+}

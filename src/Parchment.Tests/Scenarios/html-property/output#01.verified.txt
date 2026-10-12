@@ -1,4 +1,0 @@
-﻿Title: Report
-Hello world
-Second para
-End.

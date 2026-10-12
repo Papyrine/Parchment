@@ -10,6 +10,7 @@ global using BenchmarkDotNet.Jobs;
 global using BenchmarkDotNet.Running;
 global using BenchmarkDotNet.Toolchains.InProcess.Emit;
 global using DocumentFormat.OpenXml;
+global using XmlChars = OpenXmlKit.XmlChars;
 global using DocumentFormat.OpenXml.Packaging;
 global using DocumentFormat.OpenXml.Wordprocessing;
 

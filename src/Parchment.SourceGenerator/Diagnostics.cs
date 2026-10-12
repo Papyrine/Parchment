@@ -1,4 +1,4 @@
-static class Diagnostics
+﻿static class Diagnostics
 {
     public static readonly DiagnosticDescriptor MissingMember = new(
         id: "PARCH001",
@@ -30,9 +30,10 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor TemplateFileMissing = new(
         id: "PARCH004",
         title: "No template found for model",
-        messageFormat: "Model '{0}' has no template: no AdditionalFile named '{0}.docx' or '{0}.md' was found — declare one with " +
-                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If it is already declared and only the IDE " +
-                       "reports this, the file likely carries a second item type that hides it from the IDE's generator host.",
+        messageFormat: "Model '{0}' has no template: nothing is named '{0}.parchment.docx' or '{0}.parchment.md'. {1} A file " +
+                       "with that name is picked up wherever it sits in the project; one outside the project needs " +
+                       "<ParchmentTemplate Include=\"...\"/> in the csproj. If the file is there and only the IDE reports " +
+                       "this, it likely carries a second item type that hides it from the IDE's generator host.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -58,12 +59,12 @@ static class Diagnostics
 
     public static readonly DiagnosticDescriptor ExcelsiorTokenNotAlone = new(
         id: "PARCH007",
-        title: "[ExcelsiorTable] token must sit alone in its own paragraph",
-        messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property but shares its paragraph with other content; structural table replacement would discard the surrounding text",
+        title: "[ExcelsiorTable] token must sit alone in its own block",
+        messageFormat: "Template '{0}' token '{1}' references an [ExcelsiorTable] property but shares its block with other content — its paragraph in a docx template, its line in a markdown one; the table replaces the whole block, so the surrounding text would be discarded",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        helpLinkUri: "https://github.com/Papyrine/Parchment#parch007--excelsiortable-token-not-alone-in-paragraph");
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch007--excelsiortable-token-not-alone-in-its-block");
 
     // PARCH009 was previously emitted for `[Html]`/`[Markdown]` tokens that did not sit alone in
     // their paragraph. The runtime now splices inline content in place and splits the host
@@ -172,7 +173,7 @@ static class Diagnostics
     public static readonly DiagnosticDescriptor AmbiguousTemplate = new(
         id: "PARCH020",
         title: "Model matches more than one template file",
-        messageFormat: "Model '{0}' matches more than one template file: {1}. A model binds exactly one template named after it — remove or rename the others.",
+        messageFormat: "Model '{0}' matches more than one template file: {1}. A model binds exactly one '{0}.parchment.docx' or '{0}.parchment.md' — remove or rename the others.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -196,10 +197,70 @@ static class Diagnostics
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch023--member-carries-conflicting-format-markers");
 
+    // An error, like every other "this format marker cannot be honoured" case — PARCH010, PARCH023,
+    // PARCH007/008. The document still renders, but it renders the member's markup as visible text,
+    // which is wrong output rather than a lesser rendering. A build that trips this has been
+    // producing wrong documents already; stopping it is the point.
+    public static readonly DiagnosticDescriptor FormatMarkerThroughLoopVariable = new(
+        id: "PARCH024",
+        title: "[Html]/[Markdown] member is reached through a loop variable",
+        messageFormat: "Template '{0}' token '{1}' reaches the [Html]/[Markdown] member '{2}' through a loop variable. The format is resolved by walking the model from its root, which cannot address one iteration's item, so the value would render as text with its markup visible. Return a MarkdownToken or HtmlToken from the member instead, or apply the '| markdown' / '| html' filter at the token.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch024--html--markdown-member-reached-through-a-loop-variable");
+
+    // The two say the same thing by different means, and applying both applies the conversion twice:
+    // the token becomes a marker, and the marker's own text is then converted, so the marker renders
+    // into the document. Refused rather than picking a winner, for the same reason as PARCH023.
+    public static readonly DiagnosticDescriptor FormatMarkerOnTokenValue = new(
+        id: "PARCH025",
+        title: "Format marker on a member already typed as a token",
+        messageFormat: "Model '{0}' member '{1}' is typed as a TokenValue and also carries [Html]/[Markdown]/[StringSyntax]. The type already selects the rendering, so the marker would apply it a second time — to the placeholder the first one produced, which renders that placeholder into the document. Drop one: keep the type, or keep the marker and type the member as a plain string.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
+
+    // The generated code calls the method directly, so an unresolvable name would otherwise
+    // surface as a compile error inside a .g.cs file - correct, but pointing at code nobody wrote.
+    // This reports it on the member that named it instead, and suppresses the emission so the
+    // diagnostic is the only error rather than the first of a cascade.
+    public static readonly DiagnosticDescriptor ExcelsiorConfigureMissing = new(
+        id: "PARCH026",
+        title: "[ExcelsiorTable] Configure method not found",
+        messageFormat: "Model '{0}' member '{1}' names '{2}' in [ExcelsiorTable(Configure)], which is not a static method on '{3}'. Declare 'static void {2}(WordTableBuilder<TElement> builder)' beside the member, and reference it with nameof.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
+
+    // Extraction is replace-all: the rows in the document become the collection. A window or a
+    // reversal on the loop that rendered them would therefore be written back as data.
+    public static readonly DiagnosticDescriptor EditableCollectionLoopModifier = new(
+        id: "PARCH027",
+        title: "Loop over an [EditableField] collection carries a modifier",
+        messageFormat: "Template '{0}' loop '{1}' iterates the [EditableField] collection '{2}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch027--loop-over-an-editablefield-collection-carries-a-modifier");
+
+    // Nothing in the markdown flow can trip this: a markdown template is one Fluid parse, with no
+    // paragraphs for a tag to be stranded in.
+    public static readonly DiagnosticDescriptor BlockTagsNotSiblings = new(
+        id: "PARCH028",
+        title: "Block tags must sit in the same container",
+        messageFormat: "Template '{0}' block tags '{1}' and '{2}' are not in the same container; the paragraphs holding the tags of one block must be siblings — in the same table cell, the same text box, or at the same level of the body",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch028--block-tags-in-different-containers");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",
-        messageFormat: "Model '{0}' matches more than one style document: {1}. A markdown template takes at most one '{0}.dotx' — remove or rename the others.",
+        messageFormat: "Model '{0}' matches more than one style document: {1}. A markdown template takes at most one '{0}.parchment.dotx' — remove or rename the others.",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

@@ -9,7 +9,7 @@ class LiteralInlineRenderer :
             return;
         }
 
-        var text = XmlCharSanitizer.Strip(content).ToString();
+        var text = XmlChars.Strip(content).ToString();
         renderer.AddRun(BuildRun(text));
     }
 

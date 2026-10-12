@@ -15,10 +15,18 @@ class WordFieldRegion
     public required IReadOnlyList<Run> Result { get; init; }
 
     /// <summary>The bookmark a PAGEREF names, or null for any other field.</summary>
-    public string? PageReferenceTarget =>
-        Instruction.TrimStart().StartsWith("PAGEREF ", StringComparison.Ordinal)
-            ? Instruction.Trim().Split(' ')[1]
-            : null;
+    public string? PageReferenceTarget
+    {
+        get
+        {
+            if (Instruction.TrimStart().StartsWith("PAGEREF ", StringComparison.Ordinal))
+            {
+                return Instruction.Trim().Split(' ')[1];
+            }
+
+            return null;
+        }
+    }
 
     public bool IsTableOfContents =>
         Instruction.TrimStart().StartsWith("TOC", StringComparison.Ordinal);

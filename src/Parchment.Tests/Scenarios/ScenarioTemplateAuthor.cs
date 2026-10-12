@@ -50,9 +50,8 @@ public class ScenarioTemplateAuthor
 
     static string ScenarioPath(string name) =>
         Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(SourcePath())!,
+            ProjectFiles.ProjectDirectory,
+            "Scenarios",
             name,
             "input.docx"));
-
-    static string SourcePath([CallerFilePath] string path = "") => path;
 }

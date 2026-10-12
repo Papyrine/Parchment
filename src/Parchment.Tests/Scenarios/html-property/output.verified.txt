@@ -1,0 +1,24 @@
+﻿{
+  Document: {
+    Properties: {
+      Revision: 3
+    },
+    Fonts: [
+      Arial,
+      Calibri,
+      Calibri Light,
+      Times New Roman
+    ]
+  },
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Title: Report
+Hello world
+Second para
+End.
+    }
+  ]
+}

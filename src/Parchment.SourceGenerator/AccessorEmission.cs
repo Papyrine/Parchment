@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Source-generator emission of pre-compiled registration data covering every reachable type
 /// in the model graph. Produces four parallel datasets so the runtime's reflection walks
 /// (<c>SharedFluid.RegisterTypeGraph</c>, <c>ExcelsiorTableMap.WalkType</c>,
@@ -43,7 +43,7 @@ static class AccessorEmission
         }
 
         var fluidBlocks = new List<(string FieldName, TypeEntry Type)>();
-        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)>();
+        var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle, string? ConfigureCall)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
         var editableEntries = new List<(List<string> Path, MemberEntry Member)>();
@@ -111,7 +111,7 @@ static class AccessorEmission
         List<string> path,
         HashSet<string> visited,
         Dictionary<string, TypeEntry> typesByFqn,
-        List<(List<string>, string, string?, string?)> excelsior,
+        List<(List<string>, string, string?, string?, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
         List<(List<string>, MemberEntry)> editables,
@@ -144,7 +144,7 @@ static class AccessorEmission
                 if (typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
                     memberType.ElementTypeFullyQualifiedName != null)
                 {
-                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle));
+                    excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle, member.ExcelsiorTableStyle, member.ExcelsiorConfigureMissing ? null : member.ExcelsiorConfigure));
                 }
 
                 continue;
@@ -159,13 +159,13 @@ static class AccessorEmission
             // A member that is also [EditableField] is claimed by the editable map (rich-content
             // control that extracts back to HTML), not the read-only format path. A conflicted
             // member (PARCH023) is emitted as neither — the diagnostic fails the build.
-            if (member is {IsHtml: true, IsEditable: false, HasFormatConflict: false})
+            if (member is {IsHtml: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false})
             {
                 formats.Add((nextPath, FormatMapKind.Html));
                 continue;
             }
 
-            if (member is {IsMarkdown: true, IsEditable: false, HasFormatConflict: false})
+            if (member is {IsMarkdown: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false})
             {
                 formats.Add((nextPath, FormatMapKind.Markdown));
                 continue;
@@ -277,7 +277,7 @@ static class AccessorEmission
         StringBuilder fields,
         StringBuilder registrations,
         string rootFqn,
-        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle)> entries)
+        List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle, string? ConfigureCall)> entries)
     {
         if (entries.Count == 0)
         {
@@ -290,7 +290,7 @@ static class AccessorEmission
             {
 
             """);
-        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle) in entries)
+        foreach (var (path, elementFqn, headingParagraphStyle, bodyParagraphStyle, tableStyle, configureCall) in entries)
         {
             fields.Append("  new(\"");
             fields.AppendJoin('.', path);
@@ -302,6 +302,19 @@ static class AccessorEmission
             fields.Append(ToStringLiteral(headingParagraphStyle));
             fields.Append(", ");
             fields.Append(ToStringLiteral(bodyParagraphStyle));
+            fields.Append(", ");
+            fields.Append(ToStringLiteral(tableStyle));
+            if (configureCall != null)
+            {
+                // A direct call rather than a name resolved at render time: a wrong signature is an
+                // ordinary compile error here, and the method itself stays reachable by nameof.
+                fields.Append(", b => ");
+                fields.Append(configureCall);
+                fields.Append("((global::Excelsior.WordTableBuilder<");
+                fields.Append(elementFqn);
+                fields.Append(">)b)");
+            }
+
             fields.AppendLine("),");
         }
 
@@ -536,8 +549,15 @@ static class AccessorEmission
     // "decimal?" → "decimal" for typeof() — the runtime entry carries the underlying type
     // (nullability travels separately as IsNullable). Char compare instead of EndsWith: the
     // char overload doesn't exist on netstandard2.0.
-    static string StripNullableSuffix(string fqn) =>
-        fqn.Length > 0 && fqn[^1] == '?' ? fqn[..^1] : fqn;
+    static string StripNullableSuffix(string fqn)
+    {
+        if (fqn.Length > 0 && fqn[^1] == '?')
+        {
+            return fqn[..^1];
+        }
+
+        return fqn;
+    }
 
     /// <summary>
     /// Setter shape mirrors runtime <c>EditableMap.BuildSetter</c>: walk to the PARENT object

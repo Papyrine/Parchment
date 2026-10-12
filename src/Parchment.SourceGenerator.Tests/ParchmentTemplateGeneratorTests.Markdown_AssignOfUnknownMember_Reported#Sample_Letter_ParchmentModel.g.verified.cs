@@ -6,22 +6,26 @@ using System.Collections.Generic;
 namespace Sample;
 partial class Letter
 {
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Letter =
+  [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  internal static class ParchmentGeneratedLetter
   {
-    new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Letter)o).Customer)),
-  };
-  static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
-  {
-    new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
-  };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Letter =
+    {
+      new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Letter)o).Customer)),
+    };
+    static readonly KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+    {
+      new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
+    };
 
-  [global::System.Runtime.CompilerServices.ModuleInitializer]
-  internal static void InitializeParchmentTemplate()
-  {
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Letter), _Accessors_global__Sample_Letter);
-    global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
-    global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
-      typeof(global::Sample.Letter),
-      "{% assign total = NoSuchThing %}{{ total }}");
+    [global::System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void InitializeParchmentTemplate()
+    {
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Letter), _Accessors_global__Sample_Letter);
+      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
+      global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
+        typeof(global::Sample.Letter),
+        "{% assign total = NoSuchThing %}{{ total }}");
+    }
   }
 }

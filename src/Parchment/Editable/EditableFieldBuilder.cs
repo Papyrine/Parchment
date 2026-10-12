@@ -121,8 +121,11 @@ static class EditableFieldBuilder
 
     static (OpenXmlElement, Run, bool) BuildCheckbox(object? value, RunProperties? sitePr)
     {
-        // bool? is rejected at map build, so value is always a non-null bool here.
-        var isChecked = (bool)value!;
+        // bool? is rejected at map build, so a null value never comes from the member itself, only
+        // from a getter with nothing to read: a null parent on the path, a null collection item, or
+        // the blank item of an empty editable collection. A checkbox has no placeholder state, so
+        // that renders unchecked.
+        var isChecked = value is true;
         var kind = new W14.SdtContentCheckBox(
             new W14.Checked
             {
@@ -188,15 +191,25 @@ static class EditableFieldBuilder
     const string dateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
     const string timeFormat = "HH:mm:ss";
 
-    static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture) =>
-        value is DateTimeOffset offset
-            ? offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture)
-            : null;
+    static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture)
+    {
+        if (value is DateTimeOffset offset)
+        {
+            return offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture);
+        }
 
-    static string? FormatTime(EditableEntry entry, object? value, CultureInfo culture) =>
-        value is Time time
-            ? time.ToString(entry.DateFormat ?? timeFormat, culture)
-            : null;
+        return null;
+    }
+
+    static string? FormatTime(EditableEntry entry, object? value, CultureInfo culture)
+    {
+        if (value is Time time)
+        {
+            return time.ToString(entry.DateFormat ?? timeFormat, culture);
+        }
+
+        return null;
+    }
 
     static (OpenXmlElement, Run, bool) BuildTextValue(string? text, RunProperties? sitePr)
     {
@@ -245,7 +258,7 @@ static class EditableFieldBuilder
             run.AppendChild((RunProperties)sitePr.CloneNode(true));
         }
 
-        var cleaned = XmlCharSanitizer.Strip(value).ToString();
+        var cleaned = XmlChars.Strip(value);
         if (multiLine)
         {
             var first = true;
@@ -284,12 +297,13 @@ static class EditableFieldBuilder
         var pr = ClonePr(sitePr);
         // Word's built-in grey placeholder look. The style may not exist in the template's
         // styles part — Word tolerates the dangling reference and falls back to plain text.
-        pr.InsertAt(
-            new RunStyle
-            {
-                Val = "PlaceholderText"
-            },
-            0);
+        // Assigned through the typed property so it replaces a character style cloned from the
+        // site (w:rPr allows one w:rStyle). The site's own style stays on the control's
+        // sdtPr/rPr, which is what Word applies to the text typed over the placeholder.
+        pr.RunStyle = new()
+        {
+            Val = "PlaceholderText"
+        };
         var run = new Run(pr);
         run.AppendChild(
             new Text(text)

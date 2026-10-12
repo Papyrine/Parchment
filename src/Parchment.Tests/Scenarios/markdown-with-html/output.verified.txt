@@ -1,6 +1,15 @@
-﻿Title: Report
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Title: Report
 Heading
 Some bold markdown with an inline HTML tag.
 This is an HTML block nested inside markdown.
 Back to markdown after the HTML block.
 End.
+    }
+  ]
+}

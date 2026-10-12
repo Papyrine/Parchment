@@ -1,4 +1,4 @@
-[Generator]
+﻿[Generator]
 public sealed class ParchmentTemplateGenerator :
     IIncrementalGenerator
 {
@@ -25,8 +25,11 @@ public sealed class ParchmentTemplateGenerator :
             .Select(static (array, _) => new EquatableArray<TargetInfo>(array))
             .WithTrackingName(Stages.TargetsCollected);
 
+        // Filtered to the marked files before anything reads them. An unmarked .md AdditionalFile
+        // is some other tool's business, and parsing it as liquid to discover that would be work
+        // repeated every build to reach the same answer.
         var docs = context.AdditionalTextsProvider
-            .Where(static _ => _.Path.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+            .Where(static _ => TemplateConvention.IsDocx(_.Path))
             .Select(static (text, _) => ReadDocx(text))
             .WithTrackingName(Stages.Docs)
             .Collect()
@@ -34,7 +37,7 @@ public sealed class ParchmentTemplateGenerator :
             .WithTrackingName(Stages.DocsCollected);
 
         var markdowns = context.AdditionalTextsProvider
-            .Where(static _ => IsMarkdownPath(_.Path))
+            .Where(static _ => TemplateConvention.IsMarkdown(_.Path))
             .Select(static (text, cancel) => ReadMarkdown(text, cancel))
             .WithTrackingName(Stages.Markdowns)
             .Collect()
@@ -42,7 +45,7 @@ public sealed class ParchmentTemplateGenerator :
             .WithTrackingName(Stages.MarkdownsCollected);
 
         var dotxes = context.AdditionalTextsProvider
-            .Where(static _ => _.Path.EndsWith(".dotx", StringComparison.OrdinalIgnoreCase))
+            .Where(static _ => TemplateConvention.IsStyleDoc(_.Path))
             .Select(static (text, _) => ReadDotx(text))
             .WithTrackingName(Stages.Dotxes)
             .Collect()
@@ -53,9 +56,14 @@ public sealed class ParchmentTemplateGenerator :
         // diagnostic messages.
         var projectDirectory = context.AnalyzerConfigOptionsProvider
             .Select(static (options, _) =>
-                options.GlobalOptions.TryGetValue("build_property.ProjectDir", out var directory)
-                    ? directory
-                    : null);
+            {
+                if (options.GlobalOptions.TryGetValue("build_property.ProjectDir", out var directory))
+                {
+                    return directory;
+                }
+
+                return null;
+            });
 
         var combined = targets
             .Combine(docs)
@@ -147,9 +155,6 @@ public sealed class ParchmentTemplateGenerator :
 
         return BuildPartialSource(target, body);
     }
-
-    static bool IsMarkdownPath(string path) =>
-        path.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
 
     static TargetInfo? ExtractTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
     {
@@ -254,15 +259,66 @@ public sealed class ParchmentTemplateGenerator :
     {
         if (type.IsRecord)
         {
-            return type.TypeKind == TypeKind.Struct ? "record struct" : "record";
+            if (type.TypeKind == TypeKind.Struct)
+            {
+                return "record struct";
+            }
+
+            return "record";
         }
 
-        return type.TypeKind == TypeKind.Struct ? "struct" : "class";
+        if (type.TypeKind == TypeKind.Struct)
+        {
+            return "struct";
+        }
+
+        return "class";
     }
 
     // Where the file sits relative to the project — the shortest way to name it in a diagnostic.
     // Falls back to the file name when the project directory is unknown or the file lives outside
     // it.
+    /// <summary>
+    /// The templates the generator was handed, for a model that matched none of them.
+    /// </summary>
+    /// <remarks>
+    /// Which of the two failures this is turns entirely on that list. Names in it mean the files
+    /// arrived and the model is looking for one nothing is called — usually a near-miss sitting
+    /// right there in the message. An empty list means no template reached the generator at all,
+    /// which is a build or IDE problem rather than a naming one, and no amount of renaming fixes
+    /// it. The message cannot tell them apart; the list can.
+    /// </remarks>
+    static string DescribeTemplatesSeen(
+        EquatableArray<DocxData> docs,
+        EquatableArray<MarkdownData> markdowns,
+        string? projectDirectory)
+    {
+        var paths = docs.Select(static _ => _.Path)
+            .Concat(markdowns.Select(static _ => _.Path))
+            .Select(_ => DisplayPath(_, projectDirectory))
+            // Ordered rather than left in AdditionalFiles order: the message should read the same
+            // way whatever order the item groups happened to be evaluated in.
+            .OrderBy(static _ => _, StringComparer.Ordinal)
+            .ToList();
+
+        if (paths.Count == 0)
+        {
+            return "No templates reached the generator at all.";
+        }
+
+        if (paths.Count > maxTemplatesListed)
+        {
+            var listed = string.Join(", ", paths.Take(maxTemplatesListed));
+            return $"Templates seen: {listed} (+{paths.Count - maxTemplatesListed} more).";
+        }
+
+        return $"Templates seen: {string.Join(", ", paths)}.";
+    }
+
+    // A project with hundreds of templates would otherwise turn one missing name into a diagnostic
+    // nobody reads to the end of.
+    const int maxTemplatesListed = 10;
+
     static string DisplayPath(string fullPath, string? projectDirectory)
     {
         if (projectDirectory != null)
@@ -287,13 +343,14 @@ public sealed class ParchmentTemplateGenerator :
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
+                new(result.ParagraphContainers.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 Convert.ToBase64String(ReadBytes(text.Path)),
                 null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -382,7 +439,8 @@ public sealed class ParchmentTemplateGenerator :
                 Diagnostic.Create(
                     Diagnostics.TemplateFileMissing,
                     location,
-                    target.DeclaringName));
+                    target.DeclaringName,
+                    DescribeTemplatesSeen(docs, markdowns, projectDirectory)));
             return;
         }
 
@@ -437,8 +495,9 @@ public sealed class ParchmentTemplateGenerator :
                     templatePath));
         }
 
-        var tokens = TokenScanner.Scan(matched.Paragraphs);
+        var tokens = TokenScanner.Scan(matched.Paragraphs, matched.ParagraphContainers.AsImmutableArray());
         ValidateTokens(context, target, templatePath, tokens, location);
+        ValidateBlockContainers(context, templatePath, tokens, location);
 
         // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
@@ -529,11 +588,33 @@ public sealed class ParchmentTemplateGenerator :
                     continue;
                 }
 
+                if (member.ExcelsiorConfigureMissing)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorConfigureMissing,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay,
+                            member.ExcelsiorConfigure ?? "",
+                            Display(type.TypeFullyQualifiedName)));
+                }
+
                 if (member.HasFormatConflict)
                 {
                     context.ReportDiagnostic(
                         Diagnostic.Create(
                             Diagnostics.ConflictingFormatMarkers,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay));
+                }
+
+                if (member.FormatMarkerOnTokenValue)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.FormatMarkerOnTokenValue,
                             location,
                             target.ModelDisplayName,
                             memberDisplay));
@@ -718,7 +799,16 @@ public sealed class ParchmentTemplateGenerator :
                     string? bound = null;
                     string? prior = null;
                     var isEditableCollectionLoop = false;
-                    if (token is { LoopVariable: not null, References.Count: > 0 })
+                    if (token.LoopVariable != null &&
+                        IsUntypedLoop(token, scope))
+                    {
+                        // Bound so the variable shadows a model member of the same name, as it
+                        // does at render.
+                        bound = token.LoopVariable;
+                        prior = scope.GetValueOrDefault(bound);
+                        scope[bound] = untypedLoopVariable;
+                    }
+                    else if (token is { LoopVariable: not null, References.Count: > 0 })
                     {
                         isEditableCollectionLoop =
                             ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var sourceMember) &&
@@ -731,6 +821,22 @@ public sealed class ParchmentTemplateGenerator :
                             prior = scope.GetValueOrDefault(bound);
                             scope[bound] = elementFqn;
                         }
+                    }
+
+                    // Only a top-level loop renders as a repeating section — a nested one runs
+                    // with an empty editable map at runtime and stays read-only — so that is the
+                    // only place a modifier would be written back by extraction.
+                    if (isEditableCollectionLoop &&
+                        token.HasLoopModifiers &&
+                        loopStack.Count == 0)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableCollectionLoopModifier,
+                                location,
+                                templatePath,
+                                token.Source,
+                                string.Join('.', token.References[0])));
                     }
 
                     loopStack.Push((bound, prior, isEditableCollectionLoop));
@@ -824,6 +930,81 @@ public sealed class ParchmentTemplateGenerator :
         }
     }
 
+    /// <summary>
+    /// The markdown flow's PARCH007 / PARCH008, which the AST walk cannot reach.
+    /// </summary>
+    /// <remarks>
+    /// An Excelsior token is rewritten to a marker before the source is parsed, so what disqualifies
+    /// one is a property of the line it sits on rather than of the Fluid AST — whether the token is
+    /// the whole line, and whether the expression is a bare path. Both are read off the source here,
+    /// the same way <c>MarkdownExcelsiorTables</c> reads them at registration.
+    ///
+    /// Without this the mistake still gets caught, but not until the store materializes the template
+    /// on the model's first render — a runtime failure for something the build can see.
+    /// </remarks>
+    static void ValidateMarkdownExcelsiorTokens(
+        SourceProductionContext context,
+        TargetInfo target,
+        string templatePath,
+        Location location,
+        string markdown)
+    {
+        var loops = MarkdownLoopScope.Scan(markdown);
+
+        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
+        var rawLineStart = 0;
+        foreach (var rawLine in markdown.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            var lineStart = rawLineStart + rawLine.Length - rawLine.TrimStart().Length;
+            rawLineStart += rawLine.Length + 1;
+            foreach (Match match in markdownToken.Matches(line))
+            {
+                var body = match.Groups["body"].Value.Trim();
+                var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
+                var path = (end < 0 ? body : body[..end]).Replace(" ", "").Replace("\t", "");
+                if (path.Length == 0)
+                {
+                    continue;
+                }
+
+                // Root paths only, matching the map the render looks the table up in: a loop
+                // variable's members are not reachable from the root and fall through to Fluid,
+                // including when the loop variable happens to spell a root path.
+                if (loops.Shadows(lineStart + match.Index, path) ||
+                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
+                {
+                    continue;
+                }
+
+                if (match.Value != line)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorTokenNotAlone,
+                            location,
+                            templatePath,
+                            match.Value));
+                    continue;
+                }
+
+                if (body != path)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorTokenNotPlainIdentifier,
+                            location,
+                            templatePath,
+                            match.Value));
+                }
+            }
+        }
+    }
+
+    static readonly Dictionary<string, string> EmptyScope = new();
+
+    static readonly Regex markdownToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
+
     static void ProcessMarkdown(
         SourceProductionContext context,
         TargetInfo target,
@@ -856,6 +1037,7 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
+        ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
 
         // The style source: the dotx named after the type when the project carries one, otherwise
         // the nearest parchment.dotx up the directory tree from the template. Neither is required
@@ -915,6 +1097,26 @@ public sealed class ParchmentTemplateGenerator :
             SourceText.From(source, Encoding.UTF8));
     }
 
+    // Scope binding for a loop variable whose source is not statically known: a range, or a path
+    // rooted at another such variable. The variable exists, but members reached through it are not
+    // checked. Mirrors `untyped` in the runtime ReferenceValidator and the set in MarkdownValidator.
+    const string untypedLoopVariable = "";
+
+    static bool IsUntypedLoop(Token token, IReadOnlyDictionary<string, string> scope)
+    {
+        if (token.LoopSourceIsRange)
+        {
+            return true;
+        }
+
+        return token.References.Count > 0 &&
+               IsUntyped(token.References[0], scope);
+    }
+
+    static bool IsUntyped(IReadOnlyList<string> reference, IReadOnlyDictionary<string, string> scope) =>
+        scope.TryGetValue(reference[0], out var bound) &&
+        bound == untypedLoopVariable;
+
     static void ValidateTokens(
         SourceProductionContext context,
         TargetInfo target,
@@ -949,8 +1151,32 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (token.LoopVariable == null ||
-                        token.References.Count == 0)
+                    // `limit:` / `offset:` are evaluated before the loop variable is bound, so they
+                    // resolve against the enclosing scope. `offset: continue` lands here too: the
+                    // docx flow has no loop scope to resume from and the runtime rejects it.
+                    if (token.LoopModifierReferences != null)
+                    {
+                        ValidateReferences(context, target, templatePath, location, token.LoopModifierReferences, scope, token.Source);
+                    }
+
+                    if (token.LoopVariable == null)
+                    {
+                        break;
+                    }
+
+                    if (IsUntypedLoop(token, scope))
+                    {
+                        // Nothing to resolve an element type from, which is an unknown, not a
+                        // mistake. Members used as range bounds are still references like any
+                        // other. Pushed like a typed loop so the closing tag pairs with this one.
+                        ValidateReferences(context, target, templatePath, location, token.References, scope, token.Source);
+                        var hadPriorUntyped = scope.TryGetValue(token.LoopVariable, out var priorUntyped);
+                        scope[token.LoopVariable] = untypedLoopVariable;
+                        loopStack.Push((token.LoopVariable, hadPriorUntyped ? priorUntyped : null));
+                        break;
+                    }
+
+                    if (token.References.Count == 0)
                     {
                         break;
                     }
@@ -1051,6 +1277,99 @@ public sealed class ParchmentTemplateGenerator :
         }
     }
 
+    /// <summary>
+    /// PARCH028: the tag paragraphs of one block — open, every elsif / else, close — must share a
+    /// parent element. Lockstep with <c>ScopeTreeBuilder.RequireSameContainer</c> at runtime.
+    /// </summary>
+    /// <remarks>
+    /// A pass of its own because <see cref="ValidateTokens"/> only keeps a stack for loops whose
+    /// source resolved, and this rule is about where a tag sits rather than what it binds. Tags
+    /// are paired the way the runtime pairs them, by document order. An unsupported tag leaves the
+    /// nesting unknown — it may or may not open a block — so nothing is reported past PARCH003.
+    /// </remarks>
+    static void ValidateBlockContainers(
+        SourceProductionContext context,
+        string templatePath,
+        IReadOnlyList<Token> tokens,
+        Location location)
+    {
+        foreach (var token in tokens)
+        {
+            if (token.Kind == TokenKind.UnknownBlock)
+            {
+                return;
+            }
+        }
+
+        var open = new Stack<(Token Opening, Token? Stray)>();
+        foreach (var token in tokens)
+        {
+            switch (token.Kind)
+            {
+                case TokenKind.ForOpen:
+                case TokenKind.IfOpen:
+                    open.Push((token, null));
+                    break;
+
+                case TokenKind.ElsIf:
+                case TokenKind.Else:
+                    if (open.Count > 0 &&
+                        open.Peek() is { Opening.Kind: TokenKind.IfOpen, Stray: null } block &&
+                        token.Container != block.Opening.Container)
+                    {
+                        open.Pop();
+                        open.Push((block.Opening, token));
+                    }
+
+                    break;
+
+                case TokenKind.ForClose:
+                    CloseBlock(context, templatePath, location, open, TokenKind.ForOpen, token);
+                    break;
+
+                case TokenKind.IfClose:
+                    CloseBlock(context, templatePath, location, open, TokenKind.IfOpen, token);
+                    break;
+            }
+        }
+    }
+
+    static void CloseBlock(
+        SourceProductionContext context,
+        string templatePath,
+        Location location,
+        Stack<(Token Opening, Token? Stray)> open,
+        TokenKind opener,
+        Token closing)
+    {
+        // A close with no matching open is malformed nesting, which is not this rule's to report.
+        if (open.Count == 0 ||
+            open.Peek().Opening.Kind != opener)
+        {
+            return;
+        }
+
+        var (opening, stray) = open.Pop();
+        if (stray == null &&
+            closing.Container != opening.Container)
+        {
+            stray = closing;
+        }
+
+        if (stray == null)
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.BlockTagsNotSiblings,
+                location,
+                templatePath,
+                opening.Source,
+                stray.Source));
+    }
+
     static void ValidateExcelsiorToken(
         SourceProductionContext context,
         TargetInfo target,
@@ -1116,6 +1435,22 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
+        // Rooted at a loop variable, so the format marker cannot be honoured: the runtime resolves
+        // one by walking the model from its root, which has no way to address the item the current
+        // iteration is on. The value renders as text with its markup showing, and nothing else says
+        // so — see MarkdownFormats and ScopeTreeRunner.TryResolveFormatted.
+        if (scope.ContainsKey(token.References[0][0]))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.FormatMarkerThroughLoopVariable,
+                    location,
+                    templatePath,
+                    token.Source,
+                    member.Name));
+            return;
+        }
+
         if (token.IsPlainIdentifier)
         {
             return;
@@ -1140,7 +1475,8 @@ public sealed class ParchmentTemplateGenerator :
     {
         foreach (var reference in references)
         {
-            if (ShapeResolver.TryResolve(target.Shape, reference, scope, out _))
+            if (IsUntyped(reference, scope) ||
+                ShapeResolver.TryResolve(target.Shape, reference, scope, out _))
             {
                 continue;
             }
@@ -1243,6 +1579,22 @@ public sealed class ParchmentTemplateGenerator :
 
         builder.Indent(depth).AppendLine($"partial {target.DeclaringKind} {target.DeclaringName}");
         builder.Indent(depth).AppendLine("{");
+
+        // Everything emitted here lives in a nested type of its own rather than directly in the
+        // model, so [ExcludeFromCodeCoverage] can sit on it. The accessor tables are one
+        // DelegateAccessor lambda per member of every type reachable from the model, and only the
+        // members a template actually binds are ever invoked — counted as covered code they measure
+        // the shape of the model graph rather than how well the consumer is tested, and drag the
+        // total down accordingly. The attribute cannot go on the model's own partial: that would
+        // exclude the consumer's own members too.
+        //
+        // The type name is folded into the nested type's name for the reason the bindable
+        // initializer folds it into the method's: a derived model would otherwise hide the base's
+        // nested type (CS0108). Internal rather than private because a module initializer has to be
+        // reachable from the module, which a private nested type is not.
+        builder.Indent(depth + 1).AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
+        builder.Indent(depth + 1).AppendLine($"internal static class ParchmentGenerated{target.DeclaringName}");
+        builder.Indent(depth + 1).AppendLine("{");
         foreach (var line in body.Split('\n'))
         {
             var trimmed = line.TrimEnd('\r');
@@ -1252,10 +1604,11 @@ public sealed class ParchmentTemplateGenerator :
             }
             else
             {
-                builder.Indent(depth + 1).AppendLine(trimmed);
+                builder.Indent(depth + 2).AppendLine(trimmed);
             }
         }
 
+        builder.Indent(depth + 1).AppendLine("}");
         builder.Indent(depth).AppendLine("}");
 
         for (var i = depth - 1; i >= 0; i--)

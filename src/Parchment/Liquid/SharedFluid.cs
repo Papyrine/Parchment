@@ -27,9 +27,14 @@ static class SharedFluid
 
     static TemplateOptions BuildOptions()
     {
+        // No MaxSteps. Fluid counts a step for every statement it executes, so the steps a render
+        // takes grow with the model rather than with the template: a limit caps how many rows a
+        // loop can be handed, and a report that renders for a hundred rows fails for a thousand.
+        // Running out is also reported as "The maximum level of recursion has been reached. Your
+        // script must have a cyclic include statement", which names a cause the template does not
+        // have. MaxRecursion is the limit that message belongs to, and it stays.
         var options = new TemplateOptions
         {
-            MaxSteps = 10_000,
             MaxRecursion = 100
         };
         Filters.Register(options.Filters);
@@ -61,7 +66,11 @@ static class SharedFluid
             {
                 if (value is TokenValue token)
                 {
-                    return new StringValue(TokenMarkdown.Render(token));
+                    // A TextToken is a plain string wearing a TokenValue coat, so it is escaped
+                    // like any other bound value. A MarkdownToken or HtmlToken is markup the caller
+                    // picked the type to say so — that declaration is what turns MarkdownEncoder
+                    // off for them.
+                    return new StringValue(TokenMarkdown.Render(token), encode: token is TextToken);
                 }
 
                 return null;

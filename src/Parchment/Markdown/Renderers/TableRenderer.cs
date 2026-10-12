@@ -113,17 +113,26 @@ class TableRenderer :
                 });
         }
 
+        // Direct formatting beats a table style in Word, so emitting the default borders and cell
+        // margins alongside a tblStyle would silently override the style the caller asked for.
+        // Without a style they are the only thing making the table legible, so they stay.
+        //
+        // Borders and margins are split around the layout because that is the order the schema
+        // declares them - tblBorders, then tblLayout, then tblCellMar - and it does not accept
+        // another, however tolerant Word is of one.
+        var directFormatting = styleId == null;
+        if (directFormatting)
+        {
+            properties.Append(BuildBorders());
+        }
+
         if (hasColumnWidths)
         {
             properties.Append(new TableLayout { Type = TableLayoutValues.Fixed });
         }
 
-        // Direct formatting beats a table style in Word, so emitting the default borders and cell
-        // margins alongside a tblStyle would silently override the style the caller asked for.
-        // Without a style they are the only thing making the table legible, so they stay.
-        if (styleId == null)
+        if (directFormatting)
         {
-            properties.Append(BuildBorders());
             properties.Append(BuildCellMargins());
         }
 
@@ -137,12 +146,12 @@ class TableRenderer :
                 Val = BorderValues.Single,
                 Size = 4
             },
-            new BottomBorder
+            new LeftBorder
             {
                 Val = BorderValues.Single,
                 Size = 4
             },
-            new LeftBorder
+            new BottomBorder
             {
                 Val = BorderValues.Single,
                 Size = 4
@@ -329,22 +338,16 @@ class TableRenderer :
             // Through LiteralInlineRenderer so a tab becomes a real <w:tab/>. This fast path built
             // its own run and so was the one place a tab stayed a raw character inside <w:t>, where
             // Word renders it as ordinary whitespace.
-            var run = LiteralInlineRenderer.BuildRun(XmlCharSanitizer.Strip(content).ToString());
+            var run = LiteralInlineRenderer.BuildRun(XmlChars.Strip(content).ToString());
             if (isHeader)
             {
-                run.RunProperties = new();
-                run.RunProperties.Append(new Bold());
+                ApplyBold(run);
             }
 
             paragraph.Append(run);
         }
 
-        var justification = ResolveJustification(isHeader, alignment);
-        if (justification is not null)
-        {
-            paragraph.ParagraphProperties = new();
-            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
-        }
+        ApplyJustification(paragraph, isHeader, alignment);
 
         var tableCell = new TableCell(paragraph);
         ApplyCellProperties(tableCell, widthDxa, columnSpan);
@@ -391,12 +394,7 @@ class TableRenderer :
         bool isHeader,
         Markdig.Extensions.Tables.TableColumnAlign? alignment)
     {
-        var justification = ResolveJustification(isHeader, alignment);
-        if (justification is not null)
-        {
-            paragraph.ParagraphProperties ??= new();
-            paragraph.ParagraphProperties.Append(new Justification { Val = justification });
-        }
+        ApplyJustification(paragraph, isHeader, alignment);
 
         if (!isHeader)
         {
@@ -405,9 +403,36 @@ class TableRenderer :
 
         foreach (var run in paragraph.Descendants<Run>())
         {
-            run.RunProperties ??= new();
-            run.RunProperties.Append(new Bold());
+            ApplyBold(run);
         }
+    }
+
+    // Both go through the typed properties rather than Append. A cell built by the general path
+    // arrives with whatever its inlines and blocks already wrote - emphasis, a link's rStyle, a
+    // heading's pStyle - and Append would put the new element last whatever the schema sequence
+    // says, or add a second w:b beside the one a bold header already carries.
+    static void ApplyBold(Run run)
+    {
+        run.RunProperties ??= new();
+        run.RunProperties.Bold ??= new();
+    }
+
+    static void ApplyJustification(
+        Paragraph paragraph,
+        bool isHeader,
+        Markdig.Extensions.Tables.TableColumnAlign? alignment)
+    {
+        var justification = ResolveJustification(isHeader, alignment);
+        if (justification is null)
+        {
+            return;
+        }
+
+        paragraph.ParagraphProperties ??= new();
+        paragraph.ParagraphProperties.Justification = new()
+        {
+            Val = justification
+        };
     }
 
     static JustificationValues? ResolveJustification(

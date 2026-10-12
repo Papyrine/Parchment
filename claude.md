@@ -25,3 +25,7 @@ dotnet run --project src/Parchment.Tests --configuration Release -p:IsPackable=f
 Other test projects: `src/Parchment.SourceGenerator.Tests`, `IntegrationTests/IntegrationTests` (the latter requires `src` to be packed first).
 
 Work often spans the sibling repos `../OpenXmlHtml` and `../Excelsior`. Both run **NUnit under VSTest**, so `dotnet test` with `--filter` is correct there — the TUnit guidance above is Parchment-only. Each has its own `CLAUDE.md`; read it rather than assuming this one applies.
+
+## Scan log
+
+- 2026-10-11: perf and bug scan.

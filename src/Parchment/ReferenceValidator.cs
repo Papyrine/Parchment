@@ -1,5 +1,10 @@
 ﻿class ReferenceValidator(Type modelType, string templateName, string partUri)
 {
+    // Scope binding for a loop variable whose source is not statically known: a range, or a path
+    // rooted at another such variable. The variable exists, but members reached through it are not
+    // checked. Mirrors the `untyped` set in MarkdownReferenceValidator.
+    static readonly Type untyped = typeof(void);
+
     public void ValidateTree(IReadOnlyList<RangeNode> nodes)
     {
         var scope = new Dictionary<string, Type>(StringComparer.Ordinal);
@@ -21,18 +26,22 @@
             case SubstitutionNode substitutionNode:
                 foreach (var token in substitutionNode.Tokens)
                 {
-                    foreach (var reference in token.References)
-                    {
-                        ModelValidator.Validate(modelType, reference, scope, templateName, partUri, token.Source);
-                    }
+                    ValidateReferences(token.References, scope, token.Source);
                 }
 
                 break;
             case LoopNode loop:
                 var sourceRefs = IdentifierVisitor.Collect(loop.LoopSource);
                 Type? elementType = null;
-                if (sourceRefs.Count > 0 &&
-                    TryResolvePathType(sourceRefs[0], scope, out var iterableType))
+                if (IsUntypedSource(loop.LoopSource, sourceRefs, scope))
+                {
+                    // Nothing to resolve an element type from, which is an unknown, not a mistake.
+                    // Members used as range bounds are still references like any other.
+                    ValidateReferences(sourceRefs, scope, "for");
+                    elementType = untyped;
+                }
+                else if (sourceRefs.Count > 0 &&
+                         TryResolvePathType(sourceRefs[0], scope, out var iterableType))
                 {
                     ModelValidator.TryResolveElementType(iterableType, out elementType);
                 }
@@ -47,6 +56,11 @@
                         loop.LoopVariable);
                 }
 
+                // The modifiers are evaluated before the first iteration, so they validate against
+                // the enclosing scope: the loop variable is not bound yet.
+                ValidateLoopModifier(loop.Limit, scope);
+                ValidateLoopModifier(loop.Offset, scope);
+
                 var loopScope = new Dictionary<string, Type>(scope, StringComparer.Ordinal)
                 {
                     [loop.LoopVariable] = elementType
@@ -56,11 +70,7 @@
             case IfNode ifNode:
                 foreach (var branch in ifNode.Branches)
                 {
-                    var branchRefs = IdentifierVisitor.Collect(branch.Condition);
-                    foreach (var reference in branchRefs)
-                    {
-                        ModelValidator.Validate(modelType, reference, scope, templateName, partUri, "if");
-                    }
+                    ValidateReferences(IdentifierVisitor.Collect(branch.Condition), scope, "if");
 
                     WalkNodes(branch.Body, scope);
                 }
@@ -70,6 +80,46 @@
             case StaticNode:
                 break;
         }
+    }
+
+    void ValidateReferences(IReadOnlyList<IdentifierPath> references, Dictionary<string, Type> scope, string tokenSource)
+    {
+        foreach (var reference in references)
+        {
+            if (IsUntyped(reference, scope))
+            {
+                continue;
+            }
+
+            ModelValidator.Validate(modelType, reference, scope, templateName, partUri, tokenSource);
+        }
+    }
+
+    // Fluid parses a loop source as either a member path or a range. A range may name members in
+    // its bounds, so the absence of references cannot be what identifies one.
+    static bool IsUntypedSource(Expression source, IReadOnlyList<IdentifierPath> sourceRefs, Dictionary<string, Type> scope)
+    {
+        if (source is not MemberExpression)
+        {
+            return true;
+        }
+
+        return sourceRefs.Count > 0 &&
+               IsUntyped(sourceRefs[0], scope);
+    }
+
+    static bool IsUntyped(IdentifierPath path, Dictionary<string, Type> scope) =>
+        scope.TryGetValue(path.Root, out var bound) &&
+        bound == untyped;
+
+    void ValidateLoopModifier(Expression? modifier, Dictionary<string, Type> scope)
+    {
+        if (modifier == null)
+        {
+            return;
+        }
+
+        ValidateReferences(IdentifierVisitor.Collect(modifier), scope, "for");
     }
 
     bool TryResolvePathType(
@@ -86,7 +136,7 @@
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
-            if (!ModelValidator.TryResolveMember(current, path.Segments[i], out var next))
+            if (!ModelValidator.TryResolveSegment(current, path.Segments[i], out var next))
             {
                 return false;
             }

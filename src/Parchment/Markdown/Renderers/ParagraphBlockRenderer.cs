@@ -21,6 +21,11 @@ class ParagraphBlockRenderer :
             return;
         }
 
+        if (SectionBreaks.TryWrite(renderer, block, properties))
+        {
+            return;
+        }
+
         var bookmark = MarkdownBookmark.Resolve(block);
         var bookmarkId = bookmark == null ? null : renderer.AddBookmarkStart(bookmark);
         renderer.WriteLeafInline(block);

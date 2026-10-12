@@ -1,12 +1,9 @@
 // ReSharper disable PartialTypeWithSinglePart
 public partial class StringListTests
 {
-    static string SourcePath([CallerFilePath] string path = "") => path;
-
     static string ScenarioPath(string scenarioName) =>
         Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(SourcePath())!,
-            "..",
+            ProjectFiles.ProjectDirectory,
             "Scenarios",
             scenarioName));
 

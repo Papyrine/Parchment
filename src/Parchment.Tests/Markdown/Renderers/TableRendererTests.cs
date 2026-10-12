@@ -1,4 +1,5 @@
 // ReSharper disable PartialTypeWithSinglePart
+using DocumentFormat.OpenXml.Validation;
 using MarkdigTable = Markdig.Extensions.Tables.Table;
 
 public partial class TableRendererTests
@@ -558,6 +559,110 @@ public partial class TableRendererTests
         var run = hyperlink.GetFirstChild<Run>()!;
         await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
         await Assert.That(run.GetFirstChild<Text>()!.Text).IsEqualTo("click");
+    }
+
+    // The header bold used to be appended, which put it last in the rPr whatever was already there:
+    // a second w:b after the one emphasis wrote, or a w:b behind the w:i, w:strike or w:u it has to
+    // precede.
+    [Test]
+    [Arguments("**Name**", "b")]
+    [Arguments("*Qty*", "b,i")]
+    [Arguments("***Both***", "b,i")]
+    [Arguments("~~Gone~~", "b,strike")]
+    [Arguments("`code`", "rFonts,b")]
+    [Arguments("<u>Under</u>", "b,u")]
+    [Arguments("<s>Struck</s>", "b,strike")]
+    [Arguments("<sup>Up</sup>", "b,vertAlign")]
+    [Arguments("[click](https://example.com)", "rStyle,b")]
+    public async Task HeaderCellBoldIsWrittenOnceInSchemaOrder(string header, string expected)
+    {
+        var md =
+            $"""
+             | {header} | B |
+             |---|---|
+             | 1 | 2 |
+             """;
+
+        using var doc = await RenderDocument(md);
+        var headerCell = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<TableRow>().First()
+            .Elements<TableCell>().First();
+        var runs = headerCell.Descendants<Run>().ToList();
+        await Assert.That(runs.Count).IsEqualTo(1);
+
+        var children = string.Join(',', runs[0].RunProperties!.ChildElements.Select(_ => _.LocalName));
+        await Assert.That(children).IsEqualTo(expected);
+
+        await AssertMatchesSchema(doc);
+    }
+
+    [Test]
+    public async Task HeaderCellMixingPlainAndEmphasisBoldsEveryRunOnce()
+    {
+        const string md =
+            """
+            | plain **bold** *italic* `code` | B |
+            |---|---|
+            | 1 | 2 |
+            """;
+
+        using var doc = await RenderDocument(md);
+        var headerCell = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<TableRow>().First()
+            .Elements<TableCell>().First();
+        foreach (var run in headerCell.Descendants<Run>())
+        {
+            await Assert.That(run.RunProperties!.Elements<Bold>().Count()).IsEqualTo(1);
+        }
+
+        await AssertMatchesSchema(doc);
+    }
+
+    // A grid-table cell holds blocks, so its paragraph can arrive with a pPr of its own. The
+    // alignment joins that pPr in its schema slot and the runs are still bolded once.
+    [Test]
+    public async Task HeaderCellAlignmentKeepsParagraphPropertiesInSchemaOrder()
+    {
+        const string md =
+            """
+            +-----------+---+
+            | # *Title* | B |
+            +===========+===+
+            | 1         | 2 |
+            +-----------+---+
+            """;
+
+        using var doc = await RenderDocument(md);
+        var paragraph = doc.MainDocumentPart!.Document!.Body!
+            .Descendants<TableRow>().First()
+            .Elements<TableCell>().First()
+            .GetFirstChild<Paragraph>()!;
+
+        var properties = string.Join(',', paragraph.ParagraphProperties!.ChildElements.Select(_ => _.LocalName));
+        await Assert.That(properties).IsEqualTo("pStyle,jc");
+
+        var run = paragraph.Descendants<Run>().Single();
+        var children = string.Join(',', run.RunProperties!.ChildElements.Select(_ => _.LocalName));
+        await Assert.That(children).IsEqualTo("b,i");
+
+        await AssertMatchesSchema(doc);
+    }
+
+    static async Task AssertMatchesSchema(WordprocessingDocument doc)
+    {
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
+        await Assert.That(validator.Validate(doc).Select(_ => $"{_.Description} @ {_.Path?.XPath}")).IsEmpty();
+    }
+
+    static async Task<WordprocessingDocument> RenderDocument(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
+        var stream = new MemoryStream();
+        await store.Render(new EmptyModel(), stream);
+        stream.Position = 0;
+        return WordprocessingDocument.Open(stream, false);
     }
 
     static async Task VerifyDocument(string markdown)

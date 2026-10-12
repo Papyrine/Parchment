@@ -19,6 +19,9 @@ static class SettingsCompatibility
 {
     const string wordUri = "http://schemas.microsoft.com/office/word";
 
+    // Shared with SettingsProtection, which creates the same part at registration.
+    internal const string RelationshipId = "rIdSettings";
+
     // CT_Settings members that FOLLOW w:compat, in schema order (ECMA-376 §17.15.1.78). A newly
     // created w:compat must land before the first of these. rsids and mathPr are the elements Word
     // almost always emits immediately after compat, so covering them handles real Word-authored
@@ -40,9 +43,10 @@ static class SettingsCompatibility
         // would make the rendered package non-deterministic (two renders of the same template would
         // differ, and a binary docx snapshot could never stabilise). A fixed id — matching the
         // rIdHeader / rIdFooter convention used elsewhere — keeps every render byte-identical.
+        // RelationshipIds steps past it when the template already uses that id for something else.
         // This branch only runs for templates with no settings part of their own (code-authored docx
         // and the blank markdown host); a template that already has one keeps its existing part and id.
-        var part = mainPart.DocumentSettingsPart ?? mainPart.AddNewPart<DocumentSettingsPart>("rIdSettings");
+        var part = mainPart.DocumentSettingsPart ?? mainPart.AddNewPart<DocumentSettingsPart>(RelationshipIds.Named(mainPart, RelationshipId));
         var settings = part.Settings ??= new();
 
         var compat = settings.GetFirstChild<Compatibility>();

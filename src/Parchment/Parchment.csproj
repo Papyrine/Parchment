@@ -2,11 +2,15 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PolyNullability>true</PolyNullability>
+    <!-- TextEncoder declares two of its four abstract members with char* parameters, so
+         MarkdownEncoder cannot subclass it without this. Nothing else in the library is unsafe. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
     <UserSecretsId>20028ee9-c2df-4063-9e52-5ce59a647234</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="OpenXmlKit" />
     <PackageReference Include="Excelsior" />
     <PackageReference Include="OpenXmlHtml" />
     <PackageReference Include="Markdig" />
@@ -15,7 +19,7 @@
     <PackageReference Include="Polyfill" PrivateAssets="all" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="SponsorCheck" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="all" Condition="'$(CI)' == 'true'" />
+    <PackageReference Include="Sbom" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj"

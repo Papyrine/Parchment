@@ -1,4 +1,4 @@
-/// <summary>
+﻿/// <summary>
 /// Builds a primitive-only <see cref="ModelShape"/> from a live <see cref="INamedTypeSymbol"/>
 /// at extract time. Consuming the shape downstream (instead of the symbol) is what makes the
 /// incremental pipeline actually cacheable.
@@ -41,13 +41,14 @@ static class ShapeBuilder
             Enqueue(element, visited, queue);
         }
 
+        var liquid = LiquidKindFor(type);
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
 
         // An array's CLR members (Length, IsFixedSize, Array.MaxLength…) are not binding surface,
         // and emitting accessors for them produces illegal casts like `string[].MaxLength`.
         if (type is IArrayTypeSymbol)
         {
-            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
         // KeyValuePair<K, V> is a System type but it's the iteration element for every
@@ -61,7 +62,7 @@ static class ShapeBuilder
             members.Add(new("Value", Fqn(pair.TypeArguments[1])));
             Enqueue(pair.TypeArguments[0], visited, queue);
             Enqueue(pair.TypeArguments[1], visited, queue);
-            return new(Fqn(type), elementFqn, new(members.ToImmutable()));
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
         if (!IsSystemType(type))
@@ -70,6 +71,16 @@ static class ShapeBuilder
             var current = type;
             while (current != null)
             {
+                // A model's own collection class reaches a template as an array or a dictionary, so
+                // none of its CLR members bind. Its own are still walked, since an attribute map
+                // can reach them by getter, but what List<T> or Dictionary<K, V> declares beneath
+                // it (Count, Capacity, Keys…) is not binding surface for anything.
+                if (liquid != LiquidKind.None &&
+                    IsSystemType(current))
+                {
+                    break;
+                }
+
                 foreach (var member in current.GetMembers())
                 {
                     if (!TryGetMemberType(member, out var memberType, out var memberName, out var isStatic))
@@ -82,8 +93,33 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle);
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure);
+                    // Resolved here, where the declaring symbol is at hand: the generated code
+                    // calls the method directly, so the name has to become a qualified target - and
+                    // a name that resolves to no static method becomes the diagnostic instead.
+                    string? excelsiorConfigureCall = null;
+                    var excelsiorConfigureMissing = false;
+                    if (excelsiorConfigure != null)
+                    {
+                        var hasMethod = current.GetMembers(excelsiorConfigure)
+                            .OfType<IMethodSymbol>()
+                            .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
+                        if (hasMethod)
+                        {
+                            excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
+                        }
+                        else
+                        {
+                            // The raw name, for the diagnostic to quote.
+                            excelsiorConfigureCall = excelsiorConfigure;
+                            excelsiorConfigureMissing = true;
+                        }
+                    }
                     var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
+                    // A TokenValue-typed member already declares its rendering by type, so a marker
+                    // on top of it is the same claim made twice — and applying both converts the
+                    // placeholder the first one produced. See PARCH025.
+                    var markerOnToken = (isHtml || isMarkdown) && IsTokenValue(memberType);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -115,17 +151,21 @@ static class ShapeBuilder
                         isHtml,
                         isMarkdown,
                         formatConflict,
+                        markerOnToken,
                         isStringList,
                         isStatic,
                         excelsiorHeadingStyle,
                         excelsiorBodyStyle,
+                        excelsiorTableStyle,
                         isEditable,
                         editableKind,
                         isEditable && editableCollectionElementFqn == null && IsNullableMember(memberType),
                         isEditable && HasUsableSetter(member),
                         editableMultiLine,
                         editableDateFormat,
-                        editableCollectionElementFqn));
+                        editableCollectionElementFqn,
+                        excelsiorConfigureCall,
+                        excelsiorConfigureMissing));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -133,7 +173,69 @@ static class ShapeBuilder
             }
         }
 
-        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type));
+        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid);
+    }
+
+    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same three cases off a
+    // System.Type. The order is Fluid's: a dictionary is enumerable too, and is tested for first.
+    static LiquidKind LiquidKindFor(ITypeSymbol type)
+    {
+        if (type.SpecialType == SpecialType.System_String)
+        {
+            return LiquidKind.String;
+        }
+
+        if (type is IArrayTypeSymbol)
+        {
+            return LiquidKind.Array;
+        }
+
+        var enumerable = type.SpecialType == SpecialType.System_Collections_IEnumerable;
+        if (IsDictionary(type))
+        {
+            return LiquidKind.Dictionary;
+        }
+
+        foreach (var i in type.AllInterfaces)
+        {
+            if (IsDictionary(i))
+            {
+                return LiquidKind.Dictionary;
+            }
+
+            if (i.SpecialType == SpecialType.System_Collections_IEnumerable)
+            {
+                enumerable = true;
+            }
+        }
+
+        if (enumerable)
+        {
+            return LiquidKind.Array;
+        }
+
+        return LiquidKind.None;
+    }
+
+    static bool IsDictionary(ITypeSymbol type) =>
+        type.OriginalDefinition.ToDisplayString() is
+            "System.Collections.IDictionary" or
+            "System.Collections.Generic.IDictionary<TKey, TValue>" or
+            "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
+
+    // Walked rather than compared to a referenced symbol: the shape is built from whatever the
+    // consuming compilation has, and the base chain is enough to recognise one of the token types.
+    static bool IsTokenValue(ITypeSymbol type)
+    {
+        for (var current = type; current != null; current = current.BaseType)
+        {
+            if (current.ToDisplayString(format) == "global::Parchment.TokenValue")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool HasParameterlessCtor(ITypeSymbol type) =>
@@ -157,12 +259,20 @@ static class ShapeBuilder
                 continue;
             }
 
+            // Both spellings, because the name is all there is to go on and it is not always the
+            // declared one. When the attribute type is emitted by another source generator this one
+            // cannot see it — generators all run against the same input compilation — so the symbol
+            // arrives as an error type named exactly as written, "Html" rather than "HtmlAttribute".
+            // Matching only the declared spelling made those markers vanish without a word, which is
+            // how a whole report silently stopped rendering its html. Nothing is lost by accepting
+            // the short form: this has only ever matched on the bare name, never on where the
+            // attribute came from.
             var name = cls.Name;
-            if (name == "HtmlAttribute")
+            if (name is "HtmlAttribute" or "Html")
             {
                 hasHtml = true;
             }
-            else if (name == "MarkdownAttribute")
+            else if (name is "MarkdownAttribute" or "Markdown")
             {
                 hasMarkdown = true;
             }
@@ -201,10 +311,12 @@ static class ShapeBuilder
         ModelSymbolResolver.TryGetElementType(type, out var element) &&
         element is {SpecialType: SpecialType.System_String};
 
-    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle)
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure)
     {
         headingParagraphStyle = null;
         bodyParagraphStyle = null;
+        tableStyle = null;
+        configure = null;
         if (excelsiorTableType is null)
         {
             return false;
@@ -233,6 +345,14 @@ static class ShapeBuilder
                 else if (named.Key == "BodyParagraphStyle")
                 {
                     bodyParagraphStyle = value;
+                }
+                else if (named.Key == "TableStyle")
+                {
+                    tableStyle = value;
+                }
+                else if (named.Key == "Configure")
+                {
+                    configure = value;
                 }
             }
 
@@ -291,7 +411,12 @@ static class ShapeBuilder
 
         if (isHtml)
         {
-            return type.SpecialType == SpecialType.System_String ? EditableFieldKind.Html : null;
+            if (type.SpecialType == SpecialType.System_String)
+            {
+                return EditableFieldKind.Html;
+            }
+
+            return null;
         }
 
         return MapEditableKind(type);
@@ -315,7 +440,12 @@ static class ShapeBuilder
             case SpecialType.System_String:
                 return EditableFieldKind.Text;
             case SpecialType.System_Boolean:
-                return isNullableValue ? null : EditableFieldKind.Checkbox;
+                if (isNullableValue)
+                {
+                    return null;
+                }
+
+                return EditableFieldKind.Checkbox;
             case SpecialType.System_DateTime:
                 return EditableFieldKind.Date;
             case SpecialType.System_Byte:
@@ -364,7 +494,10 @@ static class ShapeBuilder
 
     static bool TryGetMemberType(ISymbol member, out ITypeSymbol type, out string name, out bool isStatic)
     {
-        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public } property)
+        // An indexer has no name a template can ask for, and a property without a public getter has
+        // nothing the generated code can read: an accessor for either (`o.this[]`, or a call to a
+        // private get) does not compile. Lockstep with the runtime's ModelValidator.TryResolveMember.
+        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod.DeclaredAccessibility: Accessibility.Public } property)
         {
             type = property.Type;
             name = property.Name;

@@ -1,4 +1,13 @@
-﻿Tags:
-priority
-net-30
-repeat-customer
+﻿{
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Tags:
+• priority
+• net-30
+• repeat-customer
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   Diagnostics: [
     {
       Location: : (9,1)-(9,15),
-      Message: Template 'Letter.md' token '{{ ... }}' references 'Customer.Missing' which is not a member of 'Letter',
+      Message: Template 'Letter.parchment.md' token '{{ ... }}' references 'Customer.Missing' which is not a member of 'Letter',
       Severity: Error,
       Descriptor: {
         Id: PARCH001,

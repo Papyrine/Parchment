@@ -24,7 +24,7 @@ static class RendererHarness
         mainPart.Document = new(new Body());
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         stylesPart.Styles = new();
-        return MarkdownRendering.Render(markdown, mainPart, new(mainPart), ImagePolicies.AllowAll, 0);
+        return MarkdownRendering.Render(markdown, mainPart, new(mainPart), ImagePolicies.AllowAll, new(0), 0);
     }
 
     public static T FirstBlock<T>(string markdown)

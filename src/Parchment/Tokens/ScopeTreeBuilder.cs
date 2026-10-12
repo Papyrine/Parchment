@@ -106,17 +106,22 @@ static class ScopeTreeBuilder
         }
 
         var closing = queue.Dequeue();
+        RequireSameContainer([opening, closing], templateName, partUri);
         var loopSource = opening.Block!.LoopSource!;
         // Resolve the source's first dotted reference once, here at build time, so ProcessLoopAsync
         // never has to run IdentifierVisitor.Collect (which allocates a visitor + path lists) per loop.
         var sourceRefs = IdentifierVisitor.Collect(loopSource);
-        var sourceReference = sourceRefs.Count > 0 ? sourceRefs[0].Dotted : null;
+        // A range's references are its bounds, not what is iterated, so it has no source reference.
+        var sourceReference = loopSource is MemberExpression && sourceRefs.Count > 0 ? sourceRefs[0].Dotted : null;
         return new(
             opening.AnchorName,
             closing.AnchorName,
             opening.Block!.LoopVariable!,
             loopSource,
             sourceReference,
+            opening.Block.LoopLimit,
+            opening.Block.LoopOffset,
+            opening.Block.LoopReversed,
             body);
     }
 
@@ -127,6 +132,10 @@ static class ScopeTreeBuilder
         string partUri)
     {
         var branches = new List<IfBranch>();
+        var tags = new List<ParagraphClassification>
+        {
+            opening
+        };
         var elseBody = new List<RangeNode>();
         string? elseAnchorName = null;
 
@@ -139,6 +148,7 @@ static class ScopeTreeBuilder
                peek.Block?.Kind is BlockTagKind.ElsIf or BlockTagKind.Else)
         {
             var branchOpening = queue.Dequeue();
+            tags.Add(branchOpening);
 
             // Branch tags after {% else %} break the positional branch ranges the runner keeps —
             // and are malformed liquid anyway (the markdown flow's full-template Fluid parse
@@ -175,12 +185,39 @@ static class ScopeTreeBuilder
         }
 
         var closing = queue.Dequeue();
+        tags.Add(closing);
+        RequireSameContainer(tags, templateName, partUri);
         return new(
             opening.AnchorName,
             closing.AnchorName,
             branches,
             elseAnchorName,
             elseBody);
+    }
+
+    // Tags are paired by document order, but the runner reaches a block's content by walking
+    // siblings from one tag paragraph to the next (ScopeTreeRunner.CaptureBetween). A tag in a
+    // different parent is never reached by that walk, so the block would swallow everything after
+    // its open tag or leave its body unrendered. Lockstep with PARCH028 in the source generator.
+    static void RequireSameContainer(
+        List<ParagraphClassification> tags,
+        string templateName,
+        string partUri)
+    {
+        var opening = tags[0];
+        foreach (var tag in tags)
+        {
+            if (ReferenceEquals(tag.Paragraph.Parent, opening.Paragraph.Parent))
+            {
+                continue;
+            }
+
+            throw new ParchmentRegistrationException(
+                templateName,
+                $"Block tags '{opening.Block!.Source}' and '{tag.Block!.Source}' are not in the same container. The paragraphs holding the tags of one block must be siblings: in the same table cell, the same text box, or at the same level of the body.",
+                partUri,
+                tag.Block.Source);
+        }
     }
 
     static bool IsCloserOrAlternate(BlockTagKind kind, BlockTagKind closer) =>

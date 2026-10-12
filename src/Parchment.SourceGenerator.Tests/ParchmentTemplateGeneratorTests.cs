@@ -1,4 +1,4 @@
-public class ParchmentTemplateGeneratorTests
+﻿public class ParchmentTemplateGeneratorTests
 {
     const string letterModelDocx =
         """
@@ -160,6 +160,111 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics).IsEmpty();
     }
 
+    const string rangeModelDocx =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public int Count { get; set; }
+
+            public List<Line> Lines { get; set; } = new();
+        }
+        """;
+
+    // A range has no member path, so the loop variable is untyped: it exists, and members reached
+    // through it are not checked. The generator used to skip the tag without opening a loop, which
+    // left `{{ i }}` an unknown identifier and paired the `{% endfor %}` with an enclosing loop.
+    [Test]
+    public async Task ForLoop_Range_NoDiagnostic()
+    {
+        foreach (var range in new[] { "(1..3)", "(1..Count)" })
+        {
+            var result = GeneratorDriver.Run(
+                rangeModelDocx,
+                $"{{% for i in {range} %}}",
+                "{{ i }} {{ i.Anything }}",
+                "{% if i.Anything %}",
+                "x",
+                "{% endif %}",
+                "{% for inner in i.Anything %}",
+                "{{ inner.Anything }}",
+                "{% endfor %}",
+                "{% endfor %}");
+
+            await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+        }
+    }
+
+    // A member used as a bound is a reference like any other.
+    [Test]
+    public async Task ForLoop_Range_MissingMemberBound_ReportsParch001()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..NoSuchMember) %}",
+            "{{ i }}",
+            "{% endfor %}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH001");
+        await Assert.That(diagnostics[0].GetMessage()).Contains("NoSuchMember");
+    }
+
+    [Test]
+    public async Task ForLoop_Range_VariableDoesNotLeakAfterEndfor()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..3) %}",
+            "{{ i }}",
+            "{% endfor %}",
+            "{{ i }}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH001");
+    }
+
+    // The range's `{% endfor %}` must close the range loop, not the enclosing one: `line` stays
+    // bound until its own `{% endfor %}`.
+    [Test]
+    public async Task ForLoop_RangeNestedInTypedLoop_EndforPairsWithRange()
+    {
+        var result = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for line in Lines %}",
+            "{% for i in (1..3) %}",
+            "{{ i }} {{ line.Description }}",
+            "{% endfor %}",
+            "{{ line.Description }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+
+        var typo = GeneratorDriver.Run(
+            rangeModelDocx,
+            "{% for i in (1..3) %}",
+            "{% for line in Lines %}",
+            "{{ line.NoSuchMember }}",
+            "{% endfor %}",
+            "{% endfor %}");
+
+        var diagnostics = typo.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Length).IsEqualTo(1);
+        await Assert.That(diagnostics[0].GetMessage()).Contains("line.NoSuchMember");
+    }
+
     [Test]
     public Task ForLoop_SourceNotEnumerable()
     {
@@ -203,7 +308,7 @@ public class ParchmentTemplateGeneratorTests
         // for Empty and must emit PARCH004.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Other.docx", GeneratorDriver.BuildDocxBytes("ignored")));
+            new TemplateFile("Other.parchment.docx", GeneratorDriver.BuildDocxBytes("ignored")));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
     }
@@ -224,8 +329,8 @@ public class ParchmentTemplateGeneratorTests
         // rather than picking one.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")),
-            new TemplateFile("Empty.md", "hello"u8.ToArray()));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytes("hello")),
+            new TemplateFile("Empty.parchment.md", "hello"u8.ToArray()));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics.Single().Id).IsEqualTo("PARCH020");
@@ -274,8 +379,8 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Letter.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
-            new TemplateFile("Invoice.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
+            new TemplateFile("Letter.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")),
+            new TemplateFile("Invoice.parchment.docx", GeneratorDriver.BuildDocxBytes("Total: {{ Total }}")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return Verify(result);
@@ -298,7 +403,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", "not a zip file"u8.ToArray()));
+            new TemplateFile("Empty.parchment.docx", "not a zip file"u8.ToArray()));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -325,7 +430,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -349,7 +454,7 @@ public class ParchmentTemplateGeneratorTests
 
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Empty.docx", GeneratorDriver.BuildDocxBytes("hello")));
+            new TemplateFile("Empty.parchment.docx", GeneratorDriver.BuildDocxBytes("hello")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         var diagnostics = result.Results.Single().Diagnostics;
@@ -405,6 +510,131 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
     }
 
+    // The markdown flow rewrites the token to a marker before the source is parsed, so the same two
+    // rules apply there — read off the line rather than off the paragraph. Without these, the
+    // mistake surfaces when the store materializes the template on first render, not at build.
+    [Test]
+    public async Task Markdown_ExcelsiorToken_SharingItsLine_Diagnostic()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "Lines: {{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
+    [Test]
+    public async Task Markdown_ExcelsiorToken_WithFilter_Diagnostic()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "{{ Lines | reverse }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsTrue();
+    }
+
+    [Test]
+    public async Task Markdown_ExcelsiorToken_Clean_NoDiagnostics()
+    {
+        var result = GeneratorDriver.RunMarkdown(excelsiorModel, "# Invoice\n\n{{ Lines }}\n");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
+    }
+
+    // A loop variable's members are not reachable from the root model, so the table lookup misses
+    // and the token falls through to Fluid — the same as the docx flow. Not a diagnostic.
+    [Test]
+    public async Task Markdown_ExcelsiorToken_LoopScoped_NoDiagnostics()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            excelsiorModel,
+            "{% for line in Lines %}\n{{ line.Description }}\n{% endfor %}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH008")).IsFalse();
+    }
+
+    // `order` is both a loop variable and, but for case, a root member whose own members carry
+    // the attributes. The loop item's members of the same names carry none.
+    const string shadowedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        public class Order
+        {
+            [ExcelsiorTable]
+            public List<Line> Lines { get; set; } = new();
+
+            [Html]
+            public string Notes { get; set; } = "";
+        }
+
+        public class Summary
+        {
+            public int Lines { get; set; }
+
+            public string Notes { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Invoice
+        {
+            public Order Order { get; set; } = new();
+
+            public List<Summary> Orders { get; set; } = new();
+        }
+        """;
+
+    static readonly string[] attributeRuleIds = ["PARCH007", "PARCH008", "PARCH010", "PARCH024"];
+
+    // Inside the loop the tokens read the item, so none of the root members' rules apply: not
+    // alone-in-its-paragraph, not plain-member-access, and no marker is being lost. The runtime
+    // agrees — see LoopTests.LoopVariableNamedAfterRoot*.
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            shadowedModel,
+            "{% for order in Orders %}",
+            "Next: {{ order.Lines | plus: 1 }}",
+            "{{ order.Notes | upcase }}",
+            "{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    [Test]
+    public async Task LoopVariableNamedAfterRootMember_NoAttributeDiagnostics_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\nNext: {{ order.Lines | plus: 1 }}\n\n{{ order.Notes | upcase }}\n{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    // Outside the loop the same spelling is the root member again.
+    [Test]
+    public async Task RootMemberAfterLoopOfTheSameName_StillReported_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for order in Orders %}\n{{ order.Notes }}\n{% endfor %}\nLines: {{ Order.Lines }}");
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
     const string formatModel =
         """
         using System.Diagnostics.CodeAnalysis;
@@ -431,6 +661,209 @@ public class ParchmentTemplateGeneratorTests
             public string Summary { get; set; } = "";
         }
         """;
+
+    // The attribute types are deliberately not declared. A source generator sees only the input
+    // compilation, so an attribute another generator emits — StringSyntaxAttributeAnalyzer's [Html]
+    // shortcut, for one — reaches this one as an error symbol named exactly as written: "Html", not
+    // "HtmlAttribute". Matching only the declared spelling dropped the marker without a word, and the
+    // model rendered its html as visible tags.
+    const string generatedMarkerModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            [Html]
+            public string Body { get; set; } = "";
+
+            [Markdown]
+            public string Notes { get; set; } = "";
+        }
+        """;
+
+    // The same model with the markers removed, so the test below pins the marker rather than
+    // something every string member would get.
+    const string unmarkedModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public string Body { get; set; } = "";
+
+            public string Notes { get; set; } = "";
+        }
+        """;
+
+    static string Emitted(GeneratorDriverRunResult result) =>
+        string.Concat(result.Results.SelectMany(_ => _.GeneratedSources).Select(_ => _.SourceText.ToString()));
+
+    [Test]
+    public async Task FormatMarker_FromAnotherGenerator_IsStillHonoured()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(generatedMarkerModel, "{{ Body }}", "{{ Notes }}"));
+
+        await Assert.That(emitted).Contains("new(\"Body\", global::Parchment.Generated.FormatMapKind.Html");
+        await Assert.That(emitted).Contains("new(\"Notes\", global::Parchment.Generated.FormatMapKind.Markdown");
+    }
+
+    [Test]
+    public async Task UnmarkedMembers_EmitNoFormatEntries()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(unmarkedModel, "{{ Body }}", "{{ Notes }}"));
+
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Html");
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Markdown");
+    }
+
+    // A format marker on a loop element. The runtime resolves one by walking the model from its
+    // root, so it cannot address the item an iteration is on — the marker is silently not applied
+    // and the markup shows in the document.
+    const string loopedMarkerModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public class Line
+        {
+            [Html]
+            public string Body { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            public List<Line> Lines { get; set; } = new();
+
+            [Html]
+            public string Intro { get; set; } = "";
+        }
+        """;
+
+    [Test]
+    public async Task FormatMarker_ThroughLoopVariable_ReportsParch024()
+    {
+        var result = GeneratorDriver.Run(
+            loopedMarkerModel,
+            "{% for line in Lines %}",
+            "{{ line.Body }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsTrue();
+    }
+
+    // Addressable from the root, so the marker is honoured and nothing is reported.
+    [Test]
+    public async Task FormatMarker_FromRoot_NoParch024()
+    {
+        var result = GeneratorDriver.Run(loopedMarkerModel, "{{ Intro }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
+    // An unmarked member reached the same way is ordinary text — the loop is not what is wrong.
+    [Test]
+    public async Task UnmarkedMember_ThroughLoopVariable_NoParch024()
+    {
+        var source = loopedMarkerModel.Replace("    [Html]", "    ");
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for line in Lines %}",
+            "{{ line.Body }}",
+            "{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
+    // The markdown flow reaches the same conclusion by a different route: the rewrite that applies
+    // a marker matches a token path against the map built from the model root, and a loop variable
+    // is not addressable from there.
+    [Test]
+    public async Task FormatMarker_ThroughLoopVariable_ReportsParch024_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            loopedMarkerModel,
+            "{% for line in Lines %}\n{{ line.Body }}\n{% endfor %}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsTrue();
+    }
+
+    [Test]
+    public async Task FormatMarker_FromRoot_NoParch024_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(loopedMarkerModel, "{{ Intro }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsFalse();
+    }
+
+    // A member that declares its rendering twice: once by type, once by marker. Both are applied,
+    // and the second converts the placeholder the first produced — so the placeholder is what lands
+    // in the document.
+    const string markerOnTokenModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            [Html]
+            public HtmlToken Body => new("");
+        }
+        """;
+
+    [Test]
+    public async Task FormatMarkerOnTokenValue_ReportsParch025()
+    {
+        var result = GeneratorDriver.Run(markerOnTokenModel, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsTrue();
+    }
+
+    // The conflicted member is left out of the format map, so nothing applies the marker on top of
+    // the type while the build is failing over it.
+    [Test]
+    public async Task FormatMarkerOnTokenValue_EmitsNoFormatEntry()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(markerOnTokenModel, "{{ Body }}"));
+
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Html");
+    }
+
+    // The type on its own is the supported way to say it, and draws nothing.
+    [Test]
+    public async Task TokenValueWithoutMarker_NoParch025()
+    {
+        var source = markerOnTokenModel.Replace("    [Html]", "    ");
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsFalse();
+    }
+
+    // So is the marker on its own, on a plain string.
+    [Test]
+    public async Task MarkerOnPlainString_NoParch025()
+    {
+        var source = markerOnTokenModel.Replace("public HtmlToken Body => new(\"\");", "public string Body => \"\";");
+        var result = GeneratorDriver.Run(source, "{{ Body }}");
+
+        await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsFalse();
+    }
 
     [Test]
     public async Task FormatToken_MixedInline_NoDiagnostic()
@@ -895,7 +1328,7 @@ public class ParchmentTemplateGeneratorTests
         // template file — each gets its own embedded copy.
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
-            new TemplateFile("Info.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
+            new TemplateFile("Info.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!")));
 
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
 
@@ -994,6 +1427,76 @@ public class ParchmentTemplateGeneratorTests
             "{{ Footer }}",
             "{{ Notes }}");
         return Verify(result);
+    }
+
+    [Test]
+    public Task ExcelsiorConfigure_EmitsDirectCall()
+    {
+        // The generated entry closes over the element type and calls the named method directly, so
+        // a wrong signature is an ordinary compile error rather than a render-time failure. The
+        // method takes object here because this compilation does not reference Excelsior - the
+        // typed cast in the emission is what the snapshot pins.
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                [ExcelsiorTable(Configure = nameof(ConfigureLines))]
+                public List<Line> Lines { get; set; } = new();
+
+                internal static void ConfigureLines(object builder)
+                {
+                }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Lines }}");
+        return Verify(result);
+    }
+
+    // The generated code calls the method directly, so an unresolvable name would surface as a
+    // compile error inside a .g.cs file - correct, but pointing at code nobody wrote. Reported on
+    // the member that named it instead, with the emission suppressed so this is the only error.
+    [Test]
+    public async Task ExcelsiorConfigureMissing_Reports()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                [ExcelsiorTable(Configure = "Nope")]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+
+        var error = diagnostics.SingleOrDefault(_ => _.Id == "PARCH026");
+        await Assert.That(error).IsNotNull();
+        await Assert.That(error!.GetMessage()).Contains("Nope");
+        var generated = result.Results.Single().GeneratedSources
+            .Single(_ => _.HintName.Contains("Invoice"));
+        await Assert.That(generated.SourceText.ToString()).DoesNotContain("Nope");
     }
 
     [Test]
@@ -1111,4 +1614,82 @@ public class ParchmentTemplateGeneratorTests
 
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
     }
+
+    const string pagedModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Paged
+        {
+            public List<Line> Lines { get; set; } = new();
+            public int Max { get; set; }
+        }
+        """;
+
+    static List<string> PagedDiagnostics(string openTag) =>
+        GeneratorDriver.Run(pagedModel, openTag, "{{ line.Description }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .Where(_ => _.StartsWith("PARCH", StringComparison.Ordinal))
+            .ToList();
+
+    // The runtime evaluates limit and offset as expressions, so a member named there is a model
+    // reference like any other and is validated at registration.
+    [Test]
+    [Arguments("{% for line in Lines limit: Max %}")]
+    [Arguments("{% for line in Lines offset: Max %}")]
+    [Arguments("{% for line in Lines limit:2 offset:1 reversed %}")]
+    [Arguments("{% for line in Lines limit: Lines.size %}")]
+    public async Task Docx_LoopModifier_Valid_NoDiagnostic(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEmpty();
+
+    [Test]
+    [Arguments("{% for line in Lines limit: Missing %}")]
+    [Arguments("{% for line in Lines offset: Missing %}")]
+    // The CLR member is not what liquid binds; `size` is.
+    [Arguments("{% for line in Lines limit: Lines.Count %}")]
+    // Evaluated before the loop variable is bound.
+    [Arguments("{% for line in Lines limit: line %}")]
+    // The docx flow has no liquid loop scope to resume from; the runtime rejects it too.
+    [Arguments("{% for line in Lines offset: continue %}")]
+    public async Task Docx_LoopModifier_UnknownMember_ReportsParch001(string openTag) =>
+        await Assert.That(PagedDiagnostics(openTag)).IsEquivalentTo(["PARCH001"]);
+
+    static List<string> RangeModifierDiagnostics(string openTag) =>
+        GeneratorDriver.Run(pagedModel, openTag, "{{ i }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .ToList();
+
+    // A range loop takes the modifiers like any other, and their references are validated on its
+    // path too.
+    [Test]
+    [Arguments("{% for i in (1..5) limit:2 %}")]
+    [Arguments("{% for i in (1..5) offset:1 %}")]
+    [Arguments("{% for i in (1..5) reversed %}")]
+    [Arguments("{% for i in (1..5) limit:2 offset:1 reversed %}")]
+    [Arguments("{% for i in (1..Max) limit: Max offset: Lines.size %}")]
+    public async Task Docx_RangeLoopModifier_Valid_NoDiagnostic(string openTag) =>
+        await Assert.That(RangeModifierDiagnostics(openTag)).IsEmpty();
+
+    [Test]
+    [Arguments("{% for i in (1..5) limit: Missing %}")]
+    [Arguments("{% for i in (1..5) offset: Missing %}")]
+    [Arguments("{% for i in (1..5) limit: Lines.Count %}")]
+    // Evaluated before the loop variable is bound, untyped or not.
+    [Arguments("{% for i in (1..5) limit: i %}")]
+    [Arguments("{% for i in (1..5) offset: continue %}")]
+    public async Task Docx_RangeLoopModifier_UnknownMember_ReportsParch001(string openTag) =>
+        await Assert.That(RangeModifierDiagnostics(openTag)).IsEquivalentTo(["PARCH001"]);
 }

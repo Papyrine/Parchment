@@ -3,4 +3,7 @@ sealed record BlockMarker(
     string Source,
     Expression? Condition,
     string? LoopVariable,
-    Expression? LoopSource);
+    Expression? LoopSource,
+    Expression? LoopLimit = null,
+    Expression? LoopOffset = null,
+    bool LoopReversed = false);

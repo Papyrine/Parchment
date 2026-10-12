@@ -1,9 +1,7 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-
 /// <summary>
-/// Cover for the MSBuild targets the package ships — the item types that declare a template, and
-/// the warning for one declared under two item types.
+/// Cover for the MSBuild targets the package ships — the globs that discover a template by name,
+/// the item type that declares one they cannot reach, and the warning for a template declared
+/// under two item types.
 /// </summary>
 /// <remarks>
 /// These only exist inside a build, so the test runs one: a fixture project is compiled against the
@@ -12,13 +10,21 @@ using System.Runtime.CompilerServices;
 /// </remarks>
 public class TargetsTests
 {
-    static string FixtureProject([CallerFilePath] string file = "") =>
-        Path.Combine(
-            Path.GetDirectoryName(Path.GetDirectoryName(file))!,
-            "TargetsFixture",
-            "TargetsFixture.csproj");
+    static string FixtureProject() =>
+        Path.GetFullPath(
+            Path.Combine(
+                ProjectFiles.ProjectDirectory,
+                "..",
+                "TargetsFixture",
+                "TargetsFixture.csproj"));
 
     static string BuildOutput { get; set; } = "";
+
+    // The items the build worked from. Item state is not observable in build output, and printing
+    // it there would collide with the assertions that read that output for file names.
+    static string NoneItems { get; set; } = "";
+
+    static string AdditionalFileItems { get; set; } = "";
 
     [Before(Class)]
     public static async Task BuildFixture()
@@ -35,12 +41,20 @@ public class TargetsTests
             }
         }
 
+        BuildOutput = await Dotnet($"build \"{project}\" --nologo");
+        // After the build, so the restore it needs has already run.
+        NoneItems = await Dotnet($"msbuild \"{project}\" -getItem:None --nologo");
+        AdditionalFileItems = await Dotnet($"msbuild \"{project}\" -getItem:AdditionalFiles --nologo");
+    }
+
+    static async Task<string> Dotnet(string arguments)
+    {
         using var process = new Process
         {
             StartInfo = new()
             {
                 FileName = "dotnet",
-                Arguments = $"build \"{project}\" --nologo",
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false
@@ -50,7 +64,7 @@ public class TargetsTests
         var output = await process.StandardOutput.ReadToEndAsync();
         var error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
-        BuildOutput = output + error;
+        return output + error;
     }
 
     // A warning must not become a failure: the misconfiguration PARCH100 reports is one the command
@@ -63,12 +77,12 @@ public class TargetsTests
     public async Task WarnsForTheTemplateCarryingTwoItemTypes()
     {
         await Assert.That(BuildOutput).Contains("PARCH100");
-        await Assert.That(BuildOutput).Contains("DualModel.md");
+        await Assert.That(BuildOutput).Contains("DualModel.parchment.md");
     }
 
     [Test]
     public async Task DoesNotWarnForTemplatesDeclaredWithTheItemType() =>
-        await Assert.That(BuildOutput).DoesNotContain("CopiedModel.md");
+        await Assert.That(BuildOutput).DoesNotContain("CopiedModel.parchment.md");
 
     // Proves the item types actually reach the generator. Without this the suite would pass on a
     // targets file that declared nothing at all.
@@ -78,4 +92,29 @@ public class TargetsTests
     [Test]
     public async Task EveryTemplateIsVisibleToTheGenerator() =>
         await Assert.That(BuildOutput).DoesNotContain("error PARCH004");
+
+    // The SDK's default glob sweeps every template into None as well, and the package leaves that
+    // identity standing: None never reaches the compiler, so it cannot shadow the AdditionalFiles
+    // entry, and it is what keeps a template listed in a solution explorer — an IDE lists project
+    // files through item types like None, and a template stripped of it disappears from the tree.
+    [Test]
+    public async Task TemplatesKeepTheirNoneIdentity()
+    {
+        await Assert.That(NoneItems).Contains("CopiedModel.parchment.md");
+        await Assert.That(NoneItems).Contains("DualModel.parchment.md");
+        await Assert.That(NoneItems).Contains("DiscoveredModel.parchment.md");
+    }
+
+    // The marker earns its keep here: DiscoveredModel.parchment.md carries no csproj entry, so the
+    // globs are the only thing that can put it in front of the generator. Its model would fail the
+    // build with PARCH004 if they did not — which FixtureBuilds and EveryTemplateIsVisibleToTheGenerator
+    // already assert — and this names the file the assertion depends on.
+    [Test]
+    public async Task DiscoversAnUndeclaredTemplate() =>
+        await Assert.That(AdditionalFileItems).Contains("DiscoveredModel.parchment.md");
+
+    // An unmarked markdown file is not swept in, which is the whole reason globbing is safe.
+    [Test]
+    public async Task DoesNotDiscoverUnmarkedMarkdown() =>
+        await Assert.That(AdditionalFileItems).DoesNotContain("notes.md");
 }

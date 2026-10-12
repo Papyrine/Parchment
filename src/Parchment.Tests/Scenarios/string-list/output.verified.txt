@@ -1,0 +1,26 @@
+﻿{
+  Document: {
+    Properties: {
+      Revision: 2
+    },
+    Fonts: [
+      Arial,
+      Calibri,
+      Calibri Light,
+      Times New Roman
+    ]
+  },
+  PageCount: 1,
+  Pages: [
+    {
+      Number: 1,
+      Text:
+Person: Ada Lovelace
+Tags:
+• Author
+• Mathematician
+• Engineer
+End.
+    }
+  ]
+}

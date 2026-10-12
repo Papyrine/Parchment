@@ -15,6 +15,15 @@ static class TokenScanner
             var classification = ClassifyParagraph(paragraph, templateName, partUri);
             if (classification.Kind == ParagraphKind.Static)
             {
+                // A token-free paragraph is reported only when the template arrived with an anchor
+                // already on it. It becomes an inert StaticNode, which keeps its part in the
+                // registered list so the render visits the part and strips the anchor.
+                var existing = Anchors.FindOn(paragraph);
+                if (existing != null)
+                {
+                    results.Add(classification with { AnchorName = existing });
+                }
+
                 continue;
             }
 
@@ -173,7 +182,27 @@ static class TokenScanner
                 source);
         }
 
-        return new(BlockTagKind.For, source, null, forStatement.Identifier, forStatement.Source);
+        // `offset: continue` resumes after the last item the previous loop over the same source
+        // reached, which liquid tracks in the loop scope it runs the body in. The scope tree runs
+        // loops itself and keeps no such counter, so the loop would start again from the first item.
+        if (forStatement.OffsetIsContinue)
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                "'offset: continue' is not supported in a docx template. Docx templates iterate through their own scope tree and do not track where the previous loop stopped. Use a numeric offset or a model member.",
+                partUri,
+                source);
+        }
+
+        return new(
+            BlockTagKind.For,
+            source,
+            null,
+            forStatement.Identifier,
+            forStatement.Source,
+            forStatement.Limit,
+            forStatement.Offset,
+            forStatement.Reversed);
     }
 
     static BlockMarker BuildIfTag(string source, string? expression, string templateName, string partUri) =>

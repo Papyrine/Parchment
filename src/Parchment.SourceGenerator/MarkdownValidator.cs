@@ -8,9 +8,15 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
-/// PARCH003 / PARCH005 / PARCH007 / PARCH008 / PARCH010 are docx-specific and not emitted
-/// for markdown — the runtime markdown flow has no concept of paragraph boundaries, no
-/// Excelsior dispatch, and no [Html]/[Markdown] structural replacement.
+///   PARCH024 — FormatMarkerThroughLoopVariable
+/// PARCH003 / PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
+/// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
+/// replacement.
+///
+/// PARCH007 / PARCH008 do apply to markdown, but not from here: an Excelsior token is rewritten
+/// to a marker before the source is parsed, so what disqualifies one is a property of the line it
+/// sits on rather than of this AST. ParchmentTemplateGenerator.ValidateMarkdownExcelsiorTokens
+/// reads them off the source instead.
 /// </summary>
 /// <remarks>
 /// Kept deliberately in step with <c>Parchment.Liquid.MarkdownReferenceValidator</c>, its runtime
@@ -211,6 +217,7 @@ class MarkdownValidator
 
             if (ShapeResolver.TryResolve(target.Shape, path, scope, out _))
             {
+                WarnIfFormatMarkerIsUnreachable(path, sourceForDiagnostic);
                 continue;
             }
 
@@ -223,6 +230,33 @@ class MarkdownValidator
                     string.Join('.', path),
                     target.ModelDisplayName));
         }
+    }
+
+    // A format marker on a member reached through a loop variable cannot be honoured: the rewrite
+    // that applies one matches a token's path against the map built from the model root, and a
+    // loop variable is not addressable from there. The token renders as escaped text with its
+    // markup visible, which is the sort of thing worth being told about rather than discovering in
+    // a rendered document.
+    void WarnIfFormatMarkerIsUnreachable(IReadOnlyList<string> path, string sourceForDiagnostic)
+    {
+        if (!scope.ContainsKey(path[0]) ||
+            !ShapeResolver.TryResolveMember(target.Shape, path, scope, out var member) ||
+            member is
+            {
+                IsHtml: false,
+                IsMarkdown: false
+            })
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FormatMarkerThroughLoopVariable,
+                location,
+                templatePath,
+                sourceForDiagnostic,
+                member.Name));
     }
 
     // Returns null for a source with no static member path — a range, or an indexer whose key is
@@ -252,7 +286,12 @@ class MarkdownValidator
             segments.Add(name);
         }
 
-        return segments.Count == 0 ? null : segments;
+        if (segments.Count == 0)
+        {
+            return null;
+        }
+
+        return segments;
     }
 
     sealed class ExpressionPathCollector :

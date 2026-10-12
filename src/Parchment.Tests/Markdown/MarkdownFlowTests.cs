@@ -132,7 +132,7 @@ public partial class MarkdownFlowTests
             <!-- begin-snippet: MarkdownTemplatePropertyContent(lang=handlebars) -->
             # {{ Title }}
 
-            {{ Details }}
+            {{ Details | markdown }}
             <!-- end-snippet -->
             """;
 
@@ -175,7 +175,7 @@ public partial class MarkdownFlowTests
             """
             # {{ Title }}
 
-            {{ Details }}
+            {{ Details | raw }}
             """;
 
         using var styleSource = DocxTemplateBuilder.Build();
@@ -198,6 +198,38 @@ public partial class MarkdownFlowTests
                     </ul>
                     <blockquote>Ship it.</blockquote>
                     """
+            },
+            targetStream);
+
+        targetStream.Position = 0;
+        await Verify(targetStream, "docx");
+    }
+
+    // The counterpart to the two above: without an opt-out the same values are the text they are,
+    // so markdown syntax and html tags print instead of restructuring the document around them.
+    [Test]
+    public async Task PropertyContentIsEscapedByDefault()
+    {
+        using var targetStream = new MemoryStream();
+        var markdown =
+            """
+            # {{ Title }}
+
+            {{ Details }}
+            """;
+
+        using var styleSource = DocxTemplateBuilder.Build();
+
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<BriefModel>(
+            markdown,
+            styleSource);
+
+        await store.Render(
+            new BriefModel
+            {
+                Title = "Release notes",
+                Details = "## Not a heading, <b>not bold</b>, and | not a new cell",
             },
             targetStream);
 
@@ -281,9 +313,6 @@ public partial class MarkdownFlowTests
         await Assert.That(main.ImageParts.Any()).IsTrue();
     }
 
-    static byte[] OnePixelPng() =>
-        Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");
 
     [Test]
     public async Task ImageFromLocalFileEmbedsDrawing()
@@ -358,6 +387,7 @@ public partial class MarkdownFlowTests
     public partial class LoopModel
     {
         public required IReadOnlyList<Row> Rows { get; init; }
+        public int Count { get; init; }
     }
 
     public class Row
@@ -478,6 +508,20 @@ public partial class MarkdownFlowTests
     public void RangeLoopSourceIsAccepted() =>
         Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
 
+    // A member used as a bound does not make the range a member path. Count is an int, and taking
+    // it for the loop source rejected the loop as iterating something that is not enumerable.
+    [Test]
+    public void RangeLoopSourceWithMemberBoundIsAccepted() =>
+        Register("{% for i in (1..Count) %}{{ i.Anything }}{% endfor %}");
+
+    [Test]
+    public async Task RangeLoopSourceWithUnknownMemberBoundFailsRegistration()
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register("{% for i in (1..NoSuchMember) %}{{ i }}{% endfor %}"));
+        await Assert.That(exception.Message).Contains("NoSuchMember");
+    }
+
     // forloop is scoped to the loop body, so outside one it is still an error — but the message
     // should say what forloop is rather than describing it as a missing model member.
     [Test]
@@ -536,6 +580,12 @@ public partial class TokenModel
         public required TokenValue Value { get; init; }
     }
 
+    [ParchmentBindable]
+    public partial class TokenListModel
+    {
+        public required IReadOnlyList<TokenValue> Values { get; init; }
+    }
+
     static async Task<string> RenderText<TModel>(string markdown, TModel model)
         where TModel : class
     {
@@ -549,6 +599,19 @@ public partial class TokenModel
 
         using var doc = WordprocessingDocument.Open(stream, false);
         return doc.MainDocumentPart!.Document!.Body!.InnerText;
+    }
+
+    static async Task<MemoryStream> Render<TModel>(string markdown, TModel model)
+        where TModel : class
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<TModel>(markdown, styleSource);
+
+        var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+        return stream;
     }
 
     // These filters build an OpenXmlToken for the docx flow. The markdown flow has no OpenXML to
@@ -617,6 +680,71 @@ public partial class TokenModel
         await Assert.That(text).IsEqualTo("from html");
     }
 
+    // A token in a loop is parked once per iteration, each under its own marker, and every marker's
+    // host is found in one walk of the document. Past ten of them one marker's index is the start
+    // of another's, so each has to be matched whole to land on its own value. Each value here is
+    // two blocks, with a line of the template's own before it, so what a value produces has to
+    // arrive in order and where its marker was for the text to read straight through.
+    [Test]
+    public async Task HtmlTokenInALoopRendersEachValueInPlace()
+    {
+        var indexes = Enumerable.Range(0, 25).ToList();
+        var text = await RenderText(
+            """
+            {% for value in Values %}
+
+            item
+
+            {{ value }}
+
+            {% endfor %}
+            """,
+            new TokenListModel
+            {
+                Values = indexes
+                    .Select(TokenValue (_) => new HtmlToken($"<p>a{_};</p><p>b{_};</p>"))
+                    .ToList()
+            });
+        await Assert.That(text).IsEqualTo(string.Concat(indexes.Select(_ => $"itema{_};b{_};")));
+    }
+
+    // A marker can land in a table cell as well as in the body. The hosts are taken out a parent at
+    // a time, so each cell has to come back holding its own value and the body its own.
+    [Test]
+    public async Task HtmlTokenInATableCellRendersInThatCell()
+    {
+        using var stream = await Render(
+            """
+            | Left | Right |
+            | --- | --- |
+            | {{ Values[0] }} | {{ Values[1] }} |
+
+            {{ Values[2] }}
+            """,
+            new TokenListModel
+            {
+                Values =
+                [
+                    new HtmlToken("<p>left cell</p>"),
+                    new HtmlToken("<p>right cell</p>"),
+                    new HtmlToken("<p>below</p>")
+                ]
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var cells = body.Descendants<TableRow>()
+            .Last()
+            .Elements<TableCell>()
+            .Select(_ => _.InnerText);
+        await Assert.That(string.Join('|', cells)).IsEqualTo("left cell|right cell");
+
+        var paragraphs = body.Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.Length > 0);
+        await Assert.That(string.Join('|', paragraphs)).IsEqualTo("below");
+    }
+
     [Test]
     public async Task PlainTextTokenPropertyRendersValue()
     {
@@ -629,20 +757,229 @@ public partial class TokenModel
         await Assert.That(text).IsEqualTo("just text");
     }
 
-    // An OpenXmlToken has no markdown form, so it has to fail loudly rather than stringify.
+    // An OpenXmlToken has no markdown form at all, so it is parked against a marker and the
+    // marker's paragraph is swapped for what the delegate emits once Markdig has parsed - the same
+    // route html and [ExcelsiorTable] members take.
     [Test]
-    public async Task OpenXmlTokenPropertyThrowsInMarkdownFlow()
+    public async Task OpenXmlTokenPropertyRendersElements()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(_ => [new Paragraph(new Run(new Text("from openxml")))])
+            });
+        await Assert.That(text).IsEqualTo("from openxml");
+    }
+
+    // The point of the token over html: bytes reach an ImagePart without a base64 detour.
+    [Test]
+    public async Task OpenXmlTokenPropertyCanAddAnImagePart()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(
+                    context =>
+                    {
+                        context.AddImagePart(OnePixelPng(), "image/png");
+                        return [new Paragraph(new Run(new Text("with image")))];
+                    })
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        await Assert.That(doc.MainDocumentPart!.ImageParts.Count()).IsEqualTo(1);
+    }
+
+    // The delegate is handed the paragraph it is replacing, so a token that wants to inherit what
+    // it is standing in for gets the same answer here as it does in the docx flow. Markdig built
+    // this one rather than a template, which is the only difference.
+    [Test]
+    public async Task OpenXmlTokenPropertyIsGivenItsHostParagraph()
+    {
+        Paragraph? host = null;
+        await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new OpenXmlToken(
+                    context =>
+                    {
+                        host = context.HostParagraph;
+                        return [];
+                    })
+            });
+        await Assert.That(host).IsNotNull();
+    }
+
+    [Test]
+    public async Task OpenXmlTokenPropertyRenderingNothingLeavesNothing()
+    {
+        var text = await RenderText(
+            """
+            before
+
+            {{ Value }}
+
+            after
+            """,
+            new TokenModel
+            {
+                Value = new OpenXmlToken(_ => [])
+            });
+        await Assert.That(text).IsEqualTo("beforeafter");
+    }
+
+    // TokenValueHelpers parks a newline in an item as the LineBreaks marker, a control character no
+    // xml part can hold, and counts on a later pass to split it into a w:br. The docx flow runs that
+    // pass over every part; the markdown body had none, so the marker reached the save and threw.
+    [Test]
+    public async Task BulletListTokenPropertyKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = TokenValueHelpers.BulletList(["a\nb", "c"])
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    [Test]
+    public async Task NumberedListTokenPropertyKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = TokenValueHelpers.NumberedList(["a\r\nb", "c"])
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    // Each iteration parks its own token, and each one's output is split where it is inserted.
+    [Test]
+    public async Task BulletListTokenInALoopKeepsLineBreakInEachItem()
+    {
+        using var stream = await Render(
+            """
+            {% for value in Values %}
+
+            {{ value }}
+
+            {% endfor %}
+            """,
+            new TokenListModel
+            {
+                Values =
+                [
+                    TokenValueHelpers.BulletList(["a\nb"]),
+                    TokenValueHelpers.BulletList(["c\nd\ne"])
+                ]
+            });
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("abcde");
+        await Assert.That(body.Descendants<Break>().Count()).IsEqualTo(3);
+    }
+
+    // The filters take the other route here - markdown source rather than a parked token - where
+    // the break is written as markdown's own, so no marker is involved at all.
+    [Test]
+    public async Task BulletListFilterKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Items | bullet_list }}",
+            new ItemsModel
+            {
+                Items = ["a\nb", "c"]
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    [Test]
+    public async Task NumberedListFilterKeepsLineBreakInItem()
+    {
+        using var stream = await Render(
+            "{{ Items | numbered_list }}",
+            new ItemsModel
+            {
+                Items = ["a\nb", "c"]
+            });
+        await AssertListWithLineBreak(stream);
+    }
+
+    static async Task AssertListWithLineBreak(Stream stream)
+    {
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Where(_ => _.InnerText.Length > 0)
+            .ToList();
+        await Assert.That(string.Join('|', paragraphs.Select(_ => _.InnerText))).IsEqualTo("ab|c");
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+
+        // Between the two lines of the first item, and nowhere else.
+        var kinds = paragraphs[0]
+            .Descendants()
+            .Where(_ => _ is Text or Break)
+            .Select(_ => _.LocalName);
+        await Assert.That(string.Join(',', kinds)).IsEqualTo("t,br,t");
+        await Assert.That(paragraphs[1].Descendants<Break>().Count()).IsEqualTo(0);
+    }
+
+    // Html has its own answer for a line break, so what it parks never carries the marker.
+    [Test]
+    public async Task HtmlTokenPropertyWithNewlineLeavesNoMarker()
+    {
+        var text = await RenderText(
+            "{{ Value }}",
+            new TokenModel
+            {
+                Value = new HtmlToken("<p>a\nb<br>c</p>")
+            });
+        await Assert.That(text).DoesNotContain('\u0001');
+        await Assert.That(text).Contains("c");
+    }
+
+    // Same refusal html gets, and for the same reason: the token replaces the block it sits in, so
+    // text sharing that block would be discarded rather than kept.
+    [Test]
+    public async Task OpenXmlTokenPropertySharingItsBlockThrows()
+    {
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
+            async () => await RenderText(
+                "leading {{ Value }}",
+                new TokenModel
+                {
+                    Value = new OpenXmlToken(_ => [new Paragraph(new Run(new Text("x")))])
+                }));
+        await Assert.That(exception!.Message).Contains("OpenXmlToken");
+        await Assert.That(exception.Message).Contains("alone in that block");
+    }
+
+    // The one token left with no answer here. It mutates the paragraph a docx template already
+    // had, and markdown has none to hand it until after the parse - by which point the paragraph
+    // is Markdig's, not the template's.
+    [Test]
+    public async Task MutateTokenPropertyThrowsInMarkdownFlow()
     {
         var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
             async () => await RenderText(
                 "{{ Value }}",
                 new TokenModel
                 {
-                    Value = new OpenXmlToken(_ => [])
+                    Value = new MutateToken((_, _) => { })
                 }));
-        await Assert.That(exception!.Message).Contains("OpenXmlToken");
+        await Assert.That(exception!.Message).Contains("MutateToken");
         await Assert.That(exception.Message).Contains("RegisterDocxTemplate");
     }
+
+    static byte[] OnePixelPng() =>
+        Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII=");
 
     // The policies are OpenXmlHtml's and belong to the store, so they cover every template
     // registered on it rather than being decided per render.

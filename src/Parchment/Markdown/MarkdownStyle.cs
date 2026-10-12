@@ -11,7 +11,9 @@
 /// further classes. A Word style is a single name, so only the first class maps onto anything and
 /// the rest are dropped. That keeps markdown written for both html and Word portable rather than
 /// rejecting it, and it is the documented behaviour — see the generic attributes section of the
-/// readme.
+/// readme. The exceptions are the two block markers that read their own key=value properties:
+/// <c>levels</c> on <see cref="TableOfContents"/> and <c>orientation</c>/<c>margins</c> on
+/// <see cref="SectionBreaks"/>.
 /// </para>
 /// </remarks>
 static class MarkdownStyle
