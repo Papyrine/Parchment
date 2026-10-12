@@ -120,6 +120,9 @@ static class ShapeBuilder
                     // on top of it is the same claim made twice — and applying both converts the
                     // placeholder the first one produced. See PARCH025.
                     var markerOnToken = (isHtml || isMarkdown) && IsTokenValue(memberType);
+                    // Decided here and carried on the entry, so the diagnostic (PARCH034) and
+                    // the emission-side skip in AccessorEmission.WalkForMaps read one answer.
+                    var excelsiorNotTabular = isExcelsior && !IsTabular(memberType);
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -165,7 +168,8 @@ static class ShapeBuilder
                         editableDateFormat,
                         editableCollectionElementFqn,
                         excelsiorConfigureCall,
-                        excelsiorConfigureMissing));
+                        excelsiorConfigureMissing,
+                        excelsiorNotTabular));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -308,8 +312,57 @@ static class ShapeBuilder
     // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
     // be `char`, which is correctly rejected here.
     static bool IsEnumerableOfString(ITypeSymbol type) =>
-        ModelSymbolResolver.TryGetElementType(type, out var element) &&
+        TryGetSequenceElementType(type, out var element) &&
         element is {SpecialType: SpecialType.System_String};
+
+    // A multi-dimensional array has an element type but is no IEnumerable<T>: the runtime reads a
+    // string list and an Excelsior source through that interface, so `string[,]` handed to either
+    // yields nothing. A jagged `string[][]` is a rank-1 array of arrays and is unaffected.
+    static bool TryGetSequenceElementType(ITypeSymbol type, [NotNullWhen(true)] out ITypeSymbol? element)
+    {
+        element = null;
+        if (type.SpecialType == SpecialType.System_String ||
+            type is IArrayTypeSymbol {Rank: > 1})
+        {
+            return false;
+        }
+
+        return ModelSymbolResolver.TryGetElementType(type, out element);
+    }
+
+    /// <summary>
+    /// Whether an <c>[ExcelsiorTable]</c> member's type is a sequence of something Excelsior can
+    /// lay out as columns: an element with at least one public instance property or field, which
+    /// is what its column discovery reads. A scalar, a string, an untyped <c>IEnumerable</c>, and a
+    /// sequence of strings, primitives, enums, <c>object</c> or <c>dynamic</c> have none.
+    /// </summary>
+    static bool IsTabular(ITypeSymbol type)
+    {
+        if (!TryGetSequenceElementType(type, out var element))
+        {
+            return false;
+        }
+
+        // Covers string, object, the primitives, decimal, DateTime and Nullable<T>.
+        if (element.OriginalDefinition.SpecialType != SpecialType.None)
+        {
+            return false;
+        }
+
+        for (var current = element; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers())
+            {
+                if (TryGetMemberType(member, out _, out _, out var isStatic) &&
+                    !isStatic)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 
     static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure)
     {

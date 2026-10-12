@@ -235,6 +235,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
 
+    // Nothing was reported for this before: the attribute was dropped and the token printed whatever
+    // the plain value prints, where the author expected a table.
+    public static readonly DiagnosticDescriptor ExcelsiorNotTabular = new(
+        id: "PARCH034",
+        title: "[ExcelsiorTable] member is not a collection of rows",
+        messageFormat: "Model '{0}' member '{1}' is marked [ExcelsiorTable] but its type '{2}' is not a collection of a type with properties to show as columns. Excelsior renders one row per element and one column per public property of the element type, so the member must be an array, a list or another IEnumerable<T> of such a type. Change the member's type, or remove the attribute.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch034--excelsiortable-member-is-not-a-collection-of-rows");
+
     // Extraction is replace-all: the rows in the document become the collection. A window or a
     // reversal on the loop that rendered them would therefore be written back as data.
     public static readonly DiagnosticDescriptor EditableCollectionLoopModifier = new(

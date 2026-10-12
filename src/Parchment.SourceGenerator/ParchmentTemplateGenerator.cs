@@ -136,6 +136,7 @@ public sealed class ParchmentTemplateGenerator :
         // registration would need are enforced here — an invalid editable member is an authoring
         // mistake regardless of which template it later meets.
         ValidateEditableShape(context, target, location);
+        ValidateExcelsiorShape(context, target, location);
 
         EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
     }
@@ -503,6 +504,7 @@ public sealed class ParchmentTemplateGenerator :
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
         // at RegisterDocxTemplate regardless of whether a token references the member.
         ValidateEditableShape(context, target, location);
+        ValidateExcelsiorShape(context, target, location);
         if (HasEditableMembers(target.Shape))
         {
             // Token rules are body-scoped: the runtime dispatches editable fields only in the
@@ -556,6 +558,34 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         return null;
+    }
+
+    // Its own pass rather than a branch of ValidateEditableShape: an Excelsior table renders in both
+    // flows, so the markdown path runs this too. A static member is left to PARCH019, which already
+    // says the attribute does nothing there.
+    static void ValidateExcelsiorShape(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member is not {ExcelsiorNotTabular: true, IsStatic: false})
+                {
+                    continue;
+                }
+
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorNotTabular,
+                        location,
+                        target.ModelDisplayName,
+                        $"{Display(type.TypeFullyQualifiedName)}.{member.Name}",
+                        Display(member.TypeFullyQualifiedName)));
+            }
+        }
     }
 
     static void ValidateEditableShape(
@@ -1038,6 +1068,7 @@ public sealed class ParchmentTemplateGenerator :
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
         ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
+        ValidateExcelsiorShape(context, target, location);
 
         // The style source: the dotx named after the type when the project carries one, otherwise
         // the nearest parchment.dotx up the directory tree from the template. Neither is required
