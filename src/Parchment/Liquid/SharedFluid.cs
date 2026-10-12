@@ -59,6 +59,20 @@ static class SharedFluid
                     return new StringValue(EnumRender.Render(e));
                 }
 
+                // Fluid turns a TimeSpan into a date counted from 1970 in the machine's time zone,
+                // and prints a TimeOnly in the short pattern, which has no seconds. Both become
+                // the invariant text of the value instead: a duration in the constant format, and
+                // a time in the format an editable TimeOnly field defaults to.
+                if (value is TimeSpan span)
+                {
+                    return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
+                }
+
+                if (value is TimeOnly time)
+                {
+                    return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+                }
+
                 return null;
             });
 

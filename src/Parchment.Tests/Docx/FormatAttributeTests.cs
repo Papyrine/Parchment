@@ -247,6 +247,31 @@ public partial class FormatAttributeTests
     }
 
     [Test]
+    public async Task SoloHtml_TrailingSpace_ReplacesHostParagraph()
+    {
+        // A space after the token leaves it alone in its paragraph: the blocks replace the host
+        // and no empty before/after halves are left around them.
+        using var template = DocxTemplateBuilder.Build("{{ Body }} ");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = "<p>First</p><p>Second</p>"
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["First", "Second"]);
+    }
+
+    [Test]
     public async Task NonSoloHtml_BlockContent_SplitsHostParagraph()
     {
         // Block-level HTML (multiple `<p>`s) in a non-solo token — the host paragraph is split:
@@ -402,6 +427,74 @@ public partial class FormatAttributeTests
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
     }
+
+    // Markdown reaches the same table renderer from a docx template, so a table wider than Word's
+    // 63 columns is refused here too, and the error names the token the markdown came through.
+    [Test]
+    [Arguments("{{ Body }}", "{{ Body }}")]
+    [Arguments("Intro {{ Body }} outro", "{{ Body }}")]
+    [Arguments("{{ Title | markdown }}", "{{ Title | markdown }}")]
+    public async Task MarkdownTableOverTheColumnLimitIsRejected(string templateText, string token)
+    {
+        using var template = DocxTemplateBuilder.Build(templateText);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<MarkdownDoc>(template);
+
+        var model = new MarkdownDoc
+        {
+            Title = WideTable,
+            Body = WideTable
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.Message).Contains("at most 63");
+        await Assert.That(exception.TokenSource).IsEqualTo(token);
+        await Assert.That(exception.PartUri).IsEqualTo("/word/document.xml");
+    }
+
+    [ParchmentBindable]
+    public partial class MarkdownItemsDoc
+    {
+        public required string[] Items { get; init; }
+    }
+
+    [Test]
+    public async Task MarkdownTableOverTheColumnLimitInsideALoopIsRejected()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for item in Items %}
+
+            {{ item | markdown }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<MarkdownItemsDoc>(template);
+
+        var model = new MarkdownItemsDoc
+        {
+            Items = ["plain", WideTable]
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.TokenSource).IsEqualTo("{{ item | markdown }}");
+    }
+
+    static string WideTable { get; } =
+        string.Join(
+            '\n',
+            "|" + string.Concat(Enumerable.Repeat(" h |", 64)),
+            "|" + string.Concat(Enumerable.Repeat("---|", 64)),
+            "|" + string.Concat(Enumerable.Repeat(" c |", 64)));
 
     static async Task<Body> RenderBody<T>(string templateText, T model)
         where T : notnull
