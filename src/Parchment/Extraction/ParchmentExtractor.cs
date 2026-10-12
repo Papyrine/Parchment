@@ -150,16 +150,19 @@ public static class ParchmentExtractor
         }
     }
 
-    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
+    // Reads the rows as values rather than building the items here: ExtractedCollection.Build
+    // constructs the list and its items once per ApplyTo, so no two models share them.
+    static List<List<(EditableEntry Entry, object? Value)>> ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
     {
-        var listType = typeof(List<>).MakeGenericType(entry.ElementType);
-        var list = (IList)Activator.CreateInstance(listType)!;
+        var rows = new List<List<(EditableEntry Entry, object? Value)>>();
 
         foreach (var itemSdt in RepeatedItems(container))
         {
+            // Never handed out: only answers CanReach for an element as the factory builds it.
             var item = entry.ElementFactory();
             var isBlank = EditableRepeatingBuilder.IsBlankItem(itemSdt);
             var anyValue = false;
+            var row = new List<(EditableEntry Entry, object? Value)>();
             foreach (var elementEntry in entry.ElementMap.Entries)
             {
                 var control = FindControl(itemSdt, elementEntry.DottedPath);
@@ -172,7 +175,7 @@ public static class ParchmentExtractor
                 if (field.State == FieldState.Extracted &&
                     elementEntry.CanReach(item))
                 {
-                    elementEntry.Setter(item, field.Value);
+                    row.Add((elementEntry, field.Value));
 
                     // A checkbox cannot be rendered empty, so in the blank item of an empty
                     // collection an unchecked box is still the untouched state, not an entry.
@@ -189,18 +192,11 @@ public static class ParchmentExtractor
             // Drop all-empty items: the blank clone template Word needs, or a row the user cleared.
             if (anyValue)
             {
-                list.Add(item);
+                rows.Add(row);
             }
         }
 
-        if (!entry.IsArray)
-        {
-            return list;
-        }
-
-        var array = Array.CreateInstance(entry.ElementType, list.Count);
-        list.CopyTo(array, 0);
-        return array;
+        return rows;
     }
 
     static IEnumerable<SdtElement> RepeatedItems(SdtElement container)

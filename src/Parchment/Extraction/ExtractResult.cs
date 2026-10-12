@@ -108,10 +108,11 @@ public sealed class ExtractResult<TModel>
         }
 
         // Replace-all: the rebuilt list is the new collection state (added rows appear, removed rows
-        // are absent). Callers needing identity preservation diff the rebuilt list themselves.
+        // are absent). Callers needing identity preservation diff the rebuilt list themselves. The
+        // list and its items are built per call, so models applied from one result share nothing.
         foreach (var collection in applicableCollections)
         {
-            collection.Entry.Setter(model, collection.List);
+            collection.Entry.Setter(model, collection.Build());
         }
     }
 }

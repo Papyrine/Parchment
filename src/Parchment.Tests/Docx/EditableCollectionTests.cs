@@ -237,6 +237,97 @@ public partial class EditableCollectionTests
         await Assert.That(model.Budgets[1].Amount).IsEqualTo(20m);
     }
 
+    [ParchmentBindable]
+    public partial class BudgetLedger
+    {
+        [EditableField]
+        public required Budget[] Budgets { get; set; }
+    }
+
+    // One result applied to two models: each gets its own collection and its own items, so
+    // changing one model leaves the other, and a later ApplyTo, as the document had it.
+    [Test]
+    public async Task ApplyToGivesEachModelItsOwnList()
+    {
+        using var stream = await Render(template, NewPlan());
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        var first = new BudgetPlan
+        {
+            Title = "first",
+            Budgets = []
+        };
+        var second = new BudgetPlan
+        {
+            Title = "second",
+            Budgets = []
+        };
+        result.ApplyTo(first);
+        result.ApplyTo(second);
+
+        await Assert.That(ReferenceEquals(first.Budgets, second.Budgets)).IsFalse();
+        await Assert.That(ReferenceEquals(first.Budgets[0], second.Budgets[0])).IsFalse();
+
+        first.Budgets[0].Year = "1999";
+        first.Budgets.RemoveAt(1);
+        first.Budgets.Add(
+            new()
+            {
+                Year = "2100",
+                Amount = 30m
+            });
+
+        await Assert.That(second.Budgets.Count).IsEqualTo(2);
+        await Assert.That(second.Budgets[0].Year).IsEqualTo("2026");
+        await Assert.That(second.Budgets[1].Year).IsEqualTo("2027");
+
+        var third = new BudgetPlan
+        {
+            Title = "third",
+            Budgets = []
+        };
+        result.ApplyTo(third);
+        await Assert.That(third.Budgets.Count).IsEqualTo(2);
+        await Assert.That(third.Budgets[0].Year).IsEqualTo("2026");
+        await Assert.That(third.Budgets[0].Amount).IsEqualTo(10m);
+        await Assert.That(third.Budgets[1].Year).IsEqualTo("2027");
+        await Assert.That(third.Budgets[1].Amount).IsEqualTo(20m);
+    }
+
+    [Test]
+    public async Task ApplyToGivesEachModelItsOwnArray()
+    {
+        using var stream = await Render(
+            template,
+            new BudgetLedger
+            {
+                Budgets = NewPlan().Budgets.ToArray()
+            });
+        var result = ParchmentExtractor.Extract<BudgetLedger>(stream);
+
+        var first = new BudgetLedger
+        {
+            Budgets = []
+        };
+        var second = new BudgetLedger
+        {
+            Budgets = []
+        };
+        result.ApplyTo(first);
+        result.ApplyTo(second);
+
+        await Assert.That(ReferenceEquals(first.Budgets, second.Budgets)).IsFalse();
+        await Assert.That(ReferenceEquals(first.Budgets[0], second.Budgets[0])).IsFalse();
+
+        first.Budgets[0].Year = "1999";
+        first.Budgets[1] = first.Budgets[0];
+
+        await Assert.That(second.Budgets.Length).IsEqualTo(2);
+        await Assert.That(second.Budgets[0].Year).IsEqualTo("2026");
+        await Assert.That(second.Budgets[0].Amount).IsEqualTo(10m);
+        await Assert.That(second.Budgets[1].Year).IsEqualTo("2027");
+    }
+
     [Test]
     public async Task RoundTripsAfterEditAddRemove()
     {
