@@ -117,9 +117,34 @@ public sealed class ParchmentTemplateGenerator :
         return ExtractTarget(context, cancel);
     }
 
+    // PARCH038: the project compiles as something older than C# 14. Nothing is validated and
+    // nothing is emitted — whatever came out would be compiled at that version too, and the
+    // compiler's complaints about a generated file are no use to anyone. One diagnostic on the
+    // attribute, naming the setting to change, is the whole of it.
+    static bool ReportUnsupportedLanguageVersion(SourceProductionContext context, TargetInfo target, Location location)
+    {
+        if (target.UnsupportedLanguageVersion == null)
+        {
+            return false;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.LanguageVersionUnsupported,
+                location,
+                target.ModelDisplayName,
+                target.UnsupportedLanguageVersion));
+        return true;
+    }
+
     static void ProcessBindable(SourceProductionContext context, TargetInfo target)
     {
         var location = target.Location.ToLocation();
+
+        if (ReportUnsupportedLanguageVersion(context, target, location))
+        {
+            return;
+        }
 
         if (target.ExtractError != null)
         {
@@ -207,10 +232,14 @@ public sealed class ParchmentTemplateGenerator :
             }
         }
 
-        // Read off the model's own tree, so the emitted file stays within what the project's
-        // LangVersion allows. Every tree of a compilation carries the same parse options.
-        var fileScopedNamespace = context.TargetNode.SyntaxTree.Options is not CSharpParseOptions parseOptions ||
-                                  parseOptions.LanguageVersion >= LanguageVersion.CSharp10;
+        // Read off the model's own tree: the generated file is compiled with the project's
+        // LangVersion, and every tree of a compilation carries the same parse options. The
+        // effective version is what arrives here — `latest` and `default` are already resolved.
+        string? unsupportedLanguageVersion = null;
+        if (context.TargetNode.SyntaxTree.Options is CSharpParseOptions { LanguageVersion: < LanguageVersion.CSharp14 } parseOptions)
+        {
+            unsupportedLanguageVersion = parseOptions.LanguageVersion.ToDisplayString();
+        }
 
         return new(
             declaringNamespace,
@@ -220,7 +249,7 @@ public sealed class ParchmentTemplateGenerator :
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             protection,
-            fileScopedNamespace,
+            unsupportedLanguageVersion,
             EquatableLocation.From(rawLocation),
             shape,
             enclosingResult.Error);
@@ -416,6 +445,11 @@ public sealed class ParchmentTemplateGenerator :
         string? projectDirectory)
     {
         var location = target.Location.ToLocation();
+
+        if (ReportUnsupportedLanguageVersion(context, target, location))
+        {
+            return;
+        }
 
         if (target.ExtractError != null)
         {
@@ -1604,15 +1638,7 @@ public sealed class ParchmentTemplateGenerator :
 
             """);
 
-        // A file-scoped namespace needs C# 10. A project pinned to C# 9 gets the block form, its
-        // content left unindented so the two shapes differ by the braces alone.
-        var blockNamespace = target is { DeclaringNamespace: not null, FileScopedNamespace: false };
-        if (blockNamespace)
-        {
-            builder.AppendLine($"namespace {target.DeclaringNamespace}");
-            builder.AppendLine("{");
-        }
-        else if (target.DeclaringNamespace != null)
+        if (target.DeclaringNamespace != null)
         {
             builder.AppendLine($"namespace {target.DeclaringNamespace};");
         }
@@ -1662,11 +1688,6 @@ public sealed class ParchmentTemplateGenerator :
         for (var i = depth - 1; i >= 0; i--)
         {
             builder.Indent(i).AppendLine("}");
-        }
-
-        if (blockNamespace)
-        {
-            builder.AppendLine("}");
         }
 
         return builder.ToString();

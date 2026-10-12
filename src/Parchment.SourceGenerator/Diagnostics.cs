@@ -277,4 +277,15 @@
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch036--protection-is-not-a-defined-protectionmode-value");
+
+    // The generated file is compiled with the consumer's LangVersion. Without this the project
+    // fails anyway, but on compiler errors inside a .g.cs file that say nothing about the cause.
+    public static readonly DiagnosticDescriptor LanguageVersionUnsupported = new(
+        id: "PARCH038",
+        title: "C# 14 or later is required",
+        messageFormat: "Model '{0}' is in a project compiled as C# {1}. Parchment's generated code needs C# 14 or later — remove the LangVersion setting, or raise it to 14 or above.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch038--c-14-or-later-is-required");
 }

@@ -2104,7 +2104,7 @@ The source generator is the recommended way to register templates. Decorate the 
 
 **No runtime reflection over the model — at all.** The generator emits every member accessor and per-template map at compile time, and there is no reflection fallback: a model that never went through the generator is rejected at registration with a pointer to `[ParchmentModel]` / `[ParchmentBindable]`. This makes Parchment safe for trimming and NativeAOT scenarios, and matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
 
-**C# 9 or later.** The generated code is compiled with the project's own `LangVersion`, and its module initializer needs C# 9. That is the only requirement: a project pinned to C# 9 gets a block-scoped namespace where later versions get a file-scoped one, and nothing else in the output differs. Below C# 9 the compiler rejects the generated file and names the version it needs. The default for a .NET 10 project is C# 14, so this only matters where `LangVersion` is set by hand.
+**C# 14 or later.** The generated code is compiled with the project's own `LangVersion`, and is written for C# 14. A project compiled as anything older gets [`PARCH038`](#parch038--c-14-or-later-is-required) on each model and no generated code. The default for a .NET 10 project is C# 14, so this only matters where `LangVersion` is set by hand or the project targets an older framework.
 
 The model must be `partial` — the generator emits the embedded template and its module initializer onto the same class. Both docx and markdown templates are supported — the generator branches on the matched file's extension (`.docx` → docx flow, `.md` → markdown flow):
 
@@ -2520,6 +2520,17 @@ public partial class OrderForm
 ```
 
 Use `ProtectionMode.WhenEditable` (the default) or `ProtectionMode.None`. Reported for docx and markdown templates alike, although a markdown template ignores the setting. See [Protection is cooperative, not security](#protection-is-cooperative-not-security).
+
+
+### `PARCH038` — C# 14 or later is required
+
+The project is compiled as a C# version older than 14. The code the generator emits is compiled with the project's own `LangVersion`, and is only written for C# 14 and later, so nothing is generated and no other Parchment diagnostic is reported for the model until the version is raised.
+
+```xml
+<LangVersion>12</LangVersion>   <!-- too old -->
+```
+
+Remove the `LangVersion` setting or set it to `14` or above (`latest` and `preview` qualify with a .NET 10 SDK). A project with no setting takes the default for its target framework, which is older than 14 for anything before `net10.0` — set `LangVersion` explicitly there. Reported once for each `[ParchmentModel]` and `[ParchmentBindable]` type.
 
 
 ### `PARCH100` — template carries a second item type

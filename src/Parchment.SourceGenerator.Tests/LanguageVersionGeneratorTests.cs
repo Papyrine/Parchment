@@ -1,263 +1,125 @@
-using System.Globalization;
-
 /// <summary>
-/// The generated file is compiled with the consumer's <c>LangVersion</c>, so every construct it
-/// uses is a requirement on that project. C# 9 is the floor — a module initializer cannot be
-/// written in anything older — and nothing emitted may ask for more than that.
+/// The generated file is compiled with the consumer's <c>LangVersion</c>, and C# 14 is the oldest
+/// it is written for. A project below that gets PARCH038 on the model and nothing else: whatever
+/// was emitted beside it would be compiled at the old version too.
 /// </summary>
 public class LanguageVersionGeneratorTests
 {
-    // One member of every kind that has its own emission: plain accessors, an enum, a nested
-    // path, each editable kind including a collection, both format markers, a string list and an
-    // Excelsior table with a Configure call.
-    const string richModel =
+    // Block namespaces and nothing newer than C# 8, so the model itself is legal at every version
+    // tried and the only thing in question is the generator's output.
+    const string model =
         """
-        using System;
-        using System.Collections.Generic;
         using Parchment;
 
         namespace Sample
         {
-            public enum Status
-            {
-                Draft,
-                Final
-            }
-
-            public class Customer
-            {
-                [EditableField]
-                public string? Email { get; set; }
-            }
-
-            public class Line
-            {
-                public string Description { get; set; } = "";
-            }
-
-            public class Row
-            {
-                [EditableField]
-                public string Note { get; set; } = "";
-            }
-
-            public class HtmlAttribute : Attribute
-            {
-            }
-
-            public class MarkdownAttribute : Attribute
-            {
-            }
-
-            [ParchmentModel(Protection = ProtectionMode.None)]
+            [ParchmentModel]
             public partial class Order
             {
                 public string Number { get; set; } = "";
-
-                [EditableField]
-                public bool Approved { get; set; }
-
-                [EditableField(DateFormat = "dd MMM yyyy")]
-                public DateTime Delivery { get; set; }
-
-                [EditableField]
-                public Status Status { get; set; }
-
-                [EditableField]
-                public decimal? Discount { get; set; }
-
-                [EditableField(MultiLine = true)]
-                public string Instructions { get; set; } = "";
-
-                [EditableField]
-                [Html]
-                public string Terms { get; set; } = "";
-
-                [EditableField]
-                public List<Row> Rows { get; set; } = new List<Row>();
-
-                [Markdown]
-                public string Notes { get; set; } = "";
-
-                public List<string> Tags { get; set; } = new List<string>();
-
-                public Customer Customer { get; set; } = new Customer();
-
-                [ExcelsiorTable(Configure = nameof(ConfigureLines))]
-                public List<Line> Lines { get; set; } = new List<Line>();
-
-                internal static void ConfigureLines(object builder)
-                {
-                }
             }
         }
         """;
 
-    static readonly string[] richTemplate =
-    [
-        "{{ Number }}",
-        "{{ Approved }}",
-        "{{ Delivery }}",
-        "{{ Status }}",
-        "{{ Discount }}",
-        "{{ Instructions }}",
-        "{{ Terms }}",
-        "{% for row in Rows %}",
-        "{{ row.Note }}",
-        "{% endfor %}",
-        "{{ Notes }}",
-        "{{ Tags }}",
-        "{{ Customer.Email }}",
-        "{{ Lines }}"
-    ];
+    const string bindable =
+        """
+        using Parchment;
 
-    [Test]
-    public async Task CSharp9_DocxModel_UsesNothingNewer()
-    {
-        var output = Run(
-            richModel,
-            LanguageVersion.CSharp9,
-            new TemplateFile("Order.parchment.docx", GeneratorDriver.BuildDocxBytes(richTemplate)));
-
-        await Assert.That(output.GeneratorDiagnostics).IsEmpty();
-        await Assert.That(output.Sources.Count).IsEqualTo(1);
-        await Assert.That(output.LanguageErrors).IsEmpty();
-        await Assert.That(output.Sources[0]).Contains("namespace Sample\n{\n");
-        await Assert.That(output.Sources[0]).EndsWith("}\n}\n");
-    }
-
-    [Test]
-    public async Task CSharp9_MarkdownModel_UsesNothingNewer()
-    {
-        var output = Run(
-            richModel,
-            LanguageVersion.CSharp9,
-            new TemplateFile("Order.parchment.md", "# {{ Number }}\n\n{{ Customer.Email }}\n"u8.ToArray()));
-
-        await Assert.That(output.GeneratorDiagnostics).IsEmpty();
-        await Assert.That(output.Sources.Count).IsEqualTo(1);
-        await Assert.That(output.LanguageErrors).IsEmpty();
-    }
-
-    // The namespace is the one construct that differs, and it is absent, nested under partial
-    // types, or shared with a bindable depending on where the model sits.
-    [Test]
-    public async Task CSharp9_EveryPlacement_UsesNothingNewer()
-    {
-        var source =
-            """
-            using Parchment;
-
-            [ParchmentModel]
-            public partial class Top
+        namespace Sample
+        {
+            [ParchmentBindable]
+            public partial class Bound
             {
-                public string Name { get; set; } = "";
+                public string Number { get; set; } = "";
             }
+        }
+        """;
 
-            namespace Sample.Deep
-            {
-                public partial class Outer
-                {
-                    public partial record Inner
-                    {
-                        [ParchmentModel]
-                        public partial class Nested
-                        {
-                            public string Name { get; set; } = "";
-                        }
-                    }
-                }
+    static TemplateFile Docx(params string[] paragraphs) =>
+        new("Order.parchment.docx", GeneratorDriver.BuildDocxBytes(paragraphs));
 
-                [ParchmentModel]
-                public partial record Positional(string Name);
+    [Test]
+    [Arguments(LanguageVersion.CSharp8, "8.0")]
+    [Arguments(LanguageVersion.CSharp9, "9.0")]
+    [Arguments(LanguageVersion.CSharp10, "10.0")]
+    [Arguments(LanguageVersion.CSharp13, "13.0")]
+    public async Task BelowCSharp14_ReportsParch038_Docx(LanguageVersion version, string display)
+    {
+        var result = Run(model, version, Docx("{{ Number }}"));
 
-                [ParchmentBindable]
-                public partial class Bound
-                {
-                    public string Name { get; set; } = "";
-                }
-            }
-            """;
-        var template = GeneratorDriver.BuildDocxBytes("{{ Name }}");
-        var output = Run(
-            source,
-            LanguageVersion.CSharp9,
-            new TemplateFile("Top.parchment.docx", template),
-            new TemplateFile("Nested.parchment.docx", template),
-            new TemplateFile("Positional.parchment.docx", template));
-
-        await Assert.That(output.GeneratorDiagnostics).IsEmpty();
-        await Assert.That(output.Sources.Count).IsEqualTo(4);
-        await Assert.That(output.LanguageErrors).IsEmpty();
-        await Assert.That(output.Sources.Count(_ => _.Contains("namespace Sample.Deep\n{\n"))).IsEqualTo(3);
-        await Assert.That(output.Sources.Any(_ => _.Contains("namespace Sample.Deep;"))).IsFalse();
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH038");
+        await Assert.That(diagnostic.Severity).IsEqualTo(DiagnosticSeverity.Error);
+        await Assert.That(diagnostic.GetMessage()).Contains("'Order'");
+        await Assert.That(diagnostic.GetMessage()).Contains($"C# {display}.");
+        // On the attribute that asked for generated code.
+        var span = diagnostic.Location.SourceSpan;
+        await Assert.That(model.Substring(span.Start, span.Length)).IsEqualTo("ParchmentModel");
+        await Assert.That(result.GeneratedTrees).IsEmpty();
     }
 
-    // From C# 10 on the file-scoped form stays, so the output of every project that does not pin
-    // an old LangVersion is unchanged.
     [Test]
-    [Arguments(LanguageVersion.CSharp10)]
-    [Arguments(LanguageVersion.CSharp12)]
+    public async Task BelowCSharp14_ReportsParch038_Markdown()
+    {
+        var result = Run(
+            model,
+            LanguageVersion.CSharp13,
+            new TemplateFile("Order.parchment.md", "# {{ Number }}\n"u8.ToArray()));
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).IsEquivalentTo(["PARCH038"]);
+        await Assert.That(result.GeneratedTrees).IsEmpty();
+    }
+
+    [Test]
+    public async Task BelowCSharp14_ReportsParch038_Bindable()
+    {
+        var result = Run(bindable, LanguageVersion.CSharp13);
+
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH038");
+        await Assert.That(diagnostic.GetMessage()).Contains("'Bound'");
+        await Assert.That(result.GeneratedTrees).IsEmpty();
+    }
+
+    // The version is the first thing to fix, and the only thing reported until it is: a missing
+    // template or an unknown token would be noise beside it.
+    [Test]
+    public async Task BelowCSharp14_ReportsNothingElse()
+    {
+        var unknownToken = Run(model, LanguageVersion.CSharp13, Docx("{{ Missing }}"));
+        var noTemplate = Run(model, LanguageVersion.CSharp13);
+
+        await Assert.That(unknownToken.Results.Single().Diagnostics.Select(_ => _.Id).ToList())
+            .IsEquivalentTo(["PARCH038"]);
+        await Assert.That(noTemplate.Results.Single().Diagnostics.Select(_ => _.Id).ToList())
+            .IsEquivalentTo(["PARCH038"]);
+    }
+
+    [Test]
+    [Arguments(LanguageVersion.CSharp14)]
     [Arguments(LanguageVersion.Latest)]
+    [Arguments(LanguageVersion.LatestMajor)]
     [Arguments(LanguageVersion.Default)]
     [Arguments(LanguageVersion.Preview)]
-    public async Task CSharp10AndLater_KeepsFileScopedNamespace(LanguageVersion version)
+    public async Task CSharp14AndLater_Generates(LanguageVersion version)
     {
-        var output = Run(
-            richModel,
-            version,
-            new TemplateFile("Order.parchment.docx", GeneratorDriver.BuildDocxBytes(richTemplate)));
+        var models = Run(model, version, Docx("{{ Number }}"));
+        var bindables = Run(bindable, version);
 
-        await Assert.That(output.GeneratorDiagnostics).IsEmpty();
-        await Assert.That(output.LanguageErrors).IsEmpty();
-        await Assert.That(output.Sources[0]).Contains("namespace Sample;\n");
+        await Assert.That(models.Results.Single().Diagnostics).IsEmpty();
+        await Assert.That(models.GeneratedTrees.Single().ToString()).Contains("namespace Sample;");
+        await Assert.That(bindables.Results.Single().Diagnostics).IsEmpty();
+        await Assert.That(bindables.GeneratedTrees.Length).IsEqualTo(1);
     }
 
-    // Guards the check itself: a C# 8 project cannot take a module initializer at all, and the
-    // compiler says so in the terms LanguageErrors looks for.
-    [Test]
-    public async Task CSharp8_IsBelowTheFloor()
-    {
-        var output = Run(
-            richModel,
-            LanguageVersion.CSharp8,
-            new TemplateFile("Order.parchment.docx", GeneratorDriver.BuildDocxBytes(richTemplate)));
-
-        await Assert.That(output.LanguageErrors).IsNotEmpty();
-    }
-
-    sealed record Output(
-        IReadOnlyList<string> GeneratorDiagnostics,
-        IReadOnlyList<string> Sources,
-        IReadOnlyList<string> LanguageErrors);
-
-    static Output Run(string source, LanguageVersion version, params TemplateFile[] files)
+    static GeneratorDriverRunResult Run(string source, LanguageVersion version, params TemplateFile[] files)
     {
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
             files,
             modelFileName: null,
             languageVersion: version);
-        var result = setup.Driver
-            .RunGeneratorsAndUpdateCompilation(setup.Compilation, out var compilation, out _)
-            .GetRunResult();
-
-        var generated = result.GeneratedTrees.ToHashSet();
-        // Syntax errors, and the "feature is not available in C# n" family, which the compiler
-        // words the same way whichever feature it is. The stub compilation references neither
-        // Parchment nor Fluid, so unresolved-name errors are expected and not what is asked here.
-        var languageErrors = compilation.GetDiagnostics()
-            .Where(_ => _.Location.SourceTree != null && generated.Contains(_.Location.SourceTree))
-            .Where(_ => _.Severity == DiagnosticSeverity.Error)
-            .Where(_ => generated.Any(tree => tree.GetDiagnostics().Contains(_)) ||
-                        _.GetMessage(CultureInfo.InvariantCulture).Contains("language version"))
-            .Select(_ => $"{_.Id}: {_.GetMessage(CultureInfo.InvariantCulture)}")
-            .Distinct()
-            .ToList();
-
-        return new(
-            result.Diagnostics.Select(_ => $"{_.Id}: {_.GetMessage(CultureInfo.InvariantCulture)}").ToList(),
-            result.GeneratedTrees.Select(_ => _.ToString().Replace("\r\n", "\n")).ToList(),
-            languageErrors);
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
     }
 }

@@ -13,7 +13,9 @@
 /// <see cref="EnclosingTypes"/> is outermost-to-innermost; an empty array means the target sits
 /// at namespace scope. <see cref="ExtractError"/> is non-null when the extract step found a
 /// blocker (e.g. a non-partial enclosing type) — Process turns it into a PARCH011 diagnostic
-/// and skips registration generation.
+/// and skips registration generation. <see cref="UnsupportedLanguageVersion"/> is the project's
+/// C# version when that is older than the generated code needs, and null otherwise — Process
+/// turns it into PARCH038 and does nothing else.
 /// </summary>
 sealed record TargetInfo(
     string? DeclaringNamespace,
@@ -23,7 +25,7 @@ sealed record TargetInfo(
     string ModelFullyQualifiedName,
     string ModelDisplayName,
     ProtectionMode Protection,
-    bool FileScopedNamespace,
+    string? UnsupportedLanguageVersion,
     EquatableLocation Location,
     ModelShape Shape,
     string? ExtractError);
