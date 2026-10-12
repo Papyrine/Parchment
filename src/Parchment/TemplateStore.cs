@@ -28,6 +28,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     ImagePolicies Policies => new(LocalImages, WebImages);
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterDocxTemplate<TModel>(string path, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -35,6 +37,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         RegisterDocxTemplate<TModel>(file, protection);
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
         RegisterDocxTemplate(typeof(TModel), DocxCloner.ToWritableStream(template), protection);
 
@@ -47,6 +51,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// result as the snapshot every render starts from. Taking the clone rather than making one
     /// spares the source-generator path a round-trip, since a definition already holds bytes.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void RegisterDocxTemplate(Type modelType, MemoryStream clone, ProtectionMode protection)
     {
         var name = modelType.Name;
@@ -62,12 +68,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
         var noteReferences = NoteReferences.None;
+        bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
             // scanning or rewriting done first would be thrown away with the part it was done on —
             // which is how a .dotx form template silently kept its FORMTEXT fields.
-            EnsureDocumentType(doc);
+            EnsureDocumentType(doc, out macros);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
@@ -88,6 +95,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // left without a closing paragraph is closed here, in every part, and not left to
                 // the render's own pass, which never sees a token-free part.
                 TableCells.EnsureFinalParagraph(root);
+
+                // An anchor the template arrived with names nothing in this registration, and in a
+                // part without tokens no render would ever reach it to take it out.
+                Anchors.StripArrived(root);
 
                 var classifications = TokenScanner.Scan(root, name, uri);
 
@@ -136,12 +147,19 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             doc.Save();
         }
 
+        if (macros)
+        {
+            MacroParts.RemoveContentTypeDefaults(stream);
+        }
+
         var canonicalBytes = stream.ToArray();
         var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
         RegisterMarkdownTemplate(typeof(TModel), markdown, styleSource == null ? null : DocxCloner.ToBytes(styleSource));
 
@@ -156,6 +174,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// registered template keeps. The caller's array is never written to, which matters most for
     /// the source-generator path, where it belongs to a definition that outlives every store.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void RegisterMarkdownTemplate(Type model, string markdown, byte[]? styleSource)
     {
         var name = model.Name;
@@ -179,6 +199,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         MarkdownReferenceValidator.Validate(template, model, name);
+        template = MarkdownNumberText.Rewrite(template);
 
         var (prepared, parts, maxBookmarkId) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
         var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(prepared);
@@ -217,28 +238,36 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     ///
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
     /// again, which is why the rewritten bytes are returned rather than the ones passed in. When
-    /// neither step changed anything — an already-document style source with no tokens outside its
-    /// body, which includes <see cref="BlankDocxTemplate"/> — the input is handed back untouched and
-    /// nothing is serialized.
+    /// nothing changed — an already-document style source with no tokens outside its body and no
+    /// anchor left in it from an earlier registration, which includes
+    /// <see cref="BlankDocxTemplate"/> — the input is handed back untouched and nothing is
+    /// serialized.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
     static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            var retyped = doc.DocumentType != WordprocessingDocumentType.Document;
-            EnsureDocumentType(doc);
+            var retyped = EnsureDocumentType(doc, out macros);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
+            var stripped = false;
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
                 if (uri == bodyUri)
                 {
                     continue;
                 }
+
+                // An anchor the style source arrived with names nothing in this registration. A
+                // render reads only the parts listed below, so it is taken out here, into the bytes
+                // every render clones, and is a reason to rewrite the package even with no token.
+                stripped |= Anchors.StripArrived(root);
 
                 var classifications = TokenScanner.Scan(root, name, uri);
 
@@ -253,25 +282,22 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
                 new ReferenceValidator(model, name, uri).ValidateTree(tree);
                 parts.Add(new(uri, tree));
-
-                // A part holding nothing but anchors the style source arrived with has no token to
-                // bind, so on its own it is no reason to rewrite the package.
-                found |= classifications.Any(_ => _.Kind != ParagraphKind.Static);
+                found = true;
             }
 
-            if (!found)
+            if (!found &&
+                !retyped &&
+                !stripped)
             {
-                if (!retyped)
-                {
-                    return (bytes, [], maxBookmarkId);
-                }
-
-                // Retyping alone leaves no token to bind, so no part is listed, as when nothing
-                // was rewritten at all.
-                parts.Clear();
+                return (bytes, [], maxBookmarkId);
             }
 
             doc.Save();
+        }
+
+        if (macros)
+        {
+            MacroParts.RemoveContentTypeDefaults(stream);
         }
 
         return (stream.ToArray(), parts, maxBookmarkId);
@@ -328,20 +354,39 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     /// <summary>
-    /// Retypes a template-typed package (<c>.dotx</c>/<c>.dotm</c>) as a document.
+    /// Makes the package a plain, macro-free document: retypes a template-typed or macro-enabled
+    /// one (<c>.dotx</c>/<c>.dotm</c>/<c>.docm</c>) and removes the VBA project it carries.
     /// </summary>
     /// <remarks>
     /// Both flows clone the supplied package and the clone becomes the rendered output, so a
     /// template source would otherwise produce a template-typed output — which Word opens as a new
     /// unsaved document based on it, rather than as the document itself. The type is
     /// model-independent, so this belongs at registration rather than on every render.
+    ///
+    /// The macros go with the type, also from a source that arrived typed as a document and
+    /// carrying them anyway - see <see cref="MacroParts"/>. <paramref name="macros"/> tells the
+    /// caller to finish that with <see cref="MacroParts.RemoveContentTypeDefaults"/> once the
+    /// package is saved and closed, which is the only point the content types can be rewritten.
     /// </remarks>
-    static void EnsureDocumentType(WordprocessingDocument doc)
+    /// <returns>Whether the package was changed.</returns>
+    static bool EnsureDocumentType(WordprocessingDocument doc, out bool macros)
     {
-        if (doc.DocumentType != WordprocessingDocumentType.Document)
+        var type = doc.DocumentType;
+        macros = type is WordprocessingDocumentType.MacroEnabledDocument or WordprocessingDocumentType.MacroEnabledTemplate;
+        var retyped = type != WordprocessingDocumentType.Document;
+        if (retyped)
         {
             doc.ChangeDocumentType(WordprocessingDocumentType.Document);
         }
+
+        // After the retype, which swaps the main part out.
+        if (doc.MainDocumentPart is { } mainPart &&
+            MacroParts.Remove(mainPart))
+        {
+            macros = true;
+        }
+
+        return retyped || macros;
     }
 
     static void GuardBindingModel(Type type, string name)
@@ -509,6 +554,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 })
         };
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task Render<TModel>(TModel model, Stream output, Cancel cancel = default) =>
         Render(model, output, null, cancel);
 
@@ -522,6 +569,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// through the definition the source generator's module initializer stored for it, so there is
     /// nothing further for the caller to name.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
     {
         var template = Resolve(typeof(TModel));
@@ -537,14 +586,21 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task RenderToFile<TModel>(TModel model, string path, Cancel cancel = default) =>
         RenderToFile(model, path, null, cancel);
 
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
-        await using var file = File.Create(path);
-        await Render(model, file, properties, cancel).ConfigureAwait(false);
+        var file = File.Create(path);
+        await using (file.ConfigureAwait(false))
+        {
+            await Render(model, file, properties, cancel).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -555,6 +611,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// A definition holds raw content only — the generator's module initializer stores bytes and
     /// text, and the scan/validate work runs here, once per store, under this store's policies.
     /// </remarks>
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     internal RegisteredTemplate Resolve(Type modelType)
     {
         // Walk the inheritance chain so a template registered against an abstract base renders a
@@ -585,6 +643,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         throw new ParchmentRenderException(modelType.Name, $"No template is registered for {modelType.Name}");
     }
 
+    [RequiresUnreferencedCode(Unsupported.Trimming)]
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     void Materialize(Type modelType, TemplateDefinition definition)
     {
         switch (definition)

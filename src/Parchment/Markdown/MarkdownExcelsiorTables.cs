@@ -11,6 +11,8 @@
 /// Rewriting at registration rather than at render keeps it off the hot path: the marked-up source
 /// is parsed into the cached <c>IFluidTemplate</c>, so a render sees markers and nothing else.
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 static class MarkdownExcelsiorTables
 {
     /// <summary>
@@ -207,6 +209,7 @@ static class MarkdownExcelsiorTables
             entry.ElementType,
             data,
             mainPart,
+            bookmarks.Names,
             entry.HeadingParagraphStyle,
             entry.BodyParagraphStyle,
             entry.TableStyle,
