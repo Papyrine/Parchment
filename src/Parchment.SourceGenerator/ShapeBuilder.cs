@@ -14,7 +14,7 @@ static class ShapeBuilder
 
     static readonly SymbolDisplayFormat format = SymbolDisplayFormat.FullyQualifiedFormat;
 
-    public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Cancel cancel)
+    public static ModelShape Build(Compilation compilation, INamedTypeSymbol root,INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Cancel cancel)
     {
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -25,13 +25,13 @@ static class ShapeBuilder
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue));
+            entries.Add(BuildEntry(compilation, root, type,excelsiorTableType, editableFieldType, visited, queue));
         }
 
         return new(Fqn(root), new(entries.ToImmutable()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
+    static TypeEntry BuildEntry(Compilation compilation, INamedTypeSymbol root, ITypeSymbol type,INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
     {
         string? elementFqn = null;
         if (type.SpecialType != SpecialType.System_String &&
@@ -68,6 +68,11 @@ static class ShapeBuilder
         if (!IsSystemType(type))
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Names a more derived type has taken for something no accessor is emitted for: a
+            // method, an event, a nested type, or a property or field that cannot be read. The
+            // generated `((T)o).Name` binds to that member, not to the inherited one it hides, so
+            // the inherited one is not binding surface through this type. Ordinal, as C# lookup is.
+            var hidden = new HashSet<string>(StringComparer.Ordinal);
             var current = type;
             while (current != null)
             {
@@ -84,6 +89,16 @@ static class ShapeBuilder
                 foreach (var member in current.GetMembers())
                 {
                     if (!TryGetMemberType(member, out var memberType, out var memberName, out var isStatic))
+                    {
+                        if (HidesInherited(compilation, root, current, member))
+                        {
+                            hidden.Add(member.Name);
+                        }
+
+                        continue;
+                    }
+
+                    if (hidden.Contains(memberName))
                     {
                         continue;
                     }
@@ -496,8 +511,12 @@ static class ShapeBuilder
     {
         // An indexer has no name a template can ask for, and a property without a public getter has
         // nothing the generated code can read: an accessor for either (`o.this[]`, or a call to a
-        // private get) does not compile. Lockstep with the runtime's ModelValidator.TryResolveMember.
-        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod.DeclaredAccessibility: Accessibility.Public } property)
+        // private get) does not compile. Neither does one for a static abstract or virtual member
+        // of an interface, which is reachable through a type parameter only, nor one for a value
+        // that cannot become an `object`. Lockstep with the runtime's ModelValidator.TryResolveMember.
+        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod.DeclaredAccessibility: Accessibility.Public } property &&
+            !IsStaticInterfaceContract(property) &&
+            IsBindableType(property.Type))
         {
             type = property.Type;
             name = property.Name;
@@ -505,7 +524,8 @@ static class ShapeBuilder
             return true;
         }
 
-        if (member is IFieldSymbol { DeclaredAccessibility: Accessibility.Public } field)
+        if (member is IFieldSymbol { DeclaredAccessibility: Accessibility.Public } field &&
+            IsBindableType(field.Type))
         {
             type = field.Type;
             name = field.Name;
@@ -517,6 +537,60 @@ static class ShapeBuilder
         name = null!;
         isStatic = false;
         return false;
+    }
+
+    static bool IsStaticInterfaceContract(IPropertySymbol property) =>
+        property.IsStatic &&
+        (property.IsAbstract || property.IsVirtual);
+
+    // A ref struct (a span) cannot be boxed, and a pointer is not an object at all. A pointer
+    // nested in the type (`int*[]`) boxes, but naming the member needs an unsafe context the
+    // generated code does not have.
+    static bool IsBindableType(ITypeSymbol type) =>
+        !type.IsRefLikeType &&
+        !ContainsPointer(type);
+
+    static bool ContainsPointer(ITypeSymbol type)
+    {
+        if (type.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer)
+        {
+            return true;
+        }
+
+        if (type is IArrayTypeSymbol array)
+        {
+            return ContainsPointer(array.ElementType);
+        }
+
+        for (var named = type as INamedTypeSymbol; named != null; named = named.ContainingType)
+        {
+            foreach (var argument in named.TypeArguments)
+            {
+                if (ContainsPointer(argument))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a member that yields no accessor still takes its name away from the base types, as
+    // seen from the generated code, which sits in a class nested in the model.
+    static bool HidesInherited(Compilation compilation, INamedTypeSymbol root, ITypeSymbol declaring, ISymbol member)
+    {
+        var named = member switch
+        {
+            IPropertySymbol { IsIndexer: false } => true,
+            IFieldSymbol { IsImplicitlyDeclared: false } => true,
+            IEventSymbol => true,
+            INamedTypeSymbol => true,
+            IMethodSymbol { MethodKind: MethodKind.Ordinary } => true,
+            _ => false
+        };
+        return named &&
+               compilation.IsSymbolAccessibleWithin(member, root, declaring);
     }
 
     static void Enqueue(ITypeSymbol? type, HashSet<string> visited, Queue<ITypeSymbol> queue)
@@ -549,6 +623,47 @@ static class ShapeBuilder
         return ns.Name == "System";
     }
 
-    static string Fqn(ITypeSymbol type) =>
-        type.ToDisplayString(format);
+    // `dynamic` is `object` to the runtime, and is not a legal operand of the `typeof` the
+    // registrations are keyed on (CS1962). Writing it as `object` throughout keeps every emitted
+    // type name legal, and makes `List<dynamic>` and `List<object>` the one type they are.
+    static string Fqn(ITypeSymbol type)
+    {
+        var name = type.ToDisplayString(format);
+        if (ContainsDynamic(type))
+        {
+            return dynamicKeyword.Replace(name, "object");
+        }
+
+        return name;
+    }
+
+    // In a type position only: at the start, or after the `<`, `(` or `, ` that opens a type
+    // argument or a tuple element. A tuple element *named* dynamic follows its type and a space.
+    static readonly Regex dynamicKeyword = new(@"(?<=^|<|\(|, )dynamic(?![\w.])", RegexOptions.Compiled);
+
+    static bool ContainsDynamic(ITypeSymbol type)
+    {
+        if (type.TypeKind == TypeKind.Dynamic)
+        {
+            return true;
+        }
+
+        if (type is IArrayTypeSymbol array)
+        {
+            return ContainsDynamic(array.ElementType);
+        }
+
+        for (var named = type as INamedTypeSymbol; named != null; named = named.ContainingType)
+        {
+            foreach (var argument in named.TypeArguments)
+            {
+                if (ContainsDynamic(argument))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }

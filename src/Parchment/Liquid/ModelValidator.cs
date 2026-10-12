@@ -122,14 +122,76 @@ static class ModelValidator
             property.GetIndexParameters().Length == 0)
         {
             memberType = property.PropertyType;
-            return true;
+            return !IsStaticInterfaceContract(property.GetMethod) &&
+                   IsBindable(type, property, memberType);
         }
 
         var field = type.GetField(
             name,
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        memberType = field?.FieldType;
-        return memberType != null;
+        if (field == null)
+        {
+            memberType = null;
+            return false;
+        }
+
+        memberType = field.FieldType;
+        return IsBindable(type, field, memberType);
+    }
+
+    // A static abstract or virtual member of an interface is reachable through a type parameter
+    // only, so there is no accessor the generator could emit for it.
+    static bool IsStaticInterfaceContract(MethodInfo getter) =>
+        getter.IsStatic &&
+        (getter.IsAbstract || getter.IsVirtual);
+
+    // The rest of what ShapeBuilder leaves out: a value that cannot become an object (a ref struct
+    // such as a span, a pointer), and a member whose name a more derived type has reused for a
+    // method, an event or a nested type, which is what the name then means through that type.
+    static bool IsBindable(Type type, MemberInfo member, Type memberType)
+    {
+        if (memberType.IsByRefLike ||
+            ContainsPointer(memberType))
+        {
+            return false;
+        }
+
+        for (var current = type; current != null && current != member.DeclaringType; current = current.BaseType)
+        {
+            var hiding = current.GetMember(
+                member.Name,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            if (hiding.Length > 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static bool ContainsPointer(Type type)
+    {
+        if (type.IsPointer ||
+            type.IsFunctionPointer)
+        {
+            return true;
+        }
+
+        if (type.HasElementType)
+        {
+            return ContainsPointer(type.GetElementType()!);
+        }
+
+        foreach (var argument in type.GetGenericArguments())
+        {
+            if (ContainsPointer(argument))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool TryResolveRoot(

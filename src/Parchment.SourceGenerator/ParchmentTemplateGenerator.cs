@@ -194,7 +194,7 @@ public sealed class ParchmentTemplateGenerator :
             .GetTypeByMetadataName(ShapeBuilder.ExcelsiorTableAttributeFullName);
         var editableFieldType = context.SemanticModel.Compilation
             .GetTypeByMetadataName(ShapeBuilder.EditableFieldAttributeFullName);
-        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, cancel);
+        var shape = ShapeBuilder.Build(context.SemanticModel.Compilation, typeSymbol,excelsiorTableType, editableFieldType, cancel);
 
         var protection = ProtectionMode.WhenEditable;
         foreach (var named in attribute.NamedArguments)
