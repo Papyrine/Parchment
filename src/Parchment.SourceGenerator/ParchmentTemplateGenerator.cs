@@ -788,8 +788,13 @@ public sealed class ParchmentTemplateGenerator :
         Location location)
     {
         var scope = new Dictionary<string, string>(StringComparer.Ordinal);
-        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection)>();
+        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection, string? BoundCollection)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The item members bound so far by the top-level loop being walked, and the collections
+        // some earlier loop already bound.
+        var boundMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var boundCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var token in tokens)
         {
@@ -839,13 +844,23 @@ public sealed class ParchmentTemplateGenerator :
                                 string.Join('.', token.References[0])));
                     }
 
-                    loopStack.Push((bound, prior, isEditableCollectionLoop));
+                    // Likewise only a top-level loop can bind the collection's controls.
+                    string? boundCollection = null;
+                    if (isEditableCollectionLoop &&
+                        bound != null &&
+                        loopStack.Count == 0)
+                    {
+                        boundCollection = string.Join('.', token.References[0]);
+                        boundMembers.Clear();
+                    }
+
+                    loopStack.Push((bound, prior, isEditableCollectionLoop, boundCollection));
                     break;
 
                 case TokenKind.ForClose:
                     if (loopStack.Count > 0)
                     {
-                        var (name, priorBinding, _) = loopStack.Pop();
+                        var (name, priorBinding, _, _) = loopStack.Pop();
                         if (name != null)
                         {
                             if (priorBinding == null)
@@ -870,6 +885,30 @@ public sealed class ParchmentTemplateGenerator :
                     if (!ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var member) ||
                         member is { IsEditable: false } or { IsStatic: true })
                     {
+                        break;
+                    }
+
+                    // The loop's own loop-variable tokens are the controls of a row. Extraction
+                    // reads one control per member in a row and one repeating section per
+                    // collection, so a member bound twice, or a second loop binding any member, is
+                    // an edit that would be discarded. Lockstep with the runtime's
+                    // EditableTokenValidator.RejectSecondBinding.
+                    if (loopStack.Count == 1 &&
+                        loopStack.Peek() is { BoundCollection: { } collection, Name: { } loopVariable } &&
+                        token.References[0].Count > 1 &&
+                        token.References[0][0] == loopVariable)
+                    {
+                        if (!boundMembers.Add(string.Join('.', token.References[0].Skip(1))) ||
+                            (boundMembers.Count == 1 && !boundCollections.Add(collection)))
+                        {
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(
+                                    Diagnostics.EditableTokenDuplicated,
+                                    location,
+                                    templatePath,
+                                    token.Source));
+                        }
+
                         break;
                     }
 

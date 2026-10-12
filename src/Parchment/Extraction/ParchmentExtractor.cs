@@ -64,10 +64,9 @@ public static class ParchmentExtractor
             var collections = new List<ExtractedCollection>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var consumed = new HashSet<SdtElement>();
 
-            // Repeating-section pass first: reconstruct each editable collection and mark its inner
-            // controls consumed so the scalar pass below skips them (their tags are item-relative and
+            // Repeating-section pass first: reconstruct each editable collection from its items.
+            // The scalar pass below skips every control inside one (their tags are item-relative and
             // non-unique — they must be read grouped by section item, not flat).
             foreach (var sdt in body.Descendants<SdtElement>())
             {
@@ -85,19 +84,18 @@ public static class ParchmentExtractor
                 }
 
                 collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!)));
-                MarkConsumed(sdt, consumed);
             }
 
             foreach (var sdt in body.Descendants<SdtElement>())
             {
-                if (consumed.Contains(sdt))
-                {
-                    continue;
-                }
-
+                // A control inside a repeated item belongs to that row, whichever section holds it:
+                // a section this pass did not read (a second one for the same collection, or one
+                // for no member of the model) still tags its controls with bare member names, and
+                // a root member can share one.
                 var tag = sdt.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value;
                 if (tag == null ||
-                    !map.TryGet(tag, out var entry))
+                    !map.TryGet(tag, out var entry) ||
+                    RepeatedItemOf(sdt) != null)
                 {
                     continue;
                 }
@@ -221,16 +219,26 @@ public static class ParchmentExtractor
         }
     }
 
+    // The row's own control: one inside a section nested in the row belongs to that section's row.
     static SdtElement? FindControl(SdtElement itemSdt, string tag) =>
         itemSdt.Descendants<SdtElement>()
-            .FirstOrDefault(_ => _.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == tag);
+            .FirstOrDefault(_ => _.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == tag &&
+                                 RepeatedItemOf(_) == itemSdt);
 
-    static void MarkConsumed(SdtElement container, HashSet<SdtElement> consumed)
+    /// <summary>
+    /// The nearest repeated-section item holding <paramref name="sdt"/>, or null for a control
+    /// that is in no row.
+    /// </summary>
+    static SdtElement? RepeatedItemOf(SdtElement sdt)
     {
-        consumed.Add(container);
-        foreach (var inner in container.Descendants<SdtElement>())
+        foreach (var ancestor in sdt.Ancestors<SdtElement>())
         {
-            consumed.Add(inner);
+            if (ancestor.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null)
+            {
+                return ancestor;
+            }
         }
+
+        return null;
     }
 }

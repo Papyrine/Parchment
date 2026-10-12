@@ -1308,6 +1308,7 @@ result.ApplyTo(model);
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
+- **One loop binds the collection.** The loop holding the tokens for the item's editable members is the repeating section, and each of those tokens appears in it once; a second such loop, or a second token for one member, is rejected at registration ([`PARCH017`](#parch017--editablefield-member-referenced-more-than-once-in-the-body)). A loop over the same collection that holds none of them — a summary printing members that are not `[EditableField]` — renders as an ordinary read-only loop, and extraction leaves the collection alone when no loop binds it.
 - **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
 - **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
 - **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
@@ -2390,6 +2391,20 @@ public partial class Order
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body
 
 **Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.)
+
+The same holds for an [editable collection](#editable-collections): the token for an item's editable member may appear once in the loop, and only one loop may hold such tokens. Extraction reads one control per member in a row and one repeating section per collection, so the edits made in a second would be discarded.
+
+```
+{% for b in Budgets %}
+{{ b.Year }} {{ b.Year }}     ← the same member twice in a row
+{% endfor %}
+
+{% for b in Budgets %}
+{{ b.Amount }}                ← a second loop binding the collection
+{% endfor %}
+```
+
+A loop that holds no editable member of the item is not a binding, and neither is a use that is not a loop, such as `{% if Budgets.size > 0 %}`.
 
 
 ### `PARCH018` — `[EditableField]` token inside a loop

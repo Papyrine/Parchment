@@ -12,6 +12,10 @@
 /// <item>a body loop over an <c>[EditableField]</c> collection may not carry <c>limit:</c> /
 /// <c>offset:</c> / <c>reversed</c> — extraction replaces the whole collection with the rows the
 /// document holds, so a windowed or reordered render would write that subset or order back.</item>
+/// <item>an <c>[EditableField]</c> collection may be bound once: one loop holds the tokens for the
+/// item's editable members, each of them once — extraction reads one repeating section per
+/// collection and one control per member in a row, so the edits made in a second would be
+/// discarded. A loop that holds none of them renders read-only and is not a binding.</item>
 /// </list>
 /// </summary>
 static class EditableTokenValidator
@@ -32,6 +36,12 @@ static class EditableTokenValidator
 
         var seen = isBody ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
 
+        // The top-level body loop being walked, when its source is an editable collection, with
+        // the item members its tokens have bound so far.
+        CollectionEntry? collectionLoop = null;
+        var boundMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var boundCollections = isBody ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
+
         var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
@@ -43,12 +53,28 @@ static class EditableTokenValidator
                 classification.Block is { Kind: BlockTagKind.For } block)
             {
                 RejectModifiersOnCollectionLoop(block, editables, templateName, partUri);
+                collectionLoop = CollectionOf(block, editables);
+                boundMembers.Clear();
             }
 
             LoopScope.Track(loopVariables, classification);
+            if (loopVariables.Count == 0)
+            {
+                collectionLoop = null;
+            }
+
             if (classification.Kind != ParagraphKind.Substitution)
             {
                 continue;
+            }
+
+            // Only the loop's own tokens become controls: a loop nested in it runs with an empty
+            // editable map, the same as any other loop body.
+            if (boundCollections != null &&
+                collectionLoop != null &&
+                loopVariables.Count == 1)
+            {
+                RejectSecondBinding(classification, collectionLoop, loopVariables[0], boundMembers, boundCollections, templateName, partUri);
             }
 
             List<DocxTokenSite>? editableTokens = null;
@@ -127,18 +153,68 @@ static class EditableTokenValidator
             return;
         }
 
-        var sourceRefs = IdentifierVisitor.Collect(block.LoopSource!);
-        if (sourceRefs.Count == 0 ||
-            !editables.TryGetCollection(sourceRefs[0].Dotted, out _))
+        var collection = CollectionOf(block, editables);
+        if (collection == null)
         {
             return;
         }
 
         throw new ParchmentRegistrationException(
             templateName,
-            $"Loop '{block.Source}' iterates the [EditableField] collection '{sourceRefs[0].Dotted}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
+            $"Loop '{block.Source}' iterates the [EditableField] collection '{collection.DottedPath}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
             partUri,
             block.Source);
+    }
+
+    static CollectionEntry? CollectionOf(BlockMarker block, EditableMap editables)
+    {
+        var sourceRefs = IdentifierVisitor.Collect(block.LoopSource!);
+        if (sourceRefs.Count == 0 ||
+            !editables.TryGetCollection(sourceRefs[0].Dotted, out var collection))
+        {
+            return null;
+        }
+
+        return collection;
+    }
+
+    static void RejectSecondBinding(
+        ParagraphClassification classification,
+        CollectionEntry collection,
+        string loopVariable,
+        HashSet<string> boundMembers,
+        HashSet<string> boundCollections,
+        string templateName,
+        string partUri)
+    {
+        foreach (var token in classification.Substitutions)
+        {
+            if (token.References.Count == 0 ||
+                !collection.TryGetItemEntry(loopVariable, token.References[0].Dotted, out var entry))
+            {
+                continue;
+            }
+
+            if (!boundMembers.Add(entry.DottedPath))
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] token '{token.Source}' appears more than once in the loop over '{collection.DottedPath}'. The member path is the content control's tag within a row and must be unique for extraction — reference each editable member of the item once.",
+                    partUri,
+                    token.Source);
+            }
+
+            // The first control of a loop is what makes it a binding of the collection.
+            if (boundMembers.Count == 1 &&
+                !boundCollections.Add(collection.DottedPath))
+            {
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] token '{token.Source}' binds the collection '{collection.DottedPath}' in a second loop, so the collection's editable members appear more than once in the document body. Each such loop renders as a repeating section and extraction reads only one — keep the item's editable members in one loop. A loop that prints only members that are not [EditableField] renders read-only and is fine.",
+                    partUri,
+                    token.Source);
+            }
+        }
     }
 
     static void RequirePlainIdentifier(DocxTokenSite token, string templateName, string partUri)
