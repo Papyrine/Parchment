@@ -95,7 +95,11 @@ static class WordFieldResolution
                 }
             }
 
-            if (resolved)
+            // A field with no heading in range was never built: it still shows its placeholder, in
+            // a paragraph with no entry in it. That is nothing to resolve rather than nothing left
+            // to, so it stays marked and Word tries again when the document is opened.
+            if (resolved &&
+                field.Paragraph.Elements<Hyperlink>().Any())
             {
                 field.ClearDirty();
             }
