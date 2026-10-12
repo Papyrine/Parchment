@@ -92,12 +92,12 @@ static class SectionBreaks
     /// </remarks>
     public static void Apply(Body body, SectionProperties? baseSection, string name)
     {
-        var sections = body
+        var markers = body
             .Descendants<Paragraph>()
             .Where(IsMarker)
             .ToList();
 
-        if (sections.Count == 0)
+        if (markers.Count == 0)
         {
             return;
         }
@@ -105,7 +105,7 @@ static class SectionBreaks
         if (baseSection == null)
         {
             // Nothing to derive from is only a problem for a marker.
-            if (!sections.Any(_ => IsDeclared(_.ParagraphProperties!.SectionProperties!)))
+            if (!markers.Any(_ => IsDeclared(_.ParagraphProperties!.SectionProperties!)))
             {
                 return;
             }
@@ -219,7 +219,7 @@ static class SectionBreaks
         var current = (SectionProperties) baseSection.CloneNode(true);
         var first = true;
 
-        foreach (var paragraph in sections)
+        foreach (var paragraph in markers)
         {
             var properties = paragraph.ParagraphProperties!;
             var declared = properties.SectionProperties!;
