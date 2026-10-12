@@ -1427,6 +1427,8 @@ The markdown replaces the body and nothing else, so those inherited parts arrive
 
 A Word template (`.dotx`/`.dotm`) is accepted as a style source. The style source is cloned and the clone becomes the rendered output, so the package is retyped to a document at registration — otherwise the output would be template-typed and Word would open it as a new unsaved document based on it rather than as the document itself. The same applies to a template passed to `RegisterDocxTemplate`.
 
+The output is always a plain, macro-free document. A macro-enabled source (`.docm`/`.dotm`) is accepted in both flows, and its VBA project is removed at registration together with the parts that exist only for it (the supplementary VBA data, signatures, and the keyboard and toolbar customizations bound to the macros), so the rendered package is a valid `.docx` and never a `.docx` with macros inside. Macros in the template do not run in, and are not carried into, the output.
+
 
 ### Bound values are escaped
 

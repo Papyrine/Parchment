@@ -67,12 +67,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = clone;
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
             // scanning or rewriting done first would be thrown away with the part it was done on —
             // which is how a .dotx form template silently kept its FORMTEXT fields.
-            EnsureDocumentType(doc);
+            EnsureDocumentType(doc, out macros);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
@@ -132,6 +133,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
 
             doc.Save();
+        }
+
+        if (macros)
+        {
+            MacroParts.RemoveContentTypeDefaults(stream);
         }
 
         var canonicalBytes = stream.ToArray();
@@ -230,10 +236,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = DocxCloner.ToWritableStream(bytes);
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            var retyped = doc.DocumentType != WordprocessingDocumentType.Document;
-            EnsureDocumentType(doc);
+            var retyped = EnsureDocumentType(doc, out macros);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
@@ -276,6 +282,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             }
 
             doc.Save();
+        }
+
+        if (macros)
+        {
+            MacroParts.RemoveContentTypeDefaults(stream);
         }
 
         return (stream.ToArray(), parts, maxBookmarkId);
@@ -332,20 +343,39 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     /// <summary>
-    /// Retypes a template-typed package (<c>.dotx</c>/<c>.dotm</c>) as a document.
+    /// Makes the package a plain, macro-free document: retypes a template-typed or macro-enabled
+    /// one (<c>.dotx</c>/<c>.dotm</c>/<c>.docm</c>) and removes the VBA project it carries.
     /// </summary>
     /// <remarks>
     /// Both flows clone the supplied package and the clone becomes the rendered output, so a
     /// template source would otherwise produce a template-typed output — which Word opens as a new
     /// unsaved document based on it, rather than as the document itself. The type is
     /// model-independent, so this belongs at registration rather than on every render.
+    ///
+    /// The macros go with the type, also from a source that arrived typed as a document and
+    /// carrying them anyway - see <see cref="MacroParts"/>. <paramref name="macros"/> tells the
+    /// caller to finish that with <see cref="MacroParts.RemoveContentTypeDefaults"/> once the
+    /// package is saved and closed, which is the only point the content types can be rewritten.
     /// </remarks>
-    static void EnsureDocumentType(WordprocessingDocument doc)
+    /// <returns>Whether the package was changed.</returns>
+    static bool EnsureDocumentType(WordprocessingDocument doc, out bool macros)
     {
-        if (doc.DocumentType != WordprocessingDocumentType.Document)
+        var type = doc.DocumentType;
+        macros = type is WordprocessingDocumentType.MacroEnabledDocument or WordprocessingDocumentType.MacroEnabledTemplate;
+        var retyped = type != WordprocessingDocumentType.Document;
+        if (retyped)
         {
             doc.ChangeDocumentType(WordprocessingDocumentType.Document);
         }
+
+        // After the retype, which swaps the main part out.
+        if (doc.MainDocumentPart is { } mainPart &&
+            MacroParts.Remove(mainPart))
+        {
+            macros = true;
+        }
+
+        return retyped || macros;
     }
 
     static void GuardBindingModel(Type type, string name)
