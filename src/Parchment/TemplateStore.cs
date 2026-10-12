@@ -171,6 +171,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         MarkdownReferenceValidator.Validate(template, model, name);
+        template = MarkdownNumberText.Rewrite(template);
 
         var (prepared, parts, maxBookmarkId) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
         var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(prepared);
