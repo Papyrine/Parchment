@@ -160,6 +160,8 @@ public static class ParchmentExtractor
             var item = entry.ElementFactory();
             var isBlank = EditableRepeatingBuilder.IsBlankItem(itemSdt);
             var anyValue = false;
+            var anyUnchecked = false;
+            var resetByWord = false;
             foreach (var elementEntry in entry.ElementMap.Entries)
             {
                 var control = FindControl(itemSdt, elementEntry.DottedPath);
@@ -168,17 +170,22 @@ public static class ParchmentExtractor
                     continue;
                 }
 
+                if (IsResetByWord(control, elementEntry))
+                {
+                    resetByWord = true;
+                }
+
                 var field = EditableFieldReader.Read(control, elementEntry, culture, mainPart);
                 if (field.State == FieldState.Extracted &&
                     elementEntry.CanReach(item))
                 {
                     elementEntry.Setter(item, field.Value);
 
-                    // A checkbox cannot be rendered empty, so in the blank item of an empty
-                    // collection an unchecked box is still the untouched state, not an entry.
-                    if (isBlank &&
-                        field.Value is false)
+                    // A checkbox cannot be rendered empty, so an unchecked box is a value only
+                    // where the row is known to be one rendered from an item (decided below).
+                    if (field.Value is false)
                     {
+                        anyUnchecked = true;
                         continue;
                     }
 
@@ -186,8 +193,12 @@ public static class ParchmentExtractor
                 }
             }
 
-            // Drop all-empty items: the blank clone template Word needs, or a row the user cleared.
-            if (anyValue)
+            // Drop all-empty items: the blank clone template Word needs, a row the user cleared, or
+            // a row the user added and left alone. With nothing but unchecked boxes to go on, the
+            // row is an entry unless it is the blank item of an empty collection (or a copy of it)
+            // or holds a control Word reset, which a row rendered from an item never does.
+            if (anyValue ||
+                (anyUnchecked && !isBlank && !resetByWord))
             {
                 list.Add(item);
             }
@@ -220,6 +231,14 @@ public static class ParchmentExtractor
             }
         }
     }
+
+    // Word's "+" copies a row and resets every control that held a value to a placeholder of
+    // spaces, and clearing a control leaves the same. The render never writes that: its own
+    // placeholders are words ("Enter text"), which Word keeps when it copies a row showing them.
+    static bool IsResetByWord(SdtElement control, EditableEntry entry) =>
+        entry.Kind != EditableFieldKind.Checkbox &&
+        control.SdtProperties?.GetFirstChild<ShowingPlaceholder>() != null &&
+        string.IsNullOrWhiteSpace(EditableFieldReader.RawText(control));
 
     static SdtElement? FindControl(SdtElement itemSdt, string tag) =>
         itemSdt.Descendants<SdtElement>()
