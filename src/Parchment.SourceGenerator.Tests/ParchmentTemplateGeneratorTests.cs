@@ -292,6 +292,72 @@ public class ParchmentTemplateGeneratorTests
         return Verify(result);
     }
 
+    // PARCH003 used to fire for every dashed tag, on a template the runtime registers and renders.
+    [Test]
+    public async Task WhitespaceControlOnBlockTags_ReportsNothing()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                public string Description { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Invoice
+            {
+                public List<Line> Lines { get; set; } = new();
+                public bool Flag { get; set; }
+                public bool Other { get; set; }
+                public string Name { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{%- for line in Lines -%}",
+            "{{- line.Description -}}",
+            "{%-endfor-%}",
+            "{%- for line in Lines %}",
+            "{{ line.Description -}}",
+            "{% endfor -%}",
+            "{%- if Flag -%}",
+            "{{- Name }}",
+            "{%- elsif Other -%}",
+            "b",
+            "{%- else -%}",
+            "c",
+            "{%- endif -%}");
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+    }
+
+    // A missing member behind a dashed tag is still found, so the hyphens hide nothing.
+    [Test]
+    public async Task WhitespaceControlOnBlockTags_StillValidatesTheExpression()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Empty;
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{%- if Missing -%}",
+            "a",
+            "{%- endif -%}",
+            "{%- foobar -%}");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).IsEquivalentTo(["PARCH001", "PARCH003"]);
+    }
+
     [Test]
     public Task TemplateFileMissing()
     {
