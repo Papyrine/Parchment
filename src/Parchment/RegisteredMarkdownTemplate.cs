@@ -1,3 +1,5 @@
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class RegisteredMarkdownTemplate(
     string name,
     Type modelType,
@@ -23,7 +25,7 @@ class RegisteredMarkdownTemplate(
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
-        await using var writer = new StringWriter();
+        using var writer = new StringWriter();
 
         // Scoped to the liquid render alone: a value with no markdown form is parked rather than
         // written, and only what runs inside the render can park it. The map is taken off the scope here and
@@ -36,7 +38,7 @@ class RegisteredMarkdownTemplate(
                 // MarkdownEncoder rather than NullEncoder: a bound value is data, so it is escaped
                 // into the markdown being assembled rather than allowed to become part of its
                 // syntax.
-                await parsedTemplate.RenderAsync(writer, MarkdownEncoder.Default, context);
+                await parsedTemplate.RenderAsync(writer, MarkdownEncoder.Default, context).ConfigureAwait(false);
             }
             catch (TokenNotRenderableException exception)
             {
@@ -70,7 +72,23 @@ class RegisteredMarkdownTemplate(
             // One counter for the whole render, seeded above what the headers, footers and notes
             // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
             var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
+            IReadOnlyList<OpenXmlElement> elements;
+            bool mayHoldSections;
+            try
+            {
+                elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+            }
+            catch (SectionMarkerException exception)
+            {
+                // The markdown walk cannot see the template name, so it is attached here.
+                throw new ParchmentRenderException(Name, exception.Message);
+            }
+            catch (TableColumnLimitException exception)
+            {
+                // The table renderer cannot see the template name either, so it is attached here.
+                throw new ParchmentRenderException(Name, exception.Message);
+            }
+
             foreach (var element in elements)
             {
                 body.AppendChild(element);
@@ -113,7 +131,7 @@ class RegisteredMarkdownTemplate(
                 WordFieldResolution.WriteTableOfContents(body, bookmarks);
             }
 
-            await RenderNonBodyParts(doc, mainPart, model, numberingState, bookmarks, cancel);
+            await RenderNonBodyParts(doc, mainPart, model, numberingState, bookmarks, cancel).ConfigureAwait(false);
 
             // Stamp compatibilityMode=15 so Word opens the output normally instead of in
             // "Compatibility Mode" (a docx with no compat block is treated as Word 2007 / mode 12).
@@ -125,7 +143,7 @@ class RegisteredMarkdownTemplate(
 
             if (properties != null)
             {
-                DocumentPropertiesWriter.Apply(doc, properties);
+                DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
             doc.Save();
@@ -136,7 +154,7 @@ class RegisteredMarkdownTemplate(
         // about when the file opens.
         if (pageNumbers != null)
         {
-            await WordFieldResolution.Resolve(stream, pageNumbers, cancel);
+            await WordFieldResolution.Resolve(stream, pageNumbers, cancel).ConfigureAwait(false);
         }
 
         // A part added during this render — settings here, numbering or images elsewhere — is
@@ -144,7 +162,7 @@ class RegisteredMarkdownTemplate(
         // in the same 2-second zip quantum. See ZipTimestamps.
         ZipTimestamps.Pin(stream);
         stream.Position = 0;
-        await stream.CopyToAsync(output, cancel);
+        await stream.CopyToAsync(output, cancel).ConfigureAwait(false);
     }
 
     // Headers, footers and notes come from the style source with their tokens intact, so they bind
@@ -196,7 +214,7 @@ class RegisteredMarkdownTemplate(
                 numberingState,
                 styles,
                 imagePolicies);
-            await runner.RunAsync(part.Nodes);
+            await runner.RunAsync(part.Nodes).ConfigureAwait(false);
             runner.ApplyStructural();
             runner.SeparateProducedTables();
 
