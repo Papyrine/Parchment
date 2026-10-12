@@ -12,6 +12,7 @@
 /// resolves these types here instead of by reflection. The source generator mirrors this in
 /// <c>ShapeResolver</c>, keyed off the <c>LiquidKind</c> its <c>ShapeBuilder</c> records.
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class LiquidMembers
 {
     public static LiquidKind Classify(Type type)
