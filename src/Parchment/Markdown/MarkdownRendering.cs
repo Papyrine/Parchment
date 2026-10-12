@@ -4,7 +4,12 @@
 /// </summary>
 static class MarkdownRendering
 {
-    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset)
+    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset) =>
+        Render(markdown, mainPart, numbering, imagePolicies, bookmarks, headingOffset, out _);
+
+    // mayHoldSections is false when no element returned can carry a section marker's w:sectPr,
+    // which lets the markdown flow skip SectionBreaks.Apply.
+    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset, out bool mayHoldSections)
     {
         var document = Markdown.Parse(markdown, MarkdigPipeline.Pipeline);
         var renderer = new OpenXmlMarkdownRenderer(mainPart, numbering, imagePolicies, headingOffset);
@@ -16,8 +21,14 @@ static class MarkdownRendering
         // renderer, for a {#id} generic attribute, and the html converter, for an id attribute
         // inside an html block - which restarts at 1 for every block it converts. Left alone the
         // ids collide, and Word matches a bookmark's start to its end by id, so a collision closes
-        // the wrong bookmark.
-        bookmarks.Renumber(elements);
+        // the wrong bookmark. A render that wrote no bookmark and converted no html has nothing to
+        // renumber, and is spared the walk of everything it produced.
+        if (renderer.MayHoldBookmarks)
+        {
+            bookmarks.Renumber(elements);
+        }
+
+        mayHoldSections = renderer.MayHoldSections;
         return elements;
     }
 

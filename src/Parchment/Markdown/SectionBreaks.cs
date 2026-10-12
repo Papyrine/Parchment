@@ -83,6 +83,7 @@ static class SectionBreaks
         properties ??= new();
         properties.SectionProperties = declared;
         renderer.AddBlock(new Paragraph(properties));
+        renderer.MayHoldSections = true;
         return true;
     }
 
@@ -159,6 +160,21 @@ static class SectionBreaks
     {
         var child = block.Inline?.FirstChild;
         if (child == null)
+        {
+            return false;
+        }
+
+        // Asked of every paragraph in the document, and nearly all of them are prose: one that does
+        // not open with the marker's bracket is turned away before anything is built. A first
+        // literal that is all whitespace says nothing either way, so it falls through.
+        if (child is not LiteralInline lead)
+        {
+            return false;
+        }
+
+        var opening = lead.Content.AsSpan().TrimStart();
+        if (opening.Length > 0 &&
+            opening[0] != '[')
         {
             return false;
         }

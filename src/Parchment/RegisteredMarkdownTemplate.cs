@@ -60,7 +60,7 @@ class RegisteredMarkdownTemplate(
             // One counter for the whole render, seeded above what the headers, footers and notes
             // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
             var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
             foreach (var element in elements)
             {
                 body.AppendChild(element);
@@ -80,8 +80,16 @@ class RegisteredMarkdownTemplate(
             TableCells.EnsureFinalParagraph(body);
 
             // Before the trailing section is attached, because the last [SECTION] in the template
-            // is what that section describes — see SectionBreaks.
-            SectionBreaks.Apply(body, sectPr, Name);
+            // is what that section describes — see SectionBreaks. Skipped when nothing in the body can
+            // be a marker: the markdown walk wrote none and converted no html, and neither swap above
+            // ran, those being where caller code - an OpenXmlToken, an Excelsior Configure hook - can
+            // put in a paragraph this render did not build.
+            if (mayHoldSections ||
+                tokenBlocks.Count > 0 ||
+                tablePlaceholders.Count > 0)
+            {
+                SectionBreaks.Apply(body, sectPr, Name);
+            }
 
             if (sectPr != null)
             {

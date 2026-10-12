@@ -48,6 +48,14 @@ class OpenXmlMarkdownRenderer :
     // by MarkdownRendering before the renderer walks the AST.
     public HashSet<Markdig.Extensions.Tables.Table> SkipColumnWidths { get; } = [];
 
+    // What the walk produced that a later whole-fragment pass exists for, so a render that produced
+    // neither skips the pass instead of walking every element to find nothing. Each is set by the
+    // only writers that can produce one: this renderer's own bookmark and section-marker writers,
+    // and the two places converted html comes in, which is content this renderer did not build and
+    // so cannot vouch for.
+    public bool MayHoldBookmarks { get; set; }
+    public bool MayHoldSections { get; set; }
+
     internal ContainerState Top => stack.Peek();
 
     public override object Render(MarkdownObject markdownObject)
@@ -130,6 +138,7 @@ class OpenXmlMarkdownRenderer :
     /// </remarks>
     internal string AddBookmarkStart(string name)
     {
+        MayHoldBookmarks = true;
         var id = (++nextBookmarkId).ToString(CultureInfo.InvariantCulture);
         AddRun(
             new BookmarkStart
