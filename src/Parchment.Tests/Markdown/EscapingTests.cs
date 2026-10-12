@@ -318,6 +318,52 @@ public partial class EscapingTests
         await Assert.That(cells[3].InnerText).IsEqualTo("ok");
     }
 
+    // Every punctuation character in a value is escaped, and Markdig ends a literal at each escape,
+    // so a value arrives as one run per fragment. Fragments formatted alike fold back into one run,
+    // and a fragment is never folded into a neighbour formatted any differently.
+    [Test]
+    public async Task PunctuatedValueInsideEmphasisFoldsToOneRunPerFormat()
+    {
+        var body = await Render(
+            """
+            On-call: **{{ Title }}** then _{{ Title }}_**_{{ Details }}_**, <u>{{ Title }}</u>++{{ Details }}++ and ==**{{ Title }}**==**{{ Details }}** (end).
+
+            | Name | Note |
+            | --- | --- |
+            | **{{ Title }}** | ~~{{ Details }}~~ {{ Title }} |
+            """,
+            new()
+            {
+                Title = "Item-1 (rev. 1.2)",
+                Details = "a_b*c [d] #e!"
+            });
+
+        var runs = body.Descendants<Run>()
+            .Select(_ => $"{string.Join(' ', _.RunProperties?.Select(property => property.LocalName) ?? [])}|{_.InnerText}")
+            .ToList();
+
+        await Assert.That(runs)
+            .IsEquivalentTo(
+            [
+                "|On-call: ",
+                "b|Item-1 (rev. 1.2)",
+                "| then ",
+                "i|Item-1 (rev. 1.2)",
+                "b i|a_b*c [d] #e!",
+                "|, ",
+                "u|Item-1 (rev. 1.2)a_b*c [d] #e!",
+                "| and ",
+                "b highlight|Item-1 (rev. 1.2)",
+                "b|a_b*c [d] #e!",
+                "| (end).",
+                "b|Name",
+                "b|Note",
+                "b|Item-1 (rev. 1.2)",
+                "strike|a_b*c [d] #e!",
+                "| Item-1 (rev. 1.2)"
+            ]);
+    }
+
     // Generic attributes are enabled, so an unescaped value could reach out and restyle the
     // paragraph it was substituted into — the model deciding how the document looks.
     [Test]
