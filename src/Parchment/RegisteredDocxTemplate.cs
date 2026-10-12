@@ -11,6 +11,16 @@ class RegisteredDocxTemplate(
     int maxBookmarkId) :
     RegisteredTemplate(name, modelType)
 {
+    // The parts a render has work in. A part outside this set carries no anchor bookmark, so
+    // nothing in it is substituted, removed or produced, and it is never read: it stays as the
+    // bytes cloned from the registration snapshot. See "Render reads only the parts that carry
+    // tokens" in contributing.md for what registration does to make that hold.
+    readonly HashSet<string> tokenParts = parts
+        .Select(_ => _.PartUri)
+        .ToHashSet(StringComparer.Ordinal);
+
+    internal byte[] Snapshot => canonicalBytes;
+
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         cancel.ThrowIfCancellationRequested();
@@ -24,8 +34,10 @@ class RegisteredDocxTemplate(
             // Materialize the part roots once, keyed by uri. The previous code re-enumerated all
             // parts (re-allocating each part's Uri.ToString()) to locate every part's root, and
             // enumerated a second time for the strip pass — O(parts²) plus redundant string allocs.
+            // Only the token-bearing parts: reading a root parses the part and the save then writes
+            // it back out, which for a token-free header, footer or notes part is all overhead.
             var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc, tokenParts))
             {
                 partRoots[uri] = root;
             }

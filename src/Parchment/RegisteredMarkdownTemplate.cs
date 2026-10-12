@@ -11,6 +11,14 @@ class RegisteredMarkdownTemplate(
     int maxBookmarkId) :
     RegisteredTemplate(name, modelType)
 {
+    // As in the docx flow: a non-body part outside this set carries no anchor bookmark and is
+    // never read, so it stays as the bytes cloned from the style source.
+    readonly HashSet<string> tokenParts = nonBodyParts
+        .Select(_ => _.PartUri)
+        .ToHashSet(StringComparer.Ordinal);
+
+    internal byte[] Snapshot => styleSourceBytes;
+
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
@@ -142,7 +150,7 @@ class RegisteredMarkdownTemplate(
         }
 
         var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
-        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc, tokenParts))
         {
             partRoots[uri] = root;
         }
