@@ -1821,6 +1821,8 @@ Everything else about the page comes from the [style source](#markdown-template)
 
 The marker reads as "from here on", which is not how Word stores it: a `<w:sectPr>` inside a paragraph describes the section that *ends* there. That inversion is handled on the way in, so the settings a marker declares apply to what follows it, and the last marker in the template describes the rest of the document.
 
+A break is only written between content, so no section is ever empty and no blank page comes of one: a marker with nothing before it sets up the first section rather than ending an empty one, markers with nothing between them are one break whose settings are read in order exactly as they are with content between them (so the later marker wins whatever both name), and a marker with nothing after it is ignored. Blank lines are not content, and a `[TOC]` is.
+
 `[SECTION]` follows `[TOC]` in costing no syntax: with no `(url)` or `[label]` after it, markdown leaves it as the literal text `[SECTION]`, so a template that also renders to html degrades to showing the marker. An `orientation` that is missing or unrecognised is not read as a marker at all and stays that text, which is what makes a typo visible rather than a section break that quietly changes nothing. As with any [generic attribute](#generic-attributes), a marker in a table cell cannot receive one and stays text too.
 
 

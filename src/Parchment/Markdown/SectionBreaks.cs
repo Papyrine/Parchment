@@ -25,6 +25,12 @@
 /// one the settings that were in force <em>before</em> it, and the settings the last marker declared
 /// land on the document-final <c>w:sectPr</c> instead.
 /// </para>
+/// <para>
+/// A section is at least a page, so one with nothing in it is a blank page nobody asked for.
+/// <see cref="Apply"/> therefore writes a break only between content: a marker with nothing before
+/// it sets up the first section, markers with nothing between them are one break, and a marker with
+/// nothing after it is dropped.
+/// </para>
 /// </remarks>
 static class SectionBreaks
 {
@@ -115,6 +121,11 @@ static class SectionBreaks
         // rather than from the style source.
         var current = (SectionProperties) baseSection.CloneNode(true);
 
+        // The break written last, which is where the section being read starts, and how many have
+        // been written.
+        Paragraph? lastBreak = null;
+        var written = 0;
+
         for (var index = 0; index < markers.Count; index++)
         {
             var marker = markers[index];
@@ -130,19 +141,48 @@ static class SectionBreaks
             var declared = properties.SectionProperties!;
             var next = Derive(current, declared);
 
+            // The section this marker would close holds nothing, and a section is at least a page,
+            // so writing the break puts a blank page in front of what the marker describes. What
+            // it declared replaces the settings of the section it stands at the start of instead:
+            // the first section for a marker that opens the document, and for markers in a row the
+            // section they share, read in order as they are when content separates them.
+            if (ClosesNothing(marker, lastBreak))
+            {
+                marker.Remove();
+                current = next;
+                continue;
+            }
+
             // Page numbering restarts wherever w:pgNumType carries a start, so only the first
             // section keeps the style source's. Every later one continues from the section before
             // it, which is what inserting a section break in Word gives you.
-            if (index > 0)
+            if (written > 0)
             {
                 StripPageNumberStart(current);
             }
 
             properties.SectionProperties = current;
             current = next;
+            lastBreak = marker;
+            written++;
         }
 
-        StripPageNumberStart(current);
+        // The same from the other end. baseSection is not attached yet, so a break with no sibling
+        // after it opens a section nothing was written into: the break goes, and the settings it
+        // closed its section with are the document's last after all.
+        if (lastBreak != null &&
+            lastBreak.NextSibling() == null &&
+            IsBare(lastBreak))
+        {
+            current = lastBreak.ParagraphProperties!.SectionProperties!;
+            lastBreak.Remove();
+            written--;
+        }
+
+        if (written > 0)
+        {
+            StripPageNumberStart(current);
+        }
 
         // The caller appends baseSection after this returns, so the last declared settings have to
         // land on that instance rather than on a replacement for it.
@@ -152,6 +192,18 @@ static class SectionBreaks
             baseSection.AppendChild(child.CloneNode(true));
         }
     }
+
+    // Nothing between the marker and the break before it, or the top of the document when there is
+    // no break yet.
+    static bool ClosesNothing(Paragraph marker, Paragraph? lastBreak) =>
+        ReferenceEquals(marker.PreviousSibling(), lastBreak) &&
+        IsBare(marker);
+
+    // Always true of the paragraph TryWrite emits. Asked because a paragraph caller code supplied is
+    // read as a marker too when it carries a w:sectPr, and one holding text is itself the content of
+    // the section it closes.
+    static bool IsBare(Paragraph marker) =>
+        marker.ChildElements.Count == 1;
 
     // An unresolved "[SECTION]" reaches the renderer as plain text, but not necessarily as one run of
     // it — the link parser splits the brackets off from the word between them. So the test is that

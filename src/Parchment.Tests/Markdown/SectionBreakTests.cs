@@ -1,8 +1,22 @@
+using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 public partial class SectionBreakTests
 {
     [ParchmentBindable]
     public partial class EmptyModel;
+
+    [ParchmentBindable]
+    public partial class RowsModel
+    {
+        public List<string> Rows = [];
+    }
+
+    [ParchmentBindable]
+    public partial class RawModel
+    {
+        public OpenXmlToken Raw = OpenXmlToken.Empty;
+    }
 
     const string template =
         """
@@ -169,6 +183,177 @@ public partial class SectionBreakTests
         await Assert.That(sections[2].GetFirstChild<PageNumberType>()).IsNull();
     }
 
+    // A section is at least a page, so a break with nothing before it is a blank page ahead of the
+    // document. A template that opens with a marker is asking for a document that starts that way
+    // round, and blank lines above the marker are not content.
+    [Test]
+    [Arguments("[SECTION]{orientation=landscape}\n\nWide from the start.")]
+    [Arguments("\n\n[SECTION]{orientation=landscape}\n\nWide from the start.")]
+    [Arguments("<!-- wide -->\n\n[SECTION]{orientation=landscape}\n\nWide from the start.")]
+    public async Task AMarkerWithNothingBeforeItSetsUpTheFirstSection(string markdown)
+    {
+        await Assert.That(await Layout(markdown)).IsEqualTo("landscape[Wide from the start.]");
+
+        using var stream = await Render(markdown);
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+            .Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}");
+        await Assert.That(errors).IsEmpty();
+    }
+
+    // The first section is still derived from the style source, and being the first it keeps the
+    // start of the page numbering as well.
+    [Test]
+    public async Task TheFirstSectionAMarkerSetsUpIsStillTheStyleSources()
+    {
+        using var styleSource = StyleSourceNumberedFromOne();
+        var sections = await Sections(
+            """
+            [SECTION]{orientation=landscape header=200}
+
+            Wide from the start.
+
+            [SECTION]{orientation=portrait}
+
+            And back to portrait.
+            """,
+            styleSource);
+
+        await Assert.That(sections.Count).IsEqualTo(2);
+
+        var first = sections[0];
+        await Assert.That(Orientation(first)).IsEqualTo("landscape");
+        await Assert.That(first.GetFirstChild<PageSize>()!.Width!.Value).IsEqualTo(8000u);
+        await Assert.That(first.GetFirstChild<PageBorders>()).IsNotNull();
+        await Assert.That(first.GetFirstChild<PageMargin>()!.Header!.Value).IsEqualTo(200u);
+        await Assert.That(first.GetFirstChild<PageNumberType>()!.Start!.Value).IsEqualTo(1);
+
+        await Assert.That(Orientation(sections[1])).IsEqualTo("portrait");
+        await Assert.That(sections[1].GetFirstChild<PageNumberType>()).IsNull();
+    }
+
+    // A table of contents is content: one above the marker has a section of its own to sit in, and
+    // one below it belongs to the section the marker set up.
+    [Test]
+    public async Task ATableOfContentsCountsAsContent()
+    {
+        var before = await Sections("[TOC]\n\n[SECTION]{orientation=landscape}\n\n# Heading");
+        var after = await Sections("[SECTION]{orientation=landscape}\n\n[TOC]\n\n# Heading");
+
+        await Assert.That(string.Join(' ', before.Select(Orientation))).IsEqualTo("portrait landscape");
+        await Assert.That(string.Join(' ', after.Select(Orientation))).IsEqualTo("landscape");
+    }
+
+    // Nobody means the empty page a second marker straight after the first would be, so the two are
+    // one break. The settings are read in order, exactly as they are with content between them: the
+    // later orientation wins, and the margins only the earlier one named are still in force.
+    [Test]
+    public async Task MarkersWithNothingBetweenThemAreOneBreak()
+    {
+        const string first = "[SECTION]{orientation=landscape margins=100,200,300,400}";
+        const string second = "[SECTION]{orientation=portrait header=200}";
+
+        var markdown = $"Portrait.\n\n{first}\n\n{second}\n\nEnd.";
+        await Assert.That(await Layout(markdown)).IsEqualTo("portrait[Portrait.] portrait[End.]");
+
+        var together = await Sections(markdown);
+        var apart = await Sections($"Portrait.\n\n{first}\n\nBetween.\n\n{second}\n\nEnd.");
+        var margins = together[1].GetFirstChild<PageMargin>()!;
+        await Assert.That(margins.Top!.Value).IsEqualTo(100);
+        await Assert.That(margins.Header!.Value).IsEqualTo(200u);
+        await Assert.That(together[1].OuterXml).IsEqualTo(apart[2].OuterXml);
+    }
+
+    // The other end of the same rule. Nothing follows the marker, so the section it opens would be
+    // a blank page after the document, and the settings it declared have nothing to apply to.
+    [Test]
+    [Arguments("Portrait.\n\n[SECTION]{orientation=landscape}")]
+    [Arguments("Portrait.\n\n[SECTION]{orientation=landscape}\n\n[SECTION]{orientation=landscape margins=1,2,3,4}\n\n")]
+    public async Task AMarkerWithNothingAfterItIsDropped(string markdown)
+    {
+        using var styleSource = StyleSourceNumberedFromOne();
+        var sections = await Sections(markdown, styleSource);
+
+        await Assert.That(await Layout(markdown)).IsEqualTo("portrait[Portrait.]");
+        await Assert.That(sections.Count).IsEqualTo(1);
+        await Assert.That(sections[0].GetFirstChild<PageMargin>()!.Top!.Value).IsEqualTo(500);
+        // The one section left is the first, so the numbering start stays with it.
+        await Assert.That(sections[0].GetFirstChild<PageNumberType>()!.Start!.Value).IsEqualTo(1);
+    }
+
+    // First and last at once: there is no content for a break to separate, and the document's one
+    // section is the one the marker set up.
+    [Test]
+    public async Task ATemplateThatIsOnlyAMarkerHasOneSection() =>
+        await Assert.That(await Layout("[SECTION]{orientation=landscape}")).IsEqualTo("landscape[]");
+
+    // A loop is where a marker most easily ends up first or last without the template saying so:
+    // one that opens the body is first on the first pass, one that closes it is last on the last.
+    [Test]
+    public async Task AMarkerAtEitherEndOfALoopBodyLeavesNoEmptySection()
+    {
+        var model = new RowsModel
+        {
+            Rows = ["a", "b"]
+        };
+
+        var opening = await Layout(
+            """
+            {% for row in Rows %}
+
+            [SECTION]{orientation=landscape}
+
+            {{ row }}
+
+            {% endfor %}
+            """,
+            model);
+        var closing = await Layout(
+            """
+            {% for row in Rows %}
+
+            {{ row }}
+
+            [SECTION]{orientation=landscape}
+
+            {% endfor %}
+            """,
+            model);
+
+        await Assert.That(opening).IsEqualTo("landscape[a] landscape[b]");
+        await Assert.That(closing).IsEqualTo("portrait[a] landscape[b]");
+    }
+
+    // A marker's own paragraph is empty, which is what lets it go when its section is. A paragraph
+    // caller code supplied is read as a marker too when it carries a w:sectPr, and one holding text
+    // is the content of the section it closes: first or last, it stays.
+    [Test]
+    [Arguments("{{ Raw }}\n\nEnd.")]
+    [Arguments("Start.\n\n{{ Raw }}")]
+    public async Task ACallersParagraphHoldingTextIsNotAnEmptySection(string markdown)
+    {
+        var model = new RawModel
+        {
+            Raw = new(_ =>
+            [
+                new Paragraph(
+                    new ParagraphProperties(
+                        new SectionProperties(
+                            new PageSize
+                            {
+                                Orient = PageOrientationValues.Landscape
+                            })),
+                    new Run(new Text("Kept.")))
+            ])
+        };
+
+        using var stream = await RenderModel(markdown, model);
+        using var doc = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(doc.MainDocumentPart!.Document!.Body!.InnerText).Contains("Kept.");
+    }
+
     // The page renders are the only assertion that shows the orientation actually changing: the
     // second page is wider than it is tall and the ones either side of it are not.
     [Test]
@@ -264,14 +449,47 @@ public partial class SectionBreakTests
             .ToList();
     }
 
-    static async Task<MemoryStream> Render(string markdown, Stream? styleSource = null)
+    // Every section as its orientation and the text of each block it holds. The paragraph a section
+    // break sits on is not one of them, so a section with nothing in it reads as "portrait[]".
+    static Task<string> Layout(string markdown) =>
+        Layout(markdown, new EmptyModel());
+
+    static async Task<string> Layout<TModel>(string markdown, TModel model)
+        where TModel : notnull
+    {
+        using var stream = await RenderModel(markdown, model);
+        using var doc = WordprocessingDocument.Open(stream, false);
+
+        var sections = new List<string>();
+        var blocks = new List<string>();
+        foreach (var element in doc.MainDocumentPart!.Document!.Body!.ChildElements)
+        {
+            var section = element as SectionProperties ?? (element as Paragraph)?.ParagraphProperties?.SectionProperties;
+            if (section == null)
+            {
+                blocks.Add(element.InnerText);
+                continue;
+            }
+
+            sections.Add($"{Orientation(section)}[{string.Join(", ", blocks)}]");
+            blocks.Clear();
+        }
+
+        return string.Join(' ', sections);
+    }
+
+    static Task<MemoryStream> Render(string markdown, Stream? styleSource = null) =>
+        RenderModel(markdown, new EmptyModel(), styleSource);
+
+    static async Task<MemoryStream> RenderModel<TModel>(string markdown, TModel model, Stream? styleSource = null)
+        where TModel : notnull
     {
         using var built = styleSource == null ? DocxTemplateBuilder.Build() : null;
         var store = new TemplateStore();
-        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource ?? built);
+        store.RegisterMarkdownTemplate<TModel>(markdown, styleSource ?? built);
 
         var stream = new MemoryStream();
-        await store.Render(new EmptyModel(), stream);
+        await store.Render(model, stream);
         stream.Position = 0;
         return stream;
     }
