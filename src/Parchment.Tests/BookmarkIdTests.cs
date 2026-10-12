@@ -116,6 +116,28 @@ public partial class BookmarkIdTests
         await AssertUniqueAndPaired(doc);
     }
 
+    // A header with no token is never read by a render, and its bookmark still has to be stepped
+    // past: the floor comes from every part at registration, not from the parts a render opens.
+    [Test]
+    public async Task DocxFlowNumbersAboveATokenFreeHeader()
+    {
+        using var template = BuildDocx(
+            [Paragraph("{{ Body }}")],
+            [Bookmarked("header bookmark", "inHeader", "7")]);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>(template);
+
+        using var stream = await Render(store, Model());
+        using var doc = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(Names(doc)).IsEquivalentTo(["x", "y", "inHeader"]);
+        await AssertUniqueAndPaired(doc);
+        var produced = Starts(doc)
+            .Where(_ => _.Name?.Value != "inHeader")
+            .Select(_ => int.Parse(_.Id!.Value!));
+        await Assert.That(produced.Min()).IsGreaterThan(7);
+    }
+
     // The markdown replaces the body, but a header arrives from the style source as authored.
     [Test]
     public async Task MarkdownFlowNumbersAboveTheStyleSourcesHeader()

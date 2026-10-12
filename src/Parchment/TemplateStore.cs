@@ -67,6 +67,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // docx template — the mutation is baked into the registration snapshot below.
                 FormFields.ToTokens(root);
 
+                // A render reads only the parts that carry tokens, so a cell the template itself
+                // left without a closing paragraph is closed here, in every part, and not left to
+                // the render's own pass, which never sees a token-free part.
+                TableCells.EnsureFinalParagraph(root);
+
                 var classifications = TokenScanner.Scan(root, name, uri);
 
                 // After the scan, so the anchors it added are counted, and across every part: a
@@ -485,7 +490,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// A definition holds raw content only — the generator's module initializer stores bytes and
     /// text, and the scan/validate work runs here, once per store, under this store's policies.
     /// </remarks>
-    RegisteredTemplate Resolve(Type modelType)
+    internal RegisteredTemplate Resolve(Type modelType)
     {
         // Walk the inheritance chain so a template registered against an abstract base renders a
         // concrete subclass instance — the documented polymorphic binding surface. Nearest type
