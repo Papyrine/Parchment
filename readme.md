@@ -2093,6 +2093,16 @@ A collection or a string reaches a template as liquid's own array or string rath
 
 **Markdown templates only:** identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws. Docx templates support none of the three: they iterate through Parchment's own scope tree rather than liquid's `{% for %}`, so `forloop` is never populated, and `assign` / `capture` are not among the supported block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so in both cases rather than rendering a blank.
 
+The other liquid tags a markdown template can hold are walked the same way: the condition and both branches of `{% unless %}`, the value, every `{% when %}` option and every branch of `{% case %}`, the values and the group of `{% cycle %}`, and the body of `{% capture %}` and `{% ifchanged %}`. A variable assigned inside any of them is known after it. A counter is not a variable: liquid keeps `{% increment n %}` and `{% decrement n %}` apart from `{% assign %}`, so a later `{{ n }}` renders blank and is rejected as an unknown member.
+
+`{% tablerow row in Rows %}` is validated as a loop: `row` is bound to the element type for the body, `tablerowloop` is accepted inside it, and the source and the `cols:`, `limit:` and `offset:` arguments are checked against the scope around the tag. Liquid writes the rows as html (`<tr>` and `<td>`) with nothing around them, so the tag belongs inside a raw `<table>` block, where the rows become a Word table. Outside one there is no table for the rows to belong to.
+
+```handlebars
+<table>
+{% tablerow line in Lines cols: 3 %}{{ line.Name }}{% endtablerow %}
+</table>
+```
+
 Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{% for row in Rows -%}` behave the same as the plain form. This matters for markdown templates, where `{%-` is often needed to keep a raw-html block free of the blank line that would otherwise end it.
 
 

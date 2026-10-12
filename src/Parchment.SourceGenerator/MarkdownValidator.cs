@@ -90,6 +90,30 @@ class MarkdownValidator
             case OutputStatement output:
                 ValidateExpression(output.Expression, "{{ ... }}");
                 break;
+
+            case UnlessStatement unlessStatement:
+                WalkUnless(unlessStatement);
+                break;
+
+            case CaseStatement caseStatement:
+                WalkCase(caseStatement);
+                break;
+
+            case CycleStatement cycleStatement:
+                WalkCycle(cycleStatement);
+                break;
+
+            case TableRowStatement tableRowStatement:
+                WalkTableRow(tableRowStatement);
+                break;
+
+            // `{% liquid %}` and `{% ifchanged %}` hold statements and nothing else. Everything
+            // left over has no expression and no body to walk: text, `raw`, `comment`, `break`,
+            // `continue`, and `increment` / `decrement`, whose counter is not a variable a token
+            // can read.
+            case LiquidStatement or IfChangedStatement:
+                WalkStatements(((TagStatement) statement).Statements);
+                break;
         }
     }
 
@@ -185,6 +209,125 @@ class MarkdownValidator
         if (ifStatement.Else != null)
         {
             WalkStatements(ifStatement.Else.Statements);
+        }
+    }
+
+    void WalkUnless(UnlessStatement unlessStatement)
+    {
+        ValidateExpression(unlessStatement.Condition, "{% unless ... %}");
+        WalkStatements(unlessStatement.Statements);
+
+        if (unlessStatement.Else != null)
+        {
+            WalkStatements(unlessStatement.Else.Statements);
+        }
+    }
+
+    void WalkCase(CaseStatement caseStatement)
+    {
+        ValidateExpression(caseStatement.Expression, "{% case ... %}");
+
+        foreach (var when in caseStatement.Whens)
+        {
+            foreach (var option in when.Options)
+            {
+                ValidateExpression(option, "{% when ... %}");
+            }
+
+            WalkStatements(when.Statements);
+        }
+
+        if (caseStatement.Else != null)
+        {
+            WalkStatements(caseStatement.Else.Statements);
+        }
+    }
+
+    void WalkCycle(CycleStatement cycleStatement)
+    {
+        if (cycleStatement.Group != null)
+        {
+            ValidateExpression(cycleStatement.Group, "{% cycle ... %}");
+        }
+
+        foreach (var value in cycleStatement.Values)
+        {
+            ValidateExpression(value, "{% cycle ... %}");
+        }
+    }
+
+    // A loop like `for`, with three differences: no else branch, `tablerowloop` in place of
+    // `forloop`, and arguments that are validated.
+    void WalkTableRow(TableRowStatement tableRowStatement)
+    {
+        var loopVariable = tableRowStatement.Identifier;
+        var sourceText = $"{{% tablerow {loopVariable} in ... %}}";
+
+        // The source and the arguments are evaluated before the first cell, so they validate
+        // against the enclosing scope: `limit: row.Count` does not see the row.
+        ValidateExpression(tableRowStatement.Source, sourceText);
+        ValidateArgument(tableRowStatement.Limit, sourceText);
+        ValidateArgument(tableRowStatement.Offset, sourceText);
+        ValidateArgument(tableRowStatement.Cols, sourceText);
+
+        string? elementFqn = null;
+        var sourcePath = TryGetMemberPath(tableRowStatement.Source);
+        var sourceIsUntyped = sourcePath != null && untyped.Contains(sourcePath[0]);
+        if (sourcePath != null &&
+            !sourceIsUntyped &&
+            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn) &&
+            !ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.LoopSourceNotEnumerable,
+                    location,
+                    templatePath,
+                    sourceText));
+        }
+
+        var hadPrior = scope.TryGetValue(loopVariable, out var prior);
+        var hadUntyped = untyped.Contains(loopVariable);
+        var addedTableRowLoop = untyped.Add("tablerowloop");
+
+        if (sourceIsUntyped ||
+            sourcePath == null)
+        {
+            scope.Remove(loopVariable);
+            untyped.Add(loopVariable);
+        }
+        else
+        {
+            // The root type when the source did not resolve, for the reason WalkFor gives.
+            untyped.Remove(loopVariable);
+            scope[loopVariable] = elementFqn ?? target.Shape.RootTypeFullyQualifiedName;
+        }
+
+        WalkStatements(tableRowStatement.Statements);
+
+        scope.Remove(loopVariable);
+        untyped.Remove(loopVariable);
+        if (hadPrior)
+        {
+            scope[loopVariable] = prior!;
+        }
+
+        if (hadUntyped)
+        {
+            untyped.Add(loopVariable);
+        }
+
+        if (addedTableRowLoop)
+        {
+            untyped.Remove("tablerowloop");
+        }
+    }
+
+    void ValidateArgument(Expression? argument, string sourceForDiagnostic)
+    {
+        if (argument != null)
+        {
+            ValidateExpression(argument, sourceForDiagnostic);
         }
     }
 

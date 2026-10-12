@@ -99,6 +99,63 @@ class MarkdownReferenceValidator :
         return forStatement;
     }
 
+    // `tablerow` is a loop like `for`, with three differences: it has no else branch, the object
+    // liquid introduces for the body is `tablerowloop` rather than `forloop`, and its arguments are
+    // visited. Left to the base visitor the body was walked with nothing bound, so every use of the
+    // loop variable was reported as an unknown member of the model.
+    protected override Statement VisitTableRowStatement(TableRowStatement tableRowStatement)
+    {
+        var identifier = tableRowStatement.Identifier;
+
+        // The source and the arguments are evaluated before the first cell, so they validate
+        // against the enclosing scope: `limit: row.Count` does not see the row.
+        Visit(tableRowStatement.Source);
+        Visit(tableRowStatement.Limit);
+        Visit(tableRowStatement.Offset);
+        Visit(tableRowStatement.Cols);
+
+        var resolved = TryResolveElementType(tableRowStatement.Source, identifier, out var elementType);
+
+        var hadScope = scope.TryGetValue(identifier, out var previousScope);
+        var hadUntyped = untyped.Contains(identifier);
+        var addedTableRowLoop = untyped.Add("tablerowloop");
+
+        if (resolved)
+        {
+            untyped.Remove(identifier);
+            scope[identifier] = elementType!;
+        }
+        else
+        {
+            scope.Remove(identifier);
+            untyped.Add(identifier);
+        }
+
+        foreach (var statement in tableRowStatement.Statements)
+        {
+            Visit(statement);
+        }
+
+        scope.Remove(identifier);
+        untyped.Remove(identifier);
+        if (hadScope)
+        {
+            scope[identifier] = previousScope!;
+        }
+
+        if (hadUntyped)
+        {
+            untyped.Add(identifier);
+        }
+
+        if (addedTableRowLoop)
+        {
+            untyped.Remove("tablerowloop");
+        }
+
+        return tableRowStatement;
+    }
+
     // `assign` and `capture` introduce a variable Fluid holds as a plain string identifier, not a
     // MemberExpression, so the tag itself never reached the validator — only the later use did, as
     // an unresolvable root.
