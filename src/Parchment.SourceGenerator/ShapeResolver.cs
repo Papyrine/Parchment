@@ -109,34 +109,25 @@ static class ShapeResolver
     }
 
     /// <summary>
-    /// Returns true when the given path (walked from the root model, honoring loop scope) ends at
-    /// a member marked with <c>[ExcelsiorTable]</c>. Used by the generator to gate PARCH007 /
-    /// PARCH008 diagnostics without mutating the resolver's primary return signature.
+    /// Resolves a path to the member the runtime's attribute maps would hold it under: walked from
+    /// the model root through instance members only. Gates the rules that belong to a member the
+    /// maps dispatch — PARCH007 / PARCH008 / PARCH010.
     /// </summary>
-    public static bool IsExcelsiorTableMember(
+    /// <remarks>
+    /// Lockstep with the runtime map walkers (<c>ExcelsiorTableMap</c>, <c>FormatMap</c>) and with
+    /// <c>AccessorEmission.WalkForMaps</c>: none of them enters a static member, and none can
+    /// address a loop item. A token that reaches an annotated member either way is an ordinary
+    /// value the runtime hands to Fluid, so the caller rules a loop variable out first and this
+    /// refuses a static segment.
+    /// </remarks>
+    public static bool TryResolveMappedMember(
         ModelShape shape,
         IReadOnlyList<string> segments,
-        IReadOnlyDictionary<string, string> scope)
+        [NotNullWhen(true)] out MemberEntry? member)
     {
-        if (segments.Count == 0)
-        {
-            return false;
-        }
-
-        string currentFqn;
-        int start;
-        if (scope.TryGetValue(segments[0], out var scoped))
-        {
-            currentFqn = scoped;
-            start = 1;
-        }
-        else
-        {
-            currentFqn = shape.RootTypeFullyQualifiedName;
-            start = 0;
-        }
-
-        for (var i = start; i < segments.Count; i++)
+        member = null;
+        var currentFqn = shape.RootTypeFullyQualifiedName;
+        for (var i = 0; i < segments.Count; i++)
         {
             var entry = FindType(shape, currentFqn);
             if (entry == null)
@@ -145,23 +136,25 @@ static class ShapeResolver
             }
 
             MemberEntry? matched = null;
-            foreach (var member in entry.Members)
+            foreach (var candidate in entry.Members)
             {
-                if (string.Equals(member.Name, segments[i], StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(candidate.Name, segments[i], StringComparison.OrdinalIgnoreCase))
                 {
-                    matched = member;
+                    matched = candidate;
                     break;
                 }
             }
 
-            if (matched == null)
+            if (matched == null ||
+                matched.IsStatic)
             {
                 return false;
             }
 
             if (i == segments.Count - 1)
             {
-                return matched.IsExcelsiorTable;
+                member = matched;
+                return true;
             }
 
             currentFqn = matched.TypeFullyQualifiedName;

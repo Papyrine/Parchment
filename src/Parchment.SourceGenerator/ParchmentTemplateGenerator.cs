@@ -972,7 +972,8 @@ public sealed class ParchmentTemplateGenerator :
                 // variable's members are not reachable from the root and fall through to Fluid,
                 // including when the loop variable happens to spell a root path.
                 if (loops.Shadows(lineStart + match.Index, path) ||
-                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
+                    !ShapeResolver.TryResolveMappedMember(target.Shape, path.Split('.'), out var member) ||
+                    !member.IsExcelsiorTable)
                 {
                     continue;
                 }
@@ -1000,8 +1001,6 @@ public sealed class ParchmentTemplateGenerator :
             }
         }
     }
-
-    static readonly Dictionary<string, string> EmptyScope = new();
 
     static readonly Regex markdownToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
 
@@ -1386,7 +1385,13 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
-        if (!ShapeResolver.IsExcelsiorTableMember(target.Shape, token.References[0], scope))
+        // A token rooted at a loop variable reads the loop item, and one that passes through a
+        // static member is in no map: the runtime renders both through Fluid as ordinary values,
+        // where sharing a paragraph and taking a filter are legal. Lockstep with
+        // ExcelsiorTokenValidator, which asks LoopScope and then the root-keyed map.
+        if (scope.ContainsKey(token.References[0][0]) ||
+            !ShapeResolver.TryResolveMappedMember(target.Shape, token.References[0], out var member) ||
+            !member.IsExcelsiorTable)
         {
             return;
         }
@@ -1439,19 +1444,30 @@ public sealed class ParchmentTemplateGenerator :
         // one by walking the model from its root, which has no way to address the item the current
         // iteration is on. The value renders as text with its markup showing, and nothing else says
         // so — see MarkdownFormats and ScopeTreeRunner.TryResolveFormatted.
+        //
+        // Only a bare path is that mistake. A token carrying a filter is an ordinary Fluid
+        // expression, to the runtime and to its author: `| html` / `| markdown` there is the remedy
+        // PARCH024 itself names, and the plain-member-access rule belongs to the root's member.
         if (scope.ContainsKey(token.References[0][0]))
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.FormatMarkerThroughLoopVariable,
-                    location,
-                    templatePath,
-                    token.Source,
-                    member.Name));
+            if (token.IsPlainIdentifier)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.FormatMarkerThroughLoopVariable,
+                        location,
+                        templatePath,
+                        token.Source,
+                        member.Name));
+            }
+
             return;
         }
 
-        if (token.IsPlainIdentifier)
+        // A path through a static member is in no format map, so the runtime never looks the token
+        // up and a filter on it is applied like any other — lockstep with FormatTokenValidator.
+        if (token.IsPlainIdentifier ||
+            !ShapeResolver.TryResolveMappedMember(target.Shape, token.References[0], out _))
         {
             return;
         }
