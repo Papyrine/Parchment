@@ -67,14 +67,21 @@ static class DictionaryLoops
             return false;
         }
 
-        return stringKeyed.GetOrAdd(
-            value.GetType(),
-            static type => type
-                .GetInterfaces()
-                .Any(_ => _.IsGenericType &&
-                          _.GetGenericTypeDefinition() == typeof(IDictionary<,>) &&
-                          _.GetGenericArguments()[0] == typeof(string)));
+        return stringKeyed.GetOrAdd(value.GetType(), HasStringKeys);
     }
+
+    // Suppressed rather than carried up as RequiresUnreferencedCode, unlike the registration-time
+    // sites: the converter is registered from SharedFluid's static initializer, which cannot carry
+    // the attribute. Fluid's own conversion asks this question the same way, so a type whose
+    // IDictionary<string, V> was trimmed away is not a DictionaryValue to Fluid either, and the
+    // answer here still matches what the nested call would produce.
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Mirrors the interface check Fluid makes before it builds a DictionaryValue.")]
+    static bool HasStringKeys(Type type) =>
+        type
+            .GetInterfaces()
+            .Any(_ => _.IsGenericType &&
+                      _.GetGenericTypeDefinition() == typeof(IDictionary<,>) &&
+                      _.GetGenericArguments()[0] == typeof(string));
 
     static FluidValue Unwrap(FluidValue value)
     {
