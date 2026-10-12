@@ -1844,7 +1844,7 @@ public interface IPageNumberResolver
 }
 ```
 
-With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything.
+With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin, or to the edge of the cell for a `[TOC]` in a table cell. A heading in a table cell is listed like any other. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything. The exception is a `[TOC]` with no heading in range: there is nothing to build, so it keeps its placeholder and stays dirty for Word.
 
 **A table of contents changes its own pagination**, which is why the entries are written before anything measures: growing the field from a one-line placeholder to thirty entries pushes every heading below it down a page and would invalidate the numbers already taken. Filling a number into a line that already exists reflows nothing, so one measuring pass is enough.
 
