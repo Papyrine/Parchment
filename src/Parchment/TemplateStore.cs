@@ -69,7 +69,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             EnsureDocumentType(doc);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var (uri, _, root) in DocxCloner.EnumerateParts(doc))
             {
                 // A template authored as a Word form carries its placeholders as FORMTEXT fields
                 // rather than tokens. Rewrite them first so the rest of registration sees a normal
@@ -225,7 +225,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var (uri, _, root) in DocxCloner.EnumerateParts(doc))
             {
                 if (uri == bodyUri)
                 {

@@ -70,7 +70,7 @@ class RegisteredMarkdownTemplate(
             // One counter for the whole render, seeded above what the headers, footers and notes
             // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
             var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
+            var elements = MarkdownRendering.Render(markdownText, mainPart, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
             foreach (var element in elements)
             {
                 body.AppendChild(element);
@@ -163,10 +163,10 @@ class RegisteredMarkdownTemplate(
             return;
         }
 
-        var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
-        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc, tokenParts))
+        var partRoots = new Dictionary<string, (OpenXmlPart part, OpenXmlCompositeElement root)>(StringComparer.Ordinal);
+        foreach (var (uri, part, root) in DocxCloner.EnumerateParts(doc, tokenParts))
         {
-            partRoots[uri] = root;
+            partRoots[uri] = (part, root);
         }
 
         var context = new TemplateContext(model, SharedFluid.Options, allowModelMembers: true);
@@ -175,17 +175,22 @@ class RegisteredMarkdownTemplate(
         foreach (var part in nonBodyParts)
         {
             cancel.ThrowIfCancellationRequested();
-            if (!partRoots.TryGetValue(part.PartUri, out var root))
+            if (!partRoots.TryGetValue(part.PartUri, out var target))
             {
                 continue;
             }
 
+            var root = target.root;
+            // The `| markdown` and `| html` filters still bind here, and a link either produces
+            // has to hang off this part rather than the main one.
+            var relationships = new PartRelationships(mainPart, target.part);
             var runner = new ScopeTreeRunner(
                 Name,
                 part.PartUri,
                 Anchors.BuildMap(root),
                 context,
                 mainPart,
+                relationships,
                 model,
                 ExcelsiorTableMap.Empty,
                 FormatMap.Empty,
@@ -199,6 +204,7 @@ class RegisteredMarkdownTemplate(
             await runner.RunAsync(part.Nodes);
             runner.ApplyStructural();
             runner.SeparateProducedTables();
+            relationships.Complete();
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based

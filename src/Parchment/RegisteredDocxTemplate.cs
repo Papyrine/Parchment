@@ -36,10 +36,10 @@ class RegisteredDocxTemplate(
             // enumerated a second time for the strip pass — O(parts²) plus redundant string allocs.
             // Only the token-bearing parts: reading a root parses the part and the save then writes
             // it back out, which for a token-free header, footer or notes part is all overhead.
-            var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc, tokenParts))
+            var partRoots = new Dictionary<string, (OpenXmlPart part, OpenXmlCompositeElement root)>(StringComparer.Ordinal);
+            foreach (var (uri, part, root) in DocxCloner.EnumerateParts(doc, tokenParts))
             {
-                partRoots[uri] = root;
+                partRoots[uri] = (part, root);
             }
 
             var numberingState = new WordNumberingState(mainPart);
@@ -52,15 +52,15 @@ class RegisteredDocxTemplate(
             foreach (var part in parts)
             {
                 cancel.ThrowIfCancellationRequested();
-                if (!partRoots.TryGetValue(part.PartUri, out var root))
+                if (!partRoots.TryGetValue(part.PartUri, out var target))
                 {
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
+                await RenderPartAsync(mainPart, part, target.part, target.root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
             }
 
-            foreach (var root in partRoots.Values)
+            foreach (var (_, root) in partRoots.Values)
             {
                 Anchors.StripAll(root);
                 // Once every substitution in the part has run, so splitting a w:t can no longer
@@ -89,19 +89,22 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlPart owner, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
     {
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
         // as plain read-only text — deliberate (e.g. an editable PO number in the body can be
         // mirrored read-only in the footer).
         var map = Anchors.BuildMap(root);
+        // A link or an image produced in a header, footer or note has to hang off that part.
+        var relationships = new PartRelationships(mainPart, owner);
         var runner = new ScopeTreeRunner(
             Name,
             part.PartUri,
             map,
             context,
             mainPart,
+            relationships,
             model,
             excelsiorTables,
             formats,
@@ -115,5 +118,6 @@ class RegisteredDocxTemplate(
         await runner.RunAsync(part.Nodes);
         runner.ApplyStructural();
         runner.SeparateProducedTables();
+        relationships.Complete();
     }
 }

@@ -8,7 +8,7 @@ static class RendererHarness
         mainPart.Document = new(new Body());
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         stylesPart.Styles = new();
-        return new(mainPart, new(mainPart), ImagePolicies.AllowAll, headingOffset);
+        return new(mainPart, mainPart, new(mainPart), ImagePolicies.AllowAll, headingOffset);
     }
 
     public static MarkdownDocument Parse(string markdown) =>
@@ -24,7 +24,7 @@ static class RendererHarness
         mainPart.Document = new(new Body());
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         stylesPart.Styles = new();
-        return MarkdownRendering.Render(markdown, mainPart, new(mainPart), ImagePolicies.AllowAll, new(0), 0);
+        return MarkdownRendering.Render(markdown, mainPart, mainPart, new(mainPart), ImagePolicies.AllowAll, new(0), 0);
     }
 
     public static T FirstBlock<T>(string markdown)

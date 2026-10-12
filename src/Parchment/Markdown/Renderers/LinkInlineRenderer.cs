@@ -49,7 +49,7 @@ class LinkInlineRenderer :
             return;
         }
 
-        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
+        var relId = RelationshipIds.Hyperlink(renderer.Part, url);
         WriteHyperlink(renderer, inline, new()
         {
             Id = relId

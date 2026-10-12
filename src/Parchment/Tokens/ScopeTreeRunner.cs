@@ -8,6 +8,7 @@ class ScopeTreeRunner(
     Dictionary<string, Paragraph> anchorMap,
     TemplateContext context,
     MainDocumentPart mainPart,
+    PartRelationships relationships,
     object rootModel,
     ExcelsiorTableMap excelsiorTables,
     FormatMap formats,
@@ -228,8 +229,13 @@ class ScopeTreeRunner(
             {
                 // Clear the token text, then hand the paragraph to the caller for in-place mutation.
                 Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
+                var ctx = new OpenXmlContextImpl(mainPart, relationships.Owner, numberingState, styles.Value, host);
+                // As for a produced fragment, see RenderTokenValue - but the host also holds what
+                // the template put there, which refers to this part and is not to be repointed.
+                var held = relationships.Snapshot();
+                var existing = held == null ? null : host.Descendants().ToHashSet();
                 mutate.Apply(host, ctx);
+                relationships.Claim(host, existing, held);
                 cachedText = null;
                 continue;
             }
@@ -337,10 +343,20 @@ class ScopeTreeRunner(
 
     IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host)
     {
+        // In a header, footer or note, what the html converter, Excelsior or a delegate adds to
+        // the main part for this content belongs to the part the content lands in.
+        var held = relationships.Snapshot();
+        var produced = Produce(value, host);
+        relationships.Claim(produced, held);
+        return produced;
+    }
+
+    IReadOnlyList<OpenXmlElement> Produce(object value, Paragraph host)
+    {
         if (value is MarkdownToken md)
         {
             // Renumbers its own bookmarks, from the same counter.
-            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            return MarkdownRendering.Render(md.Source, mainPart, relationships.Owner, numberingState, imagePolicies, bookmarks, headingOffset: 0);
         }
 
         IReadOnlyList<OpenXmlElement> produced = value switch
@@ -351,7 +367,7 @@ class ScopeTreeRunner(
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession())),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             OpenXmlToken raw => raw
-                .Render(new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host))
+                .Render(new OpenXmlContextImpl(mainPart, relationships.Owner, numberingState, styles.Value, host))
                 .ToList(),
             _ => []
         };
@@ -666,6 +682,7 @@ class ScopeTreeRunner(
             cloneAnchors,
             context,
             mainPart,
+            relationships,
             rootModel,
             excelsiorTables,
             formats,
@@ -795,6 +812,7 @@ class ScopeTreeRunner(
                     cloneAnchors,
                     context,
                     mainPart,
+                    relationships,
                     rootModel,
                     excelsiorTables,
                     formats,
@@ -1014,7 +1032,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
         {
             loopVariables = loopVariables
         };

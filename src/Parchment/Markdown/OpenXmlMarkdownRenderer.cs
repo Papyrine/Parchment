@@ -8,9 +8,10 @@ class OpenXmlMarkdownRenderer :
     int currentIndent;
     int nextBookmarkId;
 
-    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
+    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, OpenXmlPart part, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
     {
         MainPart = mainPart;
+        Part = part;
         HeadingOffset = headingOffset;
         Numbering = numbering;
         ImagePolicies = imagePolicies;
@@ -38,6 +39,12 @@ class OpenXmlMarkdownRenderer :
     }
 
     public MainDocumentPart MainPart { get; }
+
+    // The part the rendered elements land in, which is where a link's relationship has to be
+    // added: a relationship id resolves against the part holding the element that carries it.
+    // MainPart is still what OpenXmlHtml is handed, since that is all it takes - the relationships
+    // it leaves there are moved by PartRelationships.
+    public OpenXmlPart Part { get; }
     public int HeadingOffset { get; }
     public WordNumberingState Numbering { get; }
     public ImagePolicies ImagePolicies { get; }
