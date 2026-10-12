@@ -229,7 +229,12 @@ class ScopeTreeRunner(
                 // Clear the token text, then hand the paragraph to the caller for in-place mutation.
                 Text().Replace(token.Offset, token.Length, string.Empty);
                 var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
+                // The caller numbers a bookmark it adds without sight of the document, and the
+                // paragraph it adds it to already holds the anchor's and maybe the template's -
+                // see BookmarkIds.
+                var existing = BookmarkIds.Markers(host);
                 mutate.Apply(host, ctx);
+                bookmarks.RenumberAdded(host, existing);
                 cachedText = null;
                 continue;
             }

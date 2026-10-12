@@ -679,6 +679,8 @@ await store.Render(
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L133-L154' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
+A bookmark the callback opens and closes inside the paragraph is renumbered once the callback returns, so that its `w:id` is unique in the document: the id the callback writes only has to match between its own `w:bookmarkStart` and `w:bookmarkEnd`. The name is left as written.
+
 
 ### Excelsior tables
 
