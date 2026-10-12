@@ -1898,7 +1898,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L989-L997' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1010-L1018' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
