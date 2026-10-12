@@ -494,6 +494,249 @@ public partial class EditableCollectionTests
         await Assert.That(list.Chores[0].Done).IsFalse();
     }
 
+    public class Depot
+    {
+        [EditableField]
+        public string? Code { get; set; }
+    }
+
+    public class Shipping
+    {
+        [EditableField]
+        public string? Note { get; set; }
+
+        [EditableField]
+        public bool Fragile { get; set; }
+
+        [EditableField]
+        public int Boxes { get; set; }
+
+        [EditableField]
+        public Date Due { get; set; }
+
+        [EditableField]
+        public Priority Priority { get; set; }
+
+        [EditableField]
+        public DateTimeOffset Logged { get; set; }
+
+        [EditableField]
+        public Time At { get; set; }
+
+        [EditableField]
+        [System.Diagnostics.CodeAnalysis.StringSyntax("html")]
+        public string? Instructions { get; set; }
+
+        public Depot? Depot { get; set; }
+    }
+
+    public class Parcel
+    {
+        [EditableField]
+        public string? Name { get; set; }
+
+        public Shipping? Shipping { get; set; }
+    }
+
+    [ParchmentBindable]
+    public partial class Manifest
+    {
+        [EditableField]
+        public List<Parcel> Parcels { get; set; } = [];
+    }
+
+    const string manifestTemplate =
+        """
+        {% for p in Parcels %}
+
+        {{ p.Name }} {{ p.Shipping.Note }} {{ p.Shipping.Fragile }} {{ p.Shipping.Boxes }} {{ p.Shipping.Due }} {{ p.Shipping.Priority }} {{ p.Shipping.Logged }} {{ p.Shipping.At }} {{ p.Shipping.Depot.Code }}
+
+        {{ p.Shipping.Instructions }}
+
+        {% endfor %}
+        """;
+
+    static Manifest NewManifest() =>
+        new()
+        {
+            Parcels =
+            [
+                new()
+                {
+                    Name = "first",
+                    Shipping = new()
+                    {
+                        Note = "leave at door",
+                        Fragile = true,
+                        Boxes = 3,
+                        Due = new(2026, 3, 4),
+                        Priority = Priority.High,
+                        Logged = new(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)),
+                        At = new(9, 30),
+                        Instructions = "<p>Keep <strong>upright</strong></p>",
+                        Depot = new()
+                        {
+                            Code = "SYD"
+                        }
+                    }
+                },
+                new()
+                {
+                    Name = "second"
+                }
+            ]
+        };
+
+    // Extraction builds each item from nothing, so the objects between the item and a nested
+    // editable member have to be created on the way to the value, at every depth and for every
+    // kind of control.
+    [Test]
+    public async Task NestedElementMembersRoundTrip()
+    {
+        using var stream = await Render(manifestTemplate, NewManifest());
+
+        var result = ParchmentExtractor.Extract<Manifest>(stream);
+        var model = new Manifest();
+        result.ApplyTo(model);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(model.Parcels.Count).IsEqualTo(2);
+
+        var shipping = model.Parcels[0].Shipping!;
+        await Assert.That(shipping.Note).IsEqualTo("leave at door");
+        await Assert.That(shipping.Fragile).IsTrue();
+        await Assert.That(shipping.Boxes).IsEqualTo(3);
+        await Assert.That(shipping.Due).IsEqualTo(new Date(2026, 3, 4));
+        await Assert.That(shipping.Priority).IsEqualTo(Priority.High);
+        await Assert.That(shipping.Logged).IsEqualTo(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)));
+        await Assert.That(shipping.At).IsEqualTo(new Time(9, 30));
+        await Assert.That(shipping.Instructions).IsEqualTo("<p>Keep <strong>upright</strong></p>");
+        await Assert.That(shipping.Depot!.Code).IsEqualTo("SYD");
+
+        await Assert.That(model.Parcels[1].Name).IsEqualTo("second");
+    }
+
+    [Test]
+    public async Task NestedElementMemberEditedInWordIsExtracted()
+    {
+        using var stream = await Render(manifestTemplate, NewManifest());
+
+        // The second row was rendered from an item with no Shipping at all: its nested controls
+        // show placeholders, and the user fills two of them in.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var content = RepeatingSection(body, "Parcels").ChildElements.First(_ => _.LocalName == "sdtContent");
+            var items = content.ChildElements.Where(IsItem).Cast<SdtBlock>().ToList();
+
+            SetText(Control(items[0], "Shipping.Note"), "ring the bell");
+            SetText(Control(items[1], "Shipping.Note"), "new note");
+            SetText(Control(items[1], "Shipping.Depot.Code"), "MEL");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<Manifest>(stream);
+        var model = new Manifest();
+        result.ApplyTo(model);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(model.Parcels[0].Shipping!.Note).IsEqualTo("ring the bell");
+        await Assert.That(model.Parcels[1].Shipping!.Note).IsEqualTo("new note");
+        await Assert.That(model.Parcels[1].Shipping!.Depot!.Code).IsEqualTo("MEL");
+    }
+
+    public abstract class Carrier
+    {
+        [EditableField]
+        public string? Contact { get; set; }
+    }
+
+    public class Courier : Carrier;
+
+    public class Seal(string code)
+    {
+        public string Code { get; } = code;
+
+        [EditableField]
+        public string? Colour { get; set; }
+    }
+
+    public class Customs
+    {
+        [EditableField]
+        public string? Tariff { get; set; }
+    }
+
+    public class Crate
+    {
+        [EditableField]
+        public string? Name { get; set; }
+
+        public Carrier? Carrier { get; set; }
+
+        public Seal? Seal { get; set; }
+
+        public Customs Customs { get; } = new();
+    }
+
+    [ParchmentBindable]
+    public partial class Hold
+    {
+        [EditableField]
+        public List<Crate> Crates { get; set; } = [];
+    }
+
+    // An abstract type, or one with no parameterless constructor, cannot be created for a new item,
+    // so the value has nowhere to go. That is reported instead of being dropped; a parent the
+    // element initializes itself needs no creating and still round-trips.
+    [Test]
+    public async Task NestedElementMemberThatCannotBeCreatedIsReported()
+    {
+        var crate = new Crate
+        {
+            Name = "one",
+            Carrier = new Courier
+            {
+                Contact = "Ann"
+            },
+            Seal = new("s1")
+            {
+                Colour = "red"
+            }
+        };
+        crate.Customs.Tariff = "8471";
+        using var stream = await Render(
+            """
+            {% for c in Crates %}
+
+            {{ c.Name }} {{ c.Carrier.Contact }} {{ c.Seal.Colour }} {{ c.Customs.Tariff }}
+
+            {% endfor %}
+            """,
+            new Hold
+            {
+                Crates = [crate, crate]
+            });
+
+        var result = ParchmentExtractor.Extract<Hold>(stream);
+        var model = new Hold();
+        result.ApplyTo(model);
+
+        await Assert.That(result.AllExtracted).IsFalse();
+        var unreachable = result.Fields
+            .Where(_ => _.State == FieldState.Unreachable)
+            .Select(_ => $"{_.Path}={_.Value}")
+            .ToList();
+        await Assert.That(unreachable).IsEquivalentTo(["Crates.Carrier.Contact=Ann", "Crates.Seal.Colour=red"]);
+
+        await Assert.That(model.Crates.Count).IsEqualTo(2);
+        await Assert.That(model.Crates[0].Name).IsEqualTo("one");
+        await Assert.That(model.Crates[0].Customs.Tariff).IsEqualTo("8471");
+        await Assert.That(model.Crates[0].Carrier).IsNull();
+        await Assert.That(model.Crates[0].Seal).IsNull();
+    }
+
     // Extraction is replace-all: the rows in the document become the collection. A loop that
     // rendered only a window of it, or rendered it backwards, would have that written back as the
     // data, so the modifiers are refused here instead of applied.

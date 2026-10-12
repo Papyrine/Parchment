@@ -29,4 +29,7 @@
     // set and this holds the raw name for the diagnostic; emission skips it, so the clean report is
     // the only error rather than the first of a cascade.
     string? ExcelsiorConfigure = null,
-    bool ExcelsiorConfigureMissing = false);
+    bool ExcelsiorConfigureMissing = false,
+    // Whether extraction can put a new object here when it rebuilds a collection item: the member
+    // is assignable and its type is a concrete class with a public parameterless constructor.
+    bool CanCreateValue = false);

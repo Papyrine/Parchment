@@ -84,7 +84,7 @@ public static class ParchmentExtractor
                     continue;
                 }
 
-                collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!)));
+                collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!, fields)));
                 MarkConsumed(sdt, consumed);
             }
 
@@ -150,10 +150,11 @@ public static class ParchmentExtractor
         }
     }
 
-    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
+    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart, List<ExtractedField> fields)
     {
         var listType = typeof(List<>).MakeGenericType(entry.ElementType);
         var list = (IList)Activator.CreateInstance(listType)!;
+        HashSet<string>? unreachable = null;
 
         foreach (var itemSdt in RepeatedItems(container))
         {
@@ -169,9 +170,10 @@ public static class ParchmentExtractor
                 }
 
                 var field = EditableFieldReader.Read(control, elementEntry, culture, mainPart);
-                if (field.State == FieldState.Extracted &&
-                    elementEntry.CanReach(item))
+                if (field.State == FieldState.Extracted)
                 {
+                    // The item is new, so an object between it and the member is null unless the
+                    // element initializes it. The setter creates the ones it can.
                     elementEntry.Setter(item, field.Value);
 
                     // A checkbox cannot be rendered empty, so in the blank item of an empty
@@ -180,6 +182,21 @@ public static class ParchmentExtractor
                         field.Value is false)
                     {
                         continue;
+                    }
+
+                    // Where an object on the way could not be created the value has nowhere to
+                    // go, and that is reported once per member instead of being dropped.
+                    if (!elementEntry.CanReach(item))
+                    {
+                        unreachable ??= new(StringComparer.OrdinalIgnoreCase);
+                        if (unreachable.Add(elementEntry.DottedPath))
+                        {
+                            fields.Add(field with
+                            {
+                                Path = $"{entry.DottedPath}.{elementEntry.DottedPath}",
+                                State = FieldState.Unreachable
+                            });
+                        }
                     }
 
                     anyValue = true;

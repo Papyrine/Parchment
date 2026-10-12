@@ -165,7 +165,8 @@ static class ShapeBuilder
                         editableDateFormat,
                         editableCollectionElementFqn,
                         excelsiorConfigureCall,
-                        excelsiorConfigureMissing));
+                        excelsiorConfigureMissing,
+                        !isStatic && HasUsableSetter(member) && IsCreatable(memberType)));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -245,6 +246,11 @@ static class ShapeBuilder
             Parameters.IsEmpty: true,
             DeclaredAccessibility: Accessibility.Public
         });
+
+    static bool IsCreatable(ITypeSymbol type) =>
+        type is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false } &&
+        !IsSystemType(type) &&
+        HasParameterlessCtor(type);
 
     static (bool isHtml, bool isMarkdown, bool conflict) DetectFormat(ISymbol member)
     {

@@ -22,14 +22,16 @@ public sealed class ExtractResult<TModel>
 
     /// <summary>
     /// One entry per editable member of <typeparamref name="TModel"/> (plus a
-    /// <see cref="FieldState.Duplicate"/> entry per extra occurrence), in document order with
-    /// missing members appended.
+    /// <see cref="FieldState.Duplicate"/> entry per extra occurrence, and a
+    /// <see cref="FieldState.Unreachable"/> entry per collection element member whose value could
+    /// not be stored), in document order with missing members appended.
     /// </summary>
     public IReadOnlyList<ExtractedField> Fields { get; }
 
     /// <summary>
     /// True when every field read cleanly (<see cref="FieldState.Extracted"/> or
-    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, or duplicates.
+    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, duplicates, or
+    /// unreachable collection element members.
     /// </summary>
     public bool AllExtracted { get; }
 
