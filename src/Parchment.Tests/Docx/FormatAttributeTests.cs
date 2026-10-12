@@ -283,6 +283,31 @@ public partial class FormatAttributeTests
     }
 
     [Test]
+    public async Task SoloHtml_TrailingSpace_ReplacesHostParagraph()
+    {
+        // A space after the token leaves it alone in its paragraph: the blocks replace the host
+        // and no empty before/after halves are left around them.
+        using var template = DocxTemplateBuilder.Build("{{ Body }} ");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = "<p>First</p><p>Second</p>"
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["First", "Second"]);
+    }
+
+    [Test]
     public async Task NonSoloHtml_BlockContent_SplitsHostParagraph()
     {
         // Block-level HTML (multiple `<p>`s) in a non-solo token — the host paragraph is split:
@@ -438,6 +463,74 @@ public partial class FormatAttributeTests
             .Throws<ParchmentRenderException>();
         await Assert.That(exception!.Message).Contains("Move one of the tokens to its own paragraph");
     }
+
+    // Markdown reaches the same table renderer from a docx template, so a table wider than Word's
+    // 63 columns is refused here too, and the error names the token the markdown came through.
+    [Test]
+    [Arguments("{{ Body }}", "{{ Body }}")]
+    [Arguments("Intro {{ Body }} outro", "{{ Body }}")]
+    [Arguments("{{ Title | markdown }}", "{{ Title | markdown }}")]
+    public async Task MarkdownTableOverTheColumnLimitIsRejected(string templateText, string token)
+    {
+        using var template = DocxTemplateBuilder.Build(templateText);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<MarkdownDoc>(template);
+
+        var model = new MarkdownDoc
+        {
+            Title = WideTable,
+            Body = WideTable
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.Message).Contains("at most 63");
+        await Assert.That(exception.TokenSource).IsEqualTo(token);
+        await Assert.That(exception.PartUri).IsEqualTo("/word/document.xml");
+    }
+
+    [ParchmentBindable]
+    public partial class MarkdownItemsDoc
+    {
+        public required string[] Items { get; init; }
+    }
+
+    [Test]
+    public async Task MarkdownTableOverTheColumnLimitInsideALoopIsRejected()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for item in Items %}
+
+            {{ item | markdown }}
+
+            {% endfor %}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<MarkdownItemsDoc>(template);
+
+        var model = new MarkdownItemsDoc
+        {
+            Items = ["plain", WideTable]
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.TokenSource).IsEqualTo("{{ item | markdown }}");
+    }
+
+    static string WideTable { get; } =
+        string.Join(
+            '\n',
+            "|" + string.Concat(Enumerable.Repeat(" h |", 64)),
+            "|" + string.Concat(Enumerable.Repeat("---|", 64)),
+            "|" + string.Concat(Enumerable.Repeat(" c |", 64)));
 
     static async Task<Body> RenderBody<T>(string templateText, T model)
         where T : notnull
@@ -695,6 +788,235 @@ public partial class FormatAttributeTests
         await Assert.That(paragraphs[^1].Descendants<Break>().Count()).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsSectionBreakOnceOnTrailingHalf()
+    {
+        // Word puts a section break on the last paragraph of the section it closes. Both halves
+        // of a split start from the host's paragraph properties, so the break has to come off
+        // the first half or the section ends twice.
+        using var template = BuildBodyTemplate(
+            new Paragraph(PreservedRun("section one")),
+            SectionBreakParagraph("before {{ Body }} after"),
+            new Paragraph(PreservedRun("section two")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("section one|before |one|two| after|section two");
+        await Assert.That(SectionBreakPositions(body)).IsEquivalentTo([4]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsSectionBreakOnEmptyTrailingHalf()
+    {
+        using var template = BuildBodyTemplate(
+            new Paragraph(PreservedRun("section one")),
+            SectionBreakParagraph("before {{ Body }}"),
+            new Paragraph(PreservedRun("section two")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("section one|before |one|two||section two");
+        await Assert.That(SectionBreakPositions(body)).IsEquivalentTo([4]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsSectionBreakWhenLeadingHalfIsEmpty()
+    {
+        using var template = BuildBodyTemplate(
+            new Paragraph(PreservedRun("section one")),
+            SectionBreakParagraph("{{ Body }} after"),
+            new Paragraph(PreservedRun("section two")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("section one||one|two| after|section two");
+        await Assert.That(SectionBreakPositions(body)).IsEquivalentTo([4]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_Table_KeepsSectionBreakOnParagraphAfterTable()
+    {
+        // A section break needs a paragraph to sit on, so content that ends with a table has to
+        // be followed by the trailing half even though nothing is left to put in it.
+        using var template = BuildBodyTemplate(
+            new Paragraph(PreservedRun("section one")),
+            SectionBreakParagraph("before {{ Body }}"),
+            new Paragraph(PreservedRun("section two")));
+
+        var body = await RenderValidBody(template, "<table><tr><td>cell</td></tr></table>");
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("section one|before ||section two");
+        await Assert.That(body.ChildElements[2]).IsTypeOf<Table>();
+        await Assert.That(SectionBreakPositions(body)).IsEquivalentTo([3]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_SubstitutesTokenBeforeItInSectionBreakParagraph()
+    {
+        // The token at the lower offset is substituted into the host after the split has taken
+        // the section break off it.
+        using var template = BuildBodyTemplate(
+            SectionBreakParagraph("Dear {{ Title }}: {{ Body }} end"),
+            new Paragraph(PreservedRun("section two")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("Dear T: |one|two| end|section two");
+        await Assert.That(SectionBreakPositions(body)).IsEquivalentTo([3]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsPageBreakBeforeOnFirstHalfOnly()
+    {
+        using var template = BuildBodyTemplate(
+            new Paragraph(PreservedRun("first page")),
+            new Paragraph(
+                new ParagraphProperties(
+                    new PageBreakBefore(),
+                    new Justification
+                    {
+                        Val = JustificationValues.Center
+                    }),
+                PreservedRun("before {{ Body }} after")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+        var paragraphs = body.Elements<Paragraph>().ToList();
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("first page|before |one|two| after");
+        await Assert.That(paragraphs.Where(_ => _.ParagraphProperties?.PageBreakBefore != null).Select(_ => _.InnerText))
+            .IsEquivalentTo(["before "]);
+        // Formatting still reaches both halves.
+        await Assert.That(paragraphs.Where(_ => _.ParagraphProperties?.Justification != null).Select(_ => _.InnerText))
+            .IsEquivalentTo(["before ", " after"]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_DropsPropertiesLeftEmptyOnTrailingHalf()
+    {
+        using var template = BuildBodyTemplate(
+            new Paragraph(
+                new ParagraphProperties(new PageBreakBefore()),
+                PreservedRun("before {{ Body }} after")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+        var paragraphs = body.Elements<Paragraph>().ToList();
+
+        await Assert.That(paragraphs[0].ParagraphProperties?.PageBreakBefore).IsNotNull();
+        await Assert.That(paragraphs[^1].ParagraphProperties).IsNull();
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_KeepsSuppressedPageBreakBeforeOnBothHalves()
+    {
+        // Written as off, the element is there to cancel a break the paragraph style asks for,
+        // and the trailing half has the same style.
+        using var template = BuildBodyTemplate(
+            new Paragraph(
+                new ParagraphProperties(
+                    new PageBreakBefore
+                    {
+                        Val = false
+                    }),
+                PreservedRun("before {{ Body }} after")));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+
+        await Assert.That(body.Elements<Paragraph>().Where(_ => _.ParagraphProperties?.PageBreakBefore != null).Select(_ => _.InnerText))
+            .IsEquivalentTo(["before ", " after"]);
+    }
+
+    [Test]
+    public async Task NonSoloHtml_BlockContent_NumbersSplitListItemOnce()
+    {
+        // One list item in the template is one number in the output: a trailing half that kept
+        // the numbering would be counted as an item of its own and push every later number up.
+        using var template = BuildBodyTemplate(
+            ListItem("first"),
+            ListItem("before {{ Body }} after"),
+            ListItem("last"));
+
+        var body = await RenderValidBody(template, "<p>one</p><p>two</p>");
+        var paragraphs = body.Elements<Paragraph>().ToList();
+
+        await Assert.That(ParagraphTexts(body)).IsEqualTo("first|before |one|two| after|last");
+        await Assert.That(paragraphs.Where(IsNumbered).Select(_ => _.InnerText))
+            .IsEquivalentTo(["first", "before ", "last"]);
+
+        // Number 0 switches numbering off, including any the paragraph style would supply; the
+        // rest of the item's formatting stays.
+        var trailing = paragraphs[4].ParagraphProperties!;
+        await Assert.That(trailing.NumberingProperties!.NumberingId!.Val!.Value).IsEqualTo(0);
+        await Assert.That(trailing.ParagraphStyleId!.Val!.Value).IsEqualTo("ListParagraph");
+    }
+
+    static bool IsNumbered(Paragraph paragraph) =>
+        paragraph.ParagraphProperties?.NumberingProperties?.NumberingId?.Val?.Value is > 0;
+
+    static Paragraph ListItem(string text) =>
+        new(
+            new ParagraphProperties(
+                new ParagraphStyleId
+                {
+                    Val = "ListParagraph"
+                },
+                new NumberingProperties(
+                    new NumberingLevelReference
+                    {
+                        Val = 0
+                    },
+                    new NumberingId
+                    {
+                        Val = 1
+                    })),
+            PreservedRun(text));
+
+    static Paragraph SectionBreakParagraph(string text) =>
+        new(
+            new ParagraphProperties(
+                new SectionProperties(
+                    new PageSize
+                    {
+                        Width = 6500,
+                        Height = 8000
+                    })),
+            PreservedRun(text));
+
+    /// <summary>
+    /// Indexes, among the body's children, of the paragraphs that carry a section break.
+    /// </summary>
+    static List<int> SectionBreakPositions(Body body) =>
+        body.ChildElements
+            .Select((element, index) => (element, index))
+            .Where(_ => _.element is Paragraph { ParagraphProperties.SectionProperties: not null })
+            .Select(_ => _.index)
+            .ToList();
+
+    static async Task<Body> RenderValidBody(MemoryStream template, string html)
+    {
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = html
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        // Named in full: a using directive would move every readme snippet this file supplies.
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
+            .Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+
+        return (Body)doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
+    }
+
     static Run PreservedRun(string text) =>
         new(
             new Text(text)
@@ -732,21 +1054,25 @@ public partial class FormatAttributeTests
             .ToList();
     }
 
-    static MemoryStream BuildSingleParagraphTemplate(params OpenXmlElement[] children)
+    static MemoryStream BuildSingleParagraphTemplate(params OpenXmlElement[] children) =>
+        BuildBodyTemplate(new Paragraph(children));
+
+    static MemoryStream BuildBodyTemplate(params OpenXmlElement[] blocks)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
+            var body = new Body(blocks);
+            body.AppendChild(
+                new SectionProperties(
+                    new PageSize
+                    {
+                        Width = 6500,
+                        Height = 8000
+                    }));
+
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new(
-                new Body(
-                    new Paragraph(children),
-                    new SectionProperties(
-                        new PageSize
-                        {
-                            Width = 6500,
-                            Height = 8000
-                        })));
+            mainPart.Document = new(body);
         }
 
         stream.Position = 0;
@@ -822,5 +1148,45 @@ public partial class FormatAttributeTests
         {
             File.Delete(pngPath);
         }
+    }
+
+    [ParchmentBindable]
+    public partial class NonStringFormatDoc
+    {
+        public int Count;
+        public decimal? Price;
+        public string? Note;
+    }
+
+    // The generator refuses a marker on a non-string (PARCH029), so the entries are registered by
+    // hand here: a value that is not a string must print as an unmarked member does, not vanish.
+    [Test]
+    public async Task NonStringFormatEntryRendersTheValue()
+    {
+        Parchment.Generated.GeneratedRegistration.RegisterFormat(
+            typeof(NonStringFormatDoc),
+            [
+                new("Count", Parchment.Generated.FormatMapKind.Html, _ => ((NonStringFormatDoc)_).Count),
+                new("Price", Parchment.Generated.FormatMapKind.Markdown, _ => ((NonStringFormatDoc)_).Price),
+                new("Note", Parchment.Generated.FormatMapKind.Html, _ => ((NonStringFormatDoc)_).Note)
+            ]);
+
+        using var template = DocxTemplateBuilder.Build("Count={{ Count }}|\nPrice={{ Price }}|\nNote={{ Note }}|");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<NonStringFormatDoc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new NonStringFormatDoc
+            {
+                Count = 5,
+                Price = 9.5m
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var text = string.Join('\n', doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Select(_ => _.InnerText));
+        await Assert.That(text).IsEqualTo("Count=5|\nPrice=9.5|\nNote=|");
     }
 }

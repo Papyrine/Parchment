@@ -25,8 +25,9 @@ public partial class PageNumberResolverTests
         """;
 
     // Whatever paginates the document reports where each bookmark landed; everything else — the
-    // entries, the styles, the links — is Parchment's to build.
-    class StubResolver : IPageNumberResolver
+    // entries, the styles, the links — is Parchment's to build. A limit stands in for an engine that
+    // could not place every bookmark.
+    class StubResolver(int limit = int.MaxValue) : IPageNumberResolver
     {
         public List<string> Bookmarks { get; } = [];
 
@@ -41,20 +42,21 @@ public partial class PageNumberResolverTests
             Bookmarks.AddRange(names!);
 
             IReadOnlyDictionary<string, int> pages = names
+                .Take(limit)
                 .Select((name, index) => (name: name!, page: index + 2))
                 .ToDictionary(_ => _.name, _ => _.page, StringComparer.Ordinal);
             return Task.FromResult(pages);
         }
     }
 
-    static async Task<MemoryStream> RenderStream(IPageNumberResolver? resolver)
+    static async Task<MemoryStream> RenderStream(IPageNumberResolver? resolver, string template = markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();
         var store = new TemplateStore
         {
             PageNumbers = resolver
         };
-        store.RegisterMarkdownTemplate<ReportModel>(markdown, styleSource);
+        store.RegisterMarkdownTemplate<ReportModel>(template, styleSource);
 
         var stream = new MemoryStream();
         await store.Render(
@@ -67,9 +69,9 @@ public partial class PageNumberResolverTests
         return stream;
     }
 
-    static async Task<Body> Render(IPageNumberResolver? resolver)
+    static async Task<Body> Render(IPageNumberResolver? resolver, string template = markdown)
     {
-        using var stream = await RenderStream(resolver);
+        using var stream = await RenderStream(resolver, template);
         using var doc = WordprocessingDocument.Open(stream, false);
         return (Body)doc.MainDocumentPart!.Document!.Body!.CloneNode(true);
     }
@@ -172,6 +174,142 @@ public partial class PageNumberResolverTests
 
         await Assert.That(body.Descendants<Hyperlink>().Any(_ => _.Anchor?.Value?.StartsWith("_Toc") == true)).IsFalse();
         await Assert.That(body.Descendants<FieldChar>().Any(_ => _.Dirty?.Value == true)).IsTrue();
+    }
+
+    const string headings =
+        """
+
+
+        # First
+
+        # Second
+        """;
+
+    const string pipeCell =
+        """
+        | Contents |
+        | --- |
+        | [TOC] |
+        """;
+
+    const string pipeHeaderCell =
+        """
+        | [TOC] |
+        | --- |
+        | Contents |
+        """;
+
+    const string gridCell =
+        """
+        +----------+
+        | Contents |
+        +==========+
+        | [TOC]    |
+        +----------+
+        """;
+
+    const string cellInAQuote =
+        """
+        > | Contents |
+        > | --- |
+        > | [TOC] |
+        """;
+
+    const string cellInAListItem =
+        """
+        - Item
+
+          | Contents |
+          | --- |
+          | [TOC] |
+        """;
+
+    const string cellInACell =
+        """
+        +----------------+
+        | Outer          |
+        +================+
+        | | Contents |   |
+        | | --- |        |
+        | | [TOC] |      |
+        +----------------+
+        """;
+
+    // A table cell is the one place the renderer writes a [TOC] below the body: a quote or a list
+    // item flattens to body paragraphs, but a table inside either still has cells, and so does a
+    // table inside another table's cell. The entries are built where the field is, so that is where
+    // their numbers have to be written.
+    [Test]
+    [Arguments(pipeCell, 1)]
+    [Arguments(pipeHeaderCell, 1)]
+    [Arguments(gridCell, 1)]
+    [Arguments(cellInAQuote, 1)]
+    [Arguments(cellInAListItem, 1)]
+    [Arguments(cellInACell, 2)]
+    public async Task EntriesInATableCellTakeTheResolvedPageNumbers(string table, int depth)
+    {
+        using var stream = await RenderStream(new StubResolver(), table + headings);
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var entries = body.Descendants<Hyperlink>().ToList();
+
+        await Assert.That(entries.Count).IsEqualTo(2);
+        await Assert.That(entries[0].Ancestors<TableCell>().Count()).IsEqualTo(depth);
+        await Assert.That(entries[1].Ancestors<TableCell>().Count()).IsEqualTo(depth);
+
+        // The stub numbers bookmarks in document order from page 2.
+        await Assert.That(PageNumber(entries[0])).IsEqualTo("2");
+        await Assert.That(PageNumber(entries[1])).IsEqualTo("3");
+        await Assert.That(body.Descendants<FieldChar>().Any(_ => _.Dirty?.Value == true)).IsFalse();
+
+        var validator = new OpenXmlValidator(FileFormatVersions.Microsoft365);
+        await Assert.That(validator.Validate(doc).Select(_ => $"{_.Description} @ {_.Path?.XPath}")).IsEmpty();
+    }
+
+    // Each field's entries are found from the field itself, so one in the body and one in a cell do
+    // not answer for each other.
+    [Test]
+    public async Task ATableOfContentsInTheBodyAndOneInACellAreBothResolved()
+    {
+        var body = await Render(new StubResolver(), "[TOC]\n\n" + pipeCell + headings);
+        var entries = body.Descendants<Hyperlink>().ToList();
+
+        await Assert.That(entries.Select(_ => _.Ancestors<TableCell>().Count())).IsEquivalentTo([0, 0, 1, 1]);
+        await Assert.That(entries.Select(PageNumber)).IsEquivalentTo(["2", "3", "2", "3"]);
+        await Assert.That(body.Descendants<FieldChar>().Any(_ => _.Dirty?.Value == true)).IsFalse();
+    }
+
+    // An entry the resolver could not place keeps its placeholder, and the field stays marked so
+    // Word still offers the reader a number — which it cannot do for a field that was cleared
+    // because its entries were never looked at.
+    [Test]
+    [Arguments("[TOC]")]
+    [Arguments(pipeCell)]
+    public async Task AnEntryTheResolverCouldNotPlaceLeavesTheFieldDirty(string contents)
+    {
+        var body = await Render(new StubResolver(limit: 1), contents + headings);
+        var entries = body.Descendants<Hyperlink>().ToList();
+        var begin = body.Descendants<FieldChar>().Single(_ => _.FieldCharType?.Value == FieldCharValues.Begin);
+
+        await Assert.That(PageNumber(entries[0])).IsEqualTo("2");
+        await Assert.That(PageNumber(entries[1])).IsEqualTo("1");
+        await Assert.That(begin.Dirty?.Value).IsTrue();
+    }
+
+    // Left for Word, a field in a cell is the field the body gets: the same runs, still dirty, and no
+    // entries built for it.
+    [Test]
+    public async Task WithoutAResolverAFieldInACellIsTheOneTheBodyGets()
+    {
+        var inBody = await Render(null, "[TOC]" + headings);
+        var inCell = await Render(null, pipeCell + headings);
+
+        var bodyField = inBody.Elements<Paragraph>().First();
+        var cellField = inCell.Descendants<TableCell>().Last().Elements<Paragraph>().Single();
+
+        await Assert.That(cellField.OuterXml).IsEqualTo(bodyField.OuterXml);
+        await Assert.That(cellField.Descendants<FieldChar>().First().Dirty?.Value).IsTrue();
+        await Assert.That(inCell.Descendants<Hyperlink>().Any()).IsFalse();
     }
 
     static string Text(Hyperlink hyperlink) =>
