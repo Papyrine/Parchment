@@ -14,6 +14,48 @@ class WordNumberingState(MainDocumentPart mainPart)
     internal HtmlNumberingSession GetHtmlSession() =>
         htmlSession ??= new();
 
+    /// <summary>
+    /// Converts html, whose lists are numbered by OpenXmlHtml rather than by this class.
+    /// </summary>
+    /// <remarks>
+    /// OpenXmlHtml finds a free id by reading the numbering part and writes its definitions straight
+    /// into it. The counters here are read from the part once and counted on from there, so they
+    /// know nothing of those: the next markdown list was handed an id an html list already held, and
+    /// Word drew both lists from whichever definition it found first - an html ol with bullets, a
+    /// markdown bullet numbered "3.". So every conversion that can hold a list comes through here,
+    /// and one that wrote a list has the counters read again before the next definition is created.
+    /// Whether it wrote one is told from the last w:num: a list needs an instance of its own, and an
+    /// instance is written after the ones already there. That keeps html holding no list from
+    /// costing a read of the part, and a render that converts no html still reads it once however
+    /// many lists it holds.
+    /// </remarks>
+    public List<OpenXmlElement> ConvertHtml(string html, HtmlConvertSettings settings)
+    {
+        var last = LastInstance();
+        var elements = WordHtmlConverter.ToElements(html, mainPart, settings);
+        if (!ReferenceEquals(last, LastInstance()))
+        {
+            initialized = false;
+        }
+
+        return elements;
+    }
+
+    // The element a new instance follows. All the schema allows after the instances is the
+    // w:numIdMacAtCleanup Word for Mac writes. OpenXmlHtml appends past it, which makes its instance
+    // the last child; one written in schema order would sit before it, so that is looked at too.
+    // Stepping back walks the part, which only a part still ending that way pays for.
+    OpenXmlElement? LastInstance()
+    {
+        var last = mainPart.NumberingDefinitionsPart?.Numbering?.LastChild;
+        if (last is NumberingIdMacAtCleanup)
+        {
+            return last.PreviousSibling();
+        }
+
+        return last;
+    }
+
     public int CreateBulletNumbering()
     {
         EnsureInitialized();
@@ -81,21 +123,18 @@ class WordNumberingState(MainDocumentPart mainPart)
             return;
         }
 
-        foreach (var abstractNum in part.Numbering.Elements<AbstractNum>())
+        // One walk for both kinds of id. This runs again for a list that follows an html one - see
+        // ConvertHtml - so a document alternating the two reads the part as often as it has lists.
+        for (var child = part.Numbering.FirstChild; child != null; child = child.NextSibling())
         {
-            var idStr = abstractNum.AbstractNumberId?.Value;
-            if (idStr >= nextAbstractNumId)
+            switch (child)
             {
-                nextAbstractNumId = idStr.Value + 1;
-            }
-        }
-
-        foreach (var numberingInstance in part.Numbering.Elements<NumberingInstance>())
-        {
-            var idStr = numberingInstance.NumberID?.Value;
-            if (idStr >= nextNumId)
-            {
-                nextNumId = idStr.Value + 1;
+                case AbstractNum abstractNum when abstractNum.AbstractNumberId?.Value >= nextAbstractNumId:
+                    nextAbstractNumId = abstractNum.AbstractNumberId.Value + 1;
+                    break;
+                case NumberingInstance numberingInstance when numberingInstance.NumberID?.Value >= nextNumId:
+                    nextNumId = numberingInstance.NumberID.Value + 1;
+                    break;
             }
         }
 

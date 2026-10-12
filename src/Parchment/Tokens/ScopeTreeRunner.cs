@@ -268,9 +268,8 @@ class ScopeTreeRunner(
         var html = editable.Value as string;
         IReadOnlyList<OpenXmlElement> content = string.IsNullOrWhiteSpace(html)
             ? []
-            : WordHtmlConverter.ToElements(
+            : numberingState.ConvertHtml(
                 html,
-                mainPart,
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession()));
         bookmarks.Renumber(content);
 
@@ -345,9 +344,8 @@ class ScopeTreeRunner(
 
         IReadOnlyList<OpenXmlElement> produced = value switch
         {
-            HtmlToken html => WordHtmlConverter.ToElements(
+            HtmlToken html => numberingState.ConvertHtml(
                 html.Source,
-                mainPart,
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession())),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             OpenXmlToken raw => raw

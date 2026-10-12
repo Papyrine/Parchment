@@ -12,7 +12,7 @@ class HtmlBlockRenderer :
 
         var html = block.Lines.ToString();
         var settings = renderer.ImagePolicies.BuildSettings(headingOffset: renderer.HeadingOffset);
-        var elements = WordHtmlConverter.ToElements(html, renderer.MainPart, settings);
+        var elements = renderer.Numbering.ConvertHtml(html, settings);
         renderer.MayHoldBookmarks = true;
         renderer.MayHoldSections = true;
         var indent = renderer.CurrentIndent;
