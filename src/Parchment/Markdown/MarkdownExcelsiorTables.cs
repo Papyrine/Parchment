@@ -198,7 +198,15 @@ static class MarkdownExcelsiorTables
 
         if (data == null)
         {
-            // Nothing to tabulate. The marker still has to go, or it renders as text.
+            // Nothing to tabulate. The marker still has to go, or it renders as text. Between two
+            // tables the paragraph was all that kept them apart, so there it stays, emptied.
+            if (AdjacentTables.BlockBefore(host) is Table &&
+                AdjacentTables.BlockAfter(host) is Table)
+            {
+                host.RemoveAllChildren();
+                return;
+            }
+
             host.Remove();
             return;
         }
@@ -216,10 +224,16 @@ static class MarkdownExcelsiorTables
         // Configure hook is caller code, and the table of contents numbers its entries from the
         // same counter on the strength of nothing in the body having bypassed it.
         bookmarks.Renumber(table);
-        parent.InsertBefore(table, host);
 
         // Word merges adjacent tables and mishandles a table that ends a body, so the host
-        // paragraph is emptied and kept as the separator rather than removed.
+        // paragraph is emptied and kept as the separator rather than removed. That keeps the table
+        // from whatever follows it; a table before it needs a paragraph of its own.
+        if (AdjacentTables.BlockBefore(host) is Table)
+        {
+            parent.InsertBefore(new Paragraph(), host);
+        }
+
+        parent.InsertBefore(table, host);
         host.RemoveAllChildren();
     }
 }
