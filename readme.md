@@ -1752,7 +1752,7 @@ An id on a heading or paragraph becomes a Word bookmark wrapping that text, and 
 Detail that refers back to the [summary](#summary).
 ```
 
-A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word.
+A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word. Two ids that fold to the same name, or differ only by case, which Word ignores, stay separate bookmarks: the later one takes a numeric suffix (`{#my-id}` then `{#my_id}` gives `my_id` and `my_id_2`), and each link reaches the heading whose id it was written with. When the same id is written twice, or sits on a heading inside a loop, the first occurrence keeps it, as in html, and the later ones get no bookmark. A link to an id that nothing carries is still written, and does nothing when clicked.
 
 An id and a style can sit on the same block: `Text {#note}{.BOXText}`.
 

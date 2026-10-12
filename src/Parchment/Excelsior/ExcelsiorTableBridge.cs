@@ -15,14 +15,14 @@ static class ExcelsiorTableBridge
             IsGenericMethodDefinition: true
         });
 
-    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure)
+    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, BookmarkNames names, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
         var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure);
 
         // Both flows, and every table that comes back through here: a "#name" link means the same
         // thing wherever the table came from.
-        ExcelsiorInternalLinks.Rewrite(table, mainPart);
+        ExcelsiorInternalLinks.Rewrite(table, mainPart, names);
         return table;
     }
 
