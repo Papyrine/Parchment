@@ -8,6 +8,15 @@ namespace Parchment;
 /// itself wrote. Supported subset: paragraphs, headings, bold/italic/underline/strike,
 /// superscript/subscript, hyperlinks, line breaks, and bullet/ordered lists (with nesting).
 /// Anything outside the subset degrades to its text content.
+/// <para>
+/// The converter mimics an element's default look with direct run properties: every run of a
+/// heading carries <c>w:b</c>, every run of a link carries <c>w:u</c> (and the link colour). That
+/// formatting is implied by the <c>h1</c>–<c>h6</c> / <c>a</c> being emitted, so it is not
+/// reported again as <c>strong</c> / <c>u</c> — otherwise unedited content would not extract to
+/// the html it was rendered from. Only a departure from the default is reported, and in the form
+/// the converter reads back: <c>font-weight:normal</c> for a heading run whose bold is explicitly
+/// off, <c>text-decoration:none</c> on a link that is not underlined throughout.
+/// </para>
 /// </summary>
 static class OpenXmlHtmlSerializer
 {
@@ -51,9 +60,10 @@ static class OpenXmlHtmlSerializer
 
     static void EmitParagraph(StringBuilder builder, Paragraph paragraph, MainDocumentPart mainPart)
     {
-        var tag = HeadingTag(paragraph) ?? "p";
+        var heading = HeadingTag(paragraph);
+        var tag = heading ?? "p";
         builder.Append('<').Append(tag).Append('>');
-        EmitInline(builder, paragraph, mainPart);
+        EmitInline(builder, paragraph, mainPart, heading != null);
         builder.Append("</").Append(tag).Append('>');
     }
 
@@ -100,7 +110,7 @@ static class OpenXmlHtmlSerializer
             }
 
             builder.Append("<li>");
-            EmitInline(builder, paragraph, mainPart);
+            EmitInline(builder, paragraph, mainPart, false);
             currentLevel = level;
             index++;
         }
@@ -113,42 +123,75 @@ static class OpenXmlHtmlSerializer
         return index;
     }
 
-    static void EmitInline(StringBuilder builder, OpenXmlElement container, MainDocumentPart mainPart)
+    static void EmitInline(StringBuilder builder, OpenXmlElement container, MainDocumentPart mainPart, bool inHeading)
     {
         foreach (var child in container.Elements())
         {
             switch (child)
             {
                 case Run run:
-                    EmitRun(builder, run);
+                    EmitRun(builder, run, inHeading, HasUnderline(run.RunProperties));
                     break;
                 case Hyperlink hyperlink:
-                    EmitHyperlink(builder, hyperlink, mainPart);
+                    EmitHyperlink(builder, hyperlink, mainPart, inHeading);
                     break;
             }
         }
     }
 
-    static void EmitHyperlink(StringBuilder builder, Hyperlink hyperlink, MainDocumentPart mainPart)
+    static void EmitHyperlink(StringBuilder builder, Hyperlink hyperlink, MainDocumentPart mainPart, bool inHeading)
     {
         var href = ResolveHref(hyperlink, mainPart);
-        if (href != null)
+        if (href == null)
         {
-            builder.Append("<a href=\"").Append(EscapeAttribute(href)).Append("\">");
+            // Not emitted as a link, so nothing implies the underline.
+            foreach (var run in hyperlink.Elements<Run>())
+            {
+                EmitRun(builder, run, inHeading, HasUnderline(run.RunProperties));
+            }
+
+            return;
         }
+
+        // An <a> is underlined by default. Underlined throughout, the link says it all; otherwise
+        // the default is switched off on the <a> and the runs that do keep an underline say so.
+        var underlined = hyperlink.Elements<Run>().All(_ => !HasContent(_) || IsLinkUnderlined(_));
+        builder.Append("<a href=\"").Append(EscapeAttribute(href)).Append('"');
+        if (!underlined)
+        {
+            builder.Append(" style=\"text-decoration:none\"");
+        }
+
+        builder.Append('>');
 
         foreach (var run in hyperlink.Elements<Run>())
         {
-            EmitRun(builder, run);
+            EmitRun(builder, run, inHeading, !underlined && IsLinkUnderlined(run));
         }
 
-        if (href != null)
-        {
-            builder.Append("</a>");
-        }
+        builder.Append("</a>");
     }
 
-    static void EmitRun(StringBuilder builder, Run run)
+    static bool HasContent(Run run) =>
+        run.Elements().Any(_ => _ is Text or Break);
+
+    // A link the converter wrote carries a direct w:u; one inserted in Word gets its underline
+    // from the Hyperlink character style instead. Removing the underline in Word drops the direct
+    // w:u, or writes w:u w:val="none" over the style.
+    static bool IsLinkUnderlined(Run run)
+    {
+        var properties = run.RunProperties;
+        if (properties?.Underline != null)
+        {
+            return HasUnderline(properties);
+        }
+
+        var style = properties?.RunStyle?.Val?.Value;
+        return string.Equals(style, "Hyperlink", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(style, "FollowedHyperlink", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static void EmitRun(StringBuilder builder, Run run, bool inHeading, bool underline)
     {
         var inner = new StringBuilder();
         foreach (var child in run.Elements())
@@ -171,7 +214,18 @@ static class OpenXmlHtmlSerializer
 
         var properties = run.RunProperties;
         var tags = new List<string>();
-        if (IsOn(properties?.Bold))
+
+        // A heading is bold by default, so bold says nothing there. A run without w:b is left as
+        // the heading's own look too (a paragraph given a heading style in Word has none); only an
+        // explicit off is a visible departure.
+        var boldOff = inHeading && IsOff(properties?.Bold);
+        if (boldOff)
+        {
+            builder.Append("<span style=\"font-weight:normal\">");
+        }
+
+        if (!inHeading &&
+            IsOn(properties?.Bold))
         {
             tags.Add("strong");
         }
@@ -181,7 +235,7 @@ static class OpenXmlHtmlSerializer
             tags.Add("em");
         }
 
-        if (HasUnderline(properties))
+        if (underline)
         {
             tags.Add("u");
         }
@@ -213,6 +267,11 @@ static class OpenXmlHtmlSerializer
         for (var i = tags.Count - 1; i >= 0; i--)
         {
             builder.Append("</").Append(tags[i]).Append('>');
+        }
+
+        if (boldOff)
+        {
+            builder.Append("</span>");
         }
     }
 
@@ -304,6 +363,10 @@ static class OpenXmlHtmlSerializer
     static bool IsOn(OnOffType? toggle) =>
         toggle != null &&
         (toggle.Val == null || toggle.Val.Value);
+
+    static bool IsOff(OnOffType? toggle) =>
+        toggle?.Val != null &&
+        !toggle.Val.Value;
 
     static bool HasUnderline(RunProperties? properties)
     {
