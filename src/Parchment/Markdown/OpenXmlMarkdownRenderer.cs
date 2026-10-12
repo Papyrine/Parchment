@@ -8,9 +8,10 @@ class OpenXmlMarkdownRenderer :
     int currentIndent;
     int nextBookmarkId;
 
-    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
+    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkNames bookmarkNames, int headingOffset = 0)
     {
         MainPart = mainPart;
+        BookmarkNames = bookmarkNames;
         HeadingOffset = headingOffset;
         Numbering = numbering;
         ImagePolicies = imagePolicies;
@@ -39,6 +40,8 @@ class OpenXmlMarkdownRenderer :
 
     public MainDocumentPart MainPart { get; }
     public int HeadingOffset { get; }
+
+    public BookmarkNames BookmarkNames { get; }
     public WordNumberingState Numbering { get; }
     public ImagePolicies ImagePolicies { get; }
 

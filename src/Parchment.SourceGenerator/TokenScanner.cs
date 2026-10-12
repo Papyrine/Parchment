@@ -29,7 +29,10 @@ public static class TokenScanner
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
+                    // A sibling token is other content to a substitution: the runtime asks the
+                    // same TokenScan.IsSolo before it swaps a paragraph for a token's output.
+                    var solo = TokenScan.IsSolo(paragraph, sites.Count, site.Offset, site.Length);
+                    result.Add(ParseSubstitution(source, !solo) with { Container = container });
                 }
                 else
                 {
