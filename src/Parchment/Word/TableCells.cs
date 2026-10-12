@@ -14,6 +14,13 @@
 /// host was the last paragraph of a cell, so the repair is one pass over the part once they have
 /// all run.
 /// </para>
+/// <para>
+/// A block-level content control or custom xml element is not a block of its own. Word reads
+/// through it, so a cell whose control ends with a table ends with a table, and is refused like
+/// any other. The paragraph that closes such a cell is appended to the cell, after the control: put
+/// inside, it would become part of the control's content, which for an editable field is the value
+/// read back at extraction.
+/// </para>
 /// </remarks>
 static class TableCells
 {
@@ -47,24 +54,64 @@ static class TableCells
 
     static bool EndsWithParagraph(TableCell cell)
     {
-        for (var child = cell.LastChild; child != null; child = child.PreviousSibling())
+        var last = LastBlock(cell);
+        if (last == null)
         {
-            // A block-level content control or custom xml wrapper carries the paragraph inside it,
-            // which is how Word itself writes a cell whose content is one control.
-            if (child is Paragraph or SdtBlock or CustomXmlBlock)
-            {
-                return true;
-            }
-
-            if (child is Table or TableCellProperties)
-            {
-                return false;
-            }
-
-            // Anything else is a range marker — a bookmark or permission end — which Word allows
-            // after the closing paragraph.
+            // No paragraph and no table at any depth. Word refuses a cell with nothing in it, but
+            // opens one whose only block is a content control with no content, which is what a
+            // false {% if %} inside a template's own control leaves. That one stays as it is.
+            return cell.GetFirstChild<SdtBlock>() != null;
         }
 
-        return false;
+        return last is Paragraph;
+    }
+
+    /// <summary>
+    /// The last paragraph or table under <paramref name="container"/>, read through the block-level
+    /// wrappers the way Word reads them, or null when it holds neither.
+    /// </summary>
+    static OpenXmlElement? LastBlock(OpenXmlElement container)
+    {
+        for (var child = container.LastChild; child != null; child = child.PreviousSibling())
+        {
+            if (child is Paragraph or Table)
+            {
+                return child;
+            }
+
+            // A content control or custom xml wrapper ends with whatever its content ends with.
+            // One that carries the paragraph inside is how Word itself writes a cell whose content
+            // is one control; one left ending with a table has not closed the cell.
+            var content = WrappedContent(child);
+            if (content == null)
+            {
+                // Anything else is a range marker — a bookmark or permission end — which Word
+                // allows after the closing paragraph, or the properties of the cell or wrapper.
+                continue;
+            }
+
+            var inner = LastBlock(content);
+            if (inner != null)
+            {
+                return inner;
+            }
+        }
+
+        return null;
+    }
+
+    static OpenXmlElement? WrappedContent(OpenXmlElement element)
+    {
+        if (element is SdtBlock control)
+        {
+            return control.SdtContentBlock;
+        }
+
+        if (element is CustomXmlBlock)
+        {
+            return element;
+        }
+
+        return null;
     }
 }

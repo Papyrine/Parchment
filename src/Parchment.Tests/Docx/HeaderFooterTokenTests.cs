@@ -128,6 +128,48 @@ public partial class HeaderFooterTokenTests
         await Assert.That(footerText).IsEqualTo("Footer by Ada Lovelace");
     }
 
+    // Markdown in a header goes through the same table renderer as the body's, in either flow, so
+    // a table wider than Word's 63 columns is refused there as well and the error names the part.
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MarkdownTableOverTheColumnLimitInHeaderIsRejected(bool markdownFlow)
+    {
+        using var template = BuildDocxWithHeaderFooter(
+            bodyText: "Body",
+            headerText: "{{ Title | markdown }}",
+            footerText: "ok");
+
+        var store = new TemplateStore();
+        if (markdownFlow)
+        {
+            store.RegisterMarkdownTemplate<Doc>("Body", template);
+        }
+        else
+        {
+            store.RegisterDocxTemplate<Doc>(template);
+        }
+
+        var model = new Doc
+        {
+            Title = string.Join(
+                '\n',
+                "|" + string.Concat(Enumerable.Repeat(" h |", 64)),
+                "|" + string.Concat(Enumerable.Repeat("---|", 64)),
+                "|" + string.Concat(Enumerable.Repeat(" c |", 64))),
+            Author = "A",
+            FootnoteText = "fn",
+            EndnoteText = "en"
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.Message).Contains("at most 63");
+        await Assert.That(exception.PartUri).IsEqualTo("/word/header1.xml");
+    }
+
     // A header with no tokens is left exactly as the style source had it.
     [Test]
     public async Task MarkdownFlowLeavesAnUntokenisedHeaderAlone()
