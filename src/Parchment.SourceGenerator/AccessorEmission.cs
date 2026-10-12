@@ -43,6 +43,7 @@ static class AccessorEmission
         }
 
         var fluidBlocks = new List<(string FieldName, TypeEntry Type)>();
+        var fieldNames = new HashSet<string>(StringComparer.Ordinal);
         var excelsiorEntries = new List<(List<string> Path, string ElementFqn, string? HeadingParagraphStyle, string? BodyParagraphStyle, string? TableStyle, string? ConfigureCall)>();
         var formatEntries = new List<(List<string> Path, FormatMapKind Kind)>();
         var stringListEntries = new List<List<string>>();
@@ -60,7 +61,16 @@ static class AccessorEmission
                 continue;
             }
 
-            fluidBlocks.Add(("_Accessors_" + Sanitize(type.TypeFullyQualifiedName), type));
+            // Sanitizing is not injective (`A_B.C` and `A.B_C` come out the same), so a name
+            // already used by an earlier type of this model is numbered.
+            var fieldName = "_Accessors_" + Sanitize(type.TypeFullyQualifiedName);
+            var unique = fieldName;
+            for (var number = 2; !fieldNames.Add(unique); number++)
+            {
+                unique = $"{fieldName}_{number}";
+            }
+
+            fluidBlocks.Add((unique, type));
         }
 
         // Excelsior / Format / StringList walks: dotted-path traversal from the root TModel,
@@ -253,11 +263,11 @@ static class AccessorEmission
                     // Static member: the instance argument is irrelevant. Access via the owner
                     // type directly so the emitted code is legal C# (CS0176 forbids instance-
                     // qualifying a static member).
-                    fields.Append($"(_, _) => {type.TypeFullyQualifiedName}.{member.Name}");
+                    fields.Append($"(_, _) => {type.TypeFullyQualifiedName}.{Identifiers.Escape(member.Name)}");
                 }
                 else
                 {
-                    fields.Append($"(o, _) => (({type.TypeFullyQualifiedName})o).{member.Name}");
+                    fields.Append($"(o, _) => (({type.TypeFullyQualifiedName})o).{Identifiers.Escape(member.Name)}");
                 }
 
                 fields.AppendLine(")),");
@@ -581,7 +591,7 @@ static class AccessorEmission
             builder.Append("((");
             builder.Append(rootFqn);
             builder.Append(")o).");
-            builder.Append(path[0]);
+            builder.Append(Identifiers.Escape(path[0]));
             builder.Append(" = ");
             builder.Append(cast);
             builder.Append("; }");
@@ -593,7 +603,7 @@ static class AccessorEmission
         builder.Append(")o)");
         AppendParentPath(builder, path);
         builder.Append("; if (p != null) { p.");
-        builder.Append(path[^1]);
+        builder.Append(Identifiers.Escape(path[^1]));
         builder.Append(" = ");
         builder.Append(cast);
         builder.Append("; } }");
@@ -619,7 +629,7 @@ static class AccessorEmission
         for (var i = 0; i < path.Count - 1; i++)
         {
             builder.Append(i == 0 ? "." : "?.");
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
         }
     }
 
@@ -634,7 +644,7 @@ static class AccessorEmission
             // through TemplateStore.Render, which never passes null). Subsequent segments use `?.`
             // so a null intermediate short-circuits — matching the runtime ChainGetter semantics.
             builder.Append(i == 0 ? "." : "?.");
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
         }
     }
 

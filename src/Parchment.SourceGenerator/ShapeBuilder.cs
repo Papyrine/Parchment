@@ -106,7 +106,7 @@ static class ShapeBuilder
                             .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
                         if (hasMethod)
                         {
-                            excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
+                            excelsiorConfigureCall = $"{Fqn(current)}.{Identifiers.Escape(excelsiorConfigure)}";
                         }
                         else
                         {
