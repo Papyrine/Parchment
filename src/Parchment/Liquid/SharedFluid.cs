@@ -37,6 +37,14 @@ static class SharedFluid
         {
             MaxRecursion = 100
         };
+
+        // A token names a model member without regard to case. Every validator resolves it that
+        // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
+        // ordinally unless told otherwise, and that left a token registration had accepted reading
+        // nothing at render. It has to be set here, ahead of the first registered accessor: the
+        // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
+        // the map was last built with.
+        options.MemberAccessStrategy.IgnoreCasing = true;
         Filters.Register(options.Filters);
         // Route enum substitutions through Excelsior so inline `{{ Model.Status }}` tokens
         // render with the same humanization (Display attribute / source-gen switch /
@@ -49,6 +57,20 @@ static class SharedFluid
                 if (value is Enum e)
                 {
                     return new StringValue(EnumRender.Render(e));
+                }
+
+                // Fluid turns a TimeSpan into a date counted from 1970 in the machine's time zone,
+                // and prints a TimeOnly in the short pattern, which has no seconds. Both become
+                // the invariant text of the value instead: a duration in the constant format, and
+                // a time in the format an editable TimeOnly field defaults to.
+                if (value is TimeSpan span)
+                {
+                    return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
+                }
+
+                if (value is TimeOnly time)
+                {
+                    return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
                 }
 
                 return null;
@@ -97,11 +119,21 @@ static class SharedFluid
     }
 
     /// <summary>
-    /// Whether the source generator registered <paramref name="modelType"/> — its module
+    /// Whether the source generator emitted <paramref name="modelType"/> as a model — its module
     /// initializer always emits the root type's accessor block, even for a member-less model.
     /// </summary>
+    /// <remarks>
+    /// Having accessors is not enough. The generator emits an accessor block for every type a model
+    /// reaches, so a type it saw only as a member is in <see cref="registeredTypes"/> too, while
+    /// the per-model maps — formats, string lists, tables, editable fields — are emitted for the
+    /// model alone. Taken as a model, such a type would bind and then render with every attribute
+    /// ignored. The attribute is what the generator keys on, so it is what tells the two apart;
+    /// neither attribute is inherited, which leaves out a type merely derived from a model.
+    /// </remarks>
     public static bool IsModelRegistered(Type modelType) =>
-        registeredTypes.ContainsKey(modelType);
+        registeredTypes.ContainsKey(modelType) &&
+        (Attribute.IsDefined(modelType, typeof(ParchmentModelAttribute), false) ||
+         Attribute.IsDefined(modelType, typeof(ParchmentBindableAttribute), false));
 
     /// <summary>
     /// Guards that <paramref name="modelType"/> arrived with pre-compiled accessors. There is no
@@ -125,8 +157,8 @@ static class SharedFluid
 
     /// <summary>
     /// Source-generator entry point (invoked via `Generated.GeneratedRegistration`).
-    /// Registers pre-built accessors for a single type and marks it known to
-    /// <see cref="EnsureModelRegistered"/>.
+    /// Registers pre-built accessors for a single type. That makes it bindable as a member or a
+    /// loop element; <see cref="IsModelRegistered"/> decides whether it is also a model.
     /// </summary>
     internal static void RegisterPrecompiledAccessors(
         Type type,
