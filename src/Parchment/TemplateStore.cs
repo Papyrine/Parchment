@@ -35,8 +35,12 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         RegisterDocxTemplate<TModel>(file, protection);
     }
 
-    public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
+    public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        GuardReadable(template, typeof(TModel).Name, "template");
         RegisterDocxTemplate(typeof(TModel), DocxCloner.ToWritableStream(template), protection);
+    }
 
     /// <summary>
     /// Registers <paramref name="clone"/> as the template for <paramref name="modelType"/>.
@@ -61,7 +65,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = clone;
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
-        using (var doc = WordprocessingDocument.Open(stream, true))
+        using (var doc = OpenTemplate(stream, name, "template"))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
             // scanning or rewriting done first would be thrown away with the part it was done on —
@@ -134,8 +138,18 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
 
-    public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
-        RegisterMarkdownTemplate(typeof(TModel), markdown, styleSource == null ? null : DocxCloner.ToBytes(styleSource));
+    public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null)
+    {
+        ArgumentNullException.ThrowIfNull(markdown);
+        byte[]? bytes = null;
+        if (styleSource != null)
+        {
+            GuardReadable(styleSource, typeof(TModel).Name, "style source");
+            bytes = DocxCloner.ToBytes(styleSource);
+        }
+
+        RegisterMarkdownTemplate(typeof(TModel), markdown, bytes);
+    }
 
     /// <summary>
     /// Registers <paramref name="markdown"/> as the template for <paramref name="model"/>, styled by
@@ -218,7 +232,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = DocxCloner.ToWritableStream(bytes);
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
-        using (var doc = WordprocessingDocument.Open(stream, true))
+        using (var doc = OpenTemplate(stream, name, "style source"))
         {
             var retyped = doc.DocumentType != WordprocessingDocumentType.Document;
             EnsureDocumentType(doc);
@@ -290,7 +304,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             var mainPart = doc.MainDocumentPart;
             if (mainPart?.Document?.Body is not { } body)
             {
-                // Left as supplied, so a render reports the missing body as it always has.
+                // Registration never gets here: OpenTemplate has already rejected such a source.
                 return (bytes, false);
             }
 
@@ -334,6 +348,136 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         {
             doc.ChangeDocumentType(WordprocessingDocumentType.Document);
         }
+    }
+
+    /// <summary>
+    /// Rejects a stream nothing can be read from, before it is copied.
+    /// </summary>
+    /// <remarks>
+    /// A closed stream reports that it can neither read nor seek, so without this it surfaced as
+    /// an <see cref="ObjectDisposedException"/> or <see cref="NotSupportedException"/> from the
+    /// copy, naming neither the template nor which argument was at fault.
+    /// </remarks>
+    static void GuardReadable(Stream stream, string name, string subject)
+    {
+        if (!stream.CanRead)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The {subject} stream cannot be read. It is closed, disposed or write-only.");
+        }
+    }
+
+    /// <summary>
+    /// Opens <paramref name="stream"/> as a Word package, or says why it is not one.
+    /// </summary>
+    /// <remarks>
+    /// Every registration goes through here — both flows, and the definitions the source generator
+    /// stores — so an unusable input fails at registration, as a
+    /// <see cref="ParchmentRegistrationException"/> naming the template, and never as a
+    /// <see cref="NullReferenceException"/> or at the first render. The SDK opens an empty stream,
+    /// and a zip that is not a package, as a package with no parts, so opening without error
+    /// proves nothing on its own.
+    ///
+    /// The body is read here for both flows. The markdown flow replaces it, but a render still
+    /// needs one to fill, and enumerating the parts loads it regardless.
+    /// </remarks>
+    static WordprocessingDocument OpenTemplate(MemoryStream stream, string name, string subject)
+    {
+        if (stream.Length == 0)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The {subject} is empty (0 bytes). A Word document (.docx or .dotx) is required.");
+        }
+
+        WordprocessingDocument doc;
+        try
+        {
+            doc = WordprocessingDocument.Open(stream, true);
+        }
+        catch (Exception exception)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The {subject} is not a Word document (.docx or .dotx). {DescribeUnopenable(stream)}: {exception.Message}",
+                inner: exception);
+        }
+
+        try
+        {
+            GuardWordPackage(doc, name, subject);
+        }
+        catch
+        {
+            doc.Dispose();
+            throw;
+        }
+
+        return doc;
+    }
+
+    static string DescribeUnopenable(MemoryStream stream)
+    {
+        // The header of an OLE compound file, which is what a legacy .doc is, and what Word wraps
+        // a password-protected .docx in.
+        ReadOnlySpan<byte> compoundFile = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        if (stream.TryGetBuffer(out var buffer) &&
+            buffer.AsSpan().StartsWith(compoundFile))
+        {
+            return "It is a legacy .doc or a password-protected document, neither of which is an Open XML package";
+        }
+
+        return "It could not be opened as an Open XML package";
+    }
+
+    static void GuardWordPackage(WordprocessingDocument doc, string name, string subject)
+    {
+        if (doc.MainDocumentPart is not { } mainPart)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The {subject} is not a Word document (.docx or .dotx): it has no main document part.");
+        }
+
+        var partUri = mainPart.Uri.ToString();
+        Document? document;
+        try
+        {
+            document = mainPart.Document;
+        }
+        catch (Exception exception)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The main document part of the {subject} could not be read as a Word document. {DescribeUnreadable(mainPart)}: {exception.Message}",
+                partUri,
+                inner: exception);
+        }
+
+        if (document?.Body == null)
+        {
+            throw new ParchmentRegistrationException(
+                name,
+                $"The {subject} has no document body.",
+                partUri);
+        }
+    }
+
+    static string DescribeUnreadable(MainDocumentPart mainPart)
+    {
+        var contentType = mainPart.ContentType;
+        if (contentType.Contains("spreadsheetml", StringComparison.OrdinalIgnoreCase))
+        {
+            return "It is a spreadsheet (.xlsx)";
+        }
+
+        if (contentType.Contains("presentationml", StringComparison.OrdinalIgnoreCase))
+        {
+            return "It is a presentation (.pptx)";
+        }
+
+        return "Its XML is malformed or is not WordprocessingML";
     }
 
     static void GuardBindingModel(Type type, string name)
