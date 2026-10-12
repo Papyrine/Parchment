@@ -1,3 +1,5 @@
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class RegisteredDocxTemplate(
     string name,
     Type modelType,
@@ -9,6 +11,7 @@ class RegisteredDocxTemplate(
     EditableMap editables,
     ImagePolicies imagePolicies,
     int maxBookmarkId,
+    NoteReferences noteReferences,
     TemplateIds templateIds) :
     RegisteredTemplate(name, modelType)
 {
@@ -59,7 +62,7 @@ class RegisteredDocxTemplate(
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles);
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles).ConfigureAwait(false);
             }
 
             foreach (var root in partRoots.Values)
@@ -79,11 +82,21 @@ class RegisteredDocxTemplate(
                 TableCells.EnsureFinalParagraph(root);
             }
 
+            // After every part has rendered and been cleaned up, the notes parts included: a loop
+            // repeats a footnote reference and an unchosen branch removes one, and the copy of a
+            // note made here has to be of its final content. A body with no scope tree was never
+            // touched, so its references still pair with their notes.
+            if (!noteReferences.IsEmpty &&
+                partRoots.TryGetValue(mainPartUri, out var body))
+            {
+                noteReferences.Apply(mainPart, body);
+            }
+
             // compatibilityMode=15 is baked into the registration snapshot (see
             // TemplateStore.RegisterDocxTemplate), so no per-render stamp is needed here.
             if (properties != null)
             {
-                DocumentPropertiesWriter.Apply(doc, properties);
+                DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
             doc.Save();
@@ -94,7 +107,7 @@ class RegisteredDocxTemplate(
         // renders landed in the same 2-second zip quantum. See ZipTimestamps.
         ZipTimestamps.Pin(stream);
         stream.Position = 0;
-        await stream.CopyToAsync(output, cancel);
+        await stream.CopyToAsync(output, cancel).ConfigureAwait(false);
     }
 
     async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, CloneIds? cloneIds, Lazy<StyleSet> styles)
@@ -121,8 +134,9 @@ class RegisteredDocxTemplate(
             numberingState,
             styles,
             imagePolicies);
-        await runner.RunAsync(part.Nodes);
+        await runner.RunAsync(part.Nodes).ConfigureAwait(false);
         runner.ApplyStructural();
-        runner.SeparateProducedTables();
+        runner.SeparateTables();
+        runner.ApplySectionBreaks(root);
     }
 }

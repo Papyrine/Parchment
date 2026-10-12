@@ -16,7 +16,8 @@
 /// <c>Split</c> — the produced output is multiple block elements, or contains a non-paragraph
 /// block (a table). The host paragraph is split at the token offset: the host is trimmed to the
 /// text before the token, the produced block elements are inserted after it, and text after the
-/// token becomes another paragraph (cloning the host's <c>pPr</c>).
+/// token becomes another paragraph (cloning the host's <c>pPr</c>, apart from the properties
+/// that belong to one end of the paragraph — see <see cref="DivideProperties"/>).
 /// </item>
 /// </list>
 ///
@@ -86,6 +87,7 @@ static class ParagraphSplicer
     {
         var after = BuildShellWithChildren(host, TrimmedTail(host, offset, offset + length));
         TrimToHead(host, offset);
+        DivideProperties(host, after);
 
         // The after half is a copy of the host: its paragraph properties, and any wrapper the
         // token sat inside, are now in both.
@@ -99,6 +101,60 @@ static class ParagraphSplicer
 
         result.Add(after);
         return result;
+    }
+
+    /// <summary>
+    /// Both halves of a split start out with the host's paragraph properties. That is right for
+    /// formatting and wrong for the properties that mark one end of the paragraph, which have to
+    /// survive on one half only. A section break closes its section after the paragraph that
+    /// carries it, so it goes to the trailing half: that one is emitted even when empty, which
+    /// also gives the break a paragraph to sit on when the produced content ends with a table. A
+    /// page break before and a list number open the paragraph, so they stay on the leading half.
+    /// Only what the paragraph states itself is divided; the same settings inherited from its
+    /// style still reach both halves.
+    /// </summary>
+    static void DivideProperties(Paragraph before, Paragraph after)
+    {
+        if (before.ParagraphProperties is { } leading)
+        {
+            Drop(leading, leading.SectionProperties);
+        }
+
+        if (after.ParagraphProperties is not { } trailing)
+        {
+            return;
+        }
+
+        // Number 0 is "not numbered". Removing the element instead would hand the paragraph
+        // back to whatever numbering its style carries.
+        if (trailing.NumberingProperties is { } numbering)
+        {
+            numbering.NumberingId = new()
+            {
+                Val = 0
+            };
+        }
+
+        // Written as off, the element cancels a break the style asks for, and still has to.
+        if (trailing.PageBreakBefore is { } pageBreak &&
+            (pageBreak.Val?.Value ?? true))
+        {
+            Drop(trailing, pageBreak);
+        }
+    }
+
+    static void Drop(ParagraphProperties properties, OpenXmlElement? element)
+    {
+        if (element == null)
+        {
+            return;
+        }
+
+        element.Remove();
+        if (!properties.HasChildren)
+        {
+            properties.Remove();
+        }
     }
 
     /// <summary>
