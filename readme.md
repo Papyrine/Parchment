@@ -2059,14 +2059,16 @@ await store.Render(
         }
     });
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L290-L308' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L502-L520' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
 
 **Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
 
-Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+Supported `Custom` value types are `string`, `char`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws a `ParchmentRenderException` naming the property and the type rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+A character XML cannot carry (a control character, an unpaired surrogate) is dropped from every property value and from `Custom` names, the same as from substituted token text.
 
 Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
 
@@ -2079,7 +2081,7 @@ var properties = new WordDocumentProperties
     Title = "Bill 42"
 };
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L353-L361' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L565-L573' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.

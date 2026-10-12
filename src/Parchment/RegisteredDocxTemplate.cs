@@ -77,7 +77,7 @@ class RegisteredDocxTemplate(
             // TemplateStore.RegisterDocxTemplate), so no per-render stamp is needed here.
             if (properties != null)
             {
-                DocumentPropertiesWriter.Apply(doc, properties);
+                DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
             doc.Save();
