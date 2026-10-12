@@ -18,6 +18,7 @@ class ScopeTreeRunner(
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
+    Cancel cancel,
     List<Table>? tables = null)
 {
     List<StructuralReplacement>? structuralReplacements;
@@ -174,6 +175,9 @@ class ScopeTreeRunner(
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
+            // Per token, so a render stops at the next token after the caller cancels rather than
+            // at the end of the part. A token check is a volatile read: nothing is allocated.
+            cancel.ThrowIfCancellationRequested();
             var token = node.Tokens[i];
             var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
             if (evaluated is EditableToken editable)
@@ -340,7 +344,7 @@ class ScopeTreeRunner(
         if (value is MarkdownToken md)
         {
             // Renumbers its own bookmarks, from the same counter.
-            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, cancel);
         }
 
         IReadOnlyList<OpenXmlElement> produced = value switch
@@ -415,6 +419,11 @@ class ScopeTreeRunner(
         {
             throw;
         }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a render failure: it reaches the caller as it was thrown.
+            throw;
+        }
         catch (Exception exception)
         {
             throw WrapException(exception, host, site);
@@ -445,6 +454,11 @@ class ScopeTreeRunner(
         }
         catch (ParchmentException)
         {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is not a render failure: it reaches the caller as it was thrown.
             throw;
         }
         catch (Exception exception)
@@ -676,6 +690,7 @@ class ScopeTreeRunner(
             numberingState,
             styles,
             imagePolicies,
+            cancel,
             producedTables)
         {
             loopVariables = [..loopVariables, loop.LoopVariable]
@@ -683,6 +698,8 @@ class ScopeTreeRunner(
 
         foreach (var item in items)
         {
+            cancel.ThrowIfCancellationRequested();
+
             // Each iteration gets its own non-bubbling child scope so the loop variable binding
             // is confined to the iteration. Without this, context.SetValue lands in the root
             // scope and the binding leaks past `{% endfor %}` — shadowing model properties of
@@ -776,6 +793,7 @@ class ScopeTreeRunner(
 
         foreach (var fluidItem in effectiveItems)
         {
+            cancel.ThrowIfCancellationRequested();
             var rawItem = isBlank ? null : fluidItem.ToObjectValue();
             context.EnterChildScope();
             try
@@ -805,6 +823,7 @@ class ScopeTreeRunner(
                     numberingState,
                     styles,
                     imagePolicies,
+                    cancel,
                     producedTables)
                 {
                     loopVariables = itemLoopVariables
@@ -1014,7 +1033,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, cancel, producedTables)
         {
             loopVariables = loopVariables
         };

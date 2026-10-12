@@ -22,6 +22,9 @@ class RegisteredMarkdownTemplate(
 
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
+        // Before the liquid render, which is the first thing to read the model.
+        cancel.ThrowIfCancellationRequested();
+
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
 
@@ -70,11 +73,13 @@ class RegisteredMarkdownTemplate(
             // One counter for the whole render, seeded above what the headers, footers and notes
             // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
             var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
+            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections, cancel);
             foreach (var element in elements)
             {
                 body.AppendChild(element);
             }
+
+            cancel.ThrowIfCancellationRequested();
 
             // Before anything measures or numbers the document: a table is taller than the marker
             // paragraph it replaces, so every page number after it moves.
@@ -128,6 +133,7 @@ class RegisteredMarkdownTemplate(
                 DocumentPropertiesWriter.Apply(doc, properties);
             }
 
+            cancel.ThrowIfCancellationRequested();
             doc.Save();
         }
 
@@ -195,7 +201,8 @@ class RegisteredMarkdownTemplate(
                 bookmarks,
                 numberingState,
                 styles,
-                imagePolicies);
+                imagePolicies,
+                cancel);
             await runner.RunAsync(part.Nodes);
             runner.ApplyStructural();
             runner.SeparateProducedTables();

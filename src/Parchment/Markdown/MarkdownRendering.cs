@@ -4,15 +4,24 @@
 /// </summary>
 static class MarkdownRendering
 {
-    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset) =>
-        Render(markdown, mainPart, numbering, imagePolicies, bookmarks, headingOffset, out _);
+    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset, Cancel cancel = default) =>
+        Render(markdown, mainPart, numbering, imagePolicies, bookmarks, headingOffset, out _, cancel);
 
     // mayHoldSections is false when no element returned can carry a section marker's w:sectPr,
     // which lets the markdown flow skip SectionBreaks.Apply.
-    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset, out bool mayHoldSections)
+    public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset, out bool mayHoldSections, Cancel cancel = default)
     {
         var document = Markdown.Parse(markdown, MarkdigPipeline.Pipeline);
+        cancel.ThrowIfCancellationRequested();
         var renderer = new OpenXmlMarkdownRenderer(mainPart, numbering, imagePolicies, headingOffset);
+        // Markdig raises this for every block and inline it writes, so a long document stops at the
+        // next node. Subscribed only for a token that can be cancelled: one delegate per render,
+        // and nothing at all for the default token.
+        if (cancel.CanBeCanceled)
+        {
+            renderer.ObjectWriteBefore += (_, _) => cancel.ThrowIfCancellationRequested();
+        }
+
         MarkAlignedPipeTables(markdown, document, renderer);
         renderer.Render(document);
         var elements = renderer.Drain();

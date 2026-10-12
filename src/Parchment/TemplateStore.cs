@@ -516,6 +516,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// </remarks>
     public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
     {
+        // Before the template is resolved: for a generated template the first render is what
+        // scans and validates it.
+        cancel.ThrowIfCancellationRequested();
+
         var template = Resolve(typeof(TModel));
 
         if (model == null)
@@ -535,6 +539,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
+        // Before the file is created, so an already cancelled call leaves nothing at the path.
+        cancel.ThrowIfCancellationRequested();
+
         await using var file = File.Create(path);
         await Render(model, file, properties, cancel).ConfigureAwait(false);
     }

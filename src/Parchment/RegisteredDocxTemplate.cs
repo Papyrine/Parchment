@@ -57,11 +57,12 @@ class RegisteredDocxTemplate(
                     continue;
                 }
 
-                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles);
+                await RenderPartAsync(mainPart, part, root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, styles, cancel);
             }
 
             foreach (var root in partRoots.Values)
             {
+                cancel.ThrowIfCancellationRequested();
                 Anchors.StripAll(root);
                 // Once every substitution in the part has run, so splitting a w:t can no longer
                 // disturb the offsets the substitutions were driven by.
@@ -78,6 +79,7 @@ class RegisteredDocxTemplate(
                 DocumentPropertiesWriter.Apply(doc, properties);
             }
 
+            cancel.ThrowIfCancellationRequested();
             doc.Save();
         }
 
@@ -89,7 +91,7 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel);
     }
 
-    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, Lazy<StyleSet> styles, Cancel cancel)
     {
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
@@ -111,7 +113,8 @@ class RegisteredDocxTemplate(
             bookmarks,
             numberingState,
             styles,
-            imagePolicies);
+            imagePolicies,
+            cancel);
         await runner.RunAsync(part.Nodes);
         runner.ApplyStructural();
         runner.SeparateProducedTables();
