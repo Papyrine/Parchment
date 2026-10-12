@@ -11,8 +11,32 @@ class WordNumberingState(MainDocumentPart mainPart)
     bool initialized;
     HtmlNumberingSession? htmlSession;
 
-    internal HtmlNumberingSession GetHtmlSession() =>
-        htmlSession ??= new();
+    // nextNumId when the session was last handed out. It moves with every list numbered here.
+    int htmlSessionNumId;
+
+    // A session carries OpenXmlHtml's next id from one conversion to the next, and it reads the
+    // part again only when the part no longer ends with the element the session left there. That
+    // says where the last definition was written, not whether one was, so it is not left to the
+    // session to notice an id taken here: after one, the next conversion is handed a session that
+    // counts for itself. It keeps the bullet definition, which is all a session knows that the part
+    // does not say. ConvertHtml is the same care taken in the other direction.
+    internal HtmlNumberingSession GetHtmlSession()
+    {
+        if (htmlSession == null)
+        {
+            htmlSession = new();
+        }
+        else if (htmlSessionNumId != nextNumId)
+        {
+            htmlSession = new()
+            {
+                BulletAbstractNumId = htmlSession.BulletAbstractNumId
+            };
+        }
+
+        htmlSessionNumId = nextNumId;
+        return htmlSession;
+    }
 
     /// <summary>
     /// Converts html, whose lists are numbered by OpenXmlHtml rather than by this class.

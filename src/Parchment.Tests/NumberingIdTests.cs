@@ -517,6 +517,78 @@ public partial class NumberingIdTests
             validate: false);
     }
 
+    // The other order in such a template, after html that holds no list: OpenXmlHtml has by then
+    // counted the template's ids, and has to count the two markdown lists as well before it numbers
+    // the html one.
+    [Test]
+    public async Task DocxFlowTemplateWithItsOwnNumberingMarkdownListsFirst()
+    {
+        using var template = BuildDocx(
+            [
+                TemplateListItem("template item"),
+                Paragraph("{{ '<p>html paragraph</p>' | html }}"),
+                Paragraph("{{ MarkdownBullets }}"),
+                Paragraph("{{ MarkdownOrdered }}"),
+                Paragraph("{{ HtmlBullets }}"),
+                Paragraph("{{ MarkdownBullets }}")
+            ],
+            numbering: true);
+        using var stream = await RenderDocx(template);
+
+        await AssertLists(
+            stream,
+            """
+            template item: upperRoman
+            md bullet: bullet
+            md one: decimal
+            md two: decimal
+            md three: decimal
+            html bullet: bullet
+            md bullet: bullet
+            """,
+            validate: false);
+    }
+
+    // The session OpenXmlHtml is handed carries its next id from one conversion to the next, and
+    // it reads the part again only when the part no longer ends with the element the session left
+    // there. That says where the last definition was written, not whether one was, so a session is
+    // not kept across the ids taken for a markdown list. The trailing element is put back last by
+    // hand here, which is where it stays when an instance is written ahead of it.
+    [Test]
+    public async Task HtmlSessionCountsAgainAfterMarkdownLists()
+    {
+        using var stream = BuildDocx([], numbering: true);
+        using var doc = WordprocessingDocument.Open(stream, true);
+        var mainPart = doc.MainDocumentPart!;
+        var numbering = mainPart.NumberingDefinitionsPart!.Numbering!;
+        var state = new WordNumberingState(mainPart);
+
+        state.ConvertHtml(
+            "<p>html paragraph</p>",
+            ImagePolicies.AllowAll.BuildSettings(numberingSession: state.GetHtmlSession()));
+        state.CreateBulletNumbering();
+        state.CreateOrderedNumbering(NumberFormatValues.Decimal);
+
+        var cleanup = numbering.GetFirstChild<NumberingIdMacAtCleanup>()!;
+        cleanup.Remove();
+        numbering.Append(cleanup);
+
+        state.ConvertHtml(
+            "<ul><li>html bullet</li></ul>",
+            ImagePolicies.AllowAll.BuildSettings(numberingSession: state.GetHtmlSession()));
+
+        var definitions = numbering
+            .Elements<AbstractNum>()
+            .Select(_ => _.AbstractNumberId!.Value)
+            .ToList();
+        var instances = numbering
+            .Elements<NumberingInstance>()
+            .Select(_ => _.NumberID!.Value)
+            .ToList();
+        await Assert.That(definitions.Distinct().Count()).IsEqualTo(definitions.Count);
+        await Assert.That(instances.Distinct().Count()).IsEqualTo(instances.Count);
+    }
+
     [Test]
     public async Task DocxFlowEditableHtml()
     {
