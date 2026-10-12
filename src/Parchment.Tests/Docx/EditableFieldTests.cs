@@ -1020,6 +1020,122 @@ public partial class EditableFieldTests
         await Assert.That(errors).IsEmpty();
     }
 
+    // A template can hold content controls and editable ranges of its own. Their ids share one
+    // space with the ones a render adds, across the body, headers and footers, and the render used
+    // to number from 1 regardless.
+    [Test]
+    public async Task IdsStartAboveTheTemplatesOwn()
+    {
+        using var template = DocxTemplateBuilder.Build("PO: {{ PurchaseOrder }}\n\n{{ Approved }} {{ Status }}");
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var main = doc.MainDocumentPart!;
+            main.Document!.Body!.InsertAt(
+                new Paragraph(
+                    new PermStart
+                    {
+                        Id = 1,
+                        EditorGroup = RangePermissionEditingGroupValues.Everyone
+                    },
+                    new SdtRun(
+                        new SdtProperties(
+                            new Tag
+                            {
+                                Val = "authorControl"
+                            },
+                            new SdtId
+                            {
+                                Val = 2
+                            }),
+                        new SdtContentRun(new Run(new Text("author's own control")))),
+                    new PermEnd
+                    {
+                        Id = 1
+                    }),
+                0);
+
+            // Token-free, so a render never reads it: the ids have to be found at registration.
+            var header = main.AddNewPart<HeaderPart>();
+            header.Header = new(
+                new Paragraph(
+                    new PermStart
+                    {
+                        Id = 6,
+                        EditorGroup = RangePermissionEditingGroupValues.Everyone
+                    },
+                    new SdtRun(
+                        new SdtProperties(
+                            new SdtId
+                            {
+                                Val = 4
+                            }),
+                        new SdtContentRun(new Run(new Text("header control")))),
+                    new PermEnd
+                    {
+                        Id = 6
+                    }));
+            // Word writes ids anywhere in the signed range; a negative one is not a floor.
+            var footer = main.AddNewPart<FooterPart>();
+            footer.Footer = new(
+                new Paragraph(
+                    new SdtRun(
+                        new SdtProperties(
+                            new SdtId
+                            {
+                                Val = -12345
+                            }),
+                        new SdtContentRun(new Run(new Text("footer control"))))));
+            doc.Save();
+        }
+
+        template.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var first = new MemoryStream();
+        await store.Render(NewOrder(), first);
+        using var second = new MemoryStream();
+        await store.Render(NewOrder(), second);
+        await Assert.That(first.ToArray().SequenceEqual(second.ToArray())).IsTrue();
+
+        first.Position = 0;
+        using var rendered =WordprocessingDocument.Open(first, false);
+        var renderedMain = rendered.MainDocumentPart!;
+        var roots = new List<OpenXmlCompositeElement>
+        {
+            renderedMain.Document!.Body!
+        };
+        roots.AddRange(renderedMain.HeaderParts.Select(_ => _.Header!));
+        roots.AddRange(renderedMain.FooterParts.Select(_ => _.Footer!));
+
+        var sdtIds = roots
+            .SelectMany(_ => _.Descendants<SdtId>())
+            .Select(_ => _.Val!.Value)
+            .Order()
+            .ToList();
+        var permIds = roots
+            .SelectMany(_ => _.Descendants<PermStart>())
+            .Select(_ => _.Id!.Value)
+            .Order()
+            .ToList();
+        await Assert.That(sdtIds).IsEquivalentTo([-12345, 2, 4, 7, 8, 9]);
+        await Assert.That(permIds).IsEquivalentTo([1, 6, 7, 8, 9]);
+
+        foreach (var start in roots.SelectMany(_ => _.Descendants<PermStart>()))
+        {
+            var ends = roots
+                .SelectMany(_ => _.Descendants<PermEnd>())
+                .Count(_ => _.Id!.Value == start.Id!.Value);
+            await Assert.That(ends).IsEqualTo(1);
+        }
+
+        var validator = new OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var errors = validator.Validate(rendered)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
     [Test]
     public async Task FilterOnEditableTokenIsRejected()
     {
