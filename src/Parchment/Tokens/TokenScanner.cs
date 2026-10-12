@@ -15,15 +15,8 @@ static class TokenScanner
             var classification = ClassifyParagraph(paragraph, templateName, partUri);
             if (classification.Kind == ParagraphKind.Static)
             {
-                // A token-free paragraph is reported only when the template arrived with an anchor
-                // already on it. It becomes an inert StaticNode, which keeps its part in the
-                // registered list so the render visits the part and strips the anchor.
-                var existing = Anchors.FindOn(paragraph);
-                if (existing != null)
-                {
-                    results.Add(classification with { AnchorName = existing });
-                }
-
+                // A token-free paragraph gets no anchor and no node. One the template arrived with
+                // is already gone: registration runs Anchors.StripArrived before this scan.
                 continue;
             }
 
