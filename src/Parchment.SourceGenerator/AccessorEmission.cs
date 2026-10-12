@@ -23,9 +23,11 @@
 /// </list>
 ///
 /// Path-getters are emitted as inline cast-and-null-chain lambdas:
-/// <c>o => ((global::NS.Root)o).First?.Second?.Third</c>. Works for reference-type chains and
-/// <c>Nullable&lt;T&gt;</c> intermediates; non-nullable value-type intermediates are an
-/// unsupported case (rare in real binding models — value types are typically leaves).
+/// <c>o => ((global::NS.Root)o).First?.Second?.Third</c>. Works for reference-type chains only.
+/// Value-type intermediates are unsupported (rare in real binding models — value types are
+/// typically leaves): <c>?.</c> does not compile against a non-nullable struct, and a
+/// <c>Nullable&lt;T&gt;</c> member is never walked into — <c>ShapeBuilder</c> gives a System type
+/// no members, so nothing beneath it resolves or reaches a map.
 /// </summary>
 
 static class AccessorEmission

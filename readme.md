@@ -2345,7 +2345,7 @@ The decorated model is nested inside another type that is not declared `partial`
 ```cs
 public partial class Outer  // <-- partial
 {
-    [ParchmentModel("template.docx")]
+    [ParchmentModel]
     public partial class Letter
     {
         public Customer Customer { get; set; } = new();
@@ -2521,7 +2521,7 @@ Suppress with `<NoWarn>$(NoWarn);PARCH100</NoWarn>` if a template genuinely need
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
 
-**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position is reported either way: at compile time as `PARCH019` when the model carries `[ParchmentModel]`, and otherwise as a warning on the `ILogger` passed to `TemplateStore` when the template is registered. Auto-bullet-list dispatch is reported by neither, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
+**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position is reported at compile time, as [`PARCH019`](#parch019--render-attribute-on-a-static-member-has-no-effect); nothing is reported when the template is registered or rendered, and nothing is written to the `ILogger` passed to `TemplateStore`. Auto-bullet-list dispatch is reported by neither, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
 
 ### Interfaces as the binding model
 
@@ -2592,7 +2592,7 @@ Rendering the same template with the same model produces a byte-identical output
 
 Zip entry timestamps are pinned to a stable date (2020-01-01) rather than taken from the clock. Entries cloned from the registration snapshot keep their stamps through a save, but a part added during the render — the settings part, a numbering part for a list, an image — would otherwise carry the wall-clock time at the zip format's 2-second resolution. Without the pin, byte-identity held only for renders landing inside the same 2-second window, and never across days.
 
-Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. One exception remains: a hyperlink inside `[Html]` content, or inside an Excelsior table cell, is given a random relationship id by the library that renders it, so a document containing one is not byte-identical between renders.
+Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. A hyperlink inside `[Html]` content is covered too: OpenXmlHtml assigns its relationship a deterministic id. One exception remains: a hyperlink to a url inside an Excelsior table cell is given a random relationship id by Excelsior, so a document containing one is not byte-identical between renders.
 
 [Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
 
