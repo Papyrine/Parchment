@@ -11,15 +11,7 @@ class OpenXmlContextImpl(
 
     public string AddImagePart(byte[] bytes, string contentType)
     {
-        var partType = contentType switch
-        {
-            "image/png" => ImagePartType.Png,
-            "image/jpeg" or "image/jpg" => ImagePartType.Jpeg,
-            "image/gif" => ImagePartType.Gif,
-            "image/bmp" => ImagePartType.Bmp,
-            "image/tiff" => ImagePartType.Tiff,
-            _ => ImagePartType.Png
-        };
+        var partType = ImageContentTypes.Resolve(contentType);
         var imagePart = MainPart.AddImagePart(partType, RelationshipIds.Next(MainPart, "rIdImage"));
         using var stream = new MemoryStream(bytes);
         imagePart.FeedData(stream);
