@@ -21,6 +21,11 @@ class AutolinkInlineRenderer :
             {
                 Space = SpaceProcessingModeValues.Preserve
             });
+
+        // The run goes in already wrapped, so the inline html open around it ("<b><url></b>") is
+        // applied here: AddRun formats a Run, and what it is handed is the Hyperlink. A classed span
+        // replaces the link's style, as it does for the runs of a "[text](url)".
+        renderer.ApplyInlineHtmlFormats(run);
         renderer.AddRun(
             new Hyperlink(run)
             {

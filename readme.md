@@ -1616,11 +1616,13 @@ Rendered output:
 
 #### [Auto links](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/AutoLinks.md)
 
-Bare URLs and email addresses are automatically converted to hyperlinks with the `Hyperlink` character style:
+Bare URLs are automatically converted to hyperlinks with the `Hyperlink` character style. A URL is recognised by how it starts: `http://`, `https://`, `ftp://`, `mailto:`, `tel:` or `www.`. An email address on its own is not one, so it takes the `mailto:` prefix, which is left out of the link text, or angle brackets:
 
 ```markdown
-Visit https://example.com or email user@example.com
+Visit https://example.com or email mailto:user@example.com or <user@example.com>
 ```
+
+A token can supply the tail of a bare URL (`https://example.com/orders/{{ Id }}`), but not its host or the address after `mailto:` — those stay text. Use an inline link for them: `[{{ Email }}](mailto:{{ Email }})`.
 
 #### [List extras](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/ListExtraSpecs.md)
 
@@ -1696,7 +1698,7 @@ Emphasis is the only inline markdown that can carry a style, so it is the only o
 Delivery Goal <span class="Heading3-lightChar">[Required]</span>
 ```
 
-The class becomes the `RunStyle` for every run the span encloses, nested spans resolve innermost-first, and a span with no class styles nothing. Only the class is read: an inline `style` attribute is ignored here, unlike a span inside an html *block*, which [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml) renders in full.
+The class becomes the `RunStyle` for every run the span encloses, nested spans resolve innermost-first, and a span with no class styles nothing. A run takes one character style, so where several apply to the same text the one on emphasis wins, then a span's class, then one on inline code, then the link's (`Hyperlink` unless the link names its own) — whichever of them encloses the other. Only the class is read: an inline `style` attribute is ignored here, unlike a span inside an html *block*, which [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml) renders in full.
 
 A list takes it on its own line, and it applies to every item. A style on an individual item wins over one on the list. Without either, items keep the built-in `ListParagraph`:
 
