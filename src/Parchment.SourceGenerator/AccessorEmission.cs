@@ -141,7 +141,8 @@ static class AccessorEmission
 
             if (member.IsExcelsiorTable)
             {
-                if (typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
+                if (!member.ExcelsiorNotTabular &&
+                    typesByFqn.TryGetValue(member.TypeFullyQualifiedName, out var memberType) &&
                     memberType.ElementTypeFullyQualifiedName != null)
                 {
                     excelsior.Add((nextPath, memberType.ElementTypeFullyQualifiedName, member.ExcelsiorHeadingParagraphStyle, member.ExcelsiorBodyParagraphStyle, member.ExcelsiorTableStyle, member.ExcelsiorConfigureMissing ? null : member.ExcelsiorConfigure));
