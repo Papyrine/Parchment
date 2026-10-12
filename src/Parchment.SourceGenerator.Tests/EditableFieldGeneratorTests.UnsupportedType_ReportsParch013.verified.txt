@@ -1,7 +1,13 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (5,1)-(5,15),
+      Location: /*
+
+[ParchmentModel]
+ ^^^^^^^^^^^^^^
+public partial class Order
+*/
+ : (5,1)-(5,15),
       Message: Model 'Order' member 'Sample.Order.Items' is [EditableField] but its type 'System.Collections.Generic.List<string>' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).,
       Severity: Error,
       Descriptor: {

@@ -31,7 +31,7 @@ class LinkInlineRenderer :
         // page it is on — so an empty internal link becomes a PAGEREF instead.
         if (url[0] == '#')
         {
-            var bookmark = MarkdownBookmark.Sanitize(url[1..]);
+            var bookmark = renderer.BookmarkNames.For(url[1..]);
             if (inline.FirstChild == null)
             {
                 foreach (var run in WordFields.PageReference(bookmark, PageReferencePlaceholder))
