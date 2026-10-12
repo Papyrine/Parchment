@@ -7,8 +7,19 @@ class TableRenderer :
     // Word treats these as ratios; for indented tables they are absolute.
     const int GridWidthBudgetDxa = 9000;
 
+    // The most columns Word holds in one table. It does not open a document with a wider one, and
+    // nothing short of Word says so: the schema allows the table and the page renderer draws it.
+    const int MaxColumns = 63;
+
     protected override void Write(OpenXmlMarkdownRenderer renderer, Markdig.Extensions.Tables.Table tableBlock)
     {
+        // Before anything is built, so no cell of a table that cannot be kept is rendered.
+        var columnCount = CountColumns(tableBlock);
+        if (columnCount > MaxColumns)
+        {
+            throw new TableColumnLimitException(columnCount, MaxColumns);
+        }
+
         var columns = tableBlock.ColumnDefinitions;
         // Indented tables use Auto width and size to content; absolute dxa column widths would
         // override that and stretch the table to the full budget. Tables flagged by
@@ -36,6 +47,35 @@ class TableRenderer :
         }
 
         renderer.AddBlock(table);
+    }
+
+    // The widest row decides, not the column definitions alone. A pipe table takes its definitions
+    // from the separator row, but a body row with more cells than that keeps them all and Markdig
+    // pads every other row out to match, so each row is written at the width of the widest. A
+    // spanning grid-table cell counts for the columns it covers.
+    static int CountColumns(Markdig.Extensions.Tables.Table table)
+    {
+        var count = table.ColumnDefinitions.Count;
+        foreach (var child in table)
+        {
+            if (child is not Markdig.Extensions.Tables.TableRow row)
+            {
+                continue;
+            }
+
+            var width = 0;
+            foreach (var cell in row)
+            {
+                if (cell is Markdig.Extensions.Tables.TableCell tableCell)
+                {
+                    width += Math.Max(1, tableCell.ColumnSpan);
+                }
+            }
+
+            count = Math.Max(count, width);
+        }
+
+        return count;
     }
 
     static int[]? ComputeColumnWidths(IList<Markdig.Extensions.Tables.TableColumnDefinition> columns)
