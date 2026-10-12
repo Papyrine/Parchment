@@ -1184,7 +1184,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1079-L1089' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1165-L1175' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1199,6 +1199,8 @@ Both are idempotent (a definition the template already provides is left alone) a
 ### Protection is cooperative, not security
 
 Word enforces `w:documentProtection` in its UI only. No password is set (a password would add no real protection while forcing non-deterministic salt generation into the output), so any user can lift the protection via Review → Restrict Editing, and any program can edit the underlying XML regardless. Editable fields are the right tool for *guiding* users to fill in specific values — not for tamper-proofing.
+
+The exception is a template its author already protected with a password in Word: that password (the salt and hash, copied as-is, so output stays deterministic) and any formatting restrictions are kept, and lifting the protection in the output asks for it. Whatever edit mode the template had (forms, comments, tracked changes, or protection configured but not enforced) becomes enforced `readOnly`, the strictest mode, with the editable fields as its only exceptions. Existing protection without a password is replaced.
 
 Protection is applied at registration whenever the model declares at least one `[EditableField]` member. Opt out per template:
 
@@ -2632,7 +2634,7 @@ Zip entry timestamps are pinned to a stable date (2020-01-01) rather than taken 
 
 Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. A hyperlink inside `[Html]` content is covered too: OpenXmlHtml assigns its relationship a deterministic id. One exception remains: a hyperlink to a url inside an Excelsior table cell is given a random relationship id by Excelsior, so a document containing one is not byte-identical between renders.
 
-[Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
+[Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security. A password the template already carries is copied through unchanged, which is equally deterministic.
 
 
 ## Icon
