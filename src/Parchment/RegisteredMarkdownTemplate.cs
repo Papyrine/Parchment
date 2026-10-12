@@ -198,6 +198,7 @@ class RegisteredMarkdownTemplate(
                 imagePolicies);
             await runner.RunAsync(part.Nodes);
             runner.ApplyStructural();
+            runner.SettleSectionBreaks();
             runner.SeparateProducedTables();
 
             Anchors.StripAll(root);

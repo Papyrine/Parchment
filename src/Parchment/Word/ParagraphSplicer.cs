@@ -21,7 +21,8 @@
 /// </list>
 ///
 /// Solo tokens (token covers the entire paragraph text) bypass this splicer — see the simpler
-/// "swap host paragraph" path in <see cref="ScopeTreeRunner"/>.
+/// "swap host paragraph" path in <see cref="ScopeTreeRunner"/>. That path splits the host here only
+/// when it carries something besides the token, to keep it on the side of the token it sat on.
 /// </summary>
 static class ParagraphSplicer
 {
