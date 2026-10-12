@@ -26,7 +26,7 @@ static class LiquidMembers
             return LiquidKind.Dictionary;
         }
 
-        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(type))
+        if (typeof(IEnumerable).IsAssignableFrom(type))
         {
             return LiquidKind.Array;
         }
@@ -85,7 +85,7 @@ static class LiquidMembers
     // its usual implementations are both.
     static bool IsDictionary(Type type)
     {
-        if (typeof(System.Collections.IDictionary).IsAssignableFrom(type) ||
+        if (typeof(IDictionary).IsAssignableFrom(type) ||
             IsGenericDictionary(type))
         {
             return true;

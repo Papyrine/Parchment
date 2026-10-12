@@ -122,6 +122,8 @@ A `{% for %}` paragraph and its matching `{% endfor %}` repeat the intervening c
 {% endfor %}
 ```
 
+The liquid loop modifiers `limit:`, `offset:` and `reversed` apply as they do in a markdown template: the offset is skipped first, the limit is taken from what remains, and `reversed` flips that window. Both numbers can be model members (`{% for line in Lines limit: PageSize %}`). `offset: continue` is rejected at registration, since it depends on liquid's own loop state.
+
 The body isn't restricted to paragraphs. Anything between the open and close paragraphs at the same nesting level — additional paragraphs, `<w:tbl>` tables, images, section breaks — is captured and cloned per iteration. This makes per-group "heading + table" layouts straightforward: place a styled heading paragraph and a hand-crafted Word table between `{% for %}` and `{% endfor %}`, and reference the loop variable inside the table cells.
 
 ```
@@ -756,7 +758,7 @@ var model = new Quote
 using var stream = new MemoryStream();
 await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L303-L339' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L517-L553' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -1152,7 +1154,7 @@ result.ApplyTo(model);
 | numeric types | plain text | text parsed with the extraction culture |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
-Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`, which `ApplyTo` writes back as null on a nullable member and skips on a non-nullable one (leaving its existing value). Members must have a public non-init setter so extraction can write back.
+Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`, which `ApplyTo` writes back as null on a nullable member and skips on a non-nullable one (leaving its existing value). A member reached through a null parent object renders the same way; a checkbox, having no placeholder, renders unchecked and extracts as `false`. Members must have a public non-init setter so extraction can write back.
 
 **Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
 
@@ -1178,7 +1180,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1023-L1033' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1079-L1089' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1281,7 +1283,7 @@ public partial class BudgetPlan
     public required List<Budget> Budgets { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L6-L24' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L7-L25' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The template is a plain loop; the loop-variable tokens become the per-row controls:
@@ -1302,11 +1304,12 @@ var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
 // model.Budgets is the edited list - added rows appear, removed rows are gone
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L178-L183' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableCollectionTests.cs#L225-L230' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableCollectionExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
-- **An empty collection renders one blank row** so Word has a template to clone; an all-blank row extracts as nothing, so clearing a row deletes it.
+- **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
+- **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
 - **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
 - **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
@@ -1895,7 +1898,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L861-L869' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L989-L997' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -2479,6 +2482,19 @@ static void ConfigureLines(WordTableBuilder<Line> builder) =>
 ```
 
 
+### `PARCH027` — loop over an `[EditableField]` collection carries a modifier
+
+**Docx only.** A loop over an [editable collection](#editable-collections) renders as a repeating section, and extraction replaces the whole collection with the rows the document holds. With `limit:`, `offset:` or `reversed` on that loop, the rows rendered would be a window of the collection or its reverse, and that is what extraction would write back.
+
+```
+{% for b in Budgets limit:3 %}   ← Budgets is [EditableField]
+Year: {{ b.Year }} Amount: {{ b.Amount }}
+{% endfor %}
+```
+
+Remove the modifier, or drop `[EditableField]` from the member to render it read-only. A loop nested inside another loop already renders read-only, so a modifier there is applied and not reported.
+
+
 ### `PARCH028` — block tags in different containers
 
 **Docx only.** The paragraphs holding the tags of one block — `{% for %}` and `{% endfor %}`, or `{% if %}`, every `{% elsif %}` / `{% else %}`, and `{% endif %}` — must be siblings: in the same table cell, the same text box, or at the same level of the body. A block's content is everything between its tag paragraphs inside that one container, so a tag stranded elsewhere leaves nothing well-defined to repeat or remove.
@@ -2575,6 +2591,8 @@ dotnet run --project src/Parchment.Benchmarks --configuration Release
 Rendering the same template with the same model produces a byte-identical output. Useful for hash-based caching, dedup, and legal sign-off workflows.
 
 Zip entry timestamps are pinned to a stable date (2020-01-01) rather than taken from the clock. Entries cloned from the registration snapshot keep their stamps through a save, but a part added during the render — the settings part, a numbering part for a list, an image — would otherwise carry the wall-clock time at the zip format's 2-second resolution. Without the pin, byte-identity held only for renders landing inside the same 2-second window, and never across days.
+
+Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. One exception remains: a hyperlink inside `[Html]` content, or inside an Excelsior table cell, is given a random relationship id by the library that renders it, so a document containing one is not byte-identical between renders.
 
 [Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
 

@@ -443,6 +443,20 @@ public class EditableFieldGeneratorTests
         await Assert.That(warning.Severity).IsEqualTo(DiagnosticSeverity.Warning);
     }
 
+    // A range loop variable shadows a model member of the same name, as it does at render, so the
+    // token is the loop value and not the editable field.
+    [Test]
+    public async Task RangeLoopVariable_ShadowingEditableMember_NoParch018()
+    {
+        var result = GeneratorDriver.Run(
+            editableModel,
+            "{% for PurchaseOrder in (1..3) %}",
+            "{{ PurchaseOrder }}",
+            "{% endfor %}");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).IsEmpty();
+    }
+
     [Test]
     public async Task LoopVariablePathToken_ReportsParch018Warning()
     {
@@ -600,5 +614,65 @@ public class EditableFieldGeneratorTests
         var result = GeneratorDriver.RunMarkdown(source, "PO: {{ PurchaseOrder | upcase }}");
         var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
         await Assert.That(ids).IsEmpty();
+    }
+
+    static List<string> ParchIds(GeneratorDriverRunResult result) =>
+        result.Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .Where(_ => _.StartsWith("PARCH", StringComparison.Ordinal))
+            .ToList();
+
+    // Extraction replaces the collection with the rows in the document, so a loop that rendered a
+    // window of it, or rendered it backwards, would have that written back.
+    [Test]
+    [Arguments("{% for line in Lines limit:1 %}")]
+    [Arguments("{% for line in Lines offset:1 %}")]
+    [Arguments("{% for line in Lines reversed %}")]
+    public async Task EditableCollection_LoopModifier_ReportsParch027(string openTag)
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            openTag,
+            "{{ line.Note }} {{ line.Amount }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH027"]);
+    }
+
+    // A nested loop runs with an empty editable map and renders read-only, so nothing it shows is
+    // extracted and a modifier there is harmless. PARCH018 is the existing warning for that nesting.
+    [Test]
+    public async Task EditableCollection_LoopModifier_InsideAnotherLoop_NoParch027()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                public List<string> Pages { get; set; } = new();
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for page in Pages %}",
+            "{% for line in Lines limit:1 %}",
+            "{{ line.Note }}",
+            "{% endfor %}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).DoesNotContain("PARCH027");
     }
 }

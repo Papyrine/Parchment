@@ -9,6 +9,9 @@
 /// <item>an editable token may not share its paragraph with a structural token
 /// (<c>[ExcelsiorTable]</c> / <c>[Html]</c> / <c>[Markdown]</c>) — structural splice/split
 /// machinery clones paragraph halves, which would corrupt the field's perm-range markers.</item>
+/// <item>a body loop over an <c>[EditableField]</c> collection may not carry <c>limit:</c> /
+/// <c>offset:</c> / <c>reversed</c> — extraction replaces the whole collection with the rows the
+/// document holds, so a windowed or reordered render would write that subset or order back.</item>
 /// </list>
 /// </summary>
 static class EditableTokenValidator
@@ -32,6 +35,16 @@ static class EditableTokenValidator
         var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
+            // Only a top-level body loop renders as a repeating section: non-body parts and
+            // nested loop bodies run with an empty editable map and stay read-only, where a
+            // modifier is harmless. Checked before the tag opens its own variable.
+            if (isBody &&
+                loopVariables.Count == 0 &&
+                classification.Block is { Kind: BlockTagKind.For } block)
+            {
+                RejectModifiersOnCollectionLoop(block, editables, templateName, partUri);
+            }
+
             LoopScope.Track(loopVariables, classification);
             if (classification.Kind != ParagraphKind.Substitution)
             {
@@ -103,6 +116,29 @@ static class EditableTokenValidator
                 }
             }
         }
+    }
+
+    static void RejectModifiersOnCollectionLoop(BlockMarker block, EditableMap editables, string templateName, string partUri)
+    {
+        if (block.LoopLimit == null &&
+            block.LoopOffset == null &&
+            !block.LoopReversed)
+        {
+            return;
+        }
+
+        var sourceRefs = IdentifierVisitor.Collect(block.LoopSource!);
+        if (sourceRefs.Count == 0 ||
+            !editables.TryGetCollection(sourceRefs[0].Dotted, out _))
+        {
+            return;
+        }
+
+        throw new ParchmentRegistrationException(
+            templateName,
+            $"Loop '{block.Source}' iterates the [EditableField] collection '{sourceRefs[0].Dotted}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
+            partUri,
+            block.Source);
     }
 
     static void RequirePlainIdentifier(DocxTokenSite token, string templateName, string partUri)

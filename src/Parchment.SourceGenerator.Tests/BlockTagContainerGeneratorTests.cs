@@ -41,6 +41,35 @@ public class BlockTagContainerGeneratorTests
         await Assert.That(message).Contains("same container");
     }
 
+    // A range loop is a block like any other: where its tags sit is checked whatever it iterates,
+    // and it is the only thing reported.
+    [Test]
+    public async Task RangeForAndEndForInDifferentTableRows_ReportsParch028()
+    {
+        var diagnostics = Run(
+            new Table(
+                new TableRow(new TableCell(P("{% for i in (1..Lines.size) %}"))),
+                new TableRow(new TableCell(P("{{ i }}"))),
+                new TableRow(new TableCell(P("{% endfor %}")))));
+
+        await Assert.That(diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH028"]);
+        await Assert.That(diagnostics.Single().GetMessage()).Contains("{% for i in (1..Lines.size) %}");
+    }
+
+    [Test]
+    public async Task RangeLoopInsideOneCell_NoDiagnostic()
+    {
+        var diagnostics = Run(
+            new Table(
+                new TableRow(
+                    new TableCell(
+                        P("{% for i in (1..Lines.size) %}"),
+                        P("{{ i }}"),
+                        P("{% endfor %}")))));
+
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
     [Test]
     public async Task IfInCellAndEndIfInBody_ReportsParch028()
     {

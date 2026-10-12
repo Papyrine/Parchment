@@ -16,11 +16,11 @@ Deploys	Stable	SRE
 On-call	Watch	SRE
 Action items
 1. Roll out cached builds — Extend the new pipeline to mobile repos.
-2. Document runbooks — Capture the top five paging scenarios.
     },
     {
       Number: 2,
       Text:
+2. Document runbooks — Capture the top five paging scenarios.
 3. Audit alert thresholds — Reduce noise on the latency dashboard.
 ⚠ Outstanding risks remain. See appendix for mitigation plan.
     }

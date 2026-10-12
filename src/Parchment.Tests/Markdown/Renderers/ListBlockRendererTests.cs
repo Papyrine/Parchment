@@ -114,6 +114,70 @@ public partial class ListBlockRendererTests
         await VerifyDocument(md);
     }
 
+    // The start number was ignored: "5. five" rendered as 1. A list starting at the format's first
+    // value carries no override, so its numbering stays as it was.
+    [Test]
+    [Arguments("1. first\n2. second", null)]
+    [Arguments("5. five\n6. six", 5)]
+    [Arguments("0. zero\n1. one", 0)]
+    [Arguments("a. first\nb. second", null)]
+    [Arguments("c. third\nd. fourth", 3)]
+    [Arguments("C. third\nD. fourth", 3)]
+    [Arguments("i. first\nii. second", null)]
+    [Arguments("iv. fourth\nv. fifth", 4)]
+    [Arguments("IV. fourth\nV. fifth", 4)]
+    public async Task OrderedListStartsAtTheAuthoredNumber(string md, int? expected)
+    {
+        var (paragraphs, renderer) = RenderListWithRenderer(md);
+
+        await Assert.That(ReadStartOverride(paragraphs[0], renderer)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task NestedOrderedListStartsAtItsOwnNumber()
+    {
+        var (paragraphs, renderer) = RenderListWithRenderer("3. outer\n\n   7. inner\n   8. inner two\n4. outer two");
+
+        var starts = paragraphs
+            .Select(_ => ReadStartOverride(_, renderer))
+            .ToList();
+        await Assert.That(starts).IsEquivalentTo(new int?[] { 3, 7, 7, 3 });
+
+        // The override sits on the level the list's items use, and nowhere else.
+        var numbering = renderer.MainPart.NumberingDefinitionsPart!.Numbering!;
+        var overrides = numbering
+            .Descendants<LevelOverride>()
+            .Select(_ => _.LevelIndex!.Value)
+            .ToList();
+        await Assert.That(overrides).IsEquivalentTo([0, 1]);
+    }
+
+    [Test]
+    public async Task OrderedListStartRendersSchemaValidNumbering()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>("5. five\n6. six\n\ntext\n\n1. one\n2. two", styleSource);
+        using var stream = new MemoryStream();
+        await store.Render(new EmptyModel(), stream);
+        stream.Position = 0;
+
+        using var document = WordprocessingDocument.Open(stream, false);
+        var numbering = document.MainDocumentPart!.NumberingDefinitionsPart!.Numbering!;
+        var starts = numbering
+            .Descendants<StartOverrideNumberingValue>()
+            .Select(_ => _.Val!.Value)
+            .ToList();
+        await Assert.That(starts).IsEquivalentTo([5]);
+
+        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+        var errors = validator
+            .Validate(document)
+            .Select(_ => $"{_.Path?.XPath}: {_.Description}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
     // Every paragraph of an item used to carry the numPr, so a continuation paragraph took a marker
     // of its own and an ordered list counted it as the next item.
     [Test]
@@ -182,6 +246,34 @@ public partial class ListBlockRendererTests
         await Assert.That(paragraphs.Count).IsEqualTo(2);
         await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties).IsNull();
         await Assert.That(paragraphs[1].ParagraphProperties!.ParagraphStyleId!.Val?.Value).IsEqualTo("ListStyle");
+    }
+
+    // Both fixes together: the override belongs to the list's instance, so the continuation
+    // paragraph neither carries a numPr nor disturbs the start.
+    [Test]
+    public async Task ContinuationParagraphLeavesTheStartOverrideAlone()
+    {
+        var (paragraphs, renderer) = RenderListWithRenderer("5. five\n\n   continuation\n\n6. six");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(ReadStartOverride(paragraphs[0], renderer)).IsEqualTo(5);
+        await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties).IsNull();
+        await Assert.That(paragraphs[2].ParagraphProperties!.NumberingProperties!.NumberingId!.Val?.Value)
+            .IsEqualTo(paragraphs[0].ParagraphProperties!.NumberingProperties!.NumberingId!.Val?.Value);
+
+        var numbering = renderer.MainPart.NumberingDefinitionsPart!.Numbering!;
+        await Assert.That(numbering.Descendants<LevelOverride>().Count()).IsEqualTo(1);
+    }
+
+    static int? ReadStartOverride(Paragraph paragraph, OpenXmlMarkdownRenderer renderer)
+    {
+        var properties = paragraph.ParagraphProperties!.NumberingProperties!;
+        var numId = properties.NumberingId!.Val!.Value;
+        var ilvl = properties.NumberingLevelReference!.Val!.Value;
+        var numbering = renderer.MainPart.NumberingDefinitionsPart!.Numbering!;
+        var instance = numbering.Elements<NumberingInstance>().Single(_ => _.NumberID?.Value == numId);
+        var levelOverride = instance.Elements<LevelOverride>().SingleOrDefault(_ => _.LevelIndex?.Value == ilvl);
+        return levelOverride?.StartOverrideNumberingValue?.Val?.Value;
     }
 
     static Indentation LevelIndent(Paragraph numbered, OpenXmlMarkdownRenderer renderer)

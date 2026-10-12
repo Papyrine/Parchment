@@ -125,8 +125,21 @@ public static class TokenScanner
             return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent);
         }
 
-        var references = IdentifierVisitor.Collect(template);
-        return new(TokenKind.ForOpen, source, references, forStatement.Identifier, hasOtherContent);
+        var references = IdentifierVisitor.Collect(forStatement.Source);
+        var modifierReferences = IdentifierVisitor.Collect(forStatement.Limit);
+        modifierReferences.AddRange(IdentifierVisitor.Collect(forStatement.Offset));
+        var hasModifiers = forStatement.Limit != null ||
+                           forStatement.Offset != null ||
+                           forStatement.Reversed;
+        return new(
+            TokenKind.ForOpen,
+            source,
+            references,
+            forStatement.Identifier,
+            hasOtherContent,
+            LoopModifierReferences: modifierReferences,
+            HasLoopModifiers: hasModifiers,
+            LoopSourceIsRange: forStatement.Source is not MemberExpression);
     }
 
     static Token BuildConditional(TokenKind kind, string source, string? expression, bool hasOtherContent)

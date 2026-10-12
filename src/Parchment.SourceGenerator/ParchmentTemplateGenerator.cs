@@ -799,7 +799,16 @@ public sealed class ParchmentTemplateGenerator :
                     string? bound = null;
                     string? prior = null;
                     var isEditableCollectionLoop = false;
-                    if (token is { LoopVariable: not null, References.Count: > 0 })
+                    if (token.LoopVariable != null &&
+                        IsUntypedLoop(token, scope))
+                    {
+                        // Bound so the variable shadows a model member of the same name, as it
+                        // does at render.
+                        bound = token.LoopVariable;
+                        prior = scope.GetValueOrDefault(bound);
+                        scope[bound] = untypedLoopVariable;
+                    }
+                    else if (token is { LoopVariable: not null, References.Count: > 0 })
                     {
                         isEditableCollectionLoop =
                             ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var sourceMember) &&
@@ -812,6 +821,22 @@ public sealed class ParchmentTemplateGenerator :
                             prior = scope.GetValueOrDefault(bound);
                             scope[bound] = elementFqn;
                         }
+                    }
+
+                    // Only a top-level loop renders as a repeating section — a nested one runs
+                    // with an empty editable map at runtime and stays read-only — so that is the
+                    // only place a modifier would be written back by extraction.
+                    if (isEditableCollectionLoop &&
+                        token.HasLoopModifiers &&
+                        loopStack.Count == 0)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableCollectionLoopModifier,
+                                location,
+                                templatePath,
+                                token.Source,
+                                string.Join('.', token.References[0])));
                     }
 
                     loopStack.Push((bound, prior, isEditableCollectionLoop));
@@ -1072,6 +1097,26 @@ public sealed class ParchmentTemplateGenerator :
             SourceText.From(source, Encoding.UTF8));
     }
 
+    // Scope binding for a loop variable whose source is not statically known: a range, or a path
+    // rooted at another such variable. The variable exists, but members reached through it are not
+    // checked. Mirrors `untyped` in the runtime ReferenceValidator and the set in MarkdownValidator.
+    const string untypedLoopVariable = "";
+
+    static bool IsUntypedLoop(Token token, IReadOnlyDictionary<string, string> scope)
+    {
+        if (token.LoopSourceIsRange)
+        {
+            return true;
+        }
+
+        return token.References.Count > 0 &&
+               IsUntyped(token.References[0], scope);
+    }
+
+    static bool IsUntyped(IReadOnlyList<string> reference, IReadOnlyDictionary<string, string> scope) =>
+        scope.TryGetValue(reference[0], out var bound) &&
+        bound == untypedLoopVariable;
+
     static void ValidateTokens(
         SourceProductionContext context,
         TargetInfo target,
@@ -1106,8 +1151,32 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (token.LoopVariable == null ||
-                        token.References.Count == 0)
+                    // `limit:` / `offset:` are evaluated before the loop variable is bound, so they
+                    // resolve against the enclosing scope. `offset: continue` lands here too: the
+                    // docx flow has no loop scope to resume from and the runtime rejects it.
+                    if (token.LoopModifierReferences != null)
+                    {
+                        ValidateReferences(context, target, templatePath, location, token.LoopModifierReferences, scope, token.Source);
+                    }
+
+                    if (token.LoopVariable == null)
+                    {
+                        break;
+                    }
+
+                    if (IsUntypedLoop(token, scope))
+                    {
+                        // Nothing to resolve an element type from, which is an unknown, not a
+                        // mistake. Members used as range bounds are still references like any
+                        // other. Pushed like a typed loop so the closing tag pairs with this one.
+                        ValidateReferences(context, target, templatePath, location, token.References, scope, token.Source);
+                        var hadPriorUntyped = scope.TryGetValue(token.LoopVariable, out var priorUntyped);
+                        scope[token.LoopVariable] = untypedLoopVariable;
+                        loopStack.Push((token.LoopVariable, hadPriorUntyped ? priorUntyped : null));
+                        break;
+                    }
+
+                    if (token.References.Count == 0)
                     {
                         break;
                     }
@@ -1406,7 +1475,8 @@ public sealed class ParchmentTemplateGenerator :
     {
         foreach (var reference in references)
         {
-            if (ShapeResolver.TryResolve(target.Shape, reference, scope, out _))
+            if (IsUntyped(reference, scope) ||
+                ShapeResolver.TryResolve(target.Shape, reference, scope, out _))
             {
                 continue;
             }

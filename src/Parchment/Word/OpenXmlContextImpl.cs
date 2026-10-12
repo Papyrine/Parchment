@@ -20,7 +20,7 @@ class OpenXmlContextImpl(
             "image/tiff" => ImagePartType.Tiff,
             _ => ImagePartType.Png
         };
-        var imagePart = MainPart.AddImagePart(partType);
+        var imagePart = MainPart.AddImagePart(partType, RelationshipIds.Next(MainPart, "rIdImage"));
         using var stream = new MemoryStream(bytes);
         imagePart.FeedData(stream);
         return MainPart.GetIdOfPart(imagePart);

@@ -235,6 +235,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
 
+    // Extraction is replace-all: the rows in the document become the collection. A window or a
+    // reversal on the loop that rendered them would therefore be written back as data.
+    public static readonly DiagnosticDescriptor EditableCollectionLoopModifier = new(
+        id: "PARCH027",
+        title: "Loop over an [EditableField] collection carries a modifier",
+        messageFormat: "Template '{0}' loop '{1}' iterates the [EditableField] collection '{2}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch027--loop-over-an-editablefield-collection-carries-a-modifier");
+
     // Nothing in the markdown flow can trip this: a markdown template is one Fluid parse, with no
     // paragraphs for a tag to be stranded in.
     public static readonly DiagnosticDescriptor BlockTagsNotSiblings = new(

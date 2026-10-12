@@ -7,5 +7,10 @@ sealed record LoopNode(
     // a plain member path. Precomputed at tree-build time so the render path can probe the editable
     // collection map without re-walking the AST via IdentifierVisitor.Collect on every loop.
     string? SourceReference,
+    // The `limit:` / `offset:` / `reversed` modifiers of the tag, as Fluid parsed them. Limit and
+    // Offset are expressions rather than numbers because liquid allows `limit: Max`.
+    Expression? Limit,
+    Expression? Offset,
+    bool Reversed,
     IReadOnlyList<RangeNode> Body) :
     RangeNode;

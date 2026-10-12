@@ -111,13 +111,17 @@ static class ScopeTreeBuilder
         // Resolve the source's first dotted reference once, here at build time, so ProcessLoopAsync
         // never has to run IdentifierVisitor.Collect (which allocates a visitor + path lists) per loop.
         var sourceRefs = IdentifierVisitor.Collect(loopSource);
-        var sourceReference = sourceRefs.Count > 0 ? sourceRefs[0].Dotted : null;
+        // A range's references are its bounds, not what is iterated, so it has no source reference.
+        var sourceReference = loopSource is MemberExpression && sourceRefs.Count > 0 ? sourceRefs[0].Dotted : null;
         return new(
             opening.AnchorName,
             closing.AnchorName,
             opening.Block!.LoopVariable!,
             loopSource,
             sourceReference,
+            opening.Block.LoopLimit,
+            opening.Block.LoopOffset,
+            opening.Block.LoopReversed,
             body);
     }
 

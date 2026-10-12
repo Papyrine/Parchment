@@ -286,15 +286,19 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     static byte[] BlankDocxTemplate { get; } = BuildBlankDocx();
 
-    static byte[] BuildBlankDocx()
+    internal static byte[] BuildBlankDocx()
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
+            // Explicit ids: without them the SDK mints random ones, and since this is built once per
+            // process, default markdown output would differ between processes. The package is new,
+            // so nothing can already hold either id.
             var mainPart = doc.AddMainDocumentPart();
+            doc.ChangeIdOfPart(mainPart, "rId1");
             mainPart.Document = new(new Body(new Paragraph()));
 
-            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
+            var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>("rIdStyles");
             var styles = new Styles();
             styles.Append(
                 new Style
@@ -646,7 +650,15 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             return null;
         }
 
-        return new(BlockTagKind.For, source, null, forStatement.Identifier, forStatement.Source);
+        return new(
+            BlockTagKind.For,
+            source,
+            null,
+            forStatement.Identifier,
+            forStatement.Source,
+            forStatement.Limit,
+            forStatement.Offset,
+            forStatement.Reversed);
     }
 
     static BlockMarker? RebuildIf(string source, string? expression) =>

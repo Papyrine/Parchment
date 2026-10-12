@@ -71,6 +71,16 @@ static class ShapeBuilder
             var current = type;
             while (current != null)
             {
+                // A model's own collection class reaches a template as an array or a dictionary, so
+                // none of its CLR members bind. Its own are still walked, since an attribute map
+                // can reach them by getter, but what List<T> or Dictionary<K, V> declares beneath
+                // it (Count, Capacity, Keys…) is not binding surface for anything.
+                if (liquid != LiquidKind.None &&
+                    IsSystemType(current))
+                {
+                    break;
+                }
+
                 foreach (var member in current.GetMembers())
                 {
                     if (!TryGetMemberType(member, out var memberType, out var memberName, out var isStatic))
@@ -484,7 +494,10 @@ static class ShapeBuilder
 
     static bool TryGetMemberType(ISymbol member, out ITypeSymbol type, out string name, out bool isStatic)
     {
-        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public } property)
+        // An indexer has no name a template can ask for, and a property without a public getter has
+        // nothing the generated code can read: an accessor for either (`o.this[]`, or a call to a
+        // private get) does not compile. Lockstep with the runtime's ModelValidator.TryResolveMember.
+        if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsIndexer: false, GetMethod.DeclaredAccessibility: Accessibility.Public } property)
         {
             type = property.Type;
             name = property.Name;
