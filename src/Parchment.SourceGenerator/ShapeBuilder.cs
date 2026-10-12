@@ -173,7 +173,7 @@ static class ShapeBuilder
             }
         }
 
-        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid);
+        return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid, type.IsValueType);
     }
 
     // Lockstep with the runtime's LiquidMembers.Classify, which reads the same three cases off a

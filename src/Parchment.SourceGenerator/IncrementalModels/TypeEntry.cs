@@ -7,4 +7,7 @@ sealed record TypeEntry(
     bool HasParameterlessCtor = false,
     // What Fluid hands a template for a value of this type. Anything but None answers to liquid's
     // own members instead of the ones above — see ShapeResolver.TryResolveLiquidMember.
-    LiquidKind Liquid = LiquidKind.None);
+    LiquidKind Liquid = LiquidKind.None,
+    // A struct. Extraction writes editable values back along the member path, and a write through
+    // a struct lands on a copy — consulted by the editable shape rules (PARCH022 / PARCH032).
+    bool IsValueType = false);

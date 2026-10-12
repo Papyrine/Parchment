@@ -682,6 +682,26 @@ public sealed class ParchmentTemplateGenerator :
                 }
             }
         }
+
+        // An editable member below a struct has no setter that reaches the model. One report per
+        // member, however many paths lead to it.
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (declaringTypeFqn, member, valueTypeFqn) in AccessorEmission.EditablesThroughValueType(target.Shape))
+        {
+            var memberDisplay = $"{Display(declaringTypeFqn)}.{member.Name}";
+            if (!reported.Add(memberDisplay))
+            {
+                continue;
+            }
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.EditableThroughValueType,
+                    location,
+                    target.ModelDisplayName,
+                    memberDisplay,
+                    Display(valueTypeFqn)));
+        }
     }
 
     /// <summary>
@@ -712,6 +732,17 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         var elementDisplay = Display(element.TypeFullyQualifiedName);
+        if (element.IsValueType)
+        {
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
+                $"its element type '{elementDisplay}' is a struct — extraction fills each element through a reference to it, and a struct is copied instead, so the element type must be a class");
+            return;
+        }
+
         if (!element.HasParameterlessCtor)
         {
             ReportCollectionInvalid(

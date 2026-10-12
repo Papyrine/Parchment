@@ -78,7 +78,9 @@ static class AccessorEmission
             formatEntries,
             stringListEntries,
             editableEntries,
-            collectionEntries);
+            collectionEntries,
+            [],
+            null);
 
         if (fluidBlocks.Count == 0 &&
             excelsiorEntries.Count == 0 &&
@@ -115,11 +117,22 @@ static class AccessorEmission
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
         List<(List<string>, MemberEntry)> editables,
-        List<(List<string>, MemberEntry)> collections)
+        List<(List<string>, MemberEntry)> collections,
+        List<(string DeclaringTypeFqn, MemberEntry Member, string ValueTypeFqn)> throughValueType,
+        string? valueTypeFqn)
     {
         if (!typesByFqn.TryGetValue(currentTypeFqn, out var typeEntry))
         {
             return;
+        }
+
+        // The first struct on the way here, the current type included. An editable member below it
+        // has no setter that reaches the model: assigning through a struct hop assigns to a copy
+        // (and through a boxed struct does not compile), so it is reported (PARCH032) rather than
+        // emitted.
+        if (typeEntry.IsValueType)
+        {
+            valueTypeFqn ??= typeEntry.TypeFullyQualifiedName;
         }
 
         foreach (var member in typeEntry.Members)
@@ -173,15 +186,21 @@ static class AccessorEmission
 
             if (member.IsEditable)
             {
+                if (valueTypeFqn != null)
+                {
+                    throughValueType.Add((typeEntry.TypeFullyQualifiedName, member, valueTypeFqn));
+                    continue;
+                }
+
                 // An editable collection (POCO element) → repeating section, registered separately.
-                // Invalid shapes (no setter, element without a parameterless ctor or without
-                // editable members) carry an error diagnostic (PARCH014 / PARCH022) — skip them so
+                // Invalid shapes (no setter, a struct element, element without a parameterless ctor or
+                // without editable members) carry an error diagnostic (PARCH014 / PARCH022) — skip them so
                 // the emitted source stays compilable.
                 if (member.EditableCollectionElementFqn != null)
                 {
                     if (member.HasUsableSetter &&
                         typesByFqn.TryGetValue(member.EditableCollectionElementFqn, out var elementEntry) &&
-                        elementEntry.HasParameterlessCtor &&
+                        elementEntry is { HasParameterlessCtor: true, IsValueType: false } &&
                         HasScalarEditableMember(elementEntry))
                     {
                         collections.Add((nextPath, member));
@@ -213,9 +232,50 @@ static class AccessorEmission
                 continue;
             }
 
-            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables, collections);
+            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables, collections, throughValueType, valueTypeFqn);
             visited.Remove(member.TypeFullyQualifiedName);
         }
+    }
+
+    /// <summary>
+    /// The editable members the walks above leave out because a struct sits on the path to them,
+    /// from the root and from each editable collection's element. The same walk that emits, so
+    /// what is reported (PARCH032) is exactly what is not emitted.
+    /// </summary>
+    public static List<(string DeclaringTypeFqn, MemberEntry Member, string ValueTypeFqn)> EditablesThroughValueType(ModelShape shape)
+    {
+        var typesByFqn = new Dictionary<string, TypeEntry>(StringComparer.Ordinal);
+        foreach (var type in shape.Types)
+        {
+            typesByFqn[type.TypeFullyQualifiedName] = type;
+        }
+
+        var result = new List<(string, MemberEntry, string)>();
+        var collections = new List<(List<string> Path, MemberEntry Member)>();
+        Walk(shape.RootTypeFullyQualifiedName, collections);
+        foreach (var (_, member) in collections)
+        {
+            Walk(member.EditableCollectionElementFqn!, []);
+        }
+
+        return result;
+
+        void Walk(string fqn, List<(List<string>, MemberEntry)> found) =>
+            WalkForMaps(
+                fqn,
+                [],
+                new(StringComparer.Ordinal)
+                {
+                    fqn
+                },
+                typesByFqn,
+                [],
+                [],
+                [],
+                [],
+                found,
+                result,
+                null);
     }
 
     static bool HasScalarEditableMember(TypeEntry type)
@@ -534,7 +594,9 @@ static class AccessorEmission
             [],
             [],
             elementEditables,
-            []);
+            [],
+            [],
+            null);
 
         builder.Append("new global::Parchment.Generated.EditableFieldMapEntry[] { ");
         foreach (var (path, member) in elementEditables)
