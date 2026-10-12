@@ -1,4 +1,5 @@
-﻿class ReferenceValidator(Type modelType, string templateName, string partUri)
+﻿[RequiresUnreferencedCode(Unsupported.Trimming)]
+class ReferenceValidator(Type modelType, string templateName, string partUri)
 {
     // Scope binding for a loop variable whose source is not statically known: a range, or a path
     // rooted at another such variable. The variable exists, but members reached through it are not

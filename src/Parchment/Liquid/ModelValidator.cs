@@ -2,6 +2,7 @@
 /// Reflection-based validator that walks an <see cref="IdentifierPath"/> against a .NET type
 /// to ensure every segment resolves to a real member. Used by the runtime registration path.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class ModelValidator
 {
     public static void Validate(
@@ -71,6 +72,15 @@ static class ModelValidator
 
     public static bool TryResolveElementType(Type enumerableType, [NotNullWhen(true)] out Type? elementType)
     {
+        // A string is an IEnumerable<char>, but liquid does not walk its characters: a loop over one
+        // runs once with the whole string. Nothing iterates it as a collection, so it is not one
+        // here. Lockstep with the source generator's ShapeBuilder.BuildEntry, which reports PARCH002.
+        if (enumerableType == typeof(string))
+        {
+            elementType = null;
+            return false;
+        }
+
         if (enumerableType.IsArray)
         {
             elementType = enumerableType.GetElementType();
@@ -125,6 +135,17 @@ static class ModelValidator
         return LiquidMembers.TryResolve(kind, type, name, out memberType);
     }
 
+    /// <summary>
+    /// Resolves a member the way the source generator picks the one it emits an accessor for
+    /// (ShapeBuilder walks the same order): the most derived type first, and within a type the
+    /// first declared member whose name matches without regard to case.
+    /// </summary>
+    /// <remarks>
+    /// Walked by hand because a case-insensitive <c>GetProperty</c> / <c>GetField</c> throws
+    /// <see cref="AmbiguousMatchException"/> as soon as two members answer to the name, and both
+    /// ways of getting there are legal C#: a <c>new</c> member hiding a base one of another type,
+    /// and two members whose names differ only by case.
+    /// </remarks>
     public static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType) =>
         TryResolveMember(type, name, out memberType, out _);
 
@@ -165,25 +186,66 @@ static class ModelValidator
 
     static bool TryResolveMember(Type type, string name, [NotNullWhen(true)] out Type? memberType, out Type? declaringType)
     {
-        var property = type.GetProperty(
-            name,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        // Readable in public, and not an indexer: the generator emits an accessor for nothing else
-        // (ShapeBuilder.TryGetMemberType), so anything else would register and then render blank.
-        if (property is { GetMethod.IsPublic: true } &&
-            property.GetIndexParameters().Length == 0)
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        for (var current = type; current != null; current = current.BaseType)
         {
-            memberType = property.PropertyType;
-            declaringType = property.DeclaringType;
-            return true;
+            PropertyInfo? property = null;
+            foreach (var candidate in current.GetProperties(flags))
+            {
+                // Readable in public, and not an indexer: the generator emits an accessor for
+                // nothing else (ShapeBuilder.TryGetMemberType), so anything else would register
+                // and then render blank.
+                if (candidate is { GetMethod.IsPublic: true } &&
+                    string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                    candidate.GetIndexParameters().Length == 0 &&
+                    (property == null || candidate.MetadataToken < property.MetadataToken))
+                {
+                    property = candidate;
+                }
+            }
+
+            FieldInfo? field = null;
+            foreach (var candidate in current.GetFields(flags))
+            {
+                if (string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                    (field == null || candidate.MetadataToken < field.MetadataToken))
+                {
+                    field = candidate;
+                }
+            }
+
+            if (field != null &&
+                (property == null || IsDeclaredBefore(field, property)))
+            {
+                memberType = field.FieldType;
+                declaringType = field.DeclaringType;
+                return true;
+            }
+
+            if (property != null)
+            {
+                memberType = property.PropertyType;
+                declaringType = property.DeclaringType;
+                return true;
+            }
         }
 
-        var field = type.GetField(
-            name,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-        memberType = field?.FieldType;
-        declaringType = field?.DeclaringType;
-        return memberType != null;
+        memberType = null;
+        declaringType = null;
+        return false;
+    }
+
+    // Metadata keeps properties and fields in separate tables, each in declaration order, so the
+    // two cannot be compared directly. An auto-property's backing field sits in the field table at
+    // the property's position, which places it against a field. A property with no backing field
+    // cannot be placed, and is taken to come first.
+    static bool IsDeclaredBefore(FieldInfo field, PropertyInfo property)
+    {
+        var backing = property.DeclaringType!.GetField(
+            $"<{property.Name}>k__BackingField",
+            BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+        return backing != null &&
+               field.MetadataToken < backing.MetadataToken;
     }
 
     static bool TryResolveRoot(
