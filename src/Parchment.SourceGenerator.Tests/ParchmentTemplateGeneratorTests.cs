@@ -1,4 +1,4 @@
-﻿public class ParchmentTemplateGeneratorTests
+public class ParchmentTemplateGeneratorTests
 {
     const string letterModelDocx =
         """
@@ -487,6 +487,28 @@
         // Token in the same paragraph as other text must trip PARCH007. The SG asserts diagnostic
         // id directly instead of snapshotting because diagnostic messages may reword over time.
         var result = GeneratorDriver.Run(excelsiorModel, "Prefix {{ Lines }}");
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
+    // Lockstep with the runtime's ExcelsiorTokenValidator: both ask TokenScan.IsSolo, so padding
+    // around the token is fine and a second token in the paragraph is not.
+    [Test]
+    [Arguments("{{ Lines }} ")]
+    [Arguments(" {{ Lines }}")]
+    public async Task ExcelsiorToken_PaddedWithWhitespace_NoDiagnostics(string paragraph)
+    {
+        var result = GeneratorDriver.Run(excelsiorModel, paragraph);
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsFalse();
+    }
+
+    [Test]
+    [Arguments("{{ Lines }}{{ Lines }}")]
+    [Arguments("{{ Lines }} {{ Lines }}")]
+    public async Task ExcelsiorToken_SharingParagraphWithAnotherToken_Diagnostic(string paragraph)
+    {
+        var result = GeneratorDriver.Run(excelsiorModel, paragraph);
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
     }

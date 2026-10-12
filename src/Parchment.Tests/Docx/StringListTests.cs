@@ -361,6 +361,37 @@ public partial class StringListTests
         await Verify(stream, "docx");
     }
 
+    // Padding typed around a token is invisible in Word and does not stop it being alone in its
+    // paragraph. A tab and a line break typed as characters count as padding too.
+    [Test]
+    [Arguments("{{ Tags }} ")]
+    [Arguments(" {{ Tags }}")]
+    [Arguments("\t{{ Tags }}\u00A0")]
+    [Arguments("{{ Tags }}\n")]
+    public async Task WhitespaceAroundSoloStringListStillRendersBullets(string paragraph)
+    {
+        using var template = DocxTemplateBuilder.Build(paragraph);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Person>(template);
+
+        var model = new Person
+        {
+            Name = "Ada",
+            Tags = ["a", "b"]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().ToList();
+
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["a", "b"]);
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+    }
+
     [Test]
     public async Task TwoStringListsShareOneBulletAbstract()
     {

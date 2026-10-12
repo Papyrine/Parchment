@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// Walks a cached scope tree against a cloned docx, evaluating substitution tokens and block tags
 /// to produce the final rendered document.
 /// </summary>
@@ -158,8 +158,8 @@ class ScopeTreeRunner(
         ParagraphText? cachedText = null;
         ParagraphText Text() => cachedText ??= ParagraphText.Build(host);
 
-        // Snapshot the host paragraph's original character length once.
-        var originalLength = Text().InnerText.Length;
+        // Snapshot the host paragraph's original text once.
+        var originalText = Text().InnerText;
 
         // node.Tokens come from TokenScan in ascending-offset order. Iterate in reverse without
         // allocating an OrderByDescending().ToList() — applying high-offset replacements first
@@ -184,7 +184,7 @@ class ScopeTreeRunner(
             {
                 if (editable.Entry.Kind == EditableFieldKind.Html)
                 {
-                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    QueueEditableHtml(host, token, editable, tokenCount, originalText);
                     continue;
                 }
 
@@ -214,9 +214,9 @@ class ScopeTreeRunner(
                         token.Source);
                 }
 
-                if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
+                if (TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
                 {
-                    // Whole host paragraph is the token — queue for replacement after every
+                    // The token is all the host paragraph says — queue for replacement after every
                     // other in-paragraph substitution has run.
                     soloStructuralTokens ??= [];
                     soloStructuralTokens.Add((token, evaluated));
@@ -276,11 +276,9 @@ class ScopeTreeRunner(
     /// paragraph (like a read-only [Html] token) so the block <c>w:sdt</c> + perm range replace the
     /// host cleanly. Extraction serializes the block content back to HTML.
     /// </summary>
-    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, int originalLength)
+    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, string originalText)
     {
-        if (tokenCount != 1 ||
-            token.Offset != 0 ||
-            token.Length != originalLength)
+        if (!TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
         {
             throw new ParchmentRenderException(
                 templateName,
@@ -536,14 +534,8 @@ class ScopeTreeRunner(
         // Auto-bullet rendering swaps the entire host paragraph. Skip silently if the token
         // doesn't sit alone — the user gets Fluid stringification in that case (consistent with
         // pre-feature behavior) instead of a surprising paragraph swap that drops surrounding text.
-        if (siblingCount != 1)
-        {
-            return null;
-        }
-
         var paragraphText = ParagraphText.Build(host).InnerText;
-        if (site.Offset != 0 ||
-            site.Length != paragraphText.Length)
+        if (!TokenScan.IsSolo(paragraphText, siblingCount, site.Offset, site.Length))
         {
             return null;
         }

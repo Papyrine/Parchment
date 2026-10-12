@@ -758,7 +758,7 @@ var model = new Quote
 using var stream = new MemoryStream();
 await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L517-L553' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L542-L578' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -988,7 +988,7 @@ When an `[Html]` / `[Markdown]` token shares its paragraph with other text or si
 
 | Token position | Rendered shape | Result |
 | --- | --- | --- |
-| Solo (covers the whole paragraph) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. |
+| Solo (the only token in the paragraph, with nothing but whitespace around it) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. |
 | Non-solo | A single paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown) | The produced paragraph's `pPr` is dropped; its runs are spliced into the host at the token offset. Surrounding text and the host's `pPr` are preserved. |
 | Non-solo | Multiple block-level elements, or a non-paragraph block (table) | The host is split at the token offset: text before becomes its own paragraph (cloning host's `pPr`), the rendered blocks slot in between, and text after becomes another paragraph (also cloning host's `pPr`). Empty before/after halves are still emitted. |
 
@@ -2304,7 +2304,7 @@ The template at the path exists in `<AdditionalFiles>` but couldn't be opened. F
 
 ### `PARCH007` — `[ExcelsiorTable]` token not alone in its block
 
-An `[ExcelsiorTable]` substitution replaces its whole block with a Word table. If the block contains other text, that text would be discarded, so the token must be the only content in it — its own paragraph in a docx template, its own line in a markdown one.
+An `[ExcelsiorTable]` substitution replaces its whole block with a Word table. If the block contains other text, that text would be discarded, so the token must be the only content in it — its own paragraph in a docx template, its own line in a markdown one. Whitespace around the token (spaces, tabs, non-breaking spaces) does not count as content; a second token does.
 
 ```
 // Model

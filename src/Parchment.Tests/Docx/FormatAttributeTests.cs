@@ -247,6 +247,31 @@ public partial class FormatAttributeTests
     }
 
     [Test]
+    public async Task SoloHtml_TrailingSpace_ReplacesHostParagraph()
+    {
+        // A space after the token leaves it alone in its paragraph: the blocks replace the host
+        // and no empty before/after halves are left around them.
+        using var template = DocxTemplateBuilder.Build("{{ Body }} ");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<HtmlDoc>(template);
+
+        var model = new HtmlDoc
+        {
+            Title = "T",
+            Body = "<p>First</p><p>Second</p>"
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["First", "Second"]);
+    }
+
+    [Test]
     public async Task NonSoloHtml_BlockContent_SplitsHostParagraph()
     {
         // Block-level HTML (multiple `<p>`s) in a non-solo token — the host paragraph is split:
