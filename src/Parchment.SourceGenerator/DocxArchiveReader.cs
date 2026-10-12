@@ -3,11 +3,13 @@ static class DocxArchiveReader
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     static readonly XName paragraphName = w + "p";
     static readonly XName textName = w + "t";
+    static readonly XName fallbackName = XName.Get("Fallback", "http://schemas.openxmlformats.org/markup-compatibility/2006");
 
     public static DocxReadResult Read(string filePath)
     {
         var paragraphs = new List<string>();
         var bodyParagraphs = new List<string>();
+        var bodyFallbacks = new List<bool>();
         var containers = new List<int>();
         var containerCount = 0;
         var hasRemovePersonalInformation = false;
@@ -52,12 +54,27 @@ static class DocxArchiveReader
                     if (isBody)
                     {
                         bodyParagraphs.Add(text);
+                        bodyFallbacks.Add(InFallback(paragraph));
                     }
                 }
             }
         }
 
-        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, hasRemovePersonalInformation);
+    }
+
+    // The VML copy of a text box, which mirrors the DrawingML copy in the mc:Choice beside it.
+    static bool InFallback(XElement paragraph)
+    {
+        foreach (var ancestor in paragraph.Ancestors())
+        {
+            if (ancestor.Name == fallbackName)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)

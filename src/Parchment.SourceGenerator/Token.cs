@@ -12,4 +12,7 @@
     int Container = 0,
     // A `for` over a range such as `(1..Count)`. References are then the range's bounds rather
     // than the thing iterated, and the loop variable is untyped.
-    bool LoopSourceIsRange = false);
+    bool LoopSourceIsRange = false,
+    // The token's paragraph is in an mc:Fallback, the VML copy of a text box. Only set by the scan
+    // of the body the editable rules run over.
+    bool InFallback = false);

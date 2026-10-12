@@ -1253,7 +1253,7 @@ Checkbox, date, and dropdown values round-trip through canonical control state a
 - **Docx flow only.** Markdown templates substitute into text before parsing, so substitution sites don't exist in the output; `[EditableField]` is ignored there — same rule as `[ExcelsiorTable]` and `[Html]`/`[Markdown]`.
 - **Document body only.** A token referencing an editable member in a header or footer renders as a plain read-only substitution — deliberate, so an editable body field can be mirrored read-only in a footer. Extraction reads the single body control.
 - **Loops render read-only.** An editable token inside `{% for %}` would stamp one control per iteration and produce duplicate tags, so loop bodies render editable members as plain text (`PARCH018` warns at compile time).
-- **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. Plain member access only; filters are rejected (`PARCH016`).
+- **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. A token inside a text box counts once: Word stores a text box as a DrawingML shape with a VML fallback copy, both copies render the control, and extraction reads the DrawingML one. Plain member access only; filters are rejected (`PARCH016`).
 - **No structural mixing.** An editable token cannot share a paragraph with an `[ExcelsiorTable]` / `[Html]` / `[Markdown]` token — structural replacement clones paragraph halves and would corrupt the editable range. Rejected at registration.
 - `[EditableField]` combined with `[ExcelsiorTable]` or `[Markdown]` on the same member is rejected (`PARCH015`); `[Html]` (or `[StringSyntax("html")]`) instead selects the rich-text kind (see [Rich text (HTML)](#rich-text-html)). Unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All fail fast at runtime registration.
 - **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
@@ -2389,7 +2389,7 @@ public partial class Order
 
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body
 
-**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.)
+**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.) A token typed once into a text box is one reference, although Word stores the box twice.
 
 
 ### `PARCH018` — `[EditableField]` token inside a loop

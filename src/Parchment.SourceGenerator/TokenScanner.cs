@@ -3,8 +3,9 @@ public static class TokenScanner
     static readonly FluidParser parser = new();
 
     // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
-    // onto its tokens. Omitted, every token reports container 0.
-    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
+    // onto its tokens. Omitted, every token reports container 0. fallbacks runs parallel the same
+    // way and says whether each paragraph is in an mc:Fallback.
+    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null, IReadOnlyList<bool>? fallbacks = null)
     {
         var result = new List<Token>();
         var index = -1;
@@ -24,16 +25,19 @@ public static class TokenScanner
                 container = containers[index];
             }
 
+            var inFallback = fallbacks != null &&
+                             fallbacks[index];
+
             foreach (var site in sites)
             {
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
+                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container, InFallback = inFallback });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
+                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container, InFallback = inFallback });
                 }
             }
         }

@@ -343,6 +343,7 @@ public sealed class ParchmentTemplateGenerator :
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
+                new(result.BodyFallbacks.ToImmutableArray()),
                 new(result.ParagraphContainers.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 Convert.ToBase64String(ReadBytes(text.Path)),
@@ -350,7 +351,7 @@ public sealed class ParchmentTemplateGenerator :
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<bool>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -508,7 +509,7 @@ public sealed class ParchmentTemplateGenerator :
             // Token rules are body-scoped: the runtime dispatches editable fields only in the
             // document body, so a header/footer occurrence of the same member is a deliberate
             // read-only mirror, not a duplicate.
-            var bodyTokens = TokenScanner.Scan(matched.BodyParagraphs);
+            var bodyTokens = TokenScanner.Scan(matched.BodyParagraphs, fallbacks: matched.BodyFallbacks.AsImmutableArray());
             ValidateEditableTokens(context, target, templatePath, bodyTokens, location);
         }
 
@@ -915,7 +916,10 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (!seen.Add(string.Join('.', token.References[0])))
+                    // The fallback copy of a text box mirrors the choice and is skipped by
+                    // extraction, so it is not a second use — as EditableTokenValidator.
+                    if (!token.InFallback &&
+                        !seen.Add(string.Join('.', token.References[0])))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(

@@ -5,7 +5,9 @@
 /// <item>plain member-access expression only — the editable render path bypasses Fluid, so a
 /// filter chain would be silently ignored;</item>
 /// <item>each editable path may appear at most once in the document body — the dotted path is
-/// the content control's tag, and extraction needs tags to be unique;</item>
+/// the content control's tag, and extraction needs tags to be unique. The <c>mc:Fallback</c> copy
+/// of a text box is not an appearance: Word stores a text box twice, the fallback mirrors the
+/// <c>mc:Choice</c> copy, and extraction reads the choice alone;</item>
 /// <item>an editable token may not share its paragraph with a structural token
 /// (<c>[ExcelsiorTable]</c> / <c>[Html]</c> / <c>[Markdown]</c>) — structural splice/split
 /// machinery clones paragraph halves, which would corrupt the field's perm-range markers.</item>
@@ -76,12 +78,19 @@ static class EditableTokenValidator
                 continue;
             }
 
+            // A text box is stored as a DrawingML shape in mc:Choice and again as VML in
+            // mc:Fallback, so a token typed once into the box arrives here twice. The fallback
+            // copy still renders a control, to stay the mirror of the choice, but extraction
+            // skips it (ParchmentExtractor.InFallback), so it cannot make a tag ambiguous.
+            var counts = seen != null &&
+                         !InFallback(classification.Paragraph);
+
             foreach (var token in editableTokens)
             {
                 RequirePlainIdentifier(token, templateName, partUri);
 
-                if (seen != null &&
-                    !seen.Add(token.References[0].Dotted))
+                if (counts &&
+                    !seen!.Add(token.References[0].Dotted))
                 {
                     throw new ParchmentRegistrationException(
                         templateName,
@@ -116,6 +125,19 @@ static class EditableTokenValidator
                 }
             }
         }
+    }
+
+    static bool InFallback(Paragraph paragraph)
+    {
+        foreach (var ancestor in paragraph.Ancestors())
+        {
+            if (ancestor is AlternateContentFallback)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static void RejectModifiersOnCollectionLoop(BlockMarker block, EditableMap editables, string templateName, string partUri)
