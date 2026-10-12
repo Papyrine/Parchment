@@ -706,7 +706,7 @@ class ScopeTreeRunner(
                 {
                     var clone = element.CloneNode(true);
                     scratch.AppendChild(clone);
-                    CollectAnchors(clone, cloneAnchors);
+                    CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
 
                 // Reuse the original scope tree directly. cloneAnchors is keyed on the same anchor
@@ -786,7 +786,7 @@ class ScopeTreeRunner(
                 {
                     var clone = element.CloneNode(true);
                     scratch.AppendChild(clone);
-                    CollectAnchors(clone, cloneAnchors);
+                    CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
 
                 var itemRunner = new ScopeTreeRunner(
@@ -855,7 +855,7 @@ class ScopeTreeRunner(
     /// or remap pass. Duplicate names across iterations are harmless because each iteration
     /// uses its own fresh anchor dictionary, and StripAll prefix-matches at save time.
     /// </summary>
-    static void CollectAnchors(OpenXmlElement clone, Dictionary<string, Paragraph> anchorMap)
+    static void CollectAnchors(OpenXmlElement clone, Dictionary<string, Paragraph> anchorMap, bool nestedAnchors)
     {
         // Parchment-prefixed bookmarks are always direct children of a Paragraph (see
         // Anchors.InsertAfterProperties). Walk Paragraphs and scan their direct children
@@ -866,7 +866,14 @@ class ScopeTreeRunner(
         if (clone is Paragraph paragraph)
         {
             CollectFromParagraph(paragraph, anchorMap);
-            return;
+
+            // A text box anchored in one of its runs holds paragraphs of its own, each with its
+            // own anchor. Looking for them means walking the whole paragraph, so it is done only
+            // for a block the scope tree marked as holding one — see LoopNode.NestedAnchors.
+            if (!nestedAnchors)
+            {
+                return;
+            }
         }
 
         foreach (var p in clone.Descendants<Paragraph>())
@@ -1011,7 +1018,7 @@ class ScopeTreeRunner(
         var branchAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         foreach (var element in keepElements)
         {
-            CollectAnchors(element, branchAnchors);
+            CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
         var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
