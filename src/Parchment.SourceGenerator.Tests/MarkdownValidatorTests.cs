@@ -211,6 +211,24 @@ public class MarkdownValidatorTests
         await Assert.That(diagnostics).IsEmpty();
     }
 
+    // Runtime registration rejects both tags: a partial needs a file provider, and there is none.
+    [Test]
+    [Arguments("{% render 'part' %}", "{% render ... %}")]
+    [Arguments("{% include 'part' %}", "{% include ... %}")]
+    [Arguments("{% for line in Lines %}{% render 'part' %}{% endfor %}", "{% render ... %}")]
+    [Arguments("{% for line in Lines %}{% else %}{% include 'part' %}{% endfor %}", "{% include ... %}")]
+    [Arguments("{% unless Lines.size > 1 %}{% render 'part' %}{% endunless %}", "{% render ... %}")]
+    [Arguments("{% case Lines.size %}{% when 1 %}{% include 'part' %}{% endcase %}", "{% include ... %}")]
+    [Arguments("{% capture text %}{% render 'part' %}{% endcapture %}", "{% render ... %}")]
+    public async Task PartialTagIsUnsupported(string markdown, string tag)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH003");
+        await Assert.That(diagnostic.GetMessage()).Contains($"unsupported block tag '{tag}'");
+        await Assert.That(diagnostic.GetMessage()).DoesNotContain("endfor");
+    }
+
     [Test]
     public async Task BadLoopSourceCascadeIsBounded()
     {

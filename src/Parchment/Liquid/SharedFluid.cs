@@ -37,6 +37,14 @@ static class SharedFluid
         {
             MaxRecursion = 100
         };
+
+        // A token names a model member without regard to case. Every validator resolves it that
+        // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
+        // ordinally unless told otherwise, and that left a token registration had accepted reading
+        // nothing at render. It has to be set here, ahead of the first registered accessor: the
+        // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
+        // the map was last built with.
+        options.MemberAccessStrategy.IgnoreCasing = true;
         Filters.Register(options.Filters);
         // Route enum substitutions through Excelsior so inline `{{ Model.Status }}` tokens
         // render with the same humanization (Display attribute / source-gen switch /
@@ -49,6 +57,20 @@ static class SharedFluid
                 if (value is Enum e)
                 {
                     return new StringValue(EnumRender.Render(e));
+                }
+
+                // Fluid turns a TimeSpan into a date counted from 1970 in the machine's time zone,
+                // and prints a TimeOnly in the short pattern, which has no seconds. Both become
+                // the invariant text of the value instead: a duration in the constant format, and
+                // a time in the format an editable TimeOnly field defaults to.
+                if (value is TimeSpan span)
+                {
+                    return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
+                }
+
+                if (value is TimeOnly time)
+                {
+                    return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
                 }
 
                 return null;
