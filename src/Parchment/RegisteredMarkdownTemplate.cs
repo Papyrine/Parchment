@@ -24,6 +24,7 @@ class RegisteredMarkdownTemplate(
     {
         var context = new TemplateContext(model, SharedFluid.MarkdownOptions, allowModelMembers: true);
         await using var writer = new StringWriter();
+        var blankOutputs = MarkdownBlankOutputs.Begin(context, writer);
 
         // Scoped to the liquid render alone: a value with no markdown form is parked rather than
         // written, and only what runs inside the render can park it. The map is taken off the scope here and
@@ -47,7 +48,9 @@ class RegisteredMarkdownTemplate(
             tokenBlocks = scope.Pending;
         }
 
-        var markdownText = writer.ToString();
+        // Emphasis written around a value that came out blank is dropped here, while the text
+        // still knows which of its delimiters those are - see MarkdownBlankOutputs.
+        var markdownText = MarkdownBlankOutputs.Strip(blankOutputs);
         cancel.ThrowIfCancellationRequested();
 
         using var stream = DocxCloner.ToWritableStream(styleSourceBytes);
