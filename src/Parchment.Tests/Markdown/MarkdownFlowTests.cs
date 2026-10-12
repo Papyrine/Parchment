@@ -497,7 +497,7 @@ public partial class MarkdownFlowTests
     [Test]
     public async Task NonEnumerableLoopSourceFailsRegistration()
     {
-        // Row is a POCO. A string would not do here — it is IEnumerable<char>, so it resolves.
+        // Row is a POCO. A string is rejected the same way; see LoopSourceValidationTests.
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{% for row in Rows %}{% for inner in row %}{{ inner }}{% endfor %}{% endfor %}"));
         await Assert.That(exception.Message).Contains("enumerable");

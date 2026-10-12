@@ -58,6 +58,15 @@ static class ModelValidator
 
     public static bool TryResolveElementType(Type enumerableType, [NotNullWhen(true)] out Type? elementType)
     {
+        // A string is an IEnumerable<char>, but liquid does not walk its characters: a loop over one
+        // runs once with the whole string. Nothing iterates it as a collection, so it is not one
+        // here. Lockstep with the source generator's ShapeBuilder.BuildEntry, which reports PARCH002.
+        if (enumerableType == typeof(string))
+        {
+            elementType = null;
+            return false;
+        }
+
         if (enumerableType.IsArray)
         {
             elementType = enumerableType.GetElementType();

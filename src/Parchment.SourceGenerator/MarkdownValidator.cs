@@ -170,6 +170,20 @@ class MarkdownValidator
         // filtered source `Customer.Lines | where: ...` we still want PARCH001 on Customer.Lines).
         ValidateExpression(forStatement.Source, sourceText);
 
+        // `limit:` and `offset:` are evaluated before the loop variable is bound, so they resolve
+        // against the enclosing scope. `offset: continue` is liquid's own keyword, which Fluid
+        // parses as a member path.
+        if (forStatement.Limit != null)
+        {
+            ValidateExpression(forStatement.Limit, sourceText);
+        }
+
+        if (forStatement.Offset != null &&
+            !forStatement.OffsetIsContinue)
+        {
+            ValidateExpression(forStatement.Offset, sourceText);
+        }
+
         string? elementFqn = null;
         var sourcePath = TryGetMemberPath(forStatement.Source);
         // Iterating an untyped identifier — the target of an earlier assign, say. Nothing about its
