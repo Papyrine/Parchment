@@ -1,7 +1,9 @@
-﻿/// <summary>
+/// <summary>
 /// Walks a cached scope tree against a cloned docx, evaluating substitution tokens and block tags
 /// to produce the final rendered document.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class ScopeTreeRunner(
     string templateName,
     string partUri,
@@ -131,7 +133,7 @@ class ScopeTreeRunner(
     {
         foreach (var node in nodes)
         {
-            await ProcessAsync(node);
+            await ProcessAsync(node).ConfigureAwait(false);
         }
     }
 
@@ -153,13 +155,13 @@ class ScopeTreeRunner(
 
         // Cache the ParagraphText across token replacements. Tokens are applied in reverse-offset
         // order, so a higher-offset Replace doesn't disturb the spans/offsets used for the next
-        // lower-offset token. Structural ops (splice/split) and MutateToken arbitrary mutation do
-        // invalidate the cache — clear it after those.
+        // lower-offset token. Structural ops (splice/split) do invalidate the cache — clear it
+        // after those.
         ParagraphText? cachedText = null;
         ParagraphText Text() => cachedText ??= ParagraphText.Build(host);
 
-        // Snapshot the host paragraph's original character length once.
-        var originalLength = Text().InnerText.Length;
+        // Snapshot the host paragraph's original text once.
+        var originalText = Text().InnerText;
 
         // node.Tokens come from TokenScan in ascending-offset order. Iterate in reverse without
         // allocating an OrderByDescending().ToList() — applying high-offset replacements first
@@ -171,16 +173,20 @@ class ScopeTreeRunner(
         // paragraph, and that is the rare path — so defer the scan until one actually appears
         // rather than running HasEditableToken on every substitution node.
         bool? hasEditableSibling = null;
+        // A MutateToken delegate can do anything to its paragraph, and every offset in node.Tokens
+        // was measured before any of it. So only the token text is cleared in offset order; the
+        // delegates run once nothing is left that depends on an offset.
+        List<(MutateToken Mutate, Paragraph Target)>? mutations = null;
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
             var token = node.Tokens[i];
-            var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
+            var evaluated = await EvaluateTokenAsync(token, host, tokenCount).ConfigureAwait(false);
             if (evaluated is EditableToken editable)
             {
                 if (editable.Entry.Kind == EditableFieldKind.Html)
                 {
-                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    QueueEditableHtml(host, token, editable, tokenCount, originalText);
                     continue;
                 }
 
@@ -210,32 +216,53 @@ class ScopeTreeRunner(
                         token.Source);
                 }
 
-                if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
+                if (TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
                 {
-                    // Whole host paragraph is the token — queue for replacement after every
+                    // The token is all the host paragraph says — queue for replacement after every
                     // other in-paragraph substitution has run.
                     soloStructuralTokens ??= [];
                     soloStructuralTokens.Add((token, evaluated));
                     continue;
                 }
 
-                ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
+                var afterHalf = ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
                 cachedText = null;
+                if (afterHalf != null &&
+                    mutations != null)
+                {
+                    // The tokens already seen sit above the split, so their text went to the
+                    // after half: that is the paragraph their delegates are owed.
+                    for (var j = 0; j < mutations.Count; j++)
+                    {
+                        mutations[j] = (mutations[j].Mutate, afterHalf);
+                    }
+                }
+
                 continue;
             }
 
             if (evaluated is MutateToken mutate)
             {
-                // Clear the token text, then hand the paragraph to the caller for in-place mutation.
+                // Clear the token text now, while its offset still holds. The paragraph is handed
+                // to the caller for in-place mutation after the loop.
                 Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
-                mutate.Apply(host, ctx);
-                cachedText = null;
+                mutations ??= [];
+                mutations.Add((mutate, host));
                 continue;
             }
 
             var replacement = ToDisplayString(evaluated);
             Text().Replace(token.Offset, token.Length, replacement);
+        }
+
+        if (mutations != null)
+        {
+            // In the order the tokens were reached: the last one in the paragraph first.
+            foreach (var (mutate, target) in mutations)
+            {
+                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, target);
+                mutate.Apply(target, ctx);
+            }
         }
 
         if (soloStructuralTokens is { Count: > 0 })
@@ -251,11 +278,9 @@ class ScopeTreeRunner(
     /// paragraph (like a read-only [Html] token) so the block <c>w:sdt</c> + perm range replace the
     /// host cleanly. Extraction serializes the block content back to HTML.
     /// </summary>
-    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, int originalLength)
+    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, string originalText)
     {
-        if (tokenCount != 1 ||
-            token.Offset != 0 ||
-            token.Length != originalLength)
+        if (!TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
         {
             throw new ParchmentRenderException(
                 templateName,
@@ -282,22 +307,22 @@ class ScopeTreeRunner(
     /// Splice or split the host paragraph for a non-solo structural token. Inline-equivalent
     /// output (single produced paragraph) is unwrapped and spliced in place; anything else
     /// (multiple blocks, a table) splits the host paragraph at the token offset and inserts
-    /// the produced elements between the two halves.
+    /// the produced elements between the two halves. Returns the after half when it split.
     /// </summary>
-    void ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
+    Paragraph? ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
         var produced = RenderTokenValue(value, host);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
             ParagraphText.Build(host).Replace(token.Offset, token.Length, string.Empty);
-            return;
+            return null;
         }
 
         if (ParagraphSplicer.IsInlineEquivalent(produced))
         {
             ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
-            return;
+            return null;
         }
 
         if (splitQueued)
@@ -322,6 +347,7 @@ class ScopeTreeRunner(
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
+        return (Paragraph)split[^1];
     }
 
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
@@ -441,7 +467,7 @@ class ScopeTreeRunner(
     {
         try
         {
-            return InterpretFluidValue(await pending);
+            return InterpretFluidValue(await pending.ConfigureAwait(false));
         }
         catch (ParchmentException)
         {
@@ -489,7 +515,7 @@ class ScopeTreeRunner(
             return OpenXmlToken.Empty;
         }
 
-        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure)]);
+        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, bookmarks.Names, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure)]);
     }
 
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
@@ -510,14 +536,8 @@ class ScopeTreeRunner(
         // Auto-bullet rendering swaps the entire host paragraph. Skip silently if the token
         // doesn't sit alone — the user gets Fluid stringification in that case (consistent with
         // pre-feature behavior) instead of a surprising paragraph swap that drops surrounding text.
-        if (siblingCount != 1)
-        {
-            return null;
-        }
-
         var paragraphText = ParagraphText.Build(host).InnerText;
-        if (site.Offset != 0 ||
-            site.Length != paragraphText.Length)
+        if (!TokenScan.IsSolo(paragraphText, siblingCount, site.Offset, site.Length))
         {
             return null;
         }
@@ -622,7 +642,7 @@ class ScopeTreeRunner(
             return;
         }
 
-        var items = await ResolveIterableAsync(loop);
+        var items = await ResolveIterableAsync(loop).ConfigureAwait(false);
         var bodyElements = CaptureBetween(open, close);
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
@@ -634,7 +654,7 @@ class ScopeTreeRunner(
             loop.SourceReference is { } sourceReference &&
             editables.TryGetCollection(sourceReference, out var collectionEntry))
         {
-            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
+            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList()).ConfigureAwait(false);
             foreach (var element in bodyElements)
             {
                 element.Remove();
@@ -713,7 +733,7 @@ class ScopeTreeRunner(
                 // names the registration-time tree references, so no per-iteration tree rebuild
                 // (Remap) is needed. Multiple iterations leave duplicate-named bookmarks in the
                 // live docx — that's fine because StripAll runs before Save and removes them all.
-                await clonedRunner.RunAsync(loop.Body);
+                await clonedRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 clonedRunner.ApplyStructural();
 
                 // Snapshot scratch's children before mutating, so remove+insert doesn't break
@@ -809,7 +829,7 @@ class ScopeTreeRunner(
                 {
                     loopVariables = itemLoopVariables
                 };
-                await itemRunner.RunAsync(loop.Body);
+                await itemRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 itemRunner.ApplyStructural();
 
                 var itemBody = new List<OpenXmlElement>();
@@ -893,7 +913,7 @@ class ScopeTreeRunner(
         // evaluated, yields a FluidValue we can enumerate. This honors filters, complex paths,
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
-        var sourceValue = await loop.LoopSource.EvaluateAsync(context);
+        var sourceValue = await loop.LoopSource.EvaluateAsync(context).ConfigureAwait(false);
         var items = sourceValue.Enumerate(context);
         if (loop.Limit == null &&
             loop.Offset == null &&
@@ -902,7 +922,7 @@ class ScopeTreeRunner(
             return items;
         }
 
-        return await ApplyLoopModifiersAsync(loop, items.ToList());
+        return await ApplyLoopModifiersAsync(loop, items.ToList()).ConfigureAwait(false);
     }
 
     // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
@@ -913,7 +933,7 @@ class ScopeTreeRunner(
         var start = 0;
         if (loop.Offset != null)
         {
-            var offset = await loop.Offset.EvaluateAsync(context);
+            var offset = await loop.Offset.EvaluateAsync(context).ConfigureAwait(false);
             // Fluid indexes the source with a negative offset and throws. Nothing precedes the
             // first item, so the docx flow starts there instead.
             start = Math.Max(0, (int)offset.ToNumberValue());
@@ -922,7 +942,7 @@ class ScopeTreeRunner(
         var count = Math.Max(0, items.Count - start);
         if (loop.Limit != null)
         {
-            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            var limit = (int)(await loop.Limit.EvaluateAsync(context).ConfigureAwait(false)).ToNumberValue();
             if (limit >= 0)
             {
                 count = Math.Min(count, limit);
@@ -964,7 +984,7 @@ class ScopeTreeRunner(
         var chosenIndex = -1;
         for (var i = 0; i < ifNode.Branches.Count; i++)
         {
-            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition))
+            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition).ConfigureAwait(false))
             {
                 continue;
             }
@@ -1018,7 +1038,7 @@ class ScopeTreeRunner(
         {
             loopVariables = loopVariables
         };
-        await innerRunner.RunAsync(chosen);
+        await innerRunner.RunAsync(chosen).ConfigureAwait(false);
         innerRunner.ApplyStructural();
 
         var keep = new HashSet<OpenXmlElement>(keepElements);
@@ -1065,7 +1085,7 @@ class ScopeTreeRunner(
     }
 
     async Task<bool> EvaluateConditionAsync(Expression condition) =>
-        (await condition.EvaluateAsync(context)).ToBooleanValue();
+        (await condition.EvaluateAsync(context).ConfigureAwait(false)).ToBooleanValue();
 
     static string ToDisplayString(object value) =>
         value switch

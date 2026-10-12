@@ -5,6 +5,12 @@
     <!-- TextEncoder declares two of its four abstract members with char* parameters, so
          MarkdownEncoder cannot subclass it without this. Nothing else in the library is unsafe. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The analyzers only, not IsTrimmable / IsAotCompatible: those would mark the assembly as
+         compatible, and it is not (see "Trimming and NativeAOT" in contributing.md). With these on,
+         a new reflection site outside a RequiresUnreferencedCode / RequiresDynamicCode scope fails
+         this build instead of surfacing in a consumer publish. -->
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
     <UserSecretsId>20028ee9-c2df-4063-9e52-5ce59a647234</UserSecretsId>
   </PropertyGroup>

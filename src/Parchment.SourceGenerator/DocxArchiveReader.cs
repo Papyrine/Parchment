@@ -14,6 +14,7 @@ static class DocxArchiveReader
         var containers = new List<int>();
         var containerCount = 0;
         var hasRemovePersonalInformation = false;
+        var hasMainPart = false;
         var builder = new StringBuilder();
         using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
         foreach (var entry in archive.Entries)
@@ -34,6 +35,7 @@ static class DocxArchiveReader
             // Zip entry order is not guaranteed body-first, so track the body part explicitly —
             // editable-field validation is body-scoped.
             var isBody = IsBodyPart(entry.FullName);
+            hasMainPart |= isBody;
 
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
@@ -60,7 +62,7 @@ static class DocxArchiveReader
             }
         }
 
-        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation, hasMainPart);
     }
 
     static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)

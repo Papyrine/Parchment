@@ -631,6 +631,92 @@ public partial class EditableFieldTests
         await Assert.That(protection).IsNull();
     }
 
+    const string legacyPassword = "w:cryptProviderType=\"rsaAES\" w:cryptAlgorithmClass=\"hash\" w:cryptAlgorithmType=\"typeAny\" w:cryptAlgorithmSid=\"14\" w:cryptSpinCount=\"100000\" w:hash=\"q2FzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhcw==\" w:salt=\"c2FsdHNhbHRzYWx0c2FsdA==\"";
+    const string modernPassword = "w:algorithmName=\"SHA-512\" w:hashValue=\"q2FzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhcw==\" w:saltValue=\"c2FsdHNhbHRzYWx0c2FsdA==\" w:spinCount=\"100000\"";
+
+    [Test]
+    [Arguments("forms", legacyPassword)]
+    [Arguments("readOnly", legacyPassword)]
+    [Arguments("comments", legacyPassword)]
+    [Arguments("trackedChanges", legacyPassword)]
+    [Arguments("none", legacyPassword)]
+    [Arguments("forms", modernPassword)]
+    [Arguments("readOnly", modernPassword)]
+    public async Task ProtectionKeepsTheTemplatePassword(string edit, string password)
+    {
+        // Elements on both sides, so the kept element has to land back in its schema slot.
+        using var stream = await RenderProtected(
+            $"<w:zoom w:percent=\"100\"/><w:documentProtection w:edit=\"{edit}\" w:formatting=\"1\" w:enforcement=\"0\" {password}/><w:defaultTabStop w:val=\"720\"/>");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var settings = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!;
+        var protection = settings.Elements<DocumentProtection>().Single();
+
+        // Whatever the author chose, the render needs enforced read-only for the editable ranges.
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.ReadOnly);
+        await Assert.That(protection.Enforcement!.Value).IsTrue();
+
+        var kept = protection.GetAttributes()
+            .Where(_ => _.LocalName is not ("edit" or "enforcement"))
+            .Select(_ => $"w:{_.LocalName}=\"{_.Value}\"");
+        await Assert.That(string.Join(' ', kept)).IsEqualTo($"w:formatting=\"1\" {password}");
+
+        var names = settings.ChildElements.Select(_ => _.LocalName).Take(3);
+        await Assert.That(string.Join(',', names)).IsEqualTo("zoom,documentProtection,defaultTabStop");
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365).Validate(doc).ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    [Test]
+    public async Task ProtectionWithoutAPasswordIsReplaced()
+    {
+        using var stream = await RenderProtected(
+            "<w:zoom w:percent=\"100\"/><w:documentProtection w:edit=\"forms\" w:formatting=\"1\" w:enforcement=\"1\"/><w:defaultTabStop w:val=\"720\"/>");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var settings = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!;
+        var protection = settings.Elements<DocumentProtection>().Single();
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.ReadOnly);
+        await Assert.That(protection.Enforcement!.Value).IsTrue();
+        await Assert.That(protection.GetAttributes().Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task ProtectionModeNoneLeavesTheTemplateProtectionAlone()
+    {
+        using var stream = await RenderProtected(
+            $"<w:documentProtection w:edit=\"forms\" w:enforcement=\"1\" {legacyPassword}/>",
+            ProtectionMode.None);
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var protection = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!.Elements<DocumentProtection>().Single();
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.Forms);
+        await Assert.That(protection.Hash).IsNotNull();
+    }
+
+    // Renders an editable field from a template whose settings already hold the given children.
+    static async Task<MemoryStream> RenderProtected(string settingsChildren, ProtectionMode mode = ProtectionMode.WhenEditable)
+    {
+        using var template = DocxTemplateBuilder.Build("{{ PurchaseOrder }}");
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var main = doc.MainDocumentPart!;
+            var part = main.DocumentSettingsPart ?? main.AddNewPart<DocumentSettingsPart>();
+            part.Settings = new($"<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">{settingsChildren}</w:settings>");
+            doc.Save();
+        }
+
+        template.Position = 0;
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template, mode);
+
+        var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+        return stream;
+    }
+
     [Test]
     public async Task HtmlEditableSeedsListDefinitions()
     {
