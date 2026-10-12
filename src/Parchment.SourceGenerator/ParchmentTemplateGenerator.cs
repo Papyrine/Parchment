@@ -780,6 +780,13 @@ public sealed class ParchmentTemplateGenerator :
     /// <see cref="ValidateTokens"/> already reported PARCH001/002/005 over all parts) so PARCH016
     /// / PARCH017 / PARCH018 don't double-report.
     /// </summary>
+    /// <remarks>
+    /// Lockstep with the runtime's <c>EditableTokenValidator</c>, and both follow where the runner
+    /// holds an editable map: a root member outside every loop is a control, a member of an
+    /// <c>[EditableField]</c> collection's item reached through the loop variable directly inside a
+    /// top-level loop over that collection is a control, and every other occurrence renders
+    /// read-only. PARCH016 / PARCH017 apply to the controls, PARCH018 to the rest.
+    /// </remarks>
     static void ValidateEditableTokens(
         SourceProductionContext context,
         TargetInfo target,
@@ -791,6 +798,10 @@ public sealed class ParchmentTemplateGenerator :
         var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // The item paths bound so far in the open repeating-section loop. Tags are item-relative,
+        // so each top-level loop starts its own set.
+        var itemSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var token in tokens)
         {
             switch (token.Kind)
@@ -799,6 +810,11 @@ public sealed class ParchmentTemplateGenerator :
                     string? bound = null;
                     string? prior = null;
                     var isEditableCollectionLoop = false;
+                    if (loopStack.Count == 0)
+                    {
+                        itemSeen.Clear();
+                    }
+
                     if (token.LoopVariable != null &&
                         IsUntypedLoop(token, scope))
                     {
@@ -867,42 +883,37 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
+                    // An editable collection is not a field: the runtime keeps it out of the
+                    // scalar map, so its own token is an ordinary substitution.
                     if (!ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var member) ||
-                        member is { IsEditable: false } or { IsStatic: true })
+                        member is { IsEditable: false } or { IsStatic: true } or { EditableCollectionElementFqn: not null })
                     {
                         break;
                     }
 
-                    // A loop over an editable collection turns its loop-variable tokens into
-                    // repeating-section controls, so PARCH018 (editable token in a loop) does not apply.
-                    var insideEditableCollection = false;
-                    foreach (var frame in loopStack)
+                    var tokenSeen = seen;
+                    if (loopStack.Count > 0)
                     {
-                        if (frame.IsEditableCollection)
+                        // Directly inside a top-level loop over an editable collection, a token
+                        // through the loop variable is a repeating-section control and answers to
+                        // the same rules as a root one. Anything else inside a loop — a root
+                        // member, a nested loop's token, a loop that is not a repeating section —
+                        // renders read-only.
+                        var frame = loopStack.Peek();
+                        if (loopStack.Count > 1 ||
+                            !frame.IsEditableCollection ||
+                            !string.Equals(frame.Name, token.References[0][0], StringComparison.Ordinal))
                         {
-                            insideEditableCollection = true;
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(
+                                    Diagnostics.EditableTokenInLoop,
+                                    location,
+                                    templatePath,
+                                    token.Source));
                             break;
                         }
-                    }
 
-                    if (loopStack.Count > 0 &&
-                        !insideEditableCollection)
-                    {
-                        context.ReportDiagnostic(
-                            Diagnostic.Create(
-                                Diagnostics.EditableTokenInLoop,
-                                location,
-                                templatePath,
-                                token.Source));
-                        break;
-                    }
-
-                    // Editable-collection loop-variable tokens are handled by the repeating-section
-                    // render — they don't participate in the flat body's plain-identifier / duplicate
-                    // checks (their tags are item-relative), so stop here.
-                    if (insideEditableCollection)
-                    {
-                        break;
+                        tokenSeen = itemSeen;
                     }
 
                     if (!token.IsPlainIdentifier)
@@ -915,7 +926,7 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (!seen.Add(string.Join('.', token.References[0])))
+                    if (!tokenSeen.Add(string.Join('.', token.References[0])))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(

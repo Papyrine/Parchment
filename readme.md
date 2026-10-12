@@ -1309,6 +1309,7 @@ result.ApplyTo(model);
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
 - **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
+- **Item tokens follow the field rules.** Directly inside the loop, a token through the loop variable (`{{ b.Year }}`) is a control: plain member access only (`PARCH016` — a filter such as `{{ b.Year | plus: 1 }}` is rejected, since the control is built from the member and the filtered text could not be read back) and one token per member within the loop (`PARCH017`). A loop nested inside it, and a root editable member used inside it, render read-only (`PARCH018`), where filters and repeats are fine.
 - **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
 - **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
@@ -2384,12 +2385,12 @@ public partial class Order
 
 ### `PARCH016` — `[EditableField]` token with filters or complex expression
 
-**Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`).
+**Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`). The rule covers every token that renders as a control, including an item member reached through the loop variable of an [editable collection](#editable-collections) loop; a header, a footer or a read-only loop body renders through Fluid and takes filters.
 
 
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body
 
-**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.)
+**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count, and neither does one inside a read-only loop body.) Inside an [editable collection](#editable-collections) loop the same holds per item: each item member may be bound once within the loop.
 
 
 ### `PARCH018` — `[EditableField]` token inside a loop

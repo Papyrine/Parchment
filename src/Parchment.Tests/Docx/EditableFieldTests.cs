@@ -999,6 +999,48 @@ public partial class EditableFieldTests
         await Assert.That(header.InnerText).IsEqualTo("PO: PO-2026-17");
     }
 
+    // The plain-access and once-only rules exist for the control. A loop body and a header render
+    // the member as read-only text through Fluid, so a filter is applied there and a repeat is
+    // only a mirror of the one body control.
+    [Test]
+    public async Task ReadOnlyLoopOccurrenceTakesAFilterBesideTheBodyControl()
+    {
+        using var stream = await Render(
+            """
+            {{ PurchaseOrder }}
+
+            {% for tag in Tags %}
+
+            {{ PurchaseOrder | downcase }}
+
+            {% endfor %}
+            """,
+            NewOrder());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.Descendants<SdtRun>().Count()).IsEqualTo(1);
+        await Assert.That(body.InnerText).IsEqualTo("PO-2026-17po-2026-17po-2026-17");
+    }
+
+    [Test]
+    public async Task HeaderOccurrenceTakesAFilter()
+    {
+        using var template = BuildTemplateWithHeader(
+            bodyText: "{{ PurchaseOrder }}",
+            headerText: "PO: {{ PurchaseOrder | downcase }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        await Assert.That(doc.MainDocumentPart!.Document!.Body!.Descendants<SdtRun>().Count()).IsEqualTo(1);
+        await Assert.That(doc.MainDocumentPart.HeaderParts.Single().Header!.InnerText).IsEqualTo("PO: po-2026-17");
+    }
+
     [Test]
     public async Task OutputValidates()
     {
