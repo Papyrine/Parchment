@@ -1364,6 +1364,88 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public async Task HtmlEditableTabRoundTrips()
+    {
+        // The bare character would fold to a space in html, so a tab is the span OpenXmlHtml
+        // renders as w:tab — and what it renders has to extract as the same span again.
+        const string html = "<p>left<span style=\"white-space:pre\">&#9;</span>right</p>";
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = html
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            await Assert.That(sdt.Descendants<TabChar>().Count()).IsEqualTo(1);
+            await Assert.That(sdt.InnerText).IsEqualTo("leftright");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        model.Body = "";
+        result.ApplyTo(model);
+
+        await Assert.That(model.Body).IsEqualTo(html);
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsTheRunContentWordWritesAsElements()
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>original</p>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        // Word writes each of these as an element of its own rather than as text in w:t.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            content.RemoveAllChildren();
+            content.AppendChild(
+                new Paragraph(
+                    new Run(
+                        new Text("a"),
+                        new TabChar(),
+                        new Text("b")),
+                    new Run(
+                        new RunProperties(new Bold()),
+                        new TabChar()),
+                    new Run(
+                        new Text("co"),
+                        new NoBreakHyphen(),
+                        new Text("op"),
+                        new SoftHyphen(),
+                        new Text("s"),
+                        new CarriageReturn(),
+                        new SymbolChar
+                        {
+                            Font = "Arial",
+                            Char = "2022"
+                        },
+                        new SymbolChar
+                        {
+                            Font = "Wingdings",
+                            Char = "F0E0"
+                        })));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        const string tab = "<span style=\"white-space:pre\">&#9;</span>";
+        await Assert.That(model.Body)
+            .IsEqualTo($"<p>a{tab}b<strong>{tab}</strong>co‑ops<br>•</p>");
+    }
+
+    [Test]
     public async Task HtmlEditableRendersPlaceholderWhenEmpty()
     {
         var model = new EditableArticle

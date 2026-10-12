@@ -270,26 +270,40 @@ static class EditableFieldBuilder
                 }
 
                 first = false;
-                if (line.Length > 0)
-                {
-                    run.AppendChild(
-                        new Text(line.TrimEnd('\r'))
-                        {
-                            Space = SpaceProcessingModeValues.Preserve
-                        });
-                }
+                AppendTabbed(run, line.TrimEnd('\r'));
             }
         }
         else
         {
-            run.AppendChild(
-                new Text(cleaned.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' '))
-                {
-                    Space = SpaceProcessingModeValues.Preserve
-                });
+            AppendTabbed(run, cleaned.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' '));
         }
 
         return run;
+    }
+
+    // A tab inside w:t is not a Word tab: Word draws it as whitespace, and rewrites it as w:tab
+    // the first time it saves the document. Writing the element here keeps the control the same
+    // before and after that save.
+    static void AppendTabbed(Run run, string text)
+    {
+        var first = true;
+        foreach (var segment in text.Split('\t'))
+        {
+            if (!first)
+            {
+                run.AppendChild(new TabChar());
+            }
+
+            first = false;
+            if (segment.Length > 0)
+            {
+                run.AppendChild(
+                    new Text(segment)
+                    {
+                        Space = SpaceProcessingModeValues.Preserve
+                    });
+            }
+        }
     }
 
     static Run PlaceholderRun(RunProperties? sitePr, string text)
