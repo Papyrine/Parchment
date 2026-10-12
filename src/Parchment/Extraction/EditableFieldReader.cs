@@ -88,15 +88,24 @@ static class EditableFieldReader
         }
 
         var builder = new StringBuilder();
-        foreach (var element in content.Descendants())
+        foreach (var piece in EditableContent.Runs(content))
         {
-            if (element is Text text)
+            if (piece is not Run)
             {
-                builder.Append(text.Text);
+                builder.Append(piece.InnerText);
+                continue;
             }
-            else if (element is Break)
+
+            foreach (var element in piece.Elements())
             {
-                builder.Append('\n');
+                if (element is Text text)
+                {
+                    builder.Append(text.Text);
+                }
+                else if (element is Break)
+                {
+                    builder.Append('\n');
+                }
             }
         }
 
