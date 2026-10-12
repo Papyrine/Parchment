@@ -17,10 +17,11 @@ public partial class MarkerDetectionTests
 
     const string landscape = "[SECTION]{orientation=landscape}";
 
-    // A bound value is escaped, and an escaped bracket is still the text of a bracket: the marker
-    // is recognised by what the paragraph reads as, not by how it was spelt.
+    // A bound value is data. One that reads as the marker prints as that text, the way any other
+    // markdown in a value does - MarkdownEncoder writes its opening bracket as a character
+    // reference, and a marker is a paragraph of nothing but literals.
     [Test]
-    public async Task BoundValueReadingAsTocIsAMarker()
+    public async Task BoundValueReadingAsTocStaysText()
     {
         var result = await Inspect(
             Between("{{ Text }}"),
@@ -29,12 +30,12 @@ public partial class MarkerDetectionTests
                 Text = "[TOC]"
             });
 
-        await Assert.That(result.Toc).IsEqualTo(1);
+        await Assert.That(result.Toc).IsEqualTo(0);
         await Assert.That(result.Sections).IsEqualTo(1);
+        await Assert.That(result.Text).Contains("[TOC]");
     }
 
-    // The same escaping takes the braces of the attribute with it, and a [SECTION] without an
-    // orientation is not a marker.
+    // Escaping takes the braces of the attribute with it as well.
     [Test]
     public async Task BoundValueReadingAsSectionStaysText()
     {
@@ -49,9 +50,10 @@ public partial class MarkerDetectionTests
         await Assert.That(result.Text).Contains(landscape);
     }
 
-    // Unless the template supplies the attribute, which is not escaped.
+    // Nor does the template supplying the attribute make it one: the attribute lands on the
+    // paragraph, and the paragraph is still a value.
     [Test]
-    public async Task BoundValueWithTheTemplatesAttributeIsASection()
+    public async Task BoundValueWithTheTemplatesAttributeStaysText()
     {
         var result = await Inspect(
             Between("{{ Text }}{orientation=landscape}"),
@@ -60,8 +62,8 @@ public partial class MarkerDetectionTests
                 Text = "[SECTION]"
             });
 
-        await Assert.That(result.Sections).IsEqualTo(2);
-        await Assert.That(result.Text).DoesNotContain("[SECTION]");
+        await Assert.That(result.Sections).IsEqualTo(1);
+        await Assert.That(result.Text).Contains("[SECTION]");
     }
 
     [Test]

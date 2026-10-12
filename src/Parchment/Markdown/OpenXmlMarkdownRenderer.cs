@@ -28,6 +28,7 @@ class OpenXmlMarkdownRenderer :
 
         // Inline renderers
         ObjectRenderers.Add(new LiteralInlineRenderer());
+        ObjectRenderers.Add(new HtmlEntityInlineRenderer());
         ObjectRenderers.Add(new EmphasisInlineRenderer());
         ObjectRenderers.Add(new LinkInlineRenderer());
         ObjectRenderers.Add(new AutolinkInlineRenderer());
