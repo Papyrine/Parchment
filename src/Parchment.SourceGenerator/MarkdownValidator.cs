@@ -147,10 +147,6 @@ class MarkdownValidator
         }
 
         WalkStatements(forStatement.Statements);
-        if (forStatement.Else != null)
-        {
-            WalkStatements(forStatement.Else.Statements);
-        }
 
         // Restore, so a name bound by one loop does not leak into a sibling or an enclosing scope.
         scope.Remove(loopVariable);
@@ -168,6 +164,13 @@ class MarkdownValidator
         if (addedForLoop)
         {
             untyped.Remove("forloop");
+        }
+
+        // The else branch renders when there was nothing to iterate, so neither the loop variable
+        // nor `forloop` is bound in it: it is walked in the enclosing scope.
+        if (forStatement.Else != null)
+        {
+            WalkStatements(forStatement.Else.Statements);
         }
     }
 

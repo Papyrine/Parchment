@@ -68,7 +68,8 @@ static class MarkdownExcelsiorTables
             if (match.Success)
             {
                 var path = Normalize(match.Groups["path"].Value);
-                if (!loops.Shadows(trimmedStart, path) &&
+                if (!loops.IsLiteral(trimmedStart) &&
+                    !loops.Shadows(trimmedStart, path) &&
                     tables.TryGet(path, out _))
                 {
                     var marker = MarkerFor(placeholders.Count);
@@ -112,8 +113,10 @@ static class MarkdownExcelsiorTables
             var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
             var leading = Normalize(end < 0 ? body : body[..end]);
             // A token that starts with a loop variable reads the loop item, whatever root path
-            // it happens to spell: Fluid renders it, and neither rule below is its to break.
+            // it happens to spell: Fluid renders it, and neither rule below is its to break. Nor
+            // is the text of a raw or comment region, which is not a token at all.
             if (leading.Length == 0 ||
+                loops.IsLiteral(lineStart + match.Index) ||
                 loops.Shadows(lineStart + match.Index, leading) ||
                 !tables.TryGet(leading, out _))
             {

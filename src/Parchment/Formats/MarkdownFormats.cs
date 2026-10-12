@@ -50,7 +50,9 @@ static class MarkdownFormats
 
                 // A token that starts with a loop variable reads the loop item, whatever root
                 // path it happens to spell, so the root member's annotation is not its own.
-                if (loops.Shadows(match.Index, path) ||
+                // Nor is what sits in a raw or comment region a token at all.
+                if (loops.IsLiteral(match.Index) ||
+                    loops.Shadows(match.Index, path) ||
                     !formats.TryGet(path, out var entry))
                 {
                     return match.Value;
