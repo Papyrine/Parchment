@@ -439,6 +439,8 @@ public partial class AdjacentTableTests
         await Assert.That(blocks).IsEqualTo("text tbl p tbl");
     }
 
+    // An item that opens with a table gets an empty paragraph ahead of it to carry its marker, so
+    // the second item's marker paragraph is what sits between the two tables.
     [Test]
     public async Task TablesOpeningNeighbouringListItemsStaySeparate()
     {
@@ -452,7 +454,7 @@ public partial class AdjacentTableTests
               | 3 | 4 |
             """);
 
-        await Assert.That(blocks).IsEqualTo("tbl p tbl");
+        await Assert.That(blocks).IsEqualTo("p tbl p tbl");
     }
 
     [Test]
