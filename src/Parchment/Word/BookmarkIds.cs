@@ -30,6 +30,9 @@ sealed class BookmarkIds(int max)
 {
     int last = max;
 
+    // Beside the ids because both are per render and both reach everything that writes a bookmark.
+    public BookmarkNames Names { get; } = new();
+
     public string Next() =>
         (++last).ToString(CultureInfo.InvariantCulture);
 

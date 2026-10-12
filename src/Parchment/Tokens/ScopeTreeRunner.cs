@@ -1,7 +1,9 @@
-﻿/// <summary>
+/// <summary>
 /// Walks a cached scope tree against a cloned docx, evaluating substitution tokens and block tags
 /// to produce the final rendered document.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 class ScopeTreeRunner(
     string templateName,
     string partUri,
@@ -18,14 +20,23 @@ class ScopeTreeRunner(
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
-    List<Table>? tables = null)
+    List<Table>? tables = null,
+    List<Paragraph>? sections = null)
 {
     List<StructuralReplacement>? structuralReplacements;
 
-    // Every table a structural replacement put at block level, shared with the runners created
-    // for loop iterations and if branches. Whether one ends up beside another table is only
-    // known once the tag paragraphs around it are gone, so the root runner checks at the end.
-    readonly List<Table> producedTables = tables ?? [];
+    // Every table that got a different block before it: one a structural replacement put at block
+    // level, one that followed a block the render took out, one a loop iteration opens with.
+    // Shared with the runners created for loop iterations and if branches. Whether one ends up
+    // directly after another table is only known once the tag paragraphs around it are gone, so
+    // the root runner checks at the end.
+    readonly List<Table> tablesToCheck = tables ?? [];
+
+    // Every [SECTION] marker a markdown value wrote, shared the same way. A marker holds only what
+    // it declared, and the section it is derived from is whichever one it ends up inside - which a
+    // loop iteration still sitting in its scratch container cannot say - so the root runner
+    // finishes them at the end as well.
+    readonly List<Paragraph> sectionMarkers = sections ?? [];
 
     // The loop variables open around the nodes this runner walks. A token that starts with one
     // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
@@ -51,53 +62,107 @@ class ScopeTreeRunner(
 
     /// <summary>
     /// Word merges two <c>w:tbl</c> siblings into one table. Run on the root runner once the whole
-    /// tree has been processed: any produced table left directly beside another table — one from
-    /// a neighbouring token or loop iteration, or one already in the template — gets an empty
-    /// paragraph between them.
+    /// tree has been processed: any table the render left directly after another table — one a
+    /// token produced, the copy a loop iteration opens with, or a table of the template that lost
+    /// the paragraphs keeping it apart — gets an empty paragraph before it. Two tables with
+    /// nothing between them in the template are never recorded, and stay as authored.
     /// </summary>
-    public void SeparateProducedTables()
+    public void SeparateTables()
     {
-        foreach (var table in producedTables)
+        if (tablesToCheck.Count == 0)
         {
-            if (table.Parent == null)
-            {
-                continue;
-            }
+            return;
+        }
 
-            if (NeighbouringBlock(table, forward: false) is Table)
+        var recorded = new HashSet<OpenXmlElement>(tablesToCheck);
+        var containers = new HashSet<OpenXmlElement>();
+        foreach (var table in tablesToCheck)
+        {
+            // A table recorded and then removed with its branch or loop body has no parent.
+            if (table.Parent is { } container &&
+                containers.Add(container))
             {
-                table.InsertBeforeSelf(new Paragraph());
-            }
-
-            if (NeighbouringBlock(table, forward: true) is Table)
-            {
-                table.InsertAfterSelf(new Paragraph());
+                SeparateTablesIn(container, recorded);
             }
         }
 
-        producedTables.Clear();
+        tablesToCheck.Clear();
+    }
+
+    // One pass over the container rather than asking each table for its previous sibling, which
+    // the SDK answers by walking from the first child.
+    static void SeparateTablesIn(OpenXmlElement container, HashSet<OpenXmlElement> recorded)
+    {
+        OpenXmlElement? previous = null;
+        var afterTable = false;
+        for (var child = container.FirstChild; child != null; child = child.NextSibling())
+        {
+            if (!IsRangeMarker(child))
+            {
+                if (afterTable &&
+                    child is Table &&
+                    recorded.Contains(child))
+                {
+                    container.InsertAfter(new Paragraph(), previous);
+                }
+
+                afterTable = child is Table;
+            }
+
+            previous = child;
+        }
+    }
+
+    /// <summary>
+    /// Turns each <c>[SECTION]</c> marker a markdown value wrote into a whole section, derived from
+    /// the section of <paramref name="root"/> it landed in — see <see cref="SectionBreaks"/>. Run on
+    /// the root runner once the whole tree has been processed and its replacements applied. Only a
+    /// document body can hold a section break, so a marker anywhere else is rejected here.
+    /// </summary>
+    public void ApplySectionBreaks(OpenXmlCompositeElement root)
+    {
+        if (sectionMarkers.Count == 0)
+        {
+            return;
+        }
+
+        SectionBreaks.ApplyInPart(root, sectionMarkers, templateName, partUri);
+        sectionMarkers.Clear();
     }
 
     // Range markers can sit between two blocks without keeping their tables apart.
-    static OpenXmlElement? NeighbouringBlock(OpenXmlElement element, bool forward)
+    static bool IsRangeMarker(OpenXmlElement element) =>
+        element is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError;
+
+    /// <summary>
+    /// Records the table that follows <paramref name="element"/>, when the render is about to
+    /// change what comes before that table: by removing the element, or by having just put it
+    /// there.
+    /// </summary>
+    void RecordTableAfter(OpenXmlElement element)
     {
-        var cursor = Step(element, forward);
-        while (cursor is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError)
+        var cursor = element.NextSibling();
+        while (cursor != null &&
+               IsRangeMarker(cursor))
         {
-            cursor = Step(cursor, forward);
+            cursor = cursor.NextSibling();
         }
 
-        return cursor;
+        if (cursor is Table table)
+        {
+            tablesToCheck.Add(table);
+        }
     }
 
-    static OpenXmlElement? Step(OpenXmlElement element, bool forward)
+    /// <summary>
+    /// Takes a block out of the document. Every removal of a tag paragraph, of a branch that was
+    /// not chosen or of a loop body goes through here, since any of them can be all that kept two
+    /// tables apart.
+    /// </summary>
+    void Remove(OpenXmlElement element)
     {
-        if (forward)
-        {
-            return element.NextSibling();
-        }
-
-        return element.PreviousSibling();
+        RecordTableAfter(element);
+        element.Remove();
     }
 
     void ApplyOne(StructuralReplacement replacement)
@@ -115,9 +180,13 @@ class ScopeTreeRunner(
             cursor = parent.InsertAfter(produced, cursor);
             if (produced is Table table)
             {
-                producedTables.Add(table);
+                tablesToCheck.Add(table);
             }
         }
+
+        // What follows now comes after the last produced block or, when the token produced
+        // nothing, after whatever preceded the host.
+        RecordTableAfter(cursor);
 
         if (replacement.KeepHost)
         {
@@ -131,7 +200,7 @@ class ScopeTreeRunner(
     {
         foreach (var node in nodes)
         {
-            await ProcessAsync(node);
+            await ProcessAsync(node).ConfigureAwait(false);
         }
     }
 
@@ -153,13 +222,13 @@ class ScopeTreeRunner(
 
         // Cache the ParagraphText across token replacements. Tokens are applied in reverse-offset
         // order, so a higher-offset Replace doesn't disturb the spans/offsets used for the next
-        // lower-offset token. Structural ops (splice/split) and MutateToken arbitrary mutation do
-        // invalidate the cache — clear it after those.
+        // lower-offset token. Structural ops (splice/split) do invalidate the cache — clear it
+        // after those.
         ParagraphText? cachedText = null;
         ParagraphText Text() => cachedText ??= ParagraphText.Build(host);
 
-        // Snapshot the host paragraph's original character length once.
-        var originalLength = Text().InnerText.Length;
+        // Snapshot the host paragraph's original text once.
+        var originalText = Text().InnerText;
 
         // node.Tokens come from TokenScan in ascending-offset order. Iterate in reverse without
         // allocating an OrderByDescending().ToList() — applying high-offset replacements first
@@ -171,16 +240,20 @@ class ScopeTreeRunner(
         // paragraph, and that is the rare path — so defer the scan until one actually appears
         // rather than running HasEditableToken on every substitution node.
         bool? hasEditableSibling = null;
+        // A MutateToken delegate can do anything to its paragraph, and every offset in node.Tokens
+        // was measured before any of it. So only the token text is cleared in offset order; the
+        // delegates run once nothing is left that depends on an offset.
+        List<(MutateToken Mutate, Paragraph Target)>? mutations = null;
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
             var token = node.Tokens[i];
-            var evaluated = await EvaluateTokenAsync(token, host, tokenCount);
+            var evaluated = await EvaluateTokenAsync(token, host, tokenCount).ConfigureAwait(false);
             if (evaluated is EditableToken editable)
             {
                 if (editable.Entry.Kind == EditableFieldKind.Html)
                 {
-                    QueueEditableHtml(host, token, editable, tokenCount, originalLength);
+                    QueueEditableHtml(host, token, editable, tokenCount, originalText);
                     continue;
                 }
 
@@ -210,37 +283,58 @@ class ScopeTreeRunner(
                         token.Source);
                 }
 
-                if (tokenCount == 1 && token.Offset == 0 && token.Length == originalLength)
+                if (TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
                 {
-                    // Whole host paragraph is the token — queue for replacement after every
+                    // The token is all the host paragraph says — queue for replacement after every
                     // other in-paragraph substitution has run.
                     soloStructuralTokens ??= [];
                     soloStructuralTokens.Add((token, evaluated));
                     continue;
                 }
 
-                ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
+                var afterHalf = ApplyNonSoloStructural(token, host, evaluated, ref splitQueued);
                 cachedText = null;
+                if (afterHalf != null &&
+                    mutations != null)
+                {
+                    // The tokens already seen sit above the split, so their text went to the
+                    // after half: that is the paragraph their delegates are owed.
+                    for (var j = 0; j < mutations.Count; j++)
+                    {
+                        mutations[j] = (mutations[j].Mutate, afterHalf);
+                    }
+                }
+
                 continue;
             }
 
             if (evaluated is MutateToken mutate)
             {
-                // Clear the token text, then hand the paragraph to the caller for in-place mutation.
+                // Clear the token text now, while its offset still holds. The paragraph is handed
+                // to the caller for in-place mutation after the loop.
                 Text().Replace(token.Offset, token.Length, string.Empty);
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host);
-                // The caller numbers a bookmark it adds without sight of the document, and the
-                // paragraph it adds it to already holds the anchor's and maybe the template's -
-                // see BookmarkIds.
-                var existing = BookmarkIds.Markers(host);
-                mutate.Apply(host, ctx);
-                bookmarks.RenumberAdded(host, existing);
-                cachedText = null;
+                mutations ??= [];
+                mutations.Add((mutate, host));
                 continue;
             }
 
             var replacement = ToDisplayString(evaluated);
             Text().Replace(token.Offset, token.Length, replacement);
+        }
+
+        if (mutations != null)
+        {
+            // In the order the tokens were reached: the last one in the paragraph first.
+            foreach (var (mutate, target) in mutations)
+            {
+                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, target);
+                // The caller numbers a bookmark it adds without sight of the document, and the
+                // paragraph it adds it to already holds the anchor's and maybe the template's -
+                // see BookmarkIds.
+                var existing = BookmarkIds.Markers(target);
+                mutate.Apply(target, ctx);
+                bookmarks.RenumberAdded(target, existing);
+            }
         }
 
         if (soloStructuralTokens is { Count: > 0 })
@@ -256,11 +350,9 @@ class ScopeTreeRunner(
     /// paragraph (like a read-only [Html] token) so the block <c>w:sdt</c> + perm range replace the
     /// host cleanly. Extraction serializes the block content back to HTML.
     /// </summary>
-    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, int originalLength)
+    void QueueEditableHtml(Paragraph host, DocxTokenSite token, EditableToken editable, int tokenCount, string originalText)
     {
-        if (tokenCount != 1 ||
-            token.Offset != 0 ||
-            token.Length != originalLength)
+        if (!TokenScan.IsSolo(originalText, tokenCount, token.Offset, token.Length))
         {
             throw new ParchmentRenderException(
                 templateName,
@@ -287,22 +379,29 @@ class ScopeTreeRunner(
     /// Splice or split the host paragraph for a non-solo structural token. Inline-equivalent
     /// output (single produced paragraph) is unwrapped and spliced in place; anything else
     /// (multiple blocks, a table) splits the host paragraph at the token offset and inserts
-    /// the produced elements between the two halves.
+    /// the produced elements between the two halves. Returns the after half when it split.
     /// </summary>
-    void ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
+    Paragraph? ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
-        var produced = RenderTokenValue(value, host);
+        var produced = RenderTokenValue(value, host, token, out var mayHoldSections);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
             ParagraphText.Build(host).Replace(token.Offset, token.Length, string.Empty);
-            return;
+            return null;
         }
 
-        if (ParagraphSplicer.IsInlineEquivalent(produced))
+        // A value that is nothing but a [SECTION] marker is a single paragraph too, but the break
+        // is its paragraph properties, which are exactly what an inline splice drops. It takes the
+        // split below instead, as any other block does.
+        var loneMarker = mayHoldSections &&
+                         produced.Count == 1 &&
+                         SectionBreaks.IsMarker(produced[0]);
+        if (!loneMarker &&
+            ParagraphSplicer.IsInlineEquivalent(produced))
         {
             ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
-            return;
+            return null;
         }
 
         if (splitQueued)
@@ -324,29 +423,62 @@ class ScopeTreeRunner(
         // against a paragraph that stays in the document; higher-offset tokens have already been
         // applied and are carried into the after half.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
+        if (mayHoldSections)
+        {
+            // Split hands back copies of what was produced, followed by the after half. The copies
+            // are what reaches the document, and the after half is the host's own paragraph.
+            SectionBreaks.Collect(split.Take(produced.Count), sectionMarkers);
+        }
+
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
+        return (Paragraph)split[^1];
     }
 
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
     {
         var result = new List<OpenXmlElement>();
-        foreach (var (_, value) in tokens)
+        foreach (var (site, value) in tokens)
         {
-            result.AddRange(RenderTokenValue(value, host));
+            var produced = RenderTokenValue(value, host, site, out var mayHoldSections);
+            if (mayHoldSections)
+            {
+                SectionBreaks.Collect(produced, sectionMarkers);
+            }
+
+            result.AddRange(produced);
         }
 
         return result;
     }
 
-    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host)
+    // mayHoldSections is true only for a markdown value, and only when its walk says so: a paragraph
+    // carrying a w:sectPr is a [SECTION] marker there, where one an OpenXmlToken returns is a
+    // section break the caller wrote whole.
+    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host, DocxTokenSite site, out bool mayHoldSections)
     {
         if (value is MarkdownToken md)
         {
-            // Renumbers its own bookmarks, from the same counter.
-            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            try
+            {
+                // Renumbers its own bookmarks, from the same counter.
+                return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+            }
+            catch (TableColumnLimitException exception)
+            {
+                // The table renderer knows neither the template nor the token its markdown came
+                // through, so both are attached here.
+                throw new ParchmentRenderException(
+                    templateName,
+                    exception.Message,
+                    partUri,
+                    Snippet(host, site),
+                    site.Source);
+            }
         }
+
+        mayHoldSections = false;
 
         IReadOnlyList<OpenXmlElement> produced = value switch
         {
@@ -446,7 +578,7 @@ class ScopeTreeRunner(
     {
         try
         {
-            return InterpretFluidValue(await pending);
+            return InterpretFluidValue(await pending.ConfigureAwait(false));
         }
         catch (ParchmentException)
         {
@@ -494,7 +626,7 @@ class ScopeTreeRunner(
             return OpenXmlToken.Empty;
         }
 
-        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure)]);
+        return new(_ => [ExcelsiorTableBridge.BuildTable(entry.ElementType, data, mainPart, bookmarks.Names, entry.HeadingParagraphStyle, entry.BodyParagraphStyle, entry.TableStyle, entry.Configure)]);
     }
 
     TokenValue? TryResolveStringList(DocxTokenSite site, Paragraph host, int siblingCount)
@@ -515,14 +647,8 @@ class ScopeTreeRunner(
         // Auto-bullet rendering swaps the entire host paragraph. Skip silently if the token
         // doesn't sit alone — the user gets Fluid stringification in that case (consistent with
         // pre-feature behavior) instead of a surprising paragraph swap that drops surrounding text.
-        if (siblingCount != 1)
-        {
-            return null;
-        }
-
         var paragraphText = ParagraphText.Build(host).InnerText;
-        if (site.Offset != 0 ||
-            site.Length != paragraphText.Length)
+        if (!TokenScan.IsSolo(paragraphText, siblingCount, site.Offset, site.Length))
         {
             return null;
         }
@@ -627,7 +753,7 @@ class ScopeTreeRunner(
             return;
         }
 
-        var items = await ResolveIterableAsync(loop);
+        var items = await ResolveIterableAsync(loop).ConfigureAwait(false);
         var bodyElements = CaptureBetween(open, close);
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
@@ -639,14 +765,14 @@ class ScopeTreeRunner(
             loop.SourceReference is { } sourceReference &&
             editables.TryGetCollection(sourceReference, out var collectionEntry))
         {
-            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList());
+            await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList()).ConfigureAwait(false);
             foreach (var element in bodyElements)
             {
-                element.Remove();
+                Remove(element);
             }
 
-            open.Remove();
-            close.Remove();
+            Remove(open);
+            Remove(close);
             return;
         }
 
@@ -681,7 +807,8 @@ class ScopeTreeRunner(
             numberingState,
             styles,
             imagePolicies,
-            producedTables)
+            tablesToCheck,
+            sectionMarkers)
         {
             loopVariables = [..loopVariables, loop.LoopVariable]
         };
@@ -711,14 +838,14 @@ class ScopeTreeRunner(
                 {
                     var clone = element.CloneNode(true);
                     scratch.AppendChild(clone);
-                    CollectAnchors(clone, cloneAnchors);
+                    CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
 
                 // Reuse the original scope tree directly. cloneAnchors is keyed on the same anchor
                 // names the registration-time tree references, so no per-iteration tree rebuild
                 // (Remap) is needed. Multiple iterations leave duplicate-named bookmarks in the
                 // live docx — that's fine because StripAll runs before Save and removes them all.
-                await clonedRunner.RunAsync(loop.Body);
+                await clonedRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 clonedRunner.ApplyStructural();
 
                 // Snapshot scratch's children before mutating, so remove+insert doesn't break
@@ -729,11 +856,15 @@ class ScopeTreeRunner(
                     pendingMoves.Add(element);
                 }
 
+                var iterationAnchor = insertAnchor;
                 foreach (var produced in pendingMoves)
                 {
                     produced.Remove();
                     insertAnchor = parent.InsertAfter(produced, insertAnchor);
                 }
+
+                // The block this iteration opens with now follows the previous iteration's last.
+                RecordTableAfter(iterationAnchor);
             }
             finally
             {
@@ -743,11 +874,11 @@ class ScopeTreeRunner(
 
         foreach (var element in bodyElements)
         {
-            element.Remove();
+            Remove(element);
         }
 
-        open.Remove();
-        close.Remove();
+        Remove(open);
+        Remove(close);
     }
 
     /// <summary>
@@ -791,7 +922,7 @@ class ScopeTreeRunner(
                 {
                     var clone = element.CloneNode(true);
                     scratch.AppendChild(clone);
-                    CollectAnchors(clone, cloneAnchors);
+                    CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
 
                 var itemRunner = new ScopeTreeRunner(
@@ -810,11 +941,12 @@ class ScopeTreeRunner(
                     numberingState,
                     styles,
                     imagePolicies,
-                    producedTables)
+                    tablesToCheck,
+                    sectionMarkers)
                 {
                     loopVariables = itemLoopVariables
                 };
-                await itemRunner.RunAsync(loop.Body);
+                await itemRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 itemRunner.ApplyStructural();
 
                 var itemBody = new List<OpenXmlElement>();
@@ -860,7 +992,7 @@ class ScopeTreeRunner(
     /// or remap pass. Duplicate names across iterations are harmless because each iteration
     /// uses its own fresh anchor dictionary, and StripAll prefix-matches at save time.
     /// </summary>
-    static void CollectAnchors(OpenXmlElement clone, Dictionary<string, Paragraph> anchorMap)
+    static void CollectAnchors(OpenXmlElement clone, Dictionary<string, Paragraph> anchorMap, bool nestedAnchors)
     {
         // Parchment-prefixed bookmarks are always direct children of a Paragraph (see
         // Anchors.InsertAfterProperties). Walk Paragraphs and scan their direct children
@@ -871,7 +1003,14 @@ class ScopeTreeRunner(
         if (clone is Paragraph paragraph)
         {
             CollectFromParagraph(paragraph, anchorMap);
-            return;
+
+            // A text box anchored in one of its runs holds paragraphs of its own, each with its
+            // own anchor. Looking for them means walking the whole paragraph, so it is done only
+            // for a block the scope tree marked as holding one — see LoopNode.NestedAnchors.
+            if (!nestedAnchors)
+            {
+                return;
+            }
         }
 
         foreach (var p in clone.Descendants<Paragraph>())
@@ -898,7 +1037,7 @@ class ScopeTreeRunner(
         // evaluated, yields a FluidValue we can enumerate. This honors filters, complex paths,
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
-        var sourceValue = await loop.LoopSource.EvaluateAsync(context);
+        var sourceValue = await loop.LoopSource.EvaluateAsync(context).ConfigureAwait(false);
         var items = sourceValue.Enumerate(context);
         if (loop.Limit == null &&
             loop.Offset == null &&
@@ -907,7 +1046,7 @@ class ScopeTreeRunner(
             return items;
         }
 
-        return await ApplyLoopModifiersAsync(loop, items.ToList());
+        return await ApplyLoopModifiersAsync(loop, items.ToList()).ConfigureAwait(false);
     }
 
     // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
@@ -918,7 +1057,7 @@ class ScopeTreeRunner(
         var start = 0;
         if (loop.Offset != null)
         {
-            var offset = await loop.Offset.EvaluateAsync(context);
+            var offset = await loop.Offset.EvaluateAsync(context).ConfigureAwait(false);
             // Fluid indexes the source with a negative offset and throws. Nothing precedes the
             // first item, so the docx flow starts there instead.
             start = Math.Max(0, (int)offset.ToNumberValue());
@@ -927,7 +1066,7 @@ class ScopeTreeRunner(
         var count = Math.Max(0, items.Count - start);
         if (loop.Limit != null)
         {
-            var limit = (int)(await loop.Limit.EvaluateAsync(context)).ToNumberValue();
+            var limit = (int)(await loop.Limit.EvaluateAsync(context).ConfigureAwait(false)).ToNumberValue();
             if (limit >= 0)
             {
                 count = Math.Min(count, limit);
@@ -969,7 +1108,7 @@ class ScopeTreeRunner(
         var chosenIndex = -1;
         for (var i = 0; i < ifNode.Branches.Count; i++)
         {
-            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition))
+            if (!await EvaluateConditionAsync(ifNode.Branches[i].Condition).ConfigureAwait(false))
             {
                 continue;
             }
@@ -996,11 +1135,11 @@ class ScopeTreeRunner(
         {
             foreach (var element in allBranchElements)
             {
-                element.Remove();
+                Remove(element);
             }
 
-            open.Remove();
-            close.Remove();
+            Remove(open);
+            Remove(close);
             return;
         }
 
@@ -1016,14 +1155,14 @@ class ScopeTreeRunner(
         var branchAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         foreach (var element in keepElements)
         {
-            CollectAnchors(element, branchAnchors);
+            CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, producedTables)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
         {
             loopVariables = loopVariables
         };
-        await innerRunner.RunAsync(chosen);
+        await innerRunner.RunAsync(chosen).ConfigureAwait(false);
         innerRunner.ApplyStructural();
 
         var keep = new HashSet<OpenXmlElement>(keepElements);
@@ -1031,12 +1170,12 @@ class ScopeTreeRunner(
         {
             if (!keep.Contains(element))
             {
-                element.Remove();
+                Remove(element);
             }
         }
 
-        open.Remove();
-        close.Remove();
+        Remove(open);
+        Remove(close);
     }
 
     /// <summary>
@@ -1070,7 +1209,7 @@ class ScopeTreeRunner(
     }
 
     async Task<bool> EvaluateConditionAsync(Expression condition) =>
-        (await condition.EvaluateAsync(context)).ToBooleanValue();
+        (await condition.EvaluateAsync(context).ConfigureAwait(false)).ToBooleanValue();
 
     static string ToDisplayString(object value) =>
         value switch

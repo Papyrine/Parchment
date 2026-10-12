@@ -137,6 +137,61 @@ static class Anchors
     }
 
     /// <summary>
+    /// Removes every anchor-named bookmark <paramref name="root"/> arrived with, wherever it sits,
+    /// and reports whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// A document that was registered or half processed once and is supplied again - most often as
+    /// a markdown template's style source - can still hold anchors. Nothing in the new registration
+    /// refers to them, and a render only reads the parts that carry tokens, so one left in a
+    /// token-free part would reach every output. Registration therefore takes them out before the
+    /// scan, into the bytes it bakes, and the scan anchors what it needs afresh. Unlike
+    /// <see cref="StripAll"/> this cannot assume where a bookmark sits: the input is not known to
+    /// be Parchment's own work.
+    /// </remarks>
+    public static bool StripArrived(OpenXmlCompositeElement root)
+    {
+        List<OpenXmlElement>? remove = null;
+        HashSet<string>? open = null;
+        foreach (var element in root.Descendants())
+        {
+            if (element is BookmarkStart {Name.Value: { } name} start)
+            {
+                if (!name.StartsWith(Prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                (remove ??= []).Add(start);
+                if (start.Id?.Value is { } id)
+                {
+                    (open ??= new(StringComparer.Ordinal)).Add(id);
+                }
+            }
+            else if (element is BookmarkEnd {Id.Value: { } endId} end &&
+                     open != null &&
+                     open.Remove(endId))
+            {
+                // The first end after the start, and only that one: an id is meant to be unique,
+                // but the same document can hold a second pair under it and that one stays whole.
+                remove!.Add(end);
+            }
+        }
+
+        if (remove == null)
+        {
+            return false;
+        }
+
+        foreach (var element in remove)
+        {
+            element.Remove();
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// The highest numeric bookmark id already present in <paramref name="root"/>. Callers seed a
     /// per-part id counter from this once (starting at result + 1) and increment locally as anchors
     /// are inserted, rather than re-scanning the part for every anchor. Ids only need to be unique
