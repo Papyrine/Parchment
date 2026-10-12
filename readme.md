@@ -992,6 +992,8 @@ When an `[Html]` / `[Markdown]` token shares its paragraph with other text or si
 | Non-solo | A single paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown) | The produced paragraph's `pPr` is dropped; its runs are spliced into the host at the token offset. Surrounding text and the host's `pPr` are preserved. |
 | Non-solo | Multiple block-level elements, or a non-paragraph block (table) | The host is split at the token offset: text before becomes its own paragraph (cloning host's `pPr`), the rendered blocks slot in between, and text after becomes another paragraph (also cloning host's `pPr`). Empty before/after halves are still emitted. |
 
+The two halves of a split share the host's `pPr` as formatting, but three of its settings belong to one end of the paragraph and are kept once. A section break (`w:sectPr`) goes to the half after the rendered blocks, so the section still ends where the host paragraph ended. A page break before (`w:pageBreakBefore`) and list numbering (`w:numPr`) stay on the half before them, so a split list item is still one numbered item. This applies to what the paragraph states directly: a page break or numbering that comes from the paragraph style still reaches both halves.
+
 Two non-solo block-shaped tokens in the same paragraph are rejected at render time — the splits would overlap and there is no defined way to compose them. Move one of the tokens to its own paragraph.
 
 
