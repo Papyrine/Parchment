@@ -1,3 +1,5 @@
+using System.Numerics;
+
 /// <summary>
 /// Turns a paragraph whose whole content is <c>[SECTION]</c> into a Word section break, so a markdown
 /// template can change page orientation — and the page setup with it — partway down a document.
@@ -34,27 +36,9 @@ static class SectionBreaks
     const uint DefaultWidth = 11906;
     const uint DefaultHeight = 16838;
 
-    // The children of w:sectPr that follow w:pgSz, in schema order. Only needed to place a w:pgSz
-    // into a style source that carries none — Word reads sectPr positionally, so appending would
-    // put it after elements it has to precede.
-    static readonly Type[] afterPageSize =
-    [
-        typeof(PageMargin),
-        typeof(PaperSource),
-        typeof(PageBorders),
-        typeof(LineNumberType),
-        typeof(PageNumberType),
-        typeof(Columns),
-        typeof(FormProtection),
-        typeof(VerticalTextAlignmentOnPage),
-        typeof(NoEndnote),
-        typeof(TitlePage),
-        typeof(TextDirection),
-        typeof(BiDi),
-        typeof(GutterOnRight),
-        typeof(DocGrid),
-        typeof(PrinterSettingsReference)
-    ];
+    // The longest side Word gives a page, 22 inches, and so the furthest any measurement on one
+    // can reach.
+    const int MaxTwips = 31680;
 
     public static bool TryWrite(OpenXmlMarkdownRenderer renderer, ParagraphBlock block, ParagraphProperties? properties)
     {
@@ -280,6 +264,11 @@ static class SectionBreaks
     // rejected, the way an unparseable [TOC] level is: a typo costs that one setting rather than
     // the section break or the settings beside it. Whatever the marker does not name keeps what the
     // style source had.
+    //
+    // A number that parses and cannot be a measurement on a page is another matter, and is rejected:
+    // there is no setting to fall back to that the author could have meant, and w:left and w:right
+    // are unsigned in the schema, so a negative one would otherwise wrap round to a margin of four
+    // billion twips.
     static PageMargin? ResolvePageMargin(IEnumerable<KeyValuePair<string, string?>>? attributes)
     {
         if (attributes == null)
@@ -299,11 +288,14 @@ static class SectionBreaks
             {
                 if (ParseEdges(value) is { } edges)
                 {
+                    // Top and bottom may be negative, which Word reads as a fixed distance the
+                    // header or footer is not allowed to push the text away from. Left and right
+                    // have no such reading.
                     margin ??= new();
-                    margin.Top = edges[0];
-                    margin.Right = (uint) edges[1];
-                    margin.Bottom = edges[2];
-                    margin.Left = (uint) edges[3];
+                    margin.Top = (int) InRange(edges[0], -MaxTwips, "margins", value, "top margin");
+                    margin.Right = (uint) InRange(edges[1], 0, "margins", value, "right margin");
+                    margin.Bottom = (int) InRange(edges[2], -MaxTwips, "margins", value, "bottom margin");
+                    margin.Left = (uint) InRange(edges[3], 0, "margins", value, "left margin");
                 }
             }
             else if (string.Equals(key, "header", StringComparison.OrdinalIgnoreCase))
@@ -311,7 +303,7 @@ static class SectionBreaks
                 if (ParseDistance(value) is { } header)
                 {
                     margin ??= new();
-                    margin.Header = header;
+                    margin.Header = (uint) InRange(header, 0, "header", value, "header distance");
                 }
             }
             else if (string.Equals(key, "footer", StringComparison.OrdinalIgnoreCase))
@@ -319,7 +311,7 @@ static class SectionBreaks
                 if (ParseDistance(value) is { } footer)
                 {
                     margin ??= new();
-                    margin.Footer = footer;
+                    margin.Footer = (uint) InRange(footer, 0, "footer", value, "footer distance");
                 }
             }
         }
@@ -329,7 +321,10 @@ static class SectionBreaks
 
     // All four page edges or none of them: a shorter list is as likely to be a mistake as a
     // shorthand, and there is no css shorthand it could be read as here.
-    static int[]? ParseEdges(string value)
+    //
+    // Read without a width, so a number too large for an int is still a number - one InRange turns
+    // away by name - rather than something that failed to parse and was quietly dropped.
+    static BigInteger[]? ParseEdges(string value)
     {
         var parts = value.Split(',');
         if (parts.Length != 4)
@@ -337,10 +332,10 @@ static class SectionBreaks
             return null;
         }
 
-        var twips = new int[4];
+        var twips = new BigInteger[4];
         for (var index = 0; index < 4; index++)
         {
-            if (!int.TryParse(parts[index].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out twips[index]))
+            if (!BigInteger.TryParse(parts[index].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out twips[index]))
             {
                 return null;
             }
@@ -352,14 +347,28 @@ static class SectionBreaks
     // Unsigned, where a page edge is not: Word measures the header and footer distances from the
     // page edge inwards and has nowhere to put one that starts outside the page, while a negative
     // margin is a page a header prints into and is a document Word will open.
-    static uint? ParseDistance(string value)
+    static BigInteger? ParseDistance(string value)
     {
-        if (uint.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var twips))
+        if (BigInteger.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var twips) &&
+            twips.Sign >= 0)
         {
             return twips;
         }
 
         return null;
+    }
+
+    static BigInteger InRange(BigInteger twips, int min, string attribute, string value, string what)
+    {
+        if (twips >= min &&
+            twips <= MaxTwips)
+        {
+            return twips;
+        }
+
+        throw new SectionMarkerException(
+            $"'{Marker}' has {attribute}={value}, whose {what} of {twips} twips is out of range. " +
+            $"It has to be between {min} and {MaxTwips}.");
     }
 
     static SectionProperties Derive(SectionProperties current, SectionProperties declared)
@@ -372,7 +381,9 @@ static class SectionBreaks
             var target = next.GetFirstChild<PageMargin>();
             if (target == null)
             {
-                next.AppendChild((PageMargin) margins.CloneNode(true));
+                // By the schema's order rather than at the end: w:sectPr is a strict sequence, and a
+                // style source without margins can still carry the w:cols or w:docGrid that follow.
+                next.AddChild(margins.CloneNode(true));
             }
             else
             {
@@ -428,16 +439,8 @@ static class SectionBreaks
             Height = DefaultHeight
         };
 
-        foreach (var child in sectPr.ChildElements)
-        {
-            if (afterPageSize.Contains(child.GetType()))
-            {
-                sectPr.InsertBefore(size, child);
-                return size;
-            }
-        }
-
-        sectPr.AppendChild(size);
+        // By the schema's order, since nearly everything else in a w:sectPr has to follow it.
+        sectPr.AddChild(size);
         return size;
     }
 

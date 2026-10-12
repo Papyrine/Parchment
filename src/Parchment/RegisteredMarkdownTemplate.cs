@@ -72,7 +72,18 @@ class RegisteredMarkdownTemplate(
             // One counter for the whole render, seeded above what the headers, footers and notes
             // already carry: the body is rebuilt from nothing, but those parts arrive as authored.
             var bookmarks = new BookmarkIds(maxBookmarkId);
-            var elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out var mayHoldSections);
+            IReadOnlyList<OpenXmlElement> elements;
+            bool mayHoldSections;
+            try
+            {
+                elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+            }
+            catch (SectionMarkerException exception)
+            {
+                // The markdown walk cannot see the template name, so it is attached here.
+                throw new ParchmentRenderException(Name, exception.Message);
+            }
+
             foreach (var element in elements)
             {
                 body.AppendChild(element);
