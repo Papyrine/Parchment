@@ -162,6 +162,12 @@ static class MarkdownTokenBlocks
     /// cheaper per step but growing the same way. A parent's children are instead detached and
     /// re-attached once, without the hosts, which is constant per child: detaching always takes the
     /// first child and attaching always follows the last.
+    /// <para>
+    /// A host was a paragraph, and with it gone two tables can be left side by side - one it
+    /// produced and the table before or after it, or the tables either side of a host that
+    /// produced nothing. Word merges two <c>w:tbl</c> siblings into one table, so an empty paragraph
+    /// goes between them as the children pass, which is the one moment every neighbour is settled.
+    /// </para>
     /// </remarks>
     static void Remove(List<Paragraph> hosts)
     {
@@ -178,10 +184,18 @@ static class MarkdownTokenBlocks
             var kept = new List<OpenXmlElement>();
             for (var child = parent.FirstChild; child != null; child = child.NextSibling())
             {
-                if (!gone.Contains(child))
+                if (gone.Contains(child))
                 {
-                    kept.Add(child);
+                    continue;
                 }
+
+                if (child is Table &&
+                    AdjacentTables.EndsWithTable(kept))
+                {
+                    kept.Add(new Paragraph());
+                }
+
+                kept.Add(child);
             }
 
             parent.RemoveAllChildren();

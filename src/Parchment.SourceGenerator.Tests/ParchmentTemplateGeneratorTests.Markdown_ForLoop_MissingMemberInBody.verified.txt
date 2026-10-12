@@ -1,7 +1,13 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (10,1)-(10,15),
+      Location: /*
+
+[ParchmentModel]
+ ^^^^^^^^^^^^^^
+public partial class Invoice
+*/
+ : (10,1)-(10,15),
       Message: Template 'Invoice.parchment.md' token '{{ ... }}' references 'line.Missing' which is not a member of 'Invoice',
       Severity: Error,
       Descriptor: {

@@ -12,15 +12,7 @@ class OpenXmlContextImpl(
 
     public string AddImagePart(byte[] bytes, string contentType)
     {
-        var partType = contentType switch
-        {
-            "image/png" => ImagePartType.Png,
-            "image/jpeg" or "image/jpg" => ImagePartType.Jpeg,
-            "image/gif" => ImagePartType.Gif,
-            "image/bmp" => ImagePartType.Bmp,
-            "image/tiff" => ImagePartType.Tiff,
-            _ => ImagePartType.Png
-        };
+        var partType = ImageContentTypes.Resolve(contentType);
 
         // To the part the token sits in, not always the main one: the id handed back is only good
         // in the part that ends up holding the drawing.

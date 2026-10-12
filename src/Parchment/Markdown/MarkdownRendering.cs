@@ -14,7 +14,7 @@ static class MarkdownRendering
     public static IReadOnlyList<OpenXmlElement> Render(string markdown, MainDocumentPart mainPart, OpenXmlPart part, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkIds bookmarks, int headingOffset, out bool mayHoldSections)
     {
         var document = Markdown.Parse(markdown, MarkdigPipeline.Pipeline);
-        var renderer = new OpenXmlMarkdownRenderer(mainPart, part, numbering, imagePolicies, headingOffset);
+        var renderer = new OpenXmlMarkdownRenderer(mainPart, part, numbering, imagePolicies, bookmarks.Names, headingOffset);
         MarkAlignedPipeTables(markdown, document, renderer);
         renderer.Render(document);
         var elements = renderer.Drain();

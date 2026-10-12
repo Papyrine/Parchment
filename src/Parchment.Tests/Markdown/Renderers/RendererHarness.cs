@@ -8,7 +8,7 @@ static class RendererHarness
         mainPart.Document = new(new Body());
         var stylesPart = mainPart.AddNewPart<StyleDefinitionsPart>();
         stylesPart.Styles = new();
-        return new(mainPart, mainPart, new(mainPart), ImagePolicies.AllowAll, headingOffset);
+        return new(mainPart, mainPart, new(mainPart), ImagePolicies.AllowAll, new(), headingOffset);
     }
 
     public static MarkdownDocument Parse(string markdown) =>
