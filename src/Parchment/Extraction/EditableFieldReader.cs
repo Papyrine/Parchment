@@ -155,20 +155,13 @@ static class EditableFieldReader
 
     static ExtractedField ReadDate(SdtElement sdt, EditableEntry entry, string raw, CultureInfo culture)
     {
-        var fullDate = sdt.SdtProperties
-            ?.GetFirstChild<SdtContentDate>()
-            ?.FullDate;
-        DateTime dateTime;
-        if (fullDate is { HasValue: true })
+        if (!TryReadFullDate(sdt, out var dateTime))
         {
-            dateTime = fullDate.Value;
-        }
-        else if (raw.Length == 0)
-        {
-            return new(entry.DottedPath, FieldState.Empty, null, raw);
-        }
-        else
-        {
+            if (raw.Length == 0)
+            {
+                return new(entry.DottedPath, FieldState.Empty, null, raw);
+            }
+
             // Word maintains w:fullDate for picker selections; typed-in text may leave it stale
             // or absent, so parse the display text with the declared format.
             var format = entry.DateFormat ?? "yyyy-MM-dd";
@@ -180,23 +173,45 @@ static class EditableFieldReader
         }
 
         // Only DateOnly and DateTime map to the Date kind. DateTime comes back with Kind
-        // Unspecified (w:fullDate carries no zone) — documented; callers needing a specific Kind
-        // re-stamp it.
+        // Unspecified (the value is a wall-clock reading) — documented; callers needing a
+        // specific Kind re-stamp it.
         object value = entry.ClrType == typeof(Date)
             ? Date.FromDateTime(dateTime)
-            : dateTime;
+            : DateTime.SpecifyKind(dateTime, DateTimeKind.Unspecified);
 
         return new(entry.DottedPath, FieldState.Extracted, value, raw);
+    }
+
+    // Reads the attribute text rather than the typed value: the typed value converts a "Z" or
+    // offset suffix (Word's picker writes "Z") into a Utc DateTime, shifting the clock reading
+    // when an offset is present. DateTimeOffset.DateTime is the clock reading as written,
+    // whatever suffix follows it; AssumeUniversal keeps a suffix-less value off the machine zone.
+    static bool TryReadFullDate(SdtElement sdt, out DateTime dateTime)
+    {
+        var text = sdt.SdtProperties
+            ?.GetFirstChild<SdtContentDate>()
+            ?.FullDate
+            ?.InnerText;
+        if (text != null &&
+            DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            dateTime = parsed.DateTime;
+            return true;
+        }
+
+        dateTime = default;
+        return false;
     }
 
     static ExtractedField ReadDateTimeOffset(EditableEntry entry, string raw, CultureInfo culture)
     {
         // The run text is the source of truth (w:fullDate cannot hold an offset). Parsing the
         // offset-bearing ISO text preserves the original offset — DateTimeOffset.TryParse keeps
-        // whatever offset the string carries.
+        // whatever offset the string carries. Text with no offset (a DateFormat without one)
+        // extracts as that clock reading at offset zero rather than at the machine's offset.
         var parsed = entry.DateFormat is { } format
-            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out var value)
-            : DateTimeOffset.TryParse(raw, culture, DateTimeStyles.None, out value);
+            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.AssumeUniversal, out var value)
+            : DateTimeOffset.TryParse(raw, culture, DateTimeStyles.AssumeUniversal, out value);
 
         if (parsed)
         {

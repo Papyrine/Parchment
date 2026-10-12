@@ -176,10 +176,13 @@ static class EditableFieldBuilder
 
         // Only DateOnly and DateTime reach here (see BuildKind). DateTime's time-of-day is
         // preserved in w:fullDate even though the default format shows date only.
+        // The value is a wall-clock reading: its Kind is dropped so w:fullDate carries no zone. A
+        // Local value would otherwise be written with the machine offset and read back shifted,
+        // and Word rewrites an offset to the clock reading on save anyway.
         var dateTime = value switch
         {
             Date date => date.ToDateTime(Time.MinValue),
-            _ => (DateTime)value
+            _ => DateTime.SpecifyKind((DateTime)value, DateTimeKind.Unspecified)
         };
         kind.FullDate = dateTime;
         return (kind, TextRun(dateTime.ToString(format, culture), sitePr, multiLine: false), false);
