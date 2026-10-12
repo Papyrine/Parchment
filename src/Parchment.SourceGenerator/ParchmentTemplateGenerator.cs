@@ -338,14 +338,17 @@ public sealed class ParchmentTemplateGenerator :
     {
         try
         {
-            var result = DocxArchiveReader.Read(text.Path);
+            // Read once. A second read could land on the other side of a save and embed a template
+            // other than the one validated.
+            var bytes = ReadBytes(text.Path);
+            var result = DocxArchiveReader.Read(bytes);
             return new(
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
                 new(result.ParagraphContainers.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
-                Convert.ToBase64String(ReadBytes(text.Path)),
+                Convert.ToBase64String(bytes),
                 null);
         }
         catch (Exception exception)
@@ -367,12 +370,16 @@ public sealed class ParchmentTemplateGenerator :
     }
 
     // RS1035 steers analyzers to AdditionalText, but an AdditionalText has no binary read surface
-    // — GetText() returns null for binary content — so raw bytes come off the stream directly,
-    // the same loophole DocxArchiveReader relies on for ZipFile.
+    // — GetText() returns null for binary content — so raw bytes come off the stream directly.
+    //
+    // Shared for writing and for deleting. A word processor keeps the document it is editing open
+    // with write access and replaces the file when it saves; asking for anything narrower gets the
+    // open refused ("being used by another process") for a file that is perfectly readable, and
+    // would in turn refuse a save that lands while the build is reading.
 #pragma warning disable RS1035
     static byte[] ReadBytes(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var memory = new MemoryStream();
         stream.CopyTo(memory);
         return memory.ToArray();

@@ -412,6 +412,105 @@
         await Assert.That(diagnostics[0].Id).IsEqualTo("PARCH006");
     }
 
+    // A word processor keeps the document it is editing open with write access, whichever way it
+    // shares it. The generator only reads, so that is not a PARCH006: the template is validated
+    // (the PARCH001 below) and the bytes on disk are the ones embedded.
+    [Test]
+    [Arguments(FileShare.Read)]
+    [Arguments(FileShare.ReadWrite)]
+    public async Task DocxOpenForWritingElsewhere_IsStillRead(FileShare share)
+    {
+        var bytes = GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!", "{{ Missing }}");
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            letterModelDocx,
+            new TemplateFile("Letter.parchment.docx", bytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(setup.DocxPath, FileMode.Open, FileAccess.ReadWrite, share))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH001"]);
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(bytes));
+    }
+
+    // Saving replaces the file, which takes a handle with delete access. DeleteOnClose is the
+    // way to hold one from here.
+    [Test]
+    public async Task DocxOpenForDeletionElsewhere_IsStillRead()
+    {
+        var bytes = GeneratorDriver.BuildDocxBytes("Hello {{ Customer.Name }}!", "{{ Missing }}");
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            letterModelDocx,
+            new TemplateFile("Letter.parchment.docx", bytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(
+                   setup.DocxPath,
+                   FileMode.Open,
+                   FileAccess.ReadWrite,
+                   FileShare.ReadWrite | FileShare.Delete,
+                   bufferSize: 1,
+                   FileOptions.DeleteOnClose))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH001"]);
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(bytes));
+    }
+
+    // The style document of a markdown template is read the same way as a docx template.
+    [Test]
+    [Arguments(FileShare.Read)]
+    [Arguments(FileShare.ReadWrite)]
+    public async Task StyleDocOpenForWritingElsewhere_IsStillRead(FileShare share)
+    {
+        var styleBytes = GeneratorDriver.BuildDocxBytes("styled");
+        var setup = GeneratorDriver.CreateDriverWithFiles(
+            letterModelMd,
+            new TemplateFile("Letter.parchment.md", "Hello {{ Customer.Name }}!"u8.ToArray()),
+            new TemplateFile("Letter.parchment.dotx", styleBytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(setup.DocxPaths[1], FileMode.Open, FileAccess.ReadWrite, share))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics).IsEmpty();
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(styleBytes));
+    }
+
+    [Test]
+    public async Task StyleDocOpenForDeletionElsewhere_IsStillRead()
+    {
+        var styleBytes = GeneratorDriver.BuildDocxBytes("styled");
+        var setup = GeneratorDriver.CreateDriverWithFiles(
+            letterModelMd,
+            new TemplateFile("Letter.parchment.md", "Hello {{ Customer.Name }}!"u8.ToArray()),
+            new TemplateFile("Letter.parchment.dotx", styleBytes));
+
+        GeneratorDriverRunResult result;
+        using (new FileStream(
+                   setup.DocxPaths[1],
+                   FileMode.Open,
+                   FileAccess.ReadWrite,
+                   FileShare.ReadWrite | FileShare.Delete,
+                   bufferSize: 1,
+                   FileOptions.DeleteOnClose))
+        {
+            result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        }
+
+        await Assert.That(result.Diagnostics).IsEmpty();
+        await Assert.That(GeneratedText(result)).Contains(Convert.ToBase64String(styleBytes));
+    }
+
+    static string GeneratedText(GeneratorDriverRunResult result) =>
+        string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+
     [Test]
     public async Task RemovePersonalInformation_Missing_EmitsWarning()
     {
