@@ -36,9 +36,18 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     public void RegisterDocxTemplate<TModel>(Stream template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
-        RegisterDocxTemplate(typeof(TModel), template, protection);
+        RegisterDocxTemplate(typeof(TModel), DocxCloner.ToWritableStream(template), protection);
 
-    void RegisterDocxTemplate(Type modelType, Stream template, ProtectionMode protection)
+    /// <summary>
+    /// Registers <paramref name="clone"/> as the template for <paramref name="modelType"/>.
+    /// </summary>
+    /// <remarks>
+    /// The caller supplies the writable clone and this method owns it: registration mutates the
+    /// package in place — retyping it, rewriting form fields, baking in anchors — and keeps the
+    /// result as the snapshot every render starts from. Taking the clone rather than making one
+    /// spares the source-generator path a round-trip, since a definition already holds bytes.
+    /// </remarks>
+    void RegisterDocxTemplate(Type modelType, MemoryStream clone, ProtectionMode protection)
     {
         var name = modelType.Name;
         GuardBindingModel(modelType, name);
@@ -49,7 +58,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var stringListMap = StringListMap.Build(modelType);
         var editableMap = EditableMap.Build(modelType);
 
-        using var stream = DocxCloner.ToWritableStream(template);
+        using var stream = clone;
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
@@ -126,25 +135,19 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     public void RegisterMarkdownTemplate<TModel>(string markdown, Stream? styleSource = null) =>
-        RegisterMarkdownTemplate(typeof(TModel), markdown, ToBytes(styleSource));
+        RegisterMarkdownTemplate(typeof(TModel), markdown, styleSource == null ? null : DocxCloner.ToBytes(styleSource));
 
-    static byte[]? ToBytes(Stream? styleSource)
-    {
-        if (styleSource == null)
-        {
-            return null;
-        }
-
-        if (styleSource is MemoryStream existing)
-        {
-            return existing.ToArray();
-        }
-
-        using var stream = new MemoryStream();
-        styleSource.CopyTo(stream);
-        return stream.ToArray();
-    }
-
+    /// <summary>
+    /// Registers <paramref name="markdown"/> as the template for <paramref name="model"/>, styled by
+    /// <paramref name="styleSource"/> or by <see cref="BlankDocxTemplate"/> when none is supplied.
+    /// </summary>
+    /// <remarks>
+    /// The style source arrives as an array rather than a stream so that
+    /// <see cref="PrepareStyleSource"/> can hand it straight back when it has nothing to rewrite —
+    /// which is the common case — and <see cref="BakeStyleSource"/> then makes the one copy the
+    /// registered template keeps. The caller's array is never written to, which matters most for
+    /// the source-generator path, where it belongs to a definition that outlives every store.
+    /// </remarks>
     void RegisterMarkdownTemplate(Type model, string markdown, byte[]? styleSource)
     {
         var name = model.Name;
@@ -169,11 +172,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
         MarkdownReferenceValidator.Validate(template, model, name);
 
-        var bytes = styleSource ?? BlankDocxTemplate;
-
-        bytes = NormalizeStyleSource(bytes);
-        var (scanned, parts, maxBookmarkId) = ScanNonBodyParts(model, bytes, name);
-        var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(scanned);
+        var (prepared, parts, maxBookmarkId) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
+        var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(prepared);
 
         var registered = new RegisteredMarkdownTemplate(
             name,
@@ -192,8 +192,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     }
 
     /// <summary>
-    /// Binds the style source's non-body parts — headers, footers, notes — the way the docx flow
-    /// binds every part.
+    /// Retypes the style source as a document and binds its non-body parts — headers, footers,
+    /// notes — the way the docx flow binds every part.
     /// </summary>
     /// <remarks>
     /// The markdown replaces the body and nothing else, so every other part arrives from the style
@@ -201,16 +201,28 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// carrying a date or a reference is ordinary, so those tokens have to bind too — otherwise the
     /// same token binds in one flow and renders as literal text in the other.
     ///
+    /// Both jobs share one open, as they do in the docx flow: they were a pass each, so the package
+    /// was cloned and fully parsed twice to do work a single visit covers. Retyping still comes
+    /// first for the reason <see cref="RegisterDocxTemplate(Type, MemoryStream, ProtectionMode)"/>
+    /// gives — <c>ChangeDocumentType</c> swaps the main part out, so a scan done before it would be
+    /// discarded along with the part it ran on.
+    ///
     /// The scan mutates the package: anchors are baked in here so the render can find each scope
-    /// again, which is why the rewritten bytes are returned rather than the ones passed in.
+    /// again, which is why the rewritten bytes are returned rather than the ones passed in. When
+    /// neither step changed anything — an already-document style source with no tokens outside its
+    /// body, which includes <see cref="BlankDocxTemplate"/> — the input is handed back untouched and
+    /// nothing is serialized.
     /// </remarks>
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) ScanNonBodyParts(Type model, byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
+            var retyped = doc.DocumentType != WordprocessingDocumentType.Document;
+            EnsureDocumentType(doc);
+
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
@@ -241,7 +253,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
             if (!found)
             {
-                return (bytes, [], maxBookmarkId);
+                if (!retyped)
+                {
+                    return (bytes, [], maxBookmarkId);
+                }
+
+                // Retyping alone leaves no token to bind, so no part is listed, as when nothing
+                // was rewritten at all.
+                parts.Clear();
             }
 
             doc.Save();
@@ -315,23 +334,6 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         {
             doc.ChangeDocumentType(WordprocessingDocumentType.Document);
         }
-    }
-
-    static byte[] NormalizeStyleSource(byte[] bytes)
-    {
-        using var stream = DocxCloner.ToWritableStream(bytes);
-        using (var doc = WordprocessingDocument.Open(stream, true))
-        {
-            if (doc.DocumentType == WordprocessingDocumentType.Document)
-            {
-                return bytes;
-            }
-
-            EnsureDocumentType(doc);
-            doc.Save();
-        }
-
-        return stream.ToArray();
     }
 
     static void GuardBindingModel(Type type, string name)
@@ -580,11 +582,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         switch (definition)
         {
             case DocxTemplateDefinition docx:
-            {
-                using var stream = new MemoryStream(docx.Template, writable: false);
-                RegisterDocxTemplate(modelType, stream, docx.Protection);
+                RegisterDocxTemplate(modelType, DocxCloner.ToWritableStream(docx.Template), docx.Protection);
                 break;
-            }
             case MarkdownTemplateDefinition markdown:
                 RegisterMarkdownTemplate(modelType, markdown.Markdown, markdown.StyleSource);
                 break;
