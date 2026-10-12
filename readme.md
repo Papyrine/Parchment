@@ -2104,6 +2104,8 @@ The source generator is the recommended way to register templates. Decorate the 
 
 **No runtime reflection over the model — at all.** The generator emits every member accessor and per-template map at compile time, and there is no reflection fallback: a model that never went through the generator is rejected at registration with a pointer to `[ParchmentModel]` / `[ParchmentBindable]`. This makes Parchment safe for trimming and NativeAOT scenarios, and matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
 
+**C# 9 or later.** The generated code is compiled with the project's own `LangVersion`, and its module initializer needs C# 9. That is the only requirement: a project pinned to C# 9 gets a block-scoped namespace where later versions get a file-scoped one, and nothing else in the output differs. Below C# 9 the compiler rejects the generated file and names the version it needs. The default for a .NET 10 project is C# 14, so this only matters where `LangVersion` is set by hand.
+
 The model must be `partial` — the generator emits the embedded template and its module initializer onto the same class. Both docx and markdown templates are supported — the generator branches on the matched file's extension (`.docx` → docx flow, `.md` → markdown flow):
 
 <!-- snippet: GeneratorDocxModel -->
@@ -2506,6 +2508,18 @@ Remove the modifier, or drop `[EditableField]` from the member to render it read
 ```
 
 Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
+
+
+### `PARCH036` — protection is not a defined ProtectionMode value
+
+`[ParchmentModel(Protection = ...)]` was given a value that `ProtectionMode` does not name. The compiler accepts any integer cast to an enum as an attribute argument, so this is legal C# that means nothing:
+
+```cs
+[ParchmentModel(Protection = (ProtectionMode)5)]   // <-- neither WhenEditable nor None
+public partial class OrderForm
+```
+
+Use `ProtectionMode.WhenEditable` (the default) or `ProtectionMode.None`. Reported for docx and markdown templates alike, although a markdown template ignores the setting. See [Protection is cooperative, not security](#protection-is-cooperative-not-security).
 
 
 ### `PARCH100` — template carries a second item type

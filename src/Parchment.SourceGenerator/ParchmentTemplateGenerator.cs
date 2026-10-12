@@ -207,6 +207,11 @@ public sealed class ParchmentTemplateGenerator :
             }
         }
 
+        // Read off the model's own tree, so the emitted file stays within what the project's
+        // LangVersion allows. Every tree of a compilation carries the same parse options.
+        var fileScopedNamespace = context.TargetNode.SyntaxTree.Options is not CSharpParseOptions parseOptions ||
+                                  parseOptions.LanguageVersion >= LanguageVersion.CSharp10;
+
         return new(
             declaringNamespace,
             typeSymbol.Name,
@@ -215,6 +220,7 @@ public sealed class ParchmentTemplateGenerator :
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             protection,
+            fileScopedNamespace,
             EquatableLocation.From(rawLocation),
             shape,
             enclosingResult.Error);
@@ -423,6 +429,20 @@ public sealed class ParchmentTemplateGenerator :
                     target.DeclaringName,
                     target.ExtractError));
             return;
+        }
+
+        // PARCH036: a constant the compiler accepts but the enum does not name. Reported before the
+        // template is matched so it does not depend on which flow the model lands in. Validation
+        // carries on, and the registration is still emitted as compilable code — see
+        // ProtectionArgument.
+        if (!IsDefined(target.Protection))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.ProtectionModeUndefined,
+                    location,
+                    target.ModelDisplayName,
+                    (int)target.Protection));
         }
 
         // Convention: the template is the AdditionalFile named after the type. Nothing matched is
@@ -1512,9 +1532,7 @@ public sealed class ParchmentTemplateGenerator :
         var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
         // Emit the protection argument only when it deviates from the default, so registrations
         // for the common case stay minimal.
-        var protection = target.Protection == ProtectionMode.WhenEditable
-            ? ""
-            : $", global::Parchment.ProtectionMode.{target.Protection}";
+        var protection = ProtectionArgument(target.Protection);
         var body =
             $$"""
               {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
@@ -1527,6 +1545,28 @@ public sealed class ParchmentTemplateGenerator :
               """;
 
         return BuildPartialSource(target, body);
+    }
+
+    static bool IsDefined(ProtectionMode protection) =>
+        protection is ProtectionMode.WhenEditable or ProtectionMode.None;
+
+    // A defined value is written by name. An undefined one has no name — formatting it yields its
+    // digits, and `ProtectionMode.5` is not an expression — so it is written as the cast the
+    // model's author wrote. PARCH036 has already been reported for it; the cast keeps the
+    // generated file from piling syntax errors of its own on top.
+    static string ProtectionArgument(ProtectionMode protection)
+    {
+        if (protection == ProtectionMode.WhenEditable)
+        {
+            return "";
+        }
+
+        if (IsDefined(protection))
+        {
+            return $", global::Parchment.ProtectionMode.{protection}";
+        }
+
+        return $", (global::Parchment.ProtectionMode)({(int)protection})";
     }
 
     static string GenerateMarkdownRegistration(TargetInfo target, MarkdownData matched, DotxData? style)
@@ -1564,7 +1604,15 @@ public sealed class ParchmentTemplateGenerator :
 
             """);
 
-        if (target.DeclaringNamespace != null)
+        // A file-scoped namespace needs C# 10. A project pinned to C# 9 gets the block form, its
+        // content left unindented so the two shapes differ by the braces alone.
+        var blockNamespace = target is { DeclaringNamespace: not null, FileScopedNamespace: false };
+        if (blockNamespace)
+        {
+            builder.AppendLine($"namespace {target.DeclaringNamespace}");
+            builder.AppendLine("{");
+        }
+        else if (target.DeclaringNamespace != null)
         {
             builder.AppendLine($"namespace {target.DeclaringNamespace};");
         }
@@ -1614,6 +1662,11 @@ public sealed class ParchmentTemplateGenerator :
         for (var i = depth - 1; i >= 0; i--)
         {
             builder.Indent(i).AppendLine("}");
+        }
+
+        if (blockNamespace)
+        {
+            builder.AppendLine("}");
         }
 
         return builder.ToString();

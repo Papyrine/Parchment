@@ -23,6 +23,7 @@ sealed record TargetInfo(
     string ModelFullyQualifiedName,
     string ModelDisplayName,
     ProtectionMode Protection,
+    bool FileScopedNamespace,
     EquatableLocation Location,
     ModelShape Shape,
     string? ExtractError);

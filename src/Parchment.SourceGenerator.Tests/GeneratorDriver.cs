@@ -136,7 +136,8 @@
         string userSource,
         TemplateFile[] docxes,
         string? modelFileName,
-        bool withProjectDir = false)
+        bool withProjectDir = false,
+        LanguageVersion languageVersion = LanguageVersion.Default)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -153,12 +154,15 @@
             paths.Add(path);
         }
 
+        // What <LangVersion> becomes: the one set of parse options every tree in the project
+        // shares, the generated ones included.
+        var parseOptions = new CSharpParseOptions(languageVersion);
         var syntaxTrees = new[]
         {
-            CSharpSyntaxTree.ParseText(attributeSource),
+            CSharpSyntaxTree.ParseText(attributeSource, parseOptions),
             modelFileName == null
-                ? CSharpSyntaxTree.ParseText(userSource)
-                : CSharpSyntaxTree.ParseText(userSource, path: CreateModelPath(directory, modelFileName))
+                ? CSharpSyntaxTree.ParseText(userSource, parseOptions)
+                : CSharpSyntaxTree.ParseText(userSource, parseOptions, path: CreateModelPath(directory, modelFileName))
         };
 
         var compilation = CSharpCompilation.Create(
@@ -173,7 +177,7 @@
         var driver = CSharpGeneratorDriver.Create(
             generators: [new ParchmentTemplateGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
-            parseOptions: (CSharpParseOptions) syntaxTrees[0].Options,
+            parseOptions: parseOptions,
             optionsProvider: withProjectDir ? new TestOptionsProvider(directory + Path.DirectorySeparatorChar) : null,
             driverOptions: new(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 

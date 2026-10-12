@@ -265,4 +265,16 @@
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch021--model-matches-more-than-one-style-document");
+
+    // The compiler accepts any integer cast to an enum as an attribute argument, so an undefined
+    // ProtectionMode is legal C#. It names no behaviour, though, and the runtime would quietly
+    // read it as "not WhenEditable": an unprotected document nobody asked for.
+    public static readonly DiagnosticDescriptor ProtectionModeUndefined = new(
+        id: "PARCH036",
+        title: "Protection is not a defined ProtectionMode value",
+        messageFormat: "Model '{0}' sets [ParchmentModel(Protection)] to {1}, which is not a ProtectionMode value. Use ProtectionMode.WhenEditable or ProtectionMode.None.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch036--protection-is-not-a-defined-protectionmode-value");
 }
