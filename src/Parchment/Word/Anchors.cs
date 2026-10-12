@@ -13,14 +13,10 @@ static class Anchors
     // part's BookmarkStart descendants on every call — O(paragraphs²) across a token-dense part.
     public static string EnsureOn(Paragraph paragraph, ref int nextId)
     {
-        var existing = paragraph
-            .Elements<BookmarkStart>()
-            .FirstOrDefault(_ => _.Name != null &&
-                                 _.Name.Value != null &&
-                                 _.Name.Value.StartsWith(Prefix, StringComparison.Ordinal));
-        if (existing?.Name?.Value != null)
+        var existing = FindOn(paragraph);
+        if (existing != null)
         {
-            return existing.Name.Value;
+            return existing;
         }
 
         var name = Prefix + Guid.NewGuid().ToString("N");
@@ -36,6 +32,23 @@ static class Anchors
         };
         InsertAfterProperties(paragraph, start, end);
         return name;
+    }
+
+    /// <summary>
+    /// The name of the anchor <paramref name="paragraph"/> already carries, or null when it has none.
+    /// </summary>
+    public static string? FindOn(Paragraph paragraph)
+    {
+        foreach (var child in paragraph.ChildElements)
+        {
+            if (child is BookmarkStart {Name.Value: { } name} &&
+                name.StartsWith(Prefix, StringComparison.Ordinal))
+            {
+                return name;
+            }
+        }
+
+        return null;
     }
 
     public static Dictionary<string, Paragraph> BuildMap(OpenXmlCompositeElement root)

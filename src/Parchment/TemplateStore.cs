@@ -50,7 +50,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var editableMap = EditableMap.Build(modelType);
 
         using var stream = DocxCloner.ToWritableStream(template);
-        IReadOnlyList<PartScopeTree> parts;
+        var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
@@ -88,6 +88,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 ExcelsiorTokenValidator.Validate(classifications, excelsiorMap, name, uri);
                 FormatTokenValidator.Validate(classifications, formatMap, name, uri);
                 EditableTokenValidator.Validate(classifications, editableMap, excelsiorMap, formatMap, name, uri, isBody: uri == bodyUri);
+
+                // The tree that was just validated is the one the render walks. It names the
+                // anchors this scan wrote into the package saved below, so nothing has to be read
+                // back out of the package to build it.
+                parts.Add(new(uri, tree));
             }
 
             if (!editableMap.IsEmpty &&
@@ -112,8 +117,6 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
 
             doc.Save();
-
-            parts = ExtractParts(doc, name);
         }
 
         var canonicalBytes = stream.ToArray();
@@ -204,7 +207,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) ScanNonBodyParts(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
-        List<PartScopeTree> parts;
+        var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
@@ -229,7 +232,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
                 var tree = ScopeTreeBuilder.Build(classifications, name, uri);
                 new ReferenceValidator(model, name, uri).ValidateTree(tree);
-                found = true;
+                parts.Add(new(uri, tree));
+
+                // A part holding nothing but anchors the style source arrived with has no token to
+                // bind, so on its own it is no reason to rewrite the package.
+                found |= classifications.Any(_ => _.Kind != ParagraphKind.Static);
             }
 
             if (!found)
@@ -238,10 +245,6 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             }
 
             doc.Save();
-            parts = ExtractParts(doc, name);
-            // ExtractParts walks every part. The body was never scanned, so whatever it found there
-            // belongs to the markdown that replaces it, not to this pass.
-            parts.RemoveAll(_ => _.PartUri == bodyUri);
         }
 
         return (stream.ToArray(), parts, maxBookmarkId);
@@ -592,159 +595,4 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
 
     public static void AddFilter(string name, FilterDelegate filter) =>
         SharedFluid.AddFilter(name, filter);
-
-    static List<PartScopeTree> ExtractParts(WordprocessingDocument doc, string name)
-    {
-        var parts = new List<PartScopeTree>();
-        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
-        {
-            var classifications = new List<ParagraphClassification>();
-            foreach (var paragraph in root.Descendants<Paragraph>())
-            {
-                var anchorName = paragraph
-                    .Elements<BookmarkStart>()
-                    .FirstOrDefault(_ => _.Name?.Value?.StartsWith(Anchors.Prefix, StringComparison.Ordinal) == true)
-                    ?.Name?.Value;
-                if (anchorName == null)
-                {
-                    continue;
-                }
-
-                var reclassified = RestoreClassification(paragraph, anchorName);
-                classifications.Add(reclassified);
-            }
-
-            if (classifications.Count == 0)
-            {
-                continue;
-            }
-
-            var tree = ScopeTreeBuilder.Build(classifications, name, uri);
-            parts.Add(new(uri, tree));
-        }
-
-        return parts;
-    }
-
-    static ParagraphClassification RestoreClassification(
-        Paragraph paragraph,
-        string anchorName)
-    {
-        var text = ParagraphText.Build(paragraph);
-        var innerText = text.InnerText;
-        var sites = TokenScan.Scan(innerText);
-        if (sites.Count == 0)
-        {
-            return new(paragraph, anchorName, ParagraphKind.Static, [], null);
-        }
-
-        var substitutions = new List<DocxTokenSite>();
-        BlockMarker? block = null;
-        foreach (var site in sites)
-        {
-            var source = innerText.Substring(site.Offset, site.Length);
-            if (site.Kind == TokenSiteKind.Substitution)
-            {
-                if (SharedFluid.Parser.TryParse(source, out var template, out _))
-                {
-                    var refs = IdentifierVisitor.Collect(template);
-                    substitutions.Add(new(site.Offset, site.Length, source, template, refs));
-                }
-            }
-            else
-            {
-                block = ParseBlock(source);
-            }
-        }
-
-        if (block != null)
-        {
-            return new(paragraph, anchorName, ParagraphKind.Block, [], block);
-        }
-
-        return new(paragraph, anchorName, ParagraphKind.Substitution, substitutions, null);
-    }
-
-    static BlockMarker? ParseBlock(string source)
-    {
-        if (!BlockTagParser.TryParse(source, out var tag, out var expression))
-        {
-            return null;
-        }
-
-        var expr = expression.IsEmpty ? null : expression.ToString();
-
-        return tag switch
-        {
-            "for" => RebuildFor(source, expr),
-            "endfor" => new(BlockTagKind.EndFor, source, null, null, null),
-            "if" => RebuildIf(source, expr),
-            "elsif" or "elseif" => RebuildElsif(source, expr),
-            "else" => new(BlockTagKind.Else, source, null, null, null),
-            "endif" => new(BlockTagKind.EndIf, source, null, null, null),
-            _ => null
-        };
-    }
-
-    static BlockMarker? RebuildFor(string source, string? expression)
-    {
-        if (expression == null)
-        {
-            return null;
-        }
-
-        var liquid = $"{{% for {expression} %}}{{% endfor %}}";
-        if (!SharedFluid.Parser.TryParse(liquid, out var template, out _))
-        {
-            return null;
-        }
-
-        var forStatement = ((Fluid.Parser.FluidTemplate)template).Statements
-            .OfType<ForStatement>()
-            .FirstOrDefault();
-        if (forStatement == null)
-        {
-            return null;
-        }
-
-        return new(
-            BlockTagKind.For,
-            source,
-            null,
-            forStatement.Identifier,
-            forStatement.Source,
-            forStatement.Limit,
-            forStatement.Offset,
-            forStatement.Reversed);
-    }
-
-    static BlockMarker? RebuildIf(string source, string? expression) =>
-        RebuildConditional(BlockTagKind.If, source, expression);
-
-    static BlockMarker? RebuildElsif(string source, string? expression) =>
-        RebuildConditional(BlockTagKind.ElsIf, source, expression);
-
-    static BlockMarker? RebuildConditional(BlockTagKind kind, string source, string? expression)
-    {
-        if (expression == null)
-        {
-            return null;
-        }
-
-        var liquid = $"{{% if {expression} %}}{{% endif %}}";
-        if (!SharedFluid.Parser.TryParse(liquid, out var template, out _))
-        {
-            return null;
-        }
-
-        var ifStatement = ((Fluid.Parser.FluidTemplate)template).Statements
-            .OfType<IfStatement>()
-            .FirstOrDefault();
-        if (ifStatement == null)
-        {
-            return null;
-        }
-
-        return new(kind, source, ifStatement.Condition, null, null);
-    }
 }
