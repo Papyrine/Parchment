@@ -8,8 +8,9 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
+///   PARCH003 — UnsupportedBlockTag, for the `liquid` tag only
 ///   PARCH024 — FormatMarkerThroughLoopVariable
-/// PARCH003 / PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
+/// PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
 /// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
 /// replacement.
 ///
@@ -56,7 +57,50 @@ class MarkdownValidator
         IFluidTemplate template)
     {
         var validator = new MarkdownValidator(context, target, templatePath, location);
+        validator.ReportLiquidTags(template);
         validator.WalkStatements(((FluidTemplate) template).Statements);
+    }
+
+    // Fluid does not run the statements inside `{% liquid %}`, so the runtime refuses the tag at
+    // registration. MarkdownFluidParser leaves a statement where one stood; it is counted with a
+    // visitor of its own rather than in WalkStatement, which descends into the statements it
+    // validates references in and no others, and the tag is unsupported wherever it sits.
+    void ReportLiquidTags(IFluidTemplate template)
+    {
+        var count = LiquidTagCounter.Count(template);
+        for (var i = 0; i < count; i++)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedBlockTag,
+                    location,
+                    templatePath,
+                    "{% liquid ... %}",
+                    Diagnostics.MarkdownLiquidTag));
+        }
+    }
+
+    sealed class LiquidTagCounter :
+        AstVisitor
+    {
+        int count;
+
+        public static int Count(IFluidTemplate template)
+        {
+            var counter = new LiquidTagCounter();
+            counter.VisitTemplate(template);
+            return counter.count;
+        }
+
+        public override Statement VisitOtherStatement(Statement statement)
+        {
+            if (statement is UnsupportedLiquidTagStatement)
+            {
+                count++;
+            }
+
+            return base.VisitOtherStatement(statement);
+        }
     }
 
     void WalkStatements(IReadOnlyList<Statement> statements)

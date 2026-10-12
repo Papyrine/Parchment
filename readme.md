@@ -1898,7 +1898,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L989-L997' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1028-L1036' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -2249,6 +2249,8 @@ Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 // Template paragraph — "foobar" is not a recognised tag
 {% foobar %}
 ```
+
+A markdown template accepts liquid's other tags (`assign`, `capture`, `unless`, `case`, `echo` and so on), with one exception: the statements inside `{% liquid %}` do not run, so the tag is reported here and rejected by `RegisterMarkdownTemplate`. Write each statement as its own tag.
 
 
 ### `PARCH004` — no template found for model

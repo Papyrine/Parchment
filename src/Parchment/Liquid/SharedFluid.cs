@@ -6,7 +6,7 @@ using StringValue = Fluid.Values.StringValue;
 /// </summary>
 static class SharedFluid
 {
-    public static FluidParser Parser { get; } = new();
+    public static FluidParser Parser { get; } = new MarkdownFluidParser();
 
     public static TemplateOptions Options { get; } = BuildOptions();
 

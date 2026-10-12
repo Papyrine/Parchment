@@ -120,6 +120,20 @@ class MarkdownReferenceValidator :
         return captureStatement;
     }
 
+    // What MarkdownFluidParser leaves where a `{% liquid %}` tag stood. Fluid does not run the
+    // statements inside one, so there is nothing to validate and nothing that would render.
+    public override Statement VisitOtherStatement(Statement statement)
+    {
+        if (statement is UnsupportedLiquidTagStatement)
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                "Unsupported tag 'liquid'. The statements inside '{% liquid %}' do not run, and nothing after the tag renders. Write each statement as its own tag: '{% assign ... %}', '{% echo ... %}'.");
+        }
+
+        return base.VisitOtherStatement(statement);
+    }
+
     protected override Expression VisitMemberExpression(MemberExpression expression)
     {
         var segments = new List<string>(expression.Segments.Count);

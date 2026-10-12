@@ -508,6 +508,45 @@ public partial class MarkdownFlowTests
     public void RangeLoopSourceIsAccepted() =>
         Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
 
+    // Fluid registers the liquid tag and does not run it: one statement parses to nothing and takes
+    // the rest of the template with it, so `[{% liquid echo Count %}]` rendered `[` and a typo
+    // inside was never seen. More than one statement was a parse error naming a line of the body.
+    [Test]
+    [Arguments("{% liquid echo Count %}")]
+    [Arguments("{% liquid echo Missing %}")]
+    [Arguments("[{%- liquid echo Count -%}]")]
+    [Arguments("{% liquid %}")]
+    [Arguments("{% liquid\nassign n = Count\necho n\n%}")]
+    [Arguments("{% liquid\r\nfor row in Rows\r\necho row.Name\r\nendfor\r\n%}")]
+    [Arguments("{% for row in Rows %}{% liquid echo row.Name %}{% endfor %}")]
+    [Arguments("{% for row in Rows %}{% else %}{% liquid echo Count %}{% endfor %}")]
+    [Arguments("{% if Count > 1 %}{% else %}{% liquid echo Count %}{% endif %}")]
+    [Arguments("{% unless Count > 1 %}{% liquid echo Count %}{% endunless %}")]
+    [Arguments("{% case Count %}{% when 1 %}{% liquid echo Count %}{% endcase %}")]
+    [Arguments("{% capture text %}{% liquid echo Count %}{% endcapture %}")]
+    public async Task LiquidTagFailsRegistration(string markdown)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register(markdown));
+        await Assert.That(exception.Message).Contains("Unsupported tag 'liquid'");
+    }
+
+    // Inside raw and comment the text is not liquid, and a tag that only starts with the word is
+    // some other tag.
+    [Test]
+    [Arguments("{% raw %}{% liquid echo Count %}{% endraw %}")]
+    [Arguments("{% comment %}{% liquid echo Count %}{% endcomment %}")]
+    public void LiquidTagAsTextIsAccepted(string markdown) =>
+        Register(markdown);
+
+    // The statement a liquid tag would hold works as a tag of its own, and is validated as one.
+    [Test]
+    public async Task EchoTagIsValidated()
+    {
+        Register("{% echo Count %}");
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register("{% echo Missing %}"));
+        await Assert.That(exception.Message).Contains("Missing");
+    }
+
     // A member used as a bound does not make the range a member path. Count is an int, and taking
     // it for the loop source rejected the loop as iterating something that is not enumerable.
     [Test]
