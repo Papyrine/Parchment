@@ -12,4 +12,7 @@
     int Container = 0,
     // A `for` over a range such as `(1..Count)`. References are then the range's bounds rather
     // than the thing iterated, and the loop variable is untyped.
-    bool LoopSourceIsRange = false);
+    bool LoopSourceIsRange = false,
+    // The token starts inside a content control that holds a single typed value (plain text, date
+    // picker, drop-down list, combo box, checkbox, picture). Set only when the scan is given spans.
+    bool InValueControl = false);

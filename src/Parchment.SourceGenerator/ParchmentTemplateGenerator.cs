@@ -344,13 +344,14 @@ public sealed class ParchmentTemplateGenerator :
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
                 new(result.ParagraphContainers.ToImmutableArray()),
+                new(result.BodyValueControlSpans.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 Convert.ToBase64String(ReadBytes(text.Path)),
                 null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -508,7 +509,9 @@ public sealed class ParchmentTemplateGenerator :
             // Token rules are body-scoped: the runtime dispatches editable fields only in the
             // document body, so a header/footer occurrence of the same member is a deliberate
             // read-only mirror, not a duplicate.
-            var bodyTokens = TokenScanner.Scan(matched.BodyParagraphs);
+            var bodyTokens = TokenScanner.Scan(
+                matched.BodyParagraphs,
+                valueControlSpans: matched.BodyValueControlSpans.AsImmutableArray());
             ValidateEditableTokens(context, target, templatePath, bodyTokens, location);
         }
 
@@ -895,6 +898,22 @@ public sealed class ParchmentTemplateGenerator :
                                 templatePath,
                                 token.Source));
                         break;
+                    }
+
+                    // The token becomes a content control when it is a root member outside every
+                    // loop, or an item member directly inside the top-level loop over an editable
+                    // collection. Lockstep with EditableTokenValidator.RejectInsideValueControl.
+                    if (token.InValueControl &&
+                        (loopStack.Count == 0 ||
+                         (loopStack.Count == 1 &&
+                          string.Equals(loopStack.Peek().Name, token.References[0][0], StringComparison.Ordinal))))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.EditableTokenInValueControl,
+                                location,
+                                templatePath,
+                                token.Source));
                     }
 
                     // Editable-collection loop-variable tokens are handled by the repeating-section

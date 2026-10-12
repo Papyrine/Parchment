@@ -2386,6 +2386,8 @@ public partial class Order
 
 **Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`).
 
+The same id is reported for an `[EditableField]` token placed inside a content control of the template's own that holds a single value: plain text, date picker, drop-down list, combo box, checkbox or picture. The token renders as a content control where it sits, and Word refuses to open a document with a control nested in one of those. Move the token out of the control or make the control rich text; a rich-text control, a hyperlink and a tracked insertion can all hold the token.
+
 
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body
 

@@ -917,6 +917,120 @@ public partial class EditableFieldTests
             .IsEqualTo("Dear <hyperlink><ins>link: [PO-2026-17] here</ins></hyperlink> end");
     }
 
+    public static IEnumerable<Func<(string Kind, OpenXmlElement Marker)>> ValueControlKinds()
+    {
+        yield return () => ("plain-text", new SdtContentText());
+        yield return () => ("plain-text", new SdtContentText
+        {
+            MultiLine = true
+        });
+        yield return () => ("date picker", new SdtContentDate());
+        yield return () => ("drop-down list", new SdtContentDropDownList());
+        yield return () => ("combo box", new SdtContentComboBox());
+        yield return () => ("checkbox", new W14.SdtContentCheckBox());
+        yield return () => ("picture", new SdtContentPicture());
+    }
+
+    static SdtRun ValueControl(OpenXmlElement marker, string text) =>
+        new(
+            new SdtProperties(
+                new Tag
+                {
+                    Val = "author"
+                },
+                marker),
+            new SdtContentRun(new Run(Preserved(text))));
+
+    [Test]
+    [MethodDataSource(nameof(ValueControlKinds))]
+    public async Task TokenInsideValueControlIsRejected(string kind, OpenXmlElement marker)
+    {
+        // Word refuses to open a document with a control nested in one that holds a single
+        // value, so the field cannot be placed where the token is.
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear ")),
+            ValueControl(marker, "po: {{ PurchaseOrder }} here"),
+            new Run(Preserved(" end")));
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<EditableOrder>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains($"sits inside a {kind} content control");
+    }
+
+    [Test]
+    public async Task TokenInsideBlockLevelValueControlIsRejected()
+    {
+        using var template = BuildBodyTemplate(
+            new SdtBlock(
+                new SdtProperties(new SdtContentText()),
+                new SdtContentBlock(
+                    new Paragraph(
+                        new Run(Preserved("po: {{ PurchaseOrder }}"))))));
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<EditableOrder>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("sits inside a plain-text content control");
+    }
+
+    [Test]
+    public async Task TokenStartingBeforeValueControlIsAllowed()
+    {
+        // The field goes where the token starts, which is outside the control.
+        using var template = BuildParagraphTemplate(
+            new Run(Preserved("Dear {{ Purch")),
+            ValueControl(new SdtContentText(), "aseOrder }} here"),
+            new Run(Preserved(" end")));
+
+        await Assert.That(await RenderWrapperLayout(template))
+            .IsEqualTo("Dear [PO-2026-17]<sdt> here</sdt> end");
+    }
+
+    [Test]
+    public async Task ReadOnlyTokensInsideValueControlAreAllowed()
+    {
+        // Neither becomes a content control: Number is not editable, and an editable member
+        // inside a loop renders as read-only text.
+        using var template = BuildBodyTemplate(
+            new Paragraph(
+                ValueControl(new SdtContentText(), "{{ Number }}")),
+            new Paragraph(new Run(Preserved("{% for tag in Tags %}"))),
+            new Paragraph(
+                ValueControl(new SdtContentText(), "{{ PurchaseOrder }}")),
+            new Paragraph(new Run(Preserved("{% endfor %}"))));
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("ORD-100PO-2026-17PO-2026-17");
+        await Assert.That(body.Descendants<PermStart>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task CollectionItemTokenInsideValueControlIsRejected()
+    {
+        using var template = BuildBodyTemplate(
+            new Paragraph(new Run(Preserved("{% for budget in Budgets %}"))),
+            new Paragraph(
+                ValueControl(new SdtContentText(), "{{ budget.Year }}")),
+            new Paragraph(new Run(Preserved("{% endfor %}"))));
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<EditableCollectionTests.BudgetPlan>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("sits inside a plain-text content control");
+    }
+
     [Test]
     public async Task TabAfterTokenInSameRunIsKept()
     {
@@ -1748,21 +1862,24 @@ public partial class EditableFieldTests
         }
     }
 
-    static MemoryStream BuildParagraphTemplate(params OpenXmlElement[] children)
+    static MemoryStream BuildParagraphTemplate(params OpenXmlElement[] children) =>
+        BuildBodyTemplate(new Paragraph(children));
+
+    static MemoryStream BuildBodyTemplate(params OpenXmlElement[] blocks)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new(
-                new Body(
-                    new Paragraph(children),
-                    new SectionProperties(
-                        new PageSize
-                        {
-                            Width = 6500,
-                            Height = 8000
-                        })));
+            var body = new Body(blocks);
+            body.AppendChild(
+                new SectionProperties(
+                    new PageSize
+                    {
+                        Width = 6500,
+                        Height = 8000
+                    }));
+            mainPart.Document = new(body);
         }
 
         stream.Position = 0;

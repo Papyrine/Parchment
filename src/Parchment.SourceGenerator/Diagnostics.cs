@@ -143,6 +143,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch016--editablefield-token-with-filters-or-complex-expression");
 
+    // Shares PARCH016 with the rule above: both say the token cannot render as an editable field
+    // as written.
+    public static readonly DiagnosticDescriptor EditableTokenInValueControl = new(
+        id: "PARCH016",
+        title: "[EditableField] token must be a plain member-access expression",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member from inside a plain-text, date, drop-down, combo box, checkbox or picture content control; the token renders as a content control of its own and Word refuses to open a document with a control nested in one of those",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch016--editablefield-token-with-filters-or-complex-expression");
+
     public static readonly DiagnosticDescriptor EditableTokenDuplicated = new(
         id: "PARCH017",
         title: "[EditableField] member referenced more than once in the document body",

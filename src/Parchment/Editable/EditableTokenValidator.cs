@@ -12,6 +12,11 @@
 /// <item>a body loop over an <c>[EditableField]</c> collection may not carry <c>limit:</c> /
 /// <c>offset:</c> / <c>reversed</c> — extraction replaces the whole collection with the rows the
 /// document holds, so a windowed or reordered render would write that subset or order back.</item>
+/// <item>a token that renders as a content control may not sit inside a content control of the
+/// author's that holds a single typed value (plain text, date picker, drop-down list, combo box,
+/// checkbox, picture) — <see cref="EditableSplicer"/> puts the field where the token is, and Word
+/// refuses to open a document with a control nested in one of those. A rich-text control is
+/// fine.</item>
 /// </list>
 /// </summary>
 static class EditableTokenValidator
@@ -33,8 +38,14 @@ static class EditableTokenValidator
         var seen = isBody ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
 
         var loopVariables = new List<string>();
+        CollectionEntry? collection = null;
         foreach (var classification in classifications)
         {
+            if (isBody)
+            {
+                collection = TrackCollection(collection, loopVariables, classification, editables);
+            }
+
             // Only a top-level body loop renders as a repeating section: non-body parts and
             // nested loop bodies run with an empty editable map and stay read-only, where a
             // modifier is harmless. Checked before the tag opens its own variable.
@@ -49,6 +60,11 @@ static class EditableTokenValidator
             if (classification.Kind != ParagraphKind.Substitution)
             {
                 continue;
+            }
+
+            if (isBody)
+            {
+                RejectInsideValueControl(classification, loopVariables, collection, editables, templateName, partUri);
             }
 
             List<DocxTokenSite>? editableTokens = null;
@@ -116,6 +132,150 @@ static class EditableTokenValidator
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The editable collection whose top-level loop the walk is inside, if any. Called before
+    /// <see cref="LoopScope.Track"/> moves <paramref name="loopVariables"/> past the paragraph.
+    /// </summary>
+    static CollectionEntry? TrackCollection(
+        CollectionEntry? current,
+        List<string> loopVariables,
+        ParagraphClassification classification,
+        EditableMap editables)
+    {
+        switch (classification.Block?.Kind)
+        {
+            case BlockTagKind.For when loopVariables.Count == 0:
+                var sourceRefs = IdentifierVisitor.Collect(classification.Block.LoopSource!);
+                if (sourceRefs.Count > 0 &&
+                    editables.TryGetCollection(sourceRefs[0].Dotted, out var entry))
+                {
+                    return entry;
+                }
+
+                return null;
+            case BlockTagKind.EndFor when loopVariables.Count == 1:
+                return null;
+        }
+
+        return current;
+    }
+
+    // Only the tokens that become content controls: a root member outside every loop, or an item
+    // member directly inside the top-level loop over an editable collection. Anything else inside
+    // a loop renders as read-only text, which any control can hold.
+    static void RejectInsideValueControl(
+        ParagraphClassification classification,
+        List<string> loopVariables,
+        CollectionEntry? collection,
+        EditableMap editables,
+        string templateName,
+        string partUri)
+    {
+        foreach (var token in classification.Substitutions)
+        {
+            if (token.References.Count == 0 ||
+                !RendersAsControl(token.References[0], loopVariables, collection, editables))
+            {
+                continue;
+            }
+
+            var kind = ValueControlAround(classification.Paragraph, token.Offset);
+            if (kind == null)
+            {
+                continue;
+            }
+
+            throw new ParchmentRegistrationException(
+                templateName,
+                $"[EditableField] token '{token.Source}' sits inside a {kind} content control. The token renders as a content control of its own, and Word refuses to open a document with a control nested in one that holds a single value. Move the token out of the control, or change the control to rich text.",
+                partUri,
+                token.Source);
+        }
+    }
+
+    static bool RendersAsControl(
+        IdentifierPath path,
+        List<string> loopVariables,
+        CollectionEntry? collection,
+        EditableMap editables)
+    {
+        if (loopVariables.Count == 0)
+        {
+            return editables.TryGet(path.Dotted, out _);
+        }
+
+        if (collection == null ||
+            loopVariables.Count != 1 ||
+            path.Segments.Count < 2 ||
+            !string.Equals(path.Root, loopVariables[0], StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return collection.ElementMap.TryGet(string.Join('.', path.Segments.Skip(1)), out _);
+    }
+
+    /// <summary>
+    /// The kind of the nearest single-value content control around the character at
+    /// <paramref name="offset"/> — where the field is inserted — or null when there is none.
+    /// </summary>
+    static string? ValueControlAround(Paragraph paragraph, int offset)
+    {
+        var consumed = 0;
+        foreach (var text in ParagraphText.Texts(paragraph))
+        {
+            consumed += text.Text.Length;
+            if (offset >= consumed)
+            {
+                continue;
+            }
+
+            foreach (var sdt in text.Ancestors<SdtElement>())
+            {
+                var kind = ValueControlKind(sdt);
+                if (kind != null)
+                {
+                    return kind;
+                }
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    // Lockstep with the source generator's DocxArchiveReader.IsValueControl.
+    static string? ValueControlKind(SdtElement sdt)
+    {
+        var properties = sdt.GetFirstChild<SdtProperties>();
+        if (properties == null)
+        {
+            return null;
+        }
+
+        foreach (var child in properties.ChildElements)
+        {
+            switch (child)
+            {
+                case SdtContentText:
+                    return "plain-text";
+                case SdtContentDate:
+                    return "date picker";
+                case SdtContentDropDownList:
+                    return "drop-down list";
+                case SdtContentComboBox:
+                    return "combo box";
+                case DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox:
+                    return "checkbox";
+                case SdtContentPicture:
+                    return "picture";
+            }
+        }
+
+        return null;
     }
 
     static void RejectModifiersOnCollectionLoop(BlockMarker block, EditableMap editables, string templateName, string partUri)
