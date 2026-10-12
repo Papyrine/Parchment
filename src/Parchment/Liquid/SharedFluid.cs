@@ -18,8 +18,10 @@ static class SharedFluid
     /// This cannot go on <see cref="Options"/>: the docx flow needs the TokenValue to survive as an
     /// ObjectValue so <c>ScopeTreeRunner.InterpretFluidValue</c> can dispatch it structurally.
     /// Without a converter the markdown flow falls through to Fluid's default object handling,
-    /// which calls ToString() and writes the type name into the document. The MemberAccessStrategy
-    /// is shared, so RegisterModel covers both sets of options.
+    /// which calls ToString() and writes the type name into the document. The one kind with nothing
+    /// structural about it is a <see cref="TextToken"/>, and that one is converted for both flows,
+    /// in <see cref="BuildOptions"/>. The MemberAccessStrategy is shared, so RegisterModel covers
+    /// both sets of options.
     /// </remarks>
     public static TemplateOptions MarkdownOptions { get; } = BuildMarkdownOptions();
 
@@ -51,6 +53,22 @@ static class SharedFluid
                     return new StringValue(EnumRender.Render(e));
                 }
 
+                // A TextToken is a plain string wearing a TokenValue coat, so Fluid is handed the
+                // string: what a filter receives, a condition compares and a substitution writes
+                // is then what a string member would have produced, in either flow. Left as an
+                // object it has no text form, and the docx flow wrote its type name. A null string
+                // is nil, as it is from a string member — and returning null here would mean "not
+                // converted".
+                if (value is TextToken text)
+                {
+                    if (text.Value == null)
+                    {
+                        return NilValue.Instance;
+                    }
+
+                    return new StringValue(text.Value);
+                }
+
                 return null;
             });
 
@@ -66,11 +84,12 @@ static class SharedFluid
             {
                 if (value is TokenValue token)
                 {
-                    // A TextToken is a plain string wearing a TokenValue coat, so it is escaped
-                    // like any other bound value. A MarkdownToken or HtmlToken is markup the caller
-                    // picked the type to say so — that declaration is what turns MarkdownEncoder
-                    // off for them.
-                    return new StringValue(TokenMarkdown.Render(token), encode: token is TextToken);
+                    // A MarkdownToken, HtmlToken or OpenXmlToken is markup the caller picked the
+                    // type to say so — that declaration is what turns MarkdownEncoder off for them.
+                    // A TextToken makes no such claim and never gets this far: the converter
+                    // BuildOptions added runs ahead of this one and has already made it a string,
+                    // which is escaped like any other bound value.
+                    return new StringValue(TokenMarkdown.Render(token), encode: false);
                 }
 
                 return null;

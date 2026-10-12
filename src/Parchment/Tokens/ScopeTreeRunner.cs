@@ -427,7 +427,8 @@ class ScopeTreeRunner(
         // NumberedList and TokenValueHelpers). Skip ToObjectValue for primitive FluidValues
         // (StringValue, NumberValue, BooleanValue, ArrayValue, DateTimeValue, ...) — that
         // path boxes numerics to object before the type test, which the common-case
-        // text-token path doesn't need.
+        // text-token path doesn't need. A string assigned to a TokenValue member (a TextToken)
+        // is on that path too: SharedFluid converts it, so it arrives here as a StringValue.
         if (fluidValue is ObjectValue &&
             fluidValue.ToObjectValue() is TokenValue tokenValue)
         {
