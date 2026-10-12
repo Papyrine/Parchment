@@ -224,6 +224,42 @@ public partial class FormatAttributeTests
         await Verify(stream, "docx");
     }
 
+    public class VirtualHtmlBase
+    {
+        [Html]
+        public virtual string Body { get; set; } = "";
+    }
+
+    [ParchmentBindable]
+    public partial class OverridingHtmlDoc : VirtualHtmlBase
+    {
+        public override string Body { get; set; } = "";
+    }
+
+    [Test]
+    public async Task HtmlOnOverriddenMember_IsRendered()
+    {
+        // The override declares no attribute of its own; C# gives it the base member's [Html].
+        using var template = DocxTemplateBuilder.Build("{{ Body }}");
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<OverridingHtmlDoc>(template);
+
+        var model = new OverridingHtmlDoc
+        {
+            Body = "<b>bold</b>"
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("bold");
+        await Assert.That(body.Descendants<Bold>().Any()).IsTrue();
+    }
+
     [Test]
     public async Task NonSoloHtml_InlineContent_SplicesIntoHostParagraph()
     {

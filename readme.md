@@ -869,6 +869,8 @@ Mark a `string` property with `[Html]` or `[Markdown]` (any attribute named `Htm
 
 **Both flows read the annotation.** A docx template resolves it per token at render time; a markdown template rewrites the token to carry `| html` or `| markdown` at registration, which is what exempts it from [escaping](#bound-values-are-escaped). Either way the format is declared once, on the member, rather than at every site that renders it. The annotation applies to a member reached from the model root — an annotated member of a loop item is not resolved in either flow — and only to a token that is a plain member access, per [`PARCH010`](#parch010--html--markdown-token-with-filters-or-complex-expression). In a markdown template it applies to the body; a style source's header or footer binds substitutions, loops and conditionals only. An `[Html]` member in a markdown template also inherits that filter's rule that the token be alone in its block, since its value replaces the block it converts into.
 
+The annotation follows C# attribute inheritance. A property that overrides an annotated one is annotated too, unless the attribute class declares `Inherited = false` (as `StringSyntaxAttribute` does), and an attribute class deriving from `HtmlAttribute` or `MarkdownAttribute` counts as its base. A member hiding another with `new`, or implementing an annotated interface member, takes nothing from it. `[ExcelsiorTable]` and `[EditableField]` are inherited by an override in the same way.
+
 The attributes are detected by name — Parchment does not ship them. Define them in a consuming project (or use `[StringSyntax("html")]` from `System.Diagnostics.CodeAnalysis`):
 
 <!-- snippet: HtmlAttribute -->
