@@ -238,6 +238,83 @@ public class EditableFieldGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH022" && _.GetMessage().Contains("nested"))).IsTrue();
     }
 
+    // Extraction rebuilds an editable collection as a List<T> (a T[] for an array member) and the
+    // generated setter casts it to the declared type, so a declared type that cannot hold one
+    // used to compile, render, extract, and then throw InvalidCastException from ApplyTo.
+    [Test]
+    [Arguments("HashSet<Line>")]
+    [Arguments("SortedSet<Line>")]
+    [Arguments("LinkedList<Line>")]
+    [Arguments("Collection<Line>")]
+    [Arguments("ObservableCollection<Line>")]
+    [Arguments("ImmutableArray<Line>")]
+    [Arguments("ImmutableList<Line>")]
+    [Arguments("IImmutableList<Line>")]
+    [Arguments("ISet<Line>")]
+    [Arguments("LineList")]
+    [Arguments("ILineList")]
+    [Arguments("Line[,]")]
+    public async Task CollectionTypeThatCannotHoldTheRebuiltList_ReportsParch022(string type)
+    {
+        var result = GeneratorDriver.Run(CollectionTypeModel(type), "x");
+        var runResult = result.Results.Single();
+        var diagnostic = runResult.Diagnostics.Single(_ => _.Id.StartsWith("PARCH", StringComparison.Ordinal));
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH022");
+        await Assert.That(diagnostic.GetMessage()).Contains("cannot hold the rebuilt list");
+
+        // No entry is emitted, so the setter whose cast would fail does not exist.
+        var generated = string.Concat(runResult.GeneratedSources.Select(_ => _.SourceText.ToString()));
+        await Assert.That(generated).DoesNotContain("_EditableCollections");
+    }
+
+    [Test]
+    [Arguments("List<Line>")]
+    [Arguments("Line[]")]
+    [Arguments("IList<Line>")]
+    [Arguments("ICollection<Line>")]
+    [Arguments("IEnumerable<Line>")]
+    [Arguments("IReadOnlyList<Line>")]
+    [Arguments("IReadOnlyCollection<Line>")]
+    [Arguments("List<Line>?")]
+    public async Task CollectionTypeThatHoldsTheRebuiltList_EmitsCollectionEntry(string type)
+    {
+        var result = GeneratorDriver.Run(CollectionTypeModel(type), "x");
+        var runResult = result.Results.Single();
+        var ids = runResult.Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Any(_ => _.StartsWith("PARCH", StringComparison.Ordinal))).IsFalse();
+
+        var generated = string.Concat(runResult.GeneratedSources.Select(_ => _.SourceText.ToString()));
+        await Assert.That(generated).Contains("_EditableCollections");
+    }
+
+    static string CollectionTypeModel(string type) =>
+        $$"""
+          #nullable enable
+          using System.Collections.Generic;
+          using System.Collections.Immutable;
+          using System.Collections.ObjectModel;
+          using Parchment;
+
+          namespace Sample;
+
+          public class Line
+          {
+              [EditableField]
+              public string Note { get; set; } = "";
+          }
+
+          public class LineList : List<Line>;
+
+          public interface ILineList : IList<Line>;
+
+          [ParchmentModel]
+          public partial class Order
+          {
+              [EditableField]
+              public {{type}} Lines { get; set; } = default!;
+          }
+          """;
+
     [Test]
     public async Task ConflictingFormatMarkers_ReportsParch023()
     {
@@ -527,6 +604,76 @@ public class EditableFieldGeneratorTests
     }
 
     [Test]
+    public async Task EditableCollection_NestedElementMember_SetterCreatesParents()
+    {
+        // Extraction builds each item from nothing, so the element-rooted setter creates the
+        // objects on the way to a nested member - but only the ones it can: an abstract type or a
+        // get-only member is left to the null check, and the root-level setter is unchanged.
+        var result = GeneratorDriver.Run(
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Depot
+            {
+                [EditableField]
+                public string? Code { get; set; }
+            }
+
+            public abstract class Carrier
+            {
+                [EditableField]
+                public string? Contact { get; set; }
+            }
+
+            public class Shipping
+            {
+                [EditableField]
+                public int Boxes { get; set; }
+
+                public Depot? Depot { get; set; }
+
+                public Depot Fixed { get; } = new();
+            }
+
+            public class Line
+            {
+                [EditableField]
+                public string? Name { get; set; }
+
+                public Shipping? Shipping { get; set; }
+
+                public Carrier? Carrier { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                public Shipping? Shipping { get; set; }
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """,
+            "{% for line in Lines %}",
+            "{{ line.Shipping.Boxes }} {{ line.Shipping.Depot.Code }} {{ line.Shipping.Fixed.Code }} {{ line.Carrier.Contact }}",
+            "{% endfor %}");
+        var runResult = result.Results.Single();
+        var diagnostics = runResult.Diagnostics.Select(_ => _.ToString()).ToList();
+        await Assert.That(diagnostics).IsEmpty();
+
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        const string createShipping = "(o, v) => { var p0 = (global::Sample.Line)o; var p1 = p0.Shipping; if (p0 != null && p1 == null) { p1 = (global::Sample.Shipping)global::System.Activator.CreateInstance(typeof(global::Sample.Shipping))!; p0.Shipping = p1; } ";
+        await Assert.That(generated).Contains(createShipping + "if (p1 != null) { p1.Boxes = (int)v!; } }");
+        await Assert.That(generated).Contains(createShipping + "var p2 = p1?.Depot; if (p1 != null && p2 == null) { p2 = (global::Sample.Depot)global::System.Activator.CreateInstance(typeof(global::Sample.Depot))!; p1.Depot = p2; } if (p2 != null) { p2.Code = (string?)v; } }");
+        await Assert.That(generated).Contains(createShipping + "var p2 = p1?.Fixed; if (p2 != null) { p2.Code = (string?)v; } }");
+        await Assert.That(generated).Contains("(o, v) => { var p = ((global::Sample.Line)o).Carrier; if (p != null) { p.Contact = (string?)v; } }");
+        await Assert.That(generated).Contains("(o, v) => { var p = ((global::Sample.Order)o).Shipping; if (p != null) { p.Boxes = (int)v!; } }");
+    }
+
+    [Test]
     public async Task EditableCollection_NoDiagnostics()
     {
         var result = GeneratorDriver.Run(
@@ -674,5 +821,101 @@ public class EditableFieldGeneratorTests
             "{% endfor %}",
             "{% endfor %}");
         await Assert.That(ParchIds(result)).DoesNotContain("PARCH027");
+    }
+
+    // An item member reached through the loop variable is a control like a root member: the
+    // runtime builds it from the member, so a filter would be dropped.
+    [Test]
+    public async Task EditableCollection_ItemMemberWithFilter_ReportsParch016()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount | plus: 1 }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH016"]);
+    }
+
+    [Test]
+    public async Task EditableCollection_ItemMemberBoundTwice_ReportsParch017()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "again: {{ line.Note }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH017"]);
+    }
+
+    // A loop nested in the repeating section renders read-only, so a filter or a repeat there is
+    // applied and only the read-only warning is due.
+    [Test]
+    public async Task EditableCollection_ItemMemberInNestedLoop_ReportsOnlyParch018()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }}",
+            "{% for other in Lines %}",
+            "{{ line.Note | upcase }}",
+            "{% endfor %}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH018"]);
+    }
+
+    // The collection is not a field itself — the runtime keeps it out of the scalar map — so its
+    // own token is an ordinary substitution.
+    [Test]
+    public async Task EditableCollection_OwnToken_NoDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{{ Lines | size }} of {{ Lines | size }}",
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEmpty();
+    }
+
+    // Inside any loop a root member renders read-only, whatever the loop iterates: a filter is
+    // applied and the body control stays the only one.
+    [Test]
+    [Arguments("Lines")]
+    [Arguments("Pages")]
+    public async Task RootTokenInsideLoop_WithFilterBesideBodyControl_ReportsOnlyParch018(string collection)
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public string PurchaseOrder { get; set; } = "";
+
+                public List<string> Pages { get; set; } = new();
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{{ PurchaseOrder }}",
+            $"{{% for item in {collection} %}}",
+            "{{ PurchaseOrder | upcase }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH018"]);
     }
 }
