@@ -200,7 +200,7 @@ static class DocumentPropertiesWriter
                 property.RemoveAllChildren();
             }
 
-            property.AppendChild(ToVariant(templateName, name, value));
+            property.AppendChild(ToVariant(templateName, name, value, TimeZoneInfo.Local));
         }
 
         foreach (var name in properties.RemoveCustom)
@@ -229,7 +229,11 @@ static class DocumentPropertiesWriter
 
     // Each integer goes to i4 where every value of its type fits, then i8, and to an unsigned
     // variant only for the types whose upper range the signed one of the same width would lose.
-    static OpenXmlElement ToVariant(string templateName, string name, object? value) =>
+    // Every number and date goes through the invariant culture: the variant types are xsd lexical
+    // forms, and a current culture with another calendar would write a different, wrong value
+    // (th-TH put the year 2026 down as 2569). The zone is a parameter, rather than read here, only
+    // so a test can name one.
+    internal static OpenXmlElement ToVariant(string templateName, string name, object? value, TimeZoneInfo local) =>
         value switch
         {
             null => new VTLPWSTR(string.Empty),
@@ -250,8 +254,8 @@ static class DocumentPropertiesWriter
             float f => new VTDouble(DoubleText(f)),
             Half h => new VTDouble(DoubleText((double) h)),
             decimal m => new VTDouble(m.ToString(CultureInfo.InvariantCulture)),
-            DateTime time => new VTFileTime(time.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)),
-            Date date => new VTFileTime($"{date:yyyy-MM-dd}T00:00:00Z"),
+            DateTime time => new VTFileTime(ToUtc(time, local).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)),
+            Date date => new VTFileTime(date.ToString("yyyy-MM-dd'T00:00:00Z'", CultureInfo.InvariantCulture)),
             // Written as text rather than the clsid variant: Word's Advanced Properties dialog only
             // surfaces Text/Date/Number/Yes-No, so a string shows as an editable property whereas
             // clsid would not appear at all.
@@ -263,6 +267,23 @@ static class DocumentPropertiesWriter
                 templateName,
                 $"Custom document property '{name}' has unsupported value type '{value.GetType()}'. Supported types are string, char, bool, integral and floating-point numbers, DateTime, DateOnly and Guid. Convert the value to one of these before adding it.")
         };
+
+    // vt:filetime is a UTC instant. A Utc value is one already. An Unspecified value names no zone,
+    // so its clock reading is written as given: converting it would assume the machine's zone and
+    // shift the same model to a different value on another machine. Only a Local value is
+    // converted, since it is by definition a reading of this machine's clock and the instant it
+    // names is the thing to keep. In the hour a zone repeats when daylight saving ends, the reading
+    // is taken as standard time.
+    static DateTime ToUtc(DateTime time, TimeZoneInfo local)
+    {
+        if (time.Kind != DateTimeKind.Local)
+        {
+            return time;
+        }
+
+        var reading = DateTime.SpecifyKind(time, DateTimeKind.Unspecified);
+        return reading - local.GetUtcOffset(reading);
+    }
 
     // vt:r8 is an xsd:double, which spells the non-finite values INF, -INF and NaN. .NET's own
     // "Infinity" and "-Infinity" are not lexical forms of it.
