@@ -3,11 +3,13 @@ public static class TokenScanner
     static readonly FluidParser parser = new();
 
     // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
-    // onto its tokens. Omitted, every token reports container 0. valueControlSpans is the flat
+    // onto its tokens. Omitted, every token reports container 0. fallbacks runs parallel the same
+    // way and says whether each paragraph is in an mc:Fallback. valueControlSpans is the flat
     // triple list DocxArchiveReader produces (paragraph index, start, end).
     public static List<Token> Scan(
         IEnumerable<string> paragraphs,
         IReadOnlyList<int>? containers = null,
+        IReadOnlyList<bool>? fallbacks = null,
         IReadOnlyList<int>? valueControlSpans = null)
     {
         var result = new List<Token>();
@@ -28,6 +30,9 @@ public static class TokenScanner
                 container = containers[index];
             }
 
+            var inFallback = fallbacks != null &&
+                             fallbacks[index];
+
             foreach (var site in sites)
             {
                 var source = paragraph.Substring(site.Offset, site.Length);
@@ -40,12 +45,13 @@ public static class TokenScanner
                         ParseSubstitution(source, !solo) with
                         {
                             Container = container,
+                            InFallback = inFallback,
                             InValueControl = InSpan(valueControlSpans, index, site.Offset)
                         });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
+                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container, InFallback = inFallback });
                 }
             }
         }

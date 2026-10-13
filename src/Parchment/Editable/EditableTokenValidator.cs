@@ -9,7 +9,9 @@
 /// filter chain would be silently ignored;</item>
 /// <item>each editable path may appear at most once in the document body, and each item member
 /// at most once in its collection's loop — the dotted path is the content control's tag, and
-/// extraction needs tags to be unique;</item>
+/// extraction needs tags to be unique. The <c>mc:Fallback</c> copy of a text box is not an
+/// appearance: Word stores a text box twice, the fallback mirrors the <c>mc:Choice</c> copy, and
+/// extraction reads the choice alone;</item>
 /// <item>an editable token may not share its paragraph with a structural token
 /// (<c>[ExcelsiorTable]</c> / <c>[Html]</c> / <c>[Markdown]</c>) — structural splice/split
 /// machinery clones paragraph halves, which would corrupt the field's perm-range markers.</item>
@@ -126,10 +128,21 @@ static class EditableTokenValidator
                 continue;
             }
 
+            // A text box is stored as a DrawingML shape in mc:Choice and again as VML in
+            // mc:Fallback, so a token typed once into the box arrives here twice. The fallback
+            // copy still renders a control, to stay the mirror of the choice, but extraction
+            // skips it (ParchmentExtractor.InFallback), so it cannot make a tag ambiguous.
+            var counts = !InFallback(classification.Paragraph);
+
             foreach (var token in editableTokens)
             {
                 RejectInsideValueControl(classification.Paragraph, token, templateName, partUri);
                 RequirePlainIdentifier(token, templateName, partUri);
+
+                if (!counts)
+                {
+                    continue;
+                }
 
                 if (activeSeen.Add(token.References[0].Dotted))
                 {
@@ -190,6 +203,19 @@ static class EditableTokenValidator
                 }
             }
         }
+    }
+
+    static bool InFallback(Paragraph paragraph)
+    {
+        foreach (var ancestor in paragraph.Ancestors())
+        {
+            if (ancestor is AlternateContentFallback)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Asked only of a token that becomes a content control: a root member outside every loop, or

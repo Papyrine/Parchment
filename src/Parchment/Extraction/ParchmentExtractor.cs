@@ -75,7 +75,8 @@ public static class ParchmentExtractor
             // non-unique — they must be read grouped by section item, not flat).
             foreach (var sdt in body.Descendants<SdtElement>())
             {
-                if (sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSection>() == null)
+                if (sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSection>() == null ||
+                    InFallback(sdt))
                 {
                     continue;
                 }
@@ -100,7 +101,8 @@ public static class ParchmentExtractor
                 var tag = sdt.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value;
                 if (tag == null ||
                     !map.TryGet(tag, out var entry) ||
-                    RepeatedItemOf(sdt) != null)
+                    RepeatedItemOf(sdt) != null ||
+                    InFallback(sdt))
                 {
                     continue;
                 }
@@ -298,7 +300,26 @@ public static class ParchmentExtractor
     static SdtElement? FindControl(SdtElement itemSdt, string tag) =>
         itemSdt.Descendants<SdtElement>()
             .FirstOrDefault(_ => _.SdtProperties?.GetFirstChild<Tag>()?.Val?.Value == tag &&
-                                 RepeatedItemOf(_) == itemSdt);
+                                 RepeatedItemOf(_) == itemSdt &&
+                                 !InFallback(_));
+
+    // A text box is stored twice: the DrawingML shape Word shows and edits in mc:Choice, and a VML
+    // copy in mc:Fallback that Word rewrites from the choice when it saves. A control in the box
+    // is therefore in the document twice with one tag. The choice is the one the user edited, and
+    // the fallback is skipped rather than reported as a duplicate. A text box held as VML alone
+    // has no fallback and is read as it stands.
+    static bool InFallback(SdtElement sdt)
+    {
+        foreach (var ancestor in sdt.Ancestors())
+        {
+            if (ancestor is AlternateContentFallback)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// The nearest repeated-section item holding <paramref name="sdt"/>, or null for a control
