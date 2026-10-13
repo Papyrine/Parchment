@@ -70,6 +70,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         var templateIds = new TemplateIds();
         var noteReferences = NoteReferences.None;
         bool macros;
+        var maxEditableId = 0;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             // Before anything reads the parts. ChangeDocumentType swaps the main part out, so any
@@ -106,6 +107,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // After the scan, so the anchors it added are counted, and across every part: a
                 // render numbers what it produces from above this - see BookmarkIds.
                 maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
+
+                // Likewise the content controls and editable ranges the template already holds, in
+                // every part: an editable field is numbered from above them - see EditableState.
+                if (!editableMap.IsEmpty)
+                {
+                    maxEditableId = Math.Max(maxEditableId, EditableState.MaxId(root));
+                }
 
                 // Every part for the same reason: what a loop copies is numbered clear of these.
                 templateIds.Read(root);
@@ -157,7 +165,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences, templateIds);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences, templateIds, maxEditableId);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }

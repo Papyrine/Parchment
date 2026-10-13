@@ -222,7 +222,8 @@ class RegisteredMarkdownTemplate(
                 FormatMap.Empty,
                 StringListMap.Empty,
                 EditableMap.Empty,
-                new(),
+                // No editable field is ever built from an empty map, so no id is ever drawn.
+                new(0),
                 bookmarks,
                 cloneIds,
                 numberingState,

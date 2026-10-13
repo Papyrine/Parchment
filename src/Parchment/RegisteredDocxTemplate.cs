@@ -12,7 +12,8 @@ class RegisteredDocxTemplate(
     ImagePolicies imagePolicies,
     int maxBookmarkId,
     NoteReferences noteReferences,
-    TemplateIds templateIds) :
+    TemplateIds templateIds,
+    int maxEditableId) :
     RegisteredTemplate(name, modelType)
 {
     // The parts a render has work in. A part outside this set carries no anchor bookmark, so
@@ -47,7 +48,7 @@ class RegisteredDocxTemplate(
             }
 
             var numberingState = new WordNumberingState(mainPart);
-            var editableState = new EditableState();
+            var editableState = new EditableState(maxEditableId);
             var bookmarks = new BookmarkIds(maxBookmarkId);
             var cloneIds = CloneIds.For(templateIds);
             // Cache the StyleSet per render — Excelsior / Format / OpenXml / Mutate tokens all
