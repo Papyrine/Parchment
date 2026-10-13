@@ -142,6 +142,8 @@ Each copy of a table is a table of its own. Word joins two tables that have noth
 
 The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
 
+A tag paragraph is removed from the output, and only the tag goes with it. A page break, a picture, a text box or a footnote or endnote reference sharing the paragraph stays where the tag was. A tag paragraph is not part of the block it delimits, so what it holds is kept once: it is not repeated per iteration and does not depend on which branch is chosen. Content meant to repeat or to be conditional belongs in a paragraph of its own between the tags. A section break is kept as well. Word stores one on the last paragraph of its section, which is the `{% endfor %}` or `{% endif %}` paragraph when the section ends with a block, and it moves to the paragraph before it in the output. Where a table comes before it instead, or a paragraph that already ends another section, the break stays on an empty paragraph. A bookmark, a comment or a field on a tag paragraph is removed with it.
+
 ### Conditionals
 
 ```
@@ -1001,7 +1003,7 @@ When an `[Html]` / `[Markdown]` token shares its paragraph with other text or si
 
 | Token position | Rendered shape | Result |
 | --- | --- | --- |
-| Solo (the only token in the paragraph, with nothing but whitespace around it) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. |
+| Solo (the only token in the paragraph, with nothing but whitespace around it) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. A section break on the host moves to the last rendered paragraph, and a page break, picture or note reference sharing the host stays in a paragraph of its own, before or after the rendered elements. |
 | Non-solo | A single paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown) | The produced paragraph's `pPr` is dropped; its runs are spliced into the host at the token offset. Surrounding text and the host's `pPr` are preserved. |
 | Non-solo | Multiple block-level elements, or a non-paragraph block (table) | The host is split at the token offset: text before becomes its own paragraph (cloning host's `pPr`), the rendered blocks slot in between, and text after becomes another paragraph (also cloning host's `pPr`). Empty before/after halves are still emitted. |
 

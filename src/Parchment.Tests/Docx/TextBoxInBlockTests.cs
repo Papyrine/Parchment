@@ -221,11 +221,11 @@ public partial class TextBoxInBlockTests
         await Assert.That(texts).IsEqualTo("host | outer c1 | inner c1 | outer c2 | inner c2");
     }
 
-    // A tag paragraph is removed whichever way its block goes, and a text box anchored in it goes
-    // with it. Looking below the paragraphs of the loop reaches that box's anchor as well, and
-    // must not change what comes out.
+    // Only the tag goes from a tag paragraph: a text box anchored in it stays where the tag was,
+    // whichever way its block goes, and its tokens are read in the scope the tag paragraph is in.
+    // The box is stored twice, as the shape and its fallback.
     [Test]
-    public async Task TextBoxAnchoredInATagParagraphGoesWithTheTag()
+    public async Task TextBoxAnchoredInATagParagraphStaysWhereTheTagWas()
     {
         using var template = Build(
             P("{% for c in Customers %}"),
@@ -236,7 +236,7 @@ public partial class TextBoxInBlockTests
 
         var texts = await Render(template, new());
 
-        await Assert.That(texts).IsEqualTo("active c1");
+        await Assert.That(texts).IsEqualTo("box c1 | box c1 | active c1 | box c2 | box c2");
     }
 
     [Test]

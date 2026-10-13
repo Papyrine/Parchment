@@ -23,7 +23,8 @@ class ScopeTreeRunner(
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
     List<Table>? tables = null,
-    List<Paragraph>? sections = null)
+    List<Paragraph>? sections = null,
+    List<Paragraph>? carriedSections = null)
 {
     List<StructuralReplacement>? structuralReplacements;
 
@@ -39,6 +40,11 @@ class ScopeTreeRunner(
     // loop iteration still sitting in its scratch container cannot say - so the root runner
     // finishes them at the end as well.
     readonly List<Paragraph> sectionMarkers = sections ?? [];
+
+    // The paragraphs left standing in for a removed tag paragraph or token host that carried a
+    // section break, shared the same way. Which paragraph ends the section instead is only known
+    // once everything around it has been removed, repeated and replaced — see SettleSectionBreaks.
+    readonly List<Paragraph> sectionBreaks = carriedSections ?? [];
 
     // The loop variables open around the nodes this runner walks. A token that starts with one
     // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
@@ -136,6 +142,18 @@ class ScopeTreeRunner(
     static bool IsRangeMarker(OpenXmlElement element) =>
         element is BookmarkStart or BookmarkEnd or PermStart or PermEnd or ProofError;
 
+    static OpenXmlElement? PreviousBlock(OpenXmlElement element)
+    {
+        var cursor = element.PreviousSibling();
+        while (cursor != null &&
+               IsRangeMarker(cursor))
+        {
+            cursor = cursor.PreviousSibling();
+        }
+
+        return cursor;
+    }
+
     /// <summary>
     /// Records the table that follows <paramref name="element"/>, when the render is about to
     /// change what comes before that table: by removing the element, or by having just put it
@@ -167,6 +185,35 @@ class ScopeTreeRunner(
         element.Remove();
     }
 
+    /// <summary>
+    /// A <c>w:sectPr</c> sits on the last paragraph of its section, so the paragraph a removed tag
+    /// or token host leaves behind to carry one is an empty line at the end of that section. Run
+    /// on the root runner once the whole tree has been processed: where a paragraph without a
+    /// break of its own now precedes it, that paragraph ends the section instead and the stand-in
+    /// goes. It stays after a table, which cannot carry a break, and wherever it is all the
+    /// section has left.
+    /// </summary>
+    public void SettleSectionBreaks()
+    {
+        foreach (var carrier in sectionBreaks)
+        {
+            if (carrier.Parent == null ||
+                PreviousBlock(carrier) is not Paragraph previous ||
+                previous.ParagraphProperties?.SectionProperties != null)
+            {
+                continue;
+            }
+
+            var section = carrier.ParagraphProperties!.SectionProperties!;
+            section.Remove();
+            previous.ParagraphProperties ??= new();
+            previous.ParagraphProperties.SectionProperties = section;
+            carrier.Remove();
+        }
+
+        sectionBreaks.Clear();
+    }
+
     void ApplyOne(StructuralReplacement replacement)
     {
         var host = replacement.Host;
@@ -176,8 +223,64 @@ class ScopeTreeRunner(
             return;
         }
 
+        if (replacement.KeepHost)
+        {
+            RecordTableAfter(InsertAfter(host, replacement.Produced));
+            return;
+        }
+
+        // The token is all the text the host has, and what it produced takes the host's place.
+        // Anything else the host carries is not the token's to take with it. A section break ends
+        // the section after the produced content. Other content stays in a paragraph of its own,
+        // before or after that content according to which side of the token it sat on.
+        var section = host.ParagraphProperties?.SectionProperties;
+        section?.Remove();
+
+        Paragraph? tail = null;
+        var keepHost = false;
+        if (ParagraphContent.HasBesidesText(host))
+        {
+            // A field goes with the token, as it does when nothing else shares the host. The
+            // split would otherwise leave its begin mark in one half and its end in the other.
+            ParagraphContent.RemoveFieldMarks(host);
+            var length = ParagraphText.Build(host).InnerText.Length;
+            tail = (Paragraph)ParagraphSplicer.Split(host, 0, length, [], cloneIds)[0];
+            // A page break before the host is ahead of everything that replaces it, so the host
+            // half alone keeps it.
+            tail.ParagraphProperties?.PageBreakBefore?.Remove();
+            keepHost = ParagraphContent.HasBesidesText(host);
+            if (!ParagraphContent.HasBesidesText(tail))
+            {
+                tail = null;
+            }
+        }
+
+        var last = InsertAfter(host, replacement.Produced);
+        if (tail != null)
+        {
+            last = parent.InsertAfter(tail, last);
+        }
+
+        if (section != null)
+        {
+            last = parent.InsertAfter(CarrySectionBreak(section), last);
+        }
+
+        // What follows now comes after the last of these or, when the token produced nothing and
+        // the host kept nothing, after whatever preceded the host.
+        RecordTableAfter(last);
+
+        if (!keepHost)
+        {
+            host.Remove();
+        }
+    }
+
+    OpenXmlElement InsertAfter(Paragraph host, IReadOnlyList<OpenXmlElement> elements)
+    {
+        var parent = host.Parent!;
         OpenXmlElement cursor = host;
-        foreach (var produced in replacement.Produced)
+        foreach (var produced in elements)
         {
             cursor = parent.InsertAfter(produced, cursor);
             if (produced is Table table)
@@ -186,16 +289,100 @@ class ScopeTreeRunner(
             }
         }
 
-        // What follows now comes after the last produced block or, when the token produced
-        // nothing, after whatever preceded the host.
-        RecordTableAfter(cursor);
+        return cursor;
+    }
 
-        if (replacement.KeepHost)
+    /// <summary>
+    /// Takes a block tag paragraph out of the document. A tag paragraph is never part of the block
+    /// it delimits, so what it carries besides the tag stays where the tag was, once: it is not
+    /// repeated per iteration and does not go with an unchosen branch.
+    /// </summary>
+    void RemoveTag(Paragraph tag)
+    {
+        if (ParagraphContent.HasBesidesText(tag))
+        {
+            // Only the tag goes. A section break on the paragraph stays on it.
+            ParagraphContent.RemoveText(tag);
+            return;
+        }
+
+        if (tag.ParagraphProperties?.SectionProperties is { } section)
+        {
+            section.Remove();
+            tag.InsertAfterSelf(CarrySectionBreak(section));
+        }
+
+        Remove(tag);
+    }
+
+    /// <summary>
+    /// A tag paragraph that stays can anchor a text box, and the paragraphs in the box are token
+    /// hosts of their own. They follow the tag in document order, so the scope tree lists them at
+    /// the head of the block's body, where the runner for that body never finds them: the box
+    /// stays with the tag, outside the block. They are run here instead, once, in the scope the
+    /// tag paragraph itself is in.
+    /// </summary>
+    async Task ProcessCarriedAsync(Paragraph tag, IReadOnlyList<RangeNode> body)
+    {
+        if (!ParagraphContent.HasBesidesText(tag))
         {
             return;
         }
 
-        host.Remove();
+        foreach (var node in body)
+        {
+            if (!IsCarriedBy(tag, node))
+            {
+                return;
+            }
+
+            await ProcessAsync(node).ConfigureAwait(false);
+        }
+    }
+
+    async Task ProcessCarriedAsync(IfNode ifNode, Paragraph open)
+    {
+        await ProcessCarriedAsync(open, ifNode.Branches[0].Body).ConfigureAwait(false);
+        for (var i = 1; i < ifNode.Branches.Count; i++)
+        {
+            if (anchorMap.TryGetValue(ifNode.Branches[i].TagAnchorName, out var branchTag))
+            {
+                await ProcessCarriedAsync(branchTag, ifNode.Branches[i].Body).ConfigureAwait(false);
+            }
+        }
+
+        if (ifNode.ElseAnchorName != null &&
+            anchorMap.TryGetValue(ifNode.ElseAnchorName, out var elseTag))
+        {
+            await ProcessCarriedAsync(elseTag, ifNode.ElseBody).ConfigureAwait(false);
+        }
+    }
+
+    bool IsCarriedBy(Paragraph tag, RangeNode node)
+    {
+        var anchor = node switch
+        {
+            SubstitutionNode substitution => substitution.AnchorName,
+            StaticNode inert => inert.AnchorName,
+            LoopNode loop => loop.OpenAnchorName,
+            IfNode ifNode => ifNode.OpenAnchorName,
+            _ => null
+        };
+        return anchor != null &&
+               anchorMap.TryGetValue(anchor, out var paragraph) &&
+               paragraph.Ancestors<Paragraph>().Contains(tag);
+    }
+
+    // An empty paragraph holding nothing but the break, where the paragraph that carried it was.
+    Paragraph CarrySectionBreak(SectionProperties section)
+    {
+        var carrier = new Paragraph(
+            new ParagraphProperties
+            {
+                SectionProperties = section
+            });
+        sectionBreaks.Add(carrier);
+        return carrier;
     }
 
     async Task ProcessAsync(IReadOnlyList<RangeNode> nodes)
@@ -781,6 +968,7 @@ class ScopeTreeRunner(
             return;
         }
 
+        await ProcessCarriedAsync(open, loop.Body).ConfigureAwait(false);
         var items = await ResolveIterableAsync(loop).ConfigureAwait(false);
         var bodyElements = CaptureBetween(open, close);
 
@@ -799,8 +987,8 @@ class ScopeTreeRunner(
                 Remove(element);
             }
 
-            Remove(open);
-            Remove(close);
+            RemoveTag(open);
+            RemoveTag(close);
             return;
         }
 
@@ -839,7 +1027,8 @@ class ScopeTreeRunner(
             styles,
             imagePolicies,
             tablesToCheck,
-            sectionMarkers)
+            sectionMarkers,
+            sectionBreaks)
         {
             loopVariables = [..loopVariables, loop.LoopVariable]
         };
@@ -918,8 +1107,8 @@ class ScopeTreeRunner(
             Remove(element);
         }
 
-        Remove(open);
-        Remove(close);
+        RemoveTag(open);
+        RemoveTag(close);
     }
 
     /// <summary>
@@ -995,7 +1184,8 @@ class ScopeTreeRunner(
                     styles,
                     imagePolicies,
                     tablesToCheck,
-                    sectionMarkers)
+                    sectionMarkers,
+                    sectionBreaks)
                 {
                     loopVariables = itemLoopVariables
                 };
@@ -1200,16 +1390,18 @@ class ScopeTreeRunner(
         // Everything physically between {% if %} and {% endif %}: branch tag paragraphs, token
         // paragraphs, static paragraphs, tables.
         var allBranchElements = CaptureBetween(open, close);
+        var branchTags = BranchTags(ifNode);
+        await ProcessCarriedAsync(ifNode, open).ConfigureAwait(false);
 
         if (chosen == null)
         {
             foreach (var element in allBranchElements)
             {
-                Remove(element);
+                RemoveBranchElement(element, branchTags);
             }
 
-            Remove(open);
-            Remove(close);
+            RemoveTag(open);
+            RemoveTag(close);
             return;
         }
 
@@ -1228,7 +1420,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers, sectionBreaks)
         {
             loopVariables = loopVariables
         };
@@ -1240,12 +1432,51 @@ class ScopeTreeRunner(
         {
             if (!keep.Contains(element))
             {
-                Remove(element);
+                RemoveBranchElement(element, branchTags);
             }
         }
 
-        Remove(open);
-        Remove(close);
+        RemoveTag(open);
+        RemoveTag(close);
+    }
+
+    /// <summary>
+    /// The <c>{% elsif %}</c> and <c>{% else %}</c> tag paragraphs of <paramref name="ifNode"/>,
+    /// or null when it has neither. They sit among the branch content but belong to no branch.
+    /// </summary>
+    List<Paragraph>? BranchTags(IfNode ifNode)
+    {
+        List<Paragraph>? tags = null;
+        for (var i = 1; i < ifNode.Branches.Count; i++)
+        {
+            if (anchorMap.TryGetValue(ifNode.Branches[i].TagAnchorName, out var branchTag))
+            {
+                tags ??= [];
+                tags.Add(branchTag);
+            }
+        }
+
+        if (ifNode.ElseAnchorName != null &&
+            anchorMap.TryGetValue(ifNode.ElseAnchorName, out var elseTag))
+        {
+            tags ??= [];
+            tags.Add(elseTag);
+        }
+
+        return tags;
+    }
+
+    void RemoveBranchElement(OpenXmlElement element, List<Paragraph>? branchTags)
+    {
+        if (branchTags != null &&
+            element is Paragraph paragraph &&
+            branchTags.Contains(paragraph))
+        {
+            RemoveTag(paragraph);
+            return;
+        }
+
+        Remove(element);
     }
 
     /// <summary>
