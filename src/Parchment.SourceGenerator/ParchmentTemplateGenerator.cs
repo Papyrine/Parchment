@@ -7,22 +7,23 @@ public sealed class ParchmentTemplateGenerator :
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // ForAttributeWithMetadataName only re-fires ExtractTarget when the attributed class's
-        // own syntax changes. Editing a model class (e.g. adding/removing a property on Invoice)
-        // in a separate file will NOT re-validate templates that reference it until the
-        // attributed class is touched. The tradeoff: combining with CompilationProvider would
-        // make the extract re-run every compilation and defeat the point of the primitive-only
-        // pipeline below. Kicking the attributed file forces revalidation in the meantime.
+        // ForAttributeWithMetadataName re-runs ExtractTarget for every attributed class on each
+        // new compilation, so the shape always reflects the current symbols: editing a model
+        // class in a separate file (e.g. adding/removing a property on Customer) changes the
+        // extracted TargetInfo and re-validates the templates that reference it. What keeps the
+        // pipeline cheap is that TargetInfo is primitive-only and compared by value — an edit
+        // that leaves the shape alone yields an equal TargetInfo and everything downstream
+        // stays cached.
         var targets = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 attributeFullName,
                 static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
-                ExtractTarget)
+                static (context, cancel) => Locate(context, ExtractTarget(context, cancel)))
             .Where(static _ => _ != null)
             .Select(static (target, _) => target!)
             .WithTrackingName(Stages.Targets)
             .Collect()
-            .Select(static (array, _) => new EquatableArray<TargetInfo>(array))
+            .Select(static (array, _) => new EquatableArray<LocatedTarget>(array))
             .WithTrackingName(Stages.TargetsCollected);
 
         // Filtered to the marked files before anything reads them. An unmarked .md AdditionalFile
@@ -81,9 +82,12 @@ public sealed class ParchmentTemplateGenerator :
                 var markdownData = tuple.Left.Left.Right;
                 var dotxData = tuple.Left.Right;
                 var projectDir = tuple.Right;
+                // A shared parchment.dotx is every model's style source in its folder tree, so an
+                // unreadable one is reported against the file once, not once per model.
+                var reportedStyleDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var target in targetInfos)
                 {
-                    Process(productionContext, target, docData, markdownData, dotxData, projectDir);
+                    Process(productionContext, target, docData, markdownData, dotxData, projectDir, reportedStyleDocs);
                 }
             });
 
@@ -94,7 +98,7 @@ public sealed class ParchmentTemplateGenerator :
             .ForAttributeWithMetadataName(
                 bindableAttributeFullName,
                 static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
-                ExtractBindableTarget)
+                static (context, cancel) => Locate(context, ExtractBindableTarget(context, cancel)))
             .Where(static _ => _ != null)
             .Select(static (target, _) => target!)
             .WithTrackingName(Stages.Bindables);
@@ -102,6 +106,20 @@ public sealed class ParchmentTemplateGenerator :
         context.RegisterSourceOutput(
             bindables,
             static (productionContext, target) => ProcessBindable(productionContext, target));
+    }
+
+    // Pairs the primitive snapshot with the syntax tree its attribute sits in, so the diagnostics
+    // can be reported at a real source location. Only that one tree is carried, never the
+    // compilation: the tree instance is replaced when its own file is edited and reused
+    // otherwise, so an edit anywhere else still finds every stage cached.
+    static LocatedTarget? Locate(GeneratorAttributeSyntaxContext context, TargetInfo? target)
+    {
+        if (target == null)
+        {
+            return null;
+        }
+
+        return new(target, context.Attributes.FirstOrDefault()?.ApplicationSyntaxReference?.SyntaxTree);
     }
 
     static TargetInfo? ExtractBindableTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
@@ -117,27 +135,57 @@ public sealed class ParchmentTemplateGenerator :
         return ExtractTarget(context, cancel);
     }
 
-    static void ProcessBindable(SourceProductionContext context, TargetInfo target)
+    static void ProcessBindable(SourceProductionContext context, LocatedTarget located)
     {
-        var location = target.Location.ToLocation();
+        var target = located.Target;
+        var location = target.Location.ToLocation(located.Tree);
 
-        if (target.ExtractError != null)
+        if (ReportDeclarationError(context, target, location))
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.EnclosingTypeNotPartial,
-                    location,
-                    target.DeclaringName,
-                    target.ExtractError));
             return;
         }
 
         // The template kind is unknown at compile time, so the shape rules that a docx
         // registration would need are enforced here — an invalid editable member is an authoring
         // mistake regardless of which template it later meets.
+        ValidateShape(context, target, location, editableFields: true);
         ValidateEditableShape(context, target, location);
+        ValidateExcelsiorShape(context, target, location);
+        ValidateFormatMarkerTypes(context, target, location);
 
         EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
+    }
+
+    // The declarations nothing can be emitted for. Both attributes stop here, skipping validation
+    // as well as registration: template tokens may still be valid, but reporting on a model that
+    // will never be registered only buries the one diagnostic that matters.
+    static bool ReportDeclarationError(SourceProductionContext context, TargetInfo target, Location location)
+    {
+        if (target.UnsupportedDeclaration != null)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedModelDeclaration,
+                    location,
+                    target.ModelDisplayName,
+                    target.UnsupportedDeclaration));
+            return true;
+        }
+
+        if (target.ExtractError != null)
+        {
+            // PARCH011: an enclosing type isn't partial. Emitting the registration helper into a
+            // namespace-scope partial would land it in the wrong type.
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.EnclosingTypeNotPartial,
+                    location,
+                    target.DeclaringName,
+                    target.ExtractError));
+            return true;
+        }
+
+        return false;
     }
 
     static string GenerateBindableRegistration(TargetInfo target)
@@ -145,15 +193,11 @@ public sealed class ParchmentTemplateGenerator :
         var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
         // The type name is folded into the method name so a base and a derived model can both be
         // [ParchmentBindable] without the derived initializer hiding the base one (CS0108).
-        var body =
-            $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentBindable{{target.DeclaringName}}()
-              {
-              {{registrationsBlock}}}
-              """;
-
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(
+            target,
+            fieldsBlock,
+            $"InitializeParchmentBindable{target.DeclaringName}",
+            registrationsBlock);
     }
 
     static TargetInfo? ExtractTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
@@ -194,7 +238,7 @@ public sealed class ParchmentTemplateGenerator :
             .GetTypeByMetadataName(ShapeBuilder.ExcelsiorTableAttributeFullName);
         var editableFieldType = context.SemanticModel.Compilation
             .GetTypeByMetadataName(ShapeBuilder.EditableFieldAttributeFullName);
-        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, cancel);
+        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, context.SemanticModel.Compilation, cancel);
 
         var protection = ProtectionMode.WhenEditable;
         foreach (var named in attribute.NamedArguments)
@@ -211,14 +255,60 @@ public sealed class ParchmentTemplateGenerator :
             declaringNamespace,
             typeSymbol.Name,
             GetTypeKindKeyword(typeSymbol),
+            IsModuleAccessible(typeSymbol),
             new(enclosingResult.Chain.ToImmutableArray()),
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             protection,
             EquatableLocation.From(rawLocation),
             shape,
-            enclosingResult.Error);
+            enclosingResult.Error,
+            FindUnsupportedDeclaration(typeSymbol));
     }
+
+    // The declarations no partial emitted from another file can register. A generic model has no
+    // closed type to bind a template to, and a module initializer cannot sit inside a generic type
+    // (CS8816), so neither it nor anything nested in one can register itself. A file-local type
+    // cannot be extended at all: the generated partial is in another file, where the same name
+    // declares a different type.
+    static string? FindUnsupportedDeclaration(INamedTypeSymbol typeSymbol)
+    {
+        for (var current = typeSymbol; current != null; current = current.ContainingType)
+        {
+            var nested = !SymbolEqualityComparer.Default.Equals(current, typeSymbol);
+            if (current.IsFileLocal)
+            {
+                if (nested)
+                {
+                    return $"it is nested inside the file-local type '{current.Name}', which a generated file cannot extend";
+                }
+
+                return "it is file-local, and a generated file cannot extend a file-local type";
+            }
+
+            if (current.TypeParameters.Length == 0)
+            {
+                continue;
+            }
+
+            if (nested)
+            {
+                return $"it is nested inside the generic type '{current.Name}', where a module initializer cannot be emitted";
+            }
+
+            return "it is generic, and a template binds to one closed type";
+        }
+
+        return null;
+    }
+
+    // Whether the declaration can be named from anywhere in the module. A module initializer has
+    // to be (CS8814), along with every type it sits in.
+    internal static bool IsModuleAccessible(INamedTypeSymbol typeSymbol) =>
+        typeSymbol.DeclaredAccessibility is
+            Accessibility.Public or
+            Accessibility.Internal or
+            Accessibility.ProtectedOrInternal;
 
     static (List<EnclosingType> Chain, string? Error) BuildEnclosingChain(INamedTypeSymbol typeSymbol)
     {
@@ -233,7 +323,7 @@ public sealed class ParchmentTemplateGenerator :
                 return (stack, current.Name);
             }
 
-            stack.Add(new(current.Name, GetTypeKindKeyword(current)));
+            stack.Add(new(current.Name, GetTypeKindKeyword(current), IsModuleAccessible(current)));
         }
 
         // ContainingType walks innermost → outermost; flip so emission can write outermost first.
@@ -241,7 +331,7 @@ public sealed class ParchmentTemplateGenerator :
         return (stack, null);
     }
 
-    static bool IsPartial(INamedTypeSymbol typeSymbol)
+    internal static bool IsPartial(INamedTypeSymbol typeSymbol)
     {
         foreach (var reference in typeSymbol.DeclaringSyntaxReferences)
         {
@@ -255,7 +345,7 @@ public sealed class ParchmentTemplateGenerator :
         return false;
     }
 
-    static string GetTypeKindKeyword(INamedTypeSymbol type)
+    internal static string GetTypeKindKeyword(INamedTypeSymbol type)
     {
         if (type.IsRecord)
         {
@@ -270,6 +360,11 @@ public sealed class ParchmentTemplateGenerator :
         if (type.TypeKind == TypeKind.Struct)
         {
             return "struct";
+        }
+
+        if (type.TypeKind == TypeKind.Interface)
+        {
+            return "interface";
         }
 
         return "class";
@@ -342,19 +437,24 @@ public sealed class ParchmentTemplateGenerator :
     {
         try
         {
-            var result = DocxArchiveReader.Read(text.Path);
+            // Read once. A second read could land on the other side of a save and embed a template
+            // other than the one validated.
+            var bytes = ReadBytes(text.Path);
+            var result = DocxArchiveReader.Read(bytes);
             return new(
                 text.Path,
                 new(result.Paragraphs.ToImmutableArray()),
                 new(result.BodyParagraphs.ToImmutableArray()),
+                new(result.BodyFallbacks.ToImmutableArray()),
                 new(result.ParagraphContainers.ToImmutableArray()),
+                new(result.BodyValueControlSpans.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
-                Convert.ToBase64String(ReadBytes(text.Path)),
+                Convert.ToBase64String(bytes),
                 null);
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<bool>.Empty, EquatableArray<int>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -362,7 +462,16 @@ public sealed class ParchmentTemplateGenerator :
     {
         try
         {
-            return new(text.Path, Convert.ToBase64String(ReadBytes(text.Path)), null);
+            // Opened the way a docx template is, so a file the runtime could not register as a
+            // style source fails the build instead of the first render. Its paragraphs are not
+            // kept: only the package's shape is checked here.
+            var bytes = ReadBytes(text.Path);
+            if (!DocxArchiveReader.Read(bytes).HasMainPart)
+            {
+                return new(text.Path, string.Empty, "it has no main document part (word/document.xml), so it is not a Word document or template");
+            }
+
+            return new(text.Path, Convert.ToBase64String(bytes), null);
         }
         catch (Exception exception)
         {
@@ -371,12 +480,16 @@ public sealed class ParchmentTemplateGenerator :
     }
 
     // RS1035 steers analyzers to AdditionalText, but an AdditionalText has no binary read surface
-    // — GetText() returns null for binary content — so raw bytes come off the stream directly,
-    // the same loophole DocxArchiveReader relies on for ZipFile.
+    // — GetText() returns null for binary content — so raw bytes come off the stream directly.
+    //
+    // Shared for writing and for deleting. A word processor keeps the document it is editing open
+    // with write access and replaces the file when it saves; asking for anything narrower gets the
+    // open refused ("being used by another process") for a file that is perfectly readable, and
+    // would in turn refuse a save that lands while the build is reading.
 #pragma warning disable RS1035
     static byte[] ReadBytes(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var memory = new MemoryStream();
         stream.CopyTo(memory);
         return memory.ToArray();
@@ -407,25 +520,18 @@ public sealed class ParchmentTemplateGenerator :
 
     static void Process(
         SourceProductionContext context,
-        TargetInfo target,
+        LocatedTarget located,
         EquatableArray<DocxData> docs,
         EquatableArray<MarkdownData> markdowns,
         EquatableArray<DotxData> dotxes,
-        string? projectDirectory)
+        string? projectDirectory,
+        HashSet<string> reportedStyleDocs)
     {
-        var location = target.Location.ToLocation();
+        var target = located.Target;
+        var location = target.Location.ToLocation(located.Tree);
 
-        if (target.ExtractError != null)
+        if (ReportDeclarationError(context, target, location))
         {
-            // PARCH011: an enclosing type isn't partial. Skip both validation and registration —
-            // template tokens may still be valid, but emitting the registration helper into a
-            // namespace-scope partial would land it in the wrong type.
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.EnclosingTypeNotPartial,
-                    location,
-                    target.DeclaringName,
-                    target.ExtractError));
             return;
         }
 
@@ -464,7 +570,7 @@ public sealed class ParchmentTemplateGenerator :
 
         if (markdownCandidates.Count == 1)
         {
-            ProcessMarkdown(context, target, location, markdownCandidates[0], dotxes, projectDirectory);
+            ProcessMarkdown(context, target, location, markdownCandidates[0], dotxes, projectDirectory, reportedStyleDocs);
             return;
         }
 
@@ -502,17 +608,23 @@ public sealed class ParchmentTemplateGenerator :
         var tokens = TokenScanner.Scan(matched.Paragraphs, matched.ParagraphContainers.AsImmutableArray());
         ValidateTokens(context, target, templatePath, tokens, location);
         ValidateBlockContainers(context, templatePath, tokens, location);
+        ValidateShape(context, target, location, editableFields: true);
 
         // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
         // fire here rather than in Process — the runtime lockstep is EditableMap.Build throwing
         // at RegisterDocxTemplate regardless of whether a token references the member.
         ValidateEditableShape(context, target, location);
+        ValidateExcelsiorShape(context, target, location);
+        ValidateFormatMarkerTypes(context, target, location);
         if (HasEditableMembers(target.Shape))
         {
             // Token rules are body-scoped: the runtime dispatches editable fields only in the
             // document body, so a header/footer occurrence of the same member is a deliberate
             // read-only mirror, not a duplicate.
-            var bodyTokens = TokenScanner.Scan(matched.BodyParagraphs);
+            var bodyTokens = TokenScanner.Scan(
+                matched.BodyParagraphs,
+                fallbacks: matched.BodyFallbacks.AsImmutableArray(),
+                valueControlSpans: matched.BodyValueControlSpans.AsImmutableArray());
             ValidateEditableTokens(context, target, templatePath, bodyTokens, location);
         }
 
@@ -537,7 +649,7 @@ public sealed class ParchmentTemplateGenerator :
 
     // IsStringList is inferred from the member's type rather than written by hand, so it is not
     // reported — a static IEnumerable<string> is not a mistake the way a hand-written attribute is.
-    static string? IgnoredStaticAttribute(MemberEntry member)
+    static string? IgnoredStaticAttribute(MemberEntry member, bool editableFields)
     {
         if (member.IsExcelsiorTable)
         {
@@ -554,7 +666,8 @@ public sealed class ParchmentTemplateGenerator :
             return "Markdown";
         }
 
-        if (member.IsEditable)
+        if (editableFields &&
+            member.IsEditable)
         {
             return "EditableField";
         }
@@ -562,10 +675,82 @@ public sealed class ParchmentTemplateGenerator :
         return null;
     }
 
-    static void ValidateEditableShape(
+    // Its own pass rather than a branch of ValidateEditableShape: an Excelsior table renders in both
+    // flows, so the markdown path runs this too. A static member is left to PARCH019, which already
+    // says the attribute does nothing there.
+    static void ValidateExcelsiorShape(
         SourceProductionContext context,
         TargetInfo target,
         Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member is not {ExcelsiorNotTabular: true, IsStatic: false})
+                {
+                    continue;
+                }
+
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorNotTabular,
+                        location,
+                        target.ModelDisplayName,
+                        $"{Display(type.TypeFullyQualifiedName)}.{member.Name}",
+                        Display(member.TypeFullyQualifiedName)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// PARCH029: a format marker on a member that is not a string. Both flows read the marker, so
+    /// this runs for a docx model, a markdown model and a bindable type alike. A static member is
+    /// skipped: its marker is already reported as ignored.
+    /// </summary>
+    static void ValidateFormatMarkerTypes(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member.IsStatic ||
+                    !member.FormatMarkerOnNonString)
+                {
+                    continue;
+                }
+
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.FormatMarkerOnNonString,
+                        location,
+                        target.ModelDisplayName,
+                        $"{Display(type.TypeFullyQualifiedName)}.{member.Name}",
+                        Display(member.TypeFullyQualifiedName)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The shape rules that hold whatever the model is bound to: a render attribute on a static
+    /// member, an <c>[ExcelsiorTable]</c> Configure name that resolves to nothing, and format
+    /// markers that contradict each other or the member's type.
+    /// </summary>
+    /// <remarks>
+    /// All of them describe what the accessor emission does with the member, and that emission is
+    /// the same pass for a docx template, a markdown template and a bindable model. The editable
+    /// rules are separate (<see cref="ValidateEditableShape"/>) because a markdown template has no
+    /// editable fields: <paramref name="editableFields"/> is false there, so a static member
+    /// carrying only <c>[EditableField]</c> is as silent as an instance one.
+    /// </remarks>
+    static void ValidateShape(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location,
+        bool editableFields)
     {
         foreach (var type in target.Shape.Types)
         {
@@ -578,7 +763,7 @@ public sealed class ParchmentTemplateGenerator :
                 // the attribute is dropped. That is silent at runtime, hence the warning.
                 if (member.IsStatic)
                 {
-                    var ignored = IgnoredStaticAttribute(member);
+                    var ignored = IgnoredStaticAttribute(member, editableFields);
                     if (ignored != null)
                     {
                         context.ReportDiagnostic(
@@ -604,6 +789,18 @@ public sealed class ParchmentTemplateGenerator :
                             Display(type.TypeFullyQualifiedName)));
                 }
 
+                if (member.ExcelsiorConfigureInaccessibleOn != null)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorConfigureInaccessible,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay,
+                            member.ExcelsiorConfigure ?? "",
+                            Display(member.ExcelsiorConfigureInaccessibleOn)));
+                }
+
                 if (member.HasFormatConflict)
                 {
                     context.ReportDiagnostic(
@@ -623,11 +820,26 @@ public sealed class ParchmentTemplateGenerator :
                             target.ModelDisplayName,
                             memberDisplay));
                 }
+            }
+        }
+    }
 
-                if (!member.IsEditable)
+    static void ValidateEditableShape(
+        SourceProductionContext context,
+        TargetInfo target,
+        Location location)
+    {
+        foreach (var type in target.Shape.Types)
+        {
+            foreach (var member in type.Members)
+            {
+                if (member.IsStatic ||
+                    !member.IsEditable)
                 {
                     continue;
                 }
+
+                var memberDisplay = $"{Display(type.TypeFullyQualifiedName)}.{member.Name}";
 
                 // [Html] + [EditableField] is supported (renders an editable rich-content block that
                 // extracts back to HTML). [ExcelsiorTable] and [Markdown] remain conflicts.
@@ -686,6 +898,26 @@ public sealed class ParchmentTemplateGenerator :
                 }
             }
         }
+
+        // An editable member below a struct has no setter that reaches the model. One report per
+        // member, however many paths lead to it.
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (declaringTypeFqn, member, valueTypeFqn) in AccessorEmission.EditablesThroughValueType(target.Shape))
+        {
+            var memberDisplay = $"{Display(declaringTypeFqn)}.{member.Name}";
+            if (!reported.Add(memberDisplay))
+            {
+                continue;
+            }
+
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.EditableThroughValueType,
+                    location,
+                    target.ModelDisplayName,
+                    memberDisplay,
+                    Display(valueTypeFqn)));
+        }
     }
 
     /// <summary>
@@ -700,6 +932,16 @@ public sealed class ParchmentTemplateGenerator :
         string memberDisplay,
         MemberEntry member)
     {
+        if (!member.EditableCollectionAssignable)
+        {
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
+                $"its type '{Display(member.TypeFullyQualifiedName)}' cannot hold the rebuilt list — extraction builds a List<T> (a T[] for an array member), so declare the member as List<T>, T[], or an interface List<T> implements such as IList<T> or IReadOnlyList<T>");
+        }
+
         TypeEntry? element = null;
         foreach (var type in target.Shape.Types)
         {
@@ -716,6 +958,17 @@ public sealed class ParchmentTemplateGenerator :
         }
 
         var elementDisplay = Display(element.TypeFullyQualifiedName);
+        if (element.IsValueType)
+        {
+            ReportCollectionInvalid(
+                context,
+                target,
+                location,
+                memberDisplay,
+                $"its element type '{elementDisplay}' is a struct — extraction fills each element through a reference to it, and a struct is copied instead, so the element type must be a class");
+            return;
+        }
+
         if (!element.HasParameterlessCtor)
         {
             ReportCollectionInvalid(
@@ -784,6 +1037,13 @@ public sealed class ParchmentTemplateGenerator :
     /// <see cref="ValidateTokens"/> already reported PARCH001/002/005 over all parts) so PARCH016
     /// / PARCH017 / PARCH018 don't double-report.
     /// </summary>
+    /// <remarks>
+    /// Lockstep with the runtime's <c>EditableTokenValidator</c>, and both follow where the runner
+    /// holds an editable map: a root member outside every loop is a control, a member of an
+    /// <c>[EditableField]</c> collection's item reached through the loop variable directly inside a
+    /// top-level loop over that collection is a control, and every other occurrence renders
+    /// read-only. PARCH016 / PARCH017 apply to the controls, PARCH018 to the rest.
+    /// </remarks>
     static void ValidateEditableTokens(
         SourceProductionContext context,
         TargetInfo target,
@@ -792,8 +1052,15 @@ public sealed class ParchmentTemplateGenerator :
         Location location)
     {
         var scope = new Dictionary<string, string>(StringComparer.Ordinal);
-        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection)>();
+        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection, string? BoundCollection)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The item paths bound so far in the open repeating-section loop. Tags are item-relative,
+        // so each top-level loop starts its own set.
+        var itemSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The collections some earlier loop already bound.
+        var boundCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var token in tokens)
         {
@@ -803,8 +1070,13 @@ public sealed class ParchmentTemplateGenerator :
                     string? bound = null;
                     string? prior = null;
                     var isEditableCollectionLoop = false;
+                    if (loopStack.Count == 0)
+                    {
+                        itemSeen.Clear();
+                    }
+
                     if (token.LoopVariable != null &&
-                        IsUntypedLoop(token, scope))
+                        IsUntypedLoop(target.Shape, token, scope))
                     {
                         // Bound so the variable shadows a model member of the same name, as it
                         // does at render.
@@ -843,13 +1115,22 @@ public sealed class ParchmentTemplateGenerator :
                                 string.Join('.', token.References[0])));
                     }
 
-                    loopStack.Push((bound, prior, isEditableCollectionLoop));
+                    // Likewise only a top-level loop can bind the collection's controls.
+                    string? boundCollection = null;
+                    if (isEditableCollectionLoop &&
+                        bound != null &&
+                        loopStack.Count == 0)
+                    {
+                        boundCollection = string.Join('.', token.References[0]);
+                    }
+
+                    loopStack.Push((bound, prior, isEditableCollectionLoop, boundCollection));
                     break;
 
                 case TokenKind.ForClose:
                     if (loopStack.Count > 0)
                     {
-                        var (name, priorBinding, _) = loopStack.Pop();
+                        var (name, priorBinding, _, _) = loopStack.Pop();
                         if (name != null)
                         {
                             if (priorBinding == null)
@@ -871,42 +1152,68 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
+                    // An editable collection is not a field: the runtime keeps it out of the
+                    // scalar map, so its own token is an ordinary substitution.
                     if (!ShapeResolver.TryResolveMember(target.Shape, token.References[0], scope, out var member) ||
-                        member is { IsEditable: false } or { IsStatic: true })
+                        member is { IsEditable: false } or { IsStatic: true } or { EditableCollectionElementFqn: not null })
                     {
                         break;
                     }
 
-                    // A loop over an editable collection turns its loop-variable tokens into
-                    // repeating-section controls, so PARCH018 (editable token in a loop) does not apply.
-                    var insideEditableCollection = false;
-                    foreach (var frame in loopStack)
+                    var tokenSeen = seen;
+                    if (loopStack.Count > 0)
                     {
-                        if (frame.IsEditableCollection)
+                        // Directly inside a top-level loop over an editable collection, a token
+                        // through the loop variable is a repeating-section control and answers to
+                        // the same rules as a root one. Anything else inside a loop — a root
+                        // member, a nested loop's token, a loop that is not a repeating section —
+                        // renders read-only.
+                        var frame = loopStack.Peek();
+                        if (loopStack.Count > 1 ||
+                            !frame.IsEditableCollection ||
+                            !string.Equals(frame.Name, token.References[0][0], StringComparison.Ordinal))
                         {
-                            insideEditableCollection = true;
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(
+                                    Diagnostics.EditableTokenInLoop,
+                                    location,
+                                    templatePath,
+                                    token.Source));
                             break;
                         }
+
+                        // The first control of a loop is what makes it a binding of the collection.
+                        // Extraction reads one repeating section per collection, so a second loop
+                        // binding any member is an edit that would be discarded. Lockstep with the
+                        // runtime's EditableTokenValidator.
+                        if (itemSeen.Count == 0 &&
+                            frame.BoundCollection is { } boundPath &&
+                            !boundCollections.Add(boundPath))
+                        {
+                            itemSeen.Add(string.Join('.', token.References[0]));
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(
+                                    Diagnostics.EditableTokenDuplicated,
+                                    location,
+                                    templatePath,
+                                    token.Source));
+                            break;
+                        }
+
+                        tokenSeen = itemSeen;
                     }
 
-                    if (loopStack.Count > 0 &&
-                        !insideEditableCollection)
+                    // What reaches here becomes a content control: a root member outside every
+                    // loop, or an item member directly inside the top-level loop over an editable
+                    // collection. Lockstep with EditableTokenValidator.RejectInsideValueControl.
+                    if (token.InValueControl)
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(
-                                Diagnostics.EditableTokenInLoop,
+                                Diagnostics.EditableTokenInValueControl,
                                 location,
                                 templatePath,
                                 token.Source));
-                        break;
-                    }
-
-                    // Editable-collection loop-variable tokens are handled by the repeating-section
-                    // render — they don't participate in the flat body's plain-identifier / duplicate
-                    // checks (their tags are item-relative), so stop here.
-                    if (insideEditableCollection)
-                    {
-                        break;
                     }
 
                     if (!token.IsPlainIdentifier)
@@ -919,7 +1226,10 @@ public sealed class ParchmentTemplateGenerator :
                                 token.Source));
                     }
 
-                    if (!seen.Add(string.Join('.', token.References[0])))
+                    // The fallback copy of a text box mirrors the choice and is skipped by
+                    // extraction, so it is not a second use — as EditableTokenValidator.
+                    if (!token.InFallback &&
+                        !tokenSeen.Add(string.Join('.', token.References[0])))
                     {
                         context.ReportDiagnostic(
                             Diagnostic.Create(
@@ -939,9 +1249,10 @@ public sealed class ParchmentTemplateGenerator :
     /// </summary>
     /// <remarks>
     /// An Excelsior token is rewritten to a marker before the source is parsed, so what disqualifies
-    /// one is a property of the line it sits on rather than of the Fluid AST — whether the token is
-    /// the whole line, and whether the expression is a bare path. Both are read off the source here,
-    /// the same way <c>MarkdownExcelsiorTables</c> reads them at registration.
+    /// one is a property of where it sits in the source rather than of the template's AST — whether
+    /// the token is alone on its line, and whether its expression is a bare path. Both are read off
+    /// the source here, the same way <c>MarkdownExcelsiorTables</c> reads them at registration,
+    /// through a copy of the same <c>MarkdownOutputTokens</c>.
     ///
     /// Without this the mistake still gets caught, but not until the store materializes the template
     /// on the model's first render — a runtime failure for something the build can see.
@@ -954,68 +1265,53 @@ public sealed class ParchmentTemplateGenerator :
         string markdown)
     {
         var loops = MarkdownLoopScope.Scan(markdown);
-
-        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
-        var rawLineStart = 0;
-        foreach (var rawLine in markdown.Split('\n'))
+        foreach (var token in MarkdownOutputTokens.Scan(markdown, markdownParser))
         {
-            var line = rawLine.Trim();
-            var lineStart = rawLineStart + rawLine.Length - rawLine.TrimStart().Length;
-            rawLineStart += rawLine.Length + 1;
-            foreach (Match match in markdownToken.Matches(line))
+            // Root paths only, matching the map the render looks the table up in: a loop
+            // variable's members are not reachable from the root and fall through to Fluid,
+            // including when the loop variable happens to spell a root path. The text of a raw
+            // or comment region is not a token at all.
+            if (token.Path == null ||
+                loops.IsLiteral(token.Start) ||
+                loops.Shadows(token.Start, token.Path) ||
+                !ShapeResolver.IsExcelsiorTableMember(target.Shape, token.Path.Split('.'), EmptyScope))
             {
-                var body = match.Groups["body"].Value.Trim();
-                var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
-                var path = (end < 0 ? body : body[..end]).Replace(" ", "").Replace("\t", "");
-                if (path.Length == 0)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                // Root paths only, matching the map the render looks the table up in: a loop
-                // variable's members are not reachable from the root and fall through to Fluid,
-                // including when the loop variable happens to spell a root path.
-                if (loops.Shadows(lineStart + match.Index, path) ||
-                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
-                {
-                    continue;
-                }
+            var source = markdown.Substring(token.Start, token.End - token.Start);
+            if (!MarkdownOutputTokens.IsAlone(markdown, token, out _, out _))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorTokenNotAlone,
+                        location,
+                        templatePath,
+                        source));
+                continue;
+            }
 
-                if (match.Value != line)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.ExcelsiorTokenNotAlone,
-                            location,
-                            templatePath,
-                            match.Value));
-                    continue;
-                }
-
-                if (body != path)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.ExcelsiorTokenNotPlainIdentifier,
-                            location,
-                            templatePath,
-                            match.Value));
-                }
+            if (!token.IsPlain)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorTokenNotPlainIdentifier,
+                        location,
+                        templatePath,
+                        source));
             }
         }
     }
 
     static readonly Dictionary<string, string> EmptyScope = new();
-
-    static readonly Regex markdownToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
-
     static void ProcessMarkdown(
         SourceProductionContext context,
         TargetInfo target,
         Location location,
         MarkdownData matched,
         EquatableArray<DotxData> dotxes,
-        string? projectDirectory)
+        string? projectDirectory,
+        HashSet<string> reportedStyleDocs)
     {
         var templatePath = DisplayPath(matched.Path, projectDirectory);
         if (matched.ReadError != null)
@@ -1036,12 +1332,19 @@ public sealed class ParchmentTemplateGenerator :
                     Diagnostics.TemplateReadError,
                     location,
                     templatePath,
-                    $"Failed to parse markdown as a liquid template: {error}"));
+                    BlockTagArguments.MarkdownParseFailure(matched.Text, error)));
             return;
         }
 
         MarkdownValidator.Validate(context, target, templatePath, location, template);
+        ValidateFormatMarkerTypes(context, target, location);
         ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);
+        ValidateExcelsiorShape(context, target, location);
+
+        // Editable fields are a docx-flow feature and are ignored here, so only the rules that
+        // hold in every flow run: the format and Excelsior maps they guard are emitted for a
+        // markdown template exactly as they are for a docx one.
+        ValidateShape(context, target, location, editableFields: false);
 
         // The style source: the dotx named after the type when the project carries one, otherwise
         // the nearest parchment.dotx up the directory tree from the template. Neither is required
@@ -1064,19 +1367,25 @@ public sealed class ParchmentTemplateGenerator :
 
         if (style?.ReadError != null)
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.TemplateReadError,
-                    location,
-                    DisplayPath(style.Path, projectDirectory),
-                    style.ReadError));
+            // Located at the style document, not at the model: the file is what needs fixing, and
+            // every model that inherits it would otherwise repeat the same error.
+            if (reportedStyleDocs.Add(style.Path))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.TemplateReadError,
+                        Location.Create(style.Path, default, default),
+                        DisplayPath(style.Path, projectDirectory),
+                        style.ReadError));
+            }
+
             return;
         }
 
         EmitRegistration(context, target, GenerateMarkdownRegistration(target, matched, style));
     }
 
-    static readonly FluidParser markdownParser = new();
+    static readonly FluidParser markdownParser = new MarkdownFluidParser();
 
     static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source, string suffix = "ParchmentModel")
     {
@@ -1099,22 +1408,43 @@ public sealed class ParchmentTemplateGenerator :
         context.AddSource(
             $"{hintPrefix}_{suffix}.g.cs",
             SourceText.From(source, Encoding.UTF8));
+
+        var forwarders = AccessorEmission.EmitConfigureForwarders(target.Shape);
+        if (forwarders != null)
+        {
+            context.AddSource(
+                $"{hintPrefix}_{suffix}_Configure.g.cs",
+                SourceText.From(forwarders, Encoding.UTF8));
+        }
     }
 
-    // Scope binding for a loop variable whose source is not statically known: a range, or a path
-    // rooted at another such variable. The variable exists, but members reached through it are not
-    // checked. Mirrors `untyped` in the runtime ReferenceValidator and the set in MarkdownValidator.
-    const string untypedLoopVariable = "";
+    // Scope binding for a loop variable whose source is not statically known: a range, a path
+    // rooted at another such variable, or one that passes an index the shape cannot see through.
+    // The variable exists, but members reached through it are not checked. Mirrors `untyped` in
+    // the runtime ReferenceValidator and the set in MarkdownValidator.
+    const string untypedLoopVariable = ShapeResolver.Untyped;
 
-    static bool IsUntypedLoop(Token token, IReadOnlyDictionary<string, string> scope)
+    static bool IsUntypedLoop(ModelShape shape, Token token, IReadOnlyDictionary<string, string> scope)
     {
         if (token.LoopSourceIsRange)
         {
             return true;
         }
 
-        return token.References.Count > 0 &&
-               IsUntyped(token.References[0], scope);
+        if (token.References.Count == 0)
+        {
+            return false;
+        }
+
+        if (IsUntyped(token.References[0], scope))
+        {
+            return true;
+        }
+
+        // Reached through an index that says nothing about what it yields, a dictionary key for
+        // one: the path is valid as far as it goes and the element is only known at render.
+        return ShapeResolver.TryResolve(shape, token.References[0], scope, out var sourceFqn) &&
+               sourceFqn == ShapeResolver.Untyped;
     }
 
     static bool IsUntyped(IReadOnlyList<string> reference, IReadOnlyDictionary<string, string> scope) =>
@@ -1142,6 +1472,7 @@ public sealed class ParchmentTemplateGenerator :
                     ValidateReferences(context, target, templatePath, location, token.References, scope, token.Source);
                     ValidateExcelsiorToken(context, target, templatePath, location, token, scope);
                     ValidateFormatToken(context, target, templatePath, location, token, scope);
+                    ValidateFilterOrder(context, templatePath, location, token);
                     break;
 
                 case TokenKind.ForOpen:
@@ -1168,7 +1499,7 @@ public sealed class ParchmentTemplateGenerator :
                         break;
                     }
 
-                    if (IsUntypedLoop(token, scope))
+                    if (IsUntypedLoop(target.Shape, token, scope))
                     {
                         // Nothing to resolve an element type from, which is an unknown, not a
                         // mistake. Members used as range bounds are still references like any
@@ -1188,13 +1519,7 @@ public sealed class ParchmentTemplateGenerator :
                     if (!ShapeResolver.TryResolve(target.Shape, token.References[0], scope, out var sourceFqn))
                     {
                         context.ReportDiagnostic(
-                            Diagnostic.Create(
-                                Diagnostics.MissingMember,
-                                location,
-                                templatePath,
-                                token.Source,
-                                string.Join('.', token.References[0]),
-                                target.ModelDisplayName));
+                            Diagnostics.UnknownMember(target, templatePath, location, token.Source, token.References[0], scope));
                         break;
                     }
 
@@ -1270,12 +1595,20 @@ public sealed class ParchmentTemplateGenerator :
                     break;
 
                 case TokenKind.UnknownBlock:
+                    var hint = string.Empty;
+                    if (token.Problem != null)
+                    {
+                        hint = $". {token.Problem}";
+                    }
+
                     context.ReportDiagnostic(
                         Diagnostic.Create(
                             Diagnostics.UnsupportedBlockTag,
                             location,
                             templatePath,
-                            token.Source));
+                            token.Source,
+                            Diagnostics.DocxBlockTags,
+                            hint));
                     break;
             }
         }
@@ -1468,6 +1801,28 @@ public sealed class ParchmentTemplateGenerator :
                 token.Source));
     }
 
+    // PARCH037. The scanner has already found the pair — see TokenScanner.ParseSubstitution.
+    static void ValidateFilterOrder(
+        SourceProductionContext context,
+        string templatePath,
+        Location location,
+        Token token)
+    {
+        if (token.TokenFilter == null ||
+            token.FilterAfterTokenFilter == null)
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FilterAfterTokenFilter,
+                location,
+                templatePath,
+                token.Source,
+                TokenFilterOrder.Message(token.TokenFilter, token.FilterAfterTokenFilter)));
+    }
+
     static void ValidateReferences(
         SourceProductionContext context,
         TargetInfo target,
@@ -1486,13 +1841,7 @@ public sealed class ParchmentTemplateGenerator :
             }
 
             context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.MissingMember,
-                    location,
-                    templatePath,
-                    tokenSource,
-                    string.Join('.', reference),
-                    target.ModelDisplayName));
+                Diagnostics.UnknownMember(target, templatePath, location, tokenSource, reference, scope));
         }
     }
 
@@ -1519,18 +1868,14 @@ public sealed class ParchmentTemplateGenerator :
         var protection = target.Protection == ProtectionMode.WhenEditable
             ? ""
             : $", global::Parchment.ProtectionMode.{target.Protection}";
-        var body =
+        var statements =
             $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentTemplate()
-              {
               {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
                   typeof({{target.ModelFullyQualifiedName}}),
                   global::System.Convert.FromBase64String("{{matched.ContentBase64}}"){{protection}});
-              }
               """;
 
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
     }
 
     static string GenerateMarkdownRegistration(TargetInfo target, MarkdownData matched, DotxData? style)
@@ -1540,33 +1885,66 @@ public sealed class ParchmentTemplateGenerator :
         var styleArgument = style == null
             ? ""
             : $",\n    global::System.Convert.FromBase64String(\"{style.ContentBase64}\")";
-        var body =
+        var statements =
             $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentTemplate()
-              {
               {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
                   typeof({{target.ModelFullyQualifiedName}}),
                   {{markdown}}{{styleArgument}});
-              }
               """;
 
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
     }
 
-    // Wraps `body` in `partial {kind} {name} { ... }` declarations: namespace (if any), then
-    // each enclosing type outermost-first, then the target itself. Indentation isn't strictly
+    const string templateInitializer = "InitializeParchmentTemplate";
+    const string moduleInitializerAttribute = "[global::System.Runtime.CompilerServices.ModuleInitializer]";
+    const string excludeFromCoverageAttribute = "[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]";
+
+    // Wraps the initializer in `partial {kind} {name} { ... }` declarations: namespace (if any),
+    // then each enclosing type outermost-first, then the target itself. Indentation isn't strictly
     // necessary for correctness but keeps the generated source readable in obj/.../generated.
-    static string BuildPartialSource(TargetInfo target, string body)
+    static string BuildPartialSource(TargetInfo target, string fieldsBlock, string initializer, string statements)
     {
+        // A private or protected nested model, or a model inside one, cannot carry the module
+        // initializer itself (CS8814). The registration still has to live in the model, where the
+        // model's own private members are in reach, so the attribute moves out to a forwarding
+        // method in the nearest enclosing type the module can see — see AppendForwarder.
+        var reachable = target.IsModuleAccessible;
+        foreach (var enclosing in target.EnclosingTypes)
+        {
+            reachable &= enclosing.IsModuleAccessible;
+        }
+
+        var bodyBuilder = new StringBuilder(fieldsBlock);
+        if (reachable)
+        {
+            bodyBuilder.Append(moduleInitializerAttribute).Append('\n');
+        }
+
+        bodyBuilder.Append($"internal static void {initializer}()\n{{\n");
+        if (statements.Length > 0)
+        {
+            bodyBuilder.Append(statements.TrimEnd('\r', '\n')).Append('\n');
+        }
+
+        bodyBuilder.Append('}');
+        var body = bodyBuilder.ToString();
+
         var builder = new StringBuilder(
             """
             // <auto-generated />
             #nullable enable
 
-            using System.Collections.Generic;
-
             """);
+
+        // The accessors below name every bindable member, deprecated and experimental ones
+        // included, and the consumer cannot edit this file to silence what that raises. Emitted
+        // only when the model has such a member.
+        if (target.Shape.SuppressedDiagnostics.Count > 0)
+        {
+            builder.Append("#pragma warning disable ");
+            builder.AppendJoin(", ", target.Shape.SuppressedDiagnostics);
+            builder.AppendLine();
+        }
 
         if (target.DeclaringNamespace != null)
         {
@@ -1592,12 +1970,13 @@ public sealed class ParchmentTemplateGenerator :
         // total down accordingly. The attribute cannot go on the model's own partial: that would
         // exclude the consumer's own members too.
         //
-        // The type name is folded into the nested type's name for the reason the bindable
-        // initializer folds it into the method's: a derived model would otherwise hide the base's
-        // nested type (CS0108). Internal rather than private because a module initializer has to be
-        // reachable from the module, which a private nested type is not.
-        builder.Indent(depth + 1).AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
-        builder.Indent(depth + 1).AppendLine($"internal static class ParchmentGenerated{target.DeclaringName}");
+        // The model's full name is folded into the nested type's name so a derived model does not
+        // hide its base's nested type (CS0108). The simple name alone is not enough: a model can
+        // derive from one of the same name in another namespace. Internal rather than private
+        // because a module initializer has to be reachable from the module, which a private nested
+        // type is not.
+        builder.Indent(depth + 1).AppendLine(excludeFromCoverageAttribute);
+        builder.Indent(depth + 1).AppendLine($"internal static class {NestedTypeName(target)}");
         builder.Indent(depth + 1).AppendLine("{");
         foreach (var line in body.Split('\n'))
         {
@@ -1615,12 +1994,79 @@ public sealed class ParchmentTemplateGenerator :
         builder.Indent(depth + 1).AppendLine("}");
         builder.Indent(depth).AppendLine("}");
 
+        // How the initializer is named from inside the enclosing type being closed.
+        var entry = $"{target.DeclaringName}.{NestedTypeName(target)}.{initializer}";
+        var childAccessible = target.IsModuleAccessible;
         for (var i = depth - 1; i >= 0; i--)
         {
+            if (!childAccessible)
+            {
+                entry = AppendForwarder(builder, target, i, initializer, entry);
+            }
+
             builder.Indent(i).AppendLine("}");
+            childAccessible = target.EnclosingTypes[i].IsModuleAccessible;
+            entry = $"{target.EnclosingTypes[i].Name}.{entry}";
         }
 
         return builder.ToString();
+    }
+
+    // Emits, into the enclosing type at `index`, a method that calls the initializer one level
+    // down, and returns how that method is named from inside the same enclosing type. One is
+    // needed at every level whose nested type the module cannot see: a private type is only
+    // nameable from inside the type that declares it, so each such level is stepped over from
+    // directly above. The outermost of them is the one the module can reach, and carries the
+    // attribute.
+    static string AppendForwarder(StringBuilder builder, TargetInfo target, int index, string initializer, string entry)
+    {
+        var outermost = true;
+        var name = new StringBuilder("ParchmentGenerated");
+        for (var i = 0; i < target.EnclosingTypes.Count; i++)
+        {
+            // The path down to the model is folded into the name so two models under one
+            // enclosing type do not declare the same forwarder.
+            if (i > index)
+            {
+                name.Append(target.EnclosingTypes[i].Name).Append('_');
+                continue;
+            }
+
+            // Index 0 is declared at namespace scope, which is never private.
+            if (i > 0 &&
+                !target.EnclosingTypes[i].IsModuleAccessible)
+            {
+                outermost = false;
+            }
+        }
+
+        name.Append(target.DeclaringName).Append("Initializer");
+
+        var depth = index + 1;
+        builder.Indent(depth).AppendLine(excludeFromCoverageAttribute);
+        builder.Indent(depth).AppendLine($"internal static class {name}");
+        builder.Indent(depth).AppendLine("{");
+        if (outermost)
+        {
+            builder.Indent(depth + 1).AppendLine(moduleInitializerAttribute);
+        }
+
+        builder.Indent(depth + 1).AppendLine($"internal static void {initializer}() =>");
+        builder.Indent(depth + 2).AppendLine($"{entry}();");
+        builder.Indent(depth).AppendLine("}");
+        return $"{name}.{initializer}";
+    }
+
+    static string NestedTypeName(TargetInfo target)
+    {
+        const string globalPrefix = "global::";
+        var name = target.ModelFullyQualifiedName;
+        if (name.StartsWith(globalPrefix, StringComparison.Ordinal))
+        {
+            name = name[globalPrefix.Length..];
+        }
+
+        return "ParchmentGenerated_" + AccessorEmission.ToIdentifier(name);
     }
 
     public static class Stages

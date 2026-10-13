@@ -1,3 +1,5 @@
+using System.IO.Compression;
+
 /// <summary>
 /// How a <c>[ParchmentModel]</c> type finds its files by convention: the template is the
 /// AdditionalFile named <c>TypeName.parchment.md</c> or <c>TypeName.parchment.docx</c>, and a
@@ -376,6 +378,94 @@ public class TemplateConventionTests
         await Assert.That(Codes(result)).IsEmpty();
         await Assert.That(Generated(result)).Contains(Convert.ToBase64String(typeBytes));
         await Assert.That(Generated(result)).DoesNotContain(Convert.ToBase64String(sharedBytes));
+    }
+
+    // A style source the runtime could not register fails the build, as an unreadable docx
+    // template does, and at the file rather than at the model.
+    [Test]
+    [MethodDataSource(nameof(UnusableStyleDocs))]
+    public async Task UnusableStyleDocIsReported(string name, byte[] bytes)
+    {
+        var result = Run(
+            new TemplateFile("Templates/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile(name, bytes));
+
+        await Assert.That(Codes(result)).IsEquivalentTo(["PARCH006"]);
+        var diagnostic = result.Diagnostics.Single();
+        await Assert.That(Path.GetFileName(diagnostic.Location.GetLineSpan().Path)).IsEqualTo(Path.GetFileName(name));
+        await Assert.That(diagnostic.GetMessage()).Contains(Path.GetFileName(name));
+        await Assert.That(Generated(result)).IsEmpty();
+    }
+
+    public static IEnumerable<Func<(string, byte[])>> UnusableStyleDocs()
+    {
+        var good = GeneratorDriver.BuildDocxBytes("styled");
+        yield return () => ("Templates/parchment.dotx", "this is not a zip"u8.ToArray());
+        yield return () => ("Templates/parchment.dotx", []);
+        yield return () => ("parchment.dotx", good[..(good.Length / 2)]);
+        yield return () => ("Templates/parchment.dotx", Repack(good, static name => name != "word/document.xml", static text => text));
+        yield return () => ("Templates/parchment.dotx", Repack(good, static _ => true, static text => text.Replace("</w:body>", "")));
+        yield return () => ("Templates/Report.parchment.dotx", "this is not a zip"u8.ToArray());
+    }
+
+    static byte[] Repack(byte[] docx, Func<string, bool> keep, Func<string, string> rewrite)
+    {
+        using var input = new ZipArchive(new MemoryStream(docx), ZipArchiveMode.Read);
+        using var stream = new MemoryStream();
+        using (var output = new ZipArchive(stream, ZipArchiveMode.Create, true))
+        {
+            foreach (var entry in input.Entries.Where(_ => keep(_.FullName)))
+            {
+                using var reader = new StreamReader(entry.Open());
+                using var writer = new StreamWriter(output.CreateEntry(entry.FullName).Open());
+                writer.Write(rewrite(reader.ReadToEnd()));
+            }
+        }
+
+        return stream.ToArray();
+    }
+
+    // One file, one error: sixty models sharing a parchment.dotx is the ordinary case.
+    [Test]
+    public async Task UnusableSharedStyleDocIsReportedOncePerFile()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class First;
+
+            [ParchmentModel]
+            public partial class Second;
+
+            [ParchmentModel]
+            public partial class Third;
+            """;
+        var setup = GeneratorDriver.CreateDriverWithFiles(
+            source,
+            new TemplateFile("First.parchment.md", Markdown("one")),
+            new TemplateFile("Second.parchment.md", Markdown("two")),
+            new TemplateFile("Other/Third.parchment.md", Markdown("three")),
+            new TemplateFile("parchment.dotx", "this is not a zip"u8.ToArray()),
+            new TemplateFile("Other/parchment.dotx", "nor is this"u8.ToArray()));
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+
+        await Assert.That(Codes(result)).IsEquivalentTo(["PARCH006", "PARCH006"]);
+        await Assert.That(result.Diagnostics.Select(_ => _.Location.GetLineSpan().Path).Distinct().Count()).IsEqualTo(2);
+    }
+
+    // An unusable style document nothing inherits is not this build's problem.
+    [Test]
+    public async Task UnusableStyleDocNothingUsesIsNotReported()
+    {
+        var result = Run(
+            new TemplateFile("Templates/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Other/parchment.dotx", "this is not a zip"u8.ToArray()));
+
+        await Assert.That(Codes(result)).IsEmpty();
     }
 
     // Docx templates carry their own styles; a dotx present in the project must not affect them.

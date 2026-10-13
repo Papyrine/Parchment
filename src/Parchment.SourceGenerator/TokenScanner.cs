@@ -3,8 +3,14 @@ public static class TokenScanner
     static readonly FluidParser parser = new();
 
     // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
-    // onto its tokens. Omitted, every token reports container 0.
-    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
+    // onto its tokens. Omitted, every token reports container 0. fallbacks runs parallel the same
+    // way and says whether each paragraph is in an mc:Fallback. valueControlSpans is the flat
+    // triple list DocxArchiveReader produces (paragraph index, start, end).
+    public static List<Token> Scan(
+        IEnumerable<string> paragraphs,
+        IReadOnlyList<int>? containers = null,
+        IReadOnlyList<bool>? fallbacks = null,
+        IReadOnlyList<int>? valueControlSpans = null)
     {
         var result = new List<Token>();
         var index = -1;
@@ -24,21 +30,53 @@ public static class TokenScanner
                 container = containers[index];
             }
 
+            var inFallback = fallbacks != null &&
+                             fallbacks[index];
+
             foreach (var site in sites)
             {
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
+                    // A sibling token is other content to a substitution: the runtime asks the
+                    // same TokenScan.IsSolo before it swaps a paragraph for a token's output.
+                    var solo = TokenScan.IsSolo(paragraph, sites.Count, site.Offset, site.Length);
+                    result.Add(
+                        ParseSubstitution(source, !solo) with
+                        {
+                            Container = container,
+                            InFallback = inFallback,
+                            InValueControl = InSpan(valueControlSpans, index, site.Offset)
+                        });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container });
+                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container, InFallback = inFallback });
                 }
             }
         }
 
         return result;
+    }
+
+    static bool InSpan(IReadOnlyList<int>? spans, int paragraph, int offset)
+    {
+        if (spans == null)
+        {
+            return false;
+        }
+
+        for (var index = 0; index + 2 < spans.Count; index += 3)
+        {
+            if (spans[index] == paragraph &&
+                offset >= spans[index + 1] &&
+                offset < spans[index + 2])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static Token ParseSubstitution(string source, bool hasOtherContent)
@@ -50,7 +88,24 @@ public static class TokenScanner
 
         var references = IdentifierVisitor.Collect(template);
         var isPlain = IsPlainMemberAccess(template);
-        return new(TokenKind.Substitution, source, references, null, hasOtherContent, isPlain);
+        var token = new Token(TokenKind.Substitution, source, references, null, hasOtherContent, isPlain);
+
+        // The docx form of the rule, where every one of these filters produces a token: this
+        // scanner only ever reads a docx template. Lockstep with the runtime's
+        // TokenScanner.RequireTokenFilterLast.
+        var statements = ((FluidTemplate) template).Statements;
+        if (statements.Count > 0 &&
+            statements[0] is OutputStatement output &&
+            TokenFilterOrder.TryFind(output.Expression, markdownFlow: false, out var tokenFilter, out var following))
+        {
+            return token with
+            {
+                TokenFilter = tokenFilter,
+                FilterAfterTokenFilter = following
+            };
+        }
+
+        return token;
     }
 
     // A "plain" substitution is `{{ a.b.c }}` — just an OutputStatement wrapping a MemberExpression,
@@ -82,24 +137,39 @@ public static class TokenScanner
                 return BuildForTag(source, expression, hasOtherContent);
 
             case "endfor":
-                return new(TokenKind.ForClose, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.ForClose, "endfor", source, expression, hasOtherContent);
 
             case "if":
                 return BuildConditional(TokenKind.IfOpen, source, expression, hasOtherContent);
 
             case "elsif":
-            case "elseif":
                 return BuildConditional(TokenKind.ElsIf, source, expression, hasOtherContent);
 
             case "else":
-                return new(TokenKind.Else, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.Else, "else", source, expression, hasOtherContent);
 
             case "endif":
-                return new(TokenKind.IfClose, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.IfClose, "endif", source, expression, hasOtherContent);
+
+            case "elseif":
+                return BuildArgumentless(TokenKind.UnknownBlock, "elseif", source, expression, hasOtherContent);
 
             default:
                 return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent);
         }
+    }
+
+    // Lockstep with the runtime TokenScanner.RequireNoArguments: `{% else if Flag %}` is not an
+    // `else`, and `elseif` is not a liquid tag at all.
+    static Token BuildArgumentless(TokenKind kind, string tag, string source, string? expression, bool hasOtherContent)
+    {
+        var problem = BlockTagArguments.Problem(tag, expression);
+        if (problem == null)
+        {
+            return new(kind, source, [], null, hasOtherContent);
+        }
+
+        return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent, Problem: problem);
     }
 
     static Token BuildForTag(string source, string? expression, bool hasOtherContent)

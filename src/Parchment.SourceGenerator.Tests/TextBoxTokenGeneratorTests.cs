@@ -71,10 +71,73 @@ public class TextBoxTokenGeneratorTests
         await Assert.That(diagnostics).IsEquivalentTo(["PARCH001"]);
     }
 
-    static List<string> Run(params Paragraph[] paragraphs)
+    const string editableModel =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Letter
+        {
+            [EditableField]
+            public string? Reference { get; set; }
+        }
+        """;
+
+    // Word stores a text box as a DrawingML shape in mc:Choice and again as VML in mc:Fallback.
+    // The fallback copy of an editable token is not a second use of the member.
+    [Test]
+    public async Task EditableTokenInBothCopiesOfATextBox_IsOneUse()
+    {
+        var diagnostics = Run(editableModel, TextBoxPair("{{ Reference }}"));
+
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
+    public async Task EditableTokenTwiceInOneCopyOfATextBox_ReportsParch017()
+    {
+        var diagnostics = Run(editableModel, TextBoxPair("{{ Reference }} and {{ Reference }}"));
+
+        await Assert.That(diagnostics).IsEquivalentTo(["PARCH017"]);
+    }
+
+    [Test]
+    public async Task EditableTokenInTheBodyAndInATextBox_ReportsParch017()
+    {
+        var diagnostics = Run(
+            editableModel,
+            new Paragraph(new Run(new Text("{{ Reference }}"))),
+            TextBoxPair("{{ Reference }}"));
+
+        await Assert.That(diagnostics).IsEquivalentTo(["PARCH017"]);
+    }
+
+    [Test]
+    public async Task EditableTokenWithAFilterInATextBox_ReportsParch016ForEachCopy()
+    {
+        var diagnostics = Run(editableModel, TextBoxPair("{{ Reference | upcase }}"));
+
+        await Assert.That(diagnostics).IsEquivalentTo(["PARCH016", "PARCH016"]);
+    }
+
+    static Paragraph TextBoxPair(string text)
+    {
+        var content = $"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>";
+        return new(
+            $"""
+             <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml"><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline><wp:extent cx="100" cy="100"/><wp:docPr id="1" name="tb"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr/><wps:txbx><w:txbxContent>{content}</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent>{content}</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>
+             """);
+    }
+
+    static List<string> Run(params Paragraph[] paragraphs) =>
+        Run(model, paragraphs);
+
+    static List<string> Run(string source, params Paragraph[] paragraphs)
     {
         var setup = GeneratorDriver.CreateDriverWithDocxes(
-            model,
+            source,
             new TemplateFile("Letter.parchment.docx", BuildDocx(paragraphs)));
         var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         return result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();

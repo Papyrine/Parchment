@@ -29,4 +29,24 @@
     // set and this holds the raw name for the diagnostic; emission skips it, so the clean report is
     // the only error rather than the first of a cascade.
     string? ExcelsiorConfigure = null,
-    bool ExcelsiorConfigureMissing = false);
+    bool ExcelsiorConfigureMissing = false,
+    // [ExcelsiorTable] on a member whose type is not a sequence of a type with columns to show —
+    // reported as PARCH034 and excluded from Excelsior-map emission.
+    bool ExcelsiorNotTabular = false,
+    // [Html]/[Markdown]/[StringSyntax] on a member that is neither a string nor a TokenValue —
+    // reported as PARCH029 and excluded from format-map emission, since the conversion reads a
+    // string and there is none to read.
+    bool FormatMarkerOnNonString = false,
+    // False when an [EditableField] collection is declared as a type that cannot hold the List<T>
+    // or T[] extraction rebuilds - reported as PARCH022 and excluded from emission.
+    bool EditableCollectionAssignable = true,
+    // Whether extraction can put a new object here when it rebuilds a collection item: the member
+    // is assignable and its type is a concrete class with a public parameterless constructor.
+    bool CanCreateValue = false,
+    // Non-null when the method exists but the generated code can neither call it nor be given a
+    // partial part of its type to call it from: the type the method was looked up on, for the
+    // diagnostic. Emission skips the call, as it does for a missing method.
+    string? ExcelsiorConfigureInaccessibleOn = null,
+    // What has to be added to the declaring type for ExcelsiorConfigure to be callable. Empty when
+    // the method is called directly.
+    EquatableArray<ConfigureForwarder> ExcelsiorConfigureForwarders = default);
