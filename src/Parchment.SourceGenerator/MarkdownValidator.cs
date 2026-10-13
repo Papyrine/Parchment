@@ -181,6 +181,7 @@ class MarkdownValidator
 
             case OutputStatement output:
                 ValidateExpression(output.Expression, "{{ ... }}");
+                WarnIfFormatMarkerIsUnreachable(output.Expression, "{{ ... }}");
                 break;
 
             case UnlessStatement unlessStatement:
@@ -479,7 +480,6 @@ class MarkdownValidator
 
             if (ShapeResolver.TryResolve(target.Shape, path, scope, out _))
             {
-                WarnIfFormatMarkerIsUnreachable(path, sourceForDiagnostic);
                 continue;
             }
 
@@ -513,9 +513,15 @@ class MarkdownValidator
     // loop variable is not addressable from there. The token renders as escaped text with its
     // markup visible, which is the sort of thing worth being told about rather than discovering in
     // a rendered document.
-    void WarnIfFormatMarkerIsUnreachable(IReadOnlyList<string> path, string sourceForDiagnostic)
+    //
+    // Only an output token that is a bare path is that mistake. A filtered token is an ordinary
+    // Fluid expression — `| html` / `| markdown` on it is the remedy PARCH024 itself names — and a
+    // path read by a condition or a loop source renders nothing.
+    void WarnIfFormatMarkerIsUnreachable(Expression expression, string sourceForDiagnostic)
     {
-        if (!scope.ContainsKey(path[0]) ||
+        var path = TryGetMemberPath(expression);
+        if (path == null ||
+            !scope.ContainsKey(path[0]) ||
             !ShapeResolver.TryResolveMember(target.Shape, path, scope, out var member) ||
             member is
             {
