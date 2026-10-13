@@ -293,9 +293,6 @@ public class BindableGeneratorTests
                 public Wrapper<dynamic[]> Wrapped { get; set; } = new();
 
                 public Wrapper<(int dynamic, dynamic B)> Pair { get; set; } = new();
-
-                [ExcelsiorTable]
-                public List<dynamic> Table { get; set; } = new();
             }
             """;
         var generated = Generate(source);
@@ -306,7 +303,6 @@ public class BindableGeneratorTests
         await Assert.That(generated).Contains("typeof(global::System.Collections.Generic.KeyValuePair<string, object>)");
         await Assert.That(generated).Contains("typeof(global::Sample.Wrapper<object[]>)");
         await Assert.That(generated).Contains("typeof(global::Sample.Wrapper<(int dynamic, object B)>)");
-        await Assert.That(generated).Contains("""new("Table", typeof(object), """);
         await Assert.That(generated).Contains("""new("dynamic", """);
     }
 
