@@ -8,8 +8,10 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
+///   PARCH003 — UnsupportedBlockTag, for the partial tags `render` and `include` only
 ///   PARCH024 — FormatMarkerThroughLoopVariable
-/// PARCH003 / PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
+///   PARCH037 — FilterAfterTokenFilter
+/// PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
 /// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
 /// replacement.
 ///
@@ -56,7 +58,52 @@ class MarkdownValidator
         IFluidTemplate template)
     {
         var validator = new MarkdownValidator(context, target, templatePath, location);
+        validator.ReportPartialTags(template);
         validator.WalkStatements(((FluidTemplate) template).Statements);
+    }
+
+    // `{% render %}` and `{% include %}` parse, and then load another template through a file
+    // provider nothing configures, so the runtime refuses them at registration. Found with a
+    // visitor of their own rather than in WalkStatement, which descends into the statements it
+    // validates references in and no others: a partial is unsupported wherever it sits.
+    void ReportPartialTags(IFluidTemplate template)
+    {
+        foreach (var tag in PartialTagCollector.Collect(template))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedBlockTag,
+                    location,
+                    templatePath,
+                    $"{{% {tag} ... %}}",
+                    Diagnostics.MarkdownPartialTag,
+                    string.Empty));
+        }
+    }
+
+    sealed class PartialTagCollector :
+        AstVisitor
+    {
+        List<string> tags = [];
+
+        public static List<string> Collect(IFluidTemplate template)
+        {
+            var collector = new PartialTagCollector();
+            collector.VisitTemplate(template);
+            return collector.tags;
+        }
+
+        protected override Statement VisitIncludeStatement(IncludeStatement includeStatement)
+        {
+            tags.Add("include");
+            return includeStatement;
+        }
+
+        protected override Statement VisitRenderStatement(RenderStatement renderStatement)
+        {
+            tags.Add("render");
+            return renderStatement;
+        }
     }
 
     void WalkStatements(IReadOnlyList<Statement> statements)
@@ -90,6 +137,30 @@ class MarkdownValidator
             case OutputStatement output:
                 ValidateExpression(output.Expression, "{{ ... }}");
                 break;
+
+            case UnlessStatement unlessStatement:
+                WalkUnless(unlessStatement);
+                break;
+
+            case CaseStatement caseStatement:
+                WalkCase(caseStatement);
+                break;
+
+            case CycleStatement cycleStatement:
+                WalkCycle(cycleStatement);
+                break;
+
+            case TableRowStatement tableRowStatement:
+                WalkTableRow(tableRowStatement);
+                break;
+
+            // `{% liquid %}` and `{% ifchanged %}` hold statements and nothing else. Everything
+            // left over has no expression and no body to walk: text, `raw`, `comment`, `break`,
+            // `continue`, and `increment` / `decrement`, whose counter is not a variable a token
+            // can read.
+            case LiquidStatement or IfChangedStatement:
+                WalkStatements(((TagStatement) statement).Statements);
+                break;
         }
     }
 
@@ -100,6 +171,20 @@ class MarkdownValidator
         // Catch any member-access references inside the source expression first (e.g. for a
         // filtered source `Customer.Lines | where: ...` we still want PARCH001 on Customer.Lines).
         ValidateExpression(forStatement.Source, sourceText);
+
+        // `limit:` and `offset:` are evaluated before the loop variable is bound, so they resolve
+        // against the enclosing scope. `offset: continue` is liquid's own keyword, which Fluid
+        // parses as a member path.
+        if (forStatement.Limit != null)
+        {
+            ValidateExpression(forStatement.Limit, sourceText);
+        }
+
+        if (forStatement.Offset != null &&
+            !forStatement.OffsetIsContinue)
+        {
+            ValidateExpression(forStatement.Offset, sourceText);
+        }
 
         string? elementFqn = null;
         var sourcePath = TryGetMemberPath(forStatement.Source);
@@ -147,10 +232,6 @@ class MarkdownValidator
         }
 
         WalkStatements(forStatement.Statements);
-        if (forStatement.Else != null)
-        {
-            WalkStatements(forStatement.Else.Statements);
-        }
 
         // Restore, so a name bound by one loop does not leak into a sibling or an enclosing scope.
         scope.Remove(loopVariable);
@@ -169,6 +250,13 @@ class MarkdownValidator
         {
             untyped.Remove("forloop");
         }
+
+        // The else branch renders when there was nothing to iterate, so neither the loop variable
+        // nor `forloop` is bound in it: it is walked in the enclosing scope.
+        if (forStatement.Else != null)
+        {
+            WalkStatements(forStatement.Else.Statements);
+        }
     }
 
     void WalkIf(IfStatement ifStatement)
@@ -185,6 +273,125 @@ class MarkdownValidator
         if (ifStatement.Else != null)
         {
             WalkStatements(ifStatement.Else.Statements);
+        }
+    }
+
+    void WalkUnless(UnlessStatement unlessStatement)
+    {
+        ValidateExpression(unlessStatement.Condition, "{% unless ... %}");
+        WalkStatements(unlessStatement.Statements);
+
+        if (unlessStatement.Else != null)
+        {
+            WalkStatements(unlessStatement.Else.Statements);
+        }
+    }
+
+    void WalkCase(CaseStatement caseStatement)
+    {
+        ValidateExpression(caseStatement.Expression, "{% case ... %}");
+
+        foreach (var when in caseStatement.Whens)
+        {
+            foreach (var option in when.Options)
+            {
+                ValidateExpression(option, "{% when ... %}");
+            }
+
+            WalkStatements(when.Statements);
+        }
+
+        if (caseStatement.Else != null)
+        {
+            WalkStatements(caseStatement.Else.Statements);
+        }
+    }
+
+    void WalkCycle(CycleStatement cycleStatement)
+    {
+        if (cycleStatement.Group != null)
+        {
+            ValidateExpression(cycleStatement.Group, "{% cycle ... %}");
+        }
+
+        foreach (var value in cycleStatement.Values)
+        {
+            ValidateExpression(value, "{% cycle ... %}");
+        }
+    }
+
+    // A loop like `for`, with three differences: no else branch, `tablerowloop` in place of
+    // `forloop`, and arguments that are validated.
+    void WalkTableRow(TableRowStatement tableRowStatement)
+    {
+        var loopVariable = tableRowStatement.Identifier;
+        var sourceText = $"{{% tablerow {loopVariable} in ... %}}";
+
+        // The source and the arguments are evaluated before the first cell, so they validate
+        // against the enclosing scope: `limit: row.Count` does not see the row.
+        ValidateExpression(tableRowStatement.Source, sourceText);
+        ValidateArgument(tableRowStatement.Limit, sourceText);
+        ValidateArgument(tableRowStatement.Offset, sourceText);
+        ValidateArgument(tableRowStatement.Cols, sourceText);
+
+        string? elementFqn = null;
+        var sourcePath = TryGetMemberPath(tableRowStatement.Source);
+        var sourceIsUntyped = sourcePath != null && untyped.Contains(sourcePath[0]);
+        if (sourcePath != null &&
+            !sourceIsUntyped &&
+            ShapeResolver.TryResolve(target.Shape, sourcePath, scope, out var sourceFqn) &&
+            !ShapeResolver.TryGetElementType(target.Shape, sourceFqn, out elementFqn))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.LoopSourceNotEnumerable,
+                    location,
+                    templatePath,
+                    sourceText));
+        }
+
+        var hadPrior = scope.TryGetValue(loopVariable, out var prior);
+        var hadUntyped = untyped.Contains(loopVariable);
+        var addedTableRowLoop = untyped.Add("tablerowloop");
+
+        if (sourceIsUntyped ||
+            sourcePath == null)
+        {
+            scope.Remove(loopVariable);
+            untyped.Add(loopVariable);
+        }
+        else
+        {
+            // The root type when the source did not resolve, for the reason WalkFor gives.
+            untyped.Remove(loopVariable);
+            scope[loopVariable] = elementFqn ?? target.Shape.RootTypeFullyQualifiedName;
+        }
+
+        WalkStatements(tableRowStatement.Statements);
+
+        scope.Remove(loopVariable);
+        untyped.Remove(loopVariable);
+        if (hadPrior)
+        {
+            scope[loopVariable] = prior!;
+        }
+
+        if (hadUntyped)
+        {
+            untyped.Add(loopVariable);
+        }
+
+        if (addedTableRowLoop)
+        {
+            untyped.Remove("tablerowloop");
+        }
+    }
+
+    void ValidateArgument(Expression? argument, string sourceForDiagnostic)
+    {
+        if (argument != null)
+        {
+            ValidateExpression(argument, sourceForDiagnostic);
         }
     }
 
@@ -207,6 +414,8 @@ class MarkdownValidator
 
     void ValidateExpression(Expression expression, string sourceForDiagnostic)
     {
+        ValidateFilterOrder(expression);
+
         var paths = ExpressionPathCollector.Collect(expression);
         foreach (var path in paths)
         {
@@ -222,14 +431,28 @@ class MarkdownValidator
             }
 
             context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.MissingMember,
-                    location,
-                    templatePath,
-                    sourceForDiagnostic,
-                    string.Join('.', path),
-                    target.ModelDisplayName));
+                Diagnostics.UnknownMember(target, templatePath, location, sourceForDiagnostic, path, scope));
         }
+    }
+
+    // `html` is the one filter that produces a token in this flow: it parks its value and writes a
+    // placeholder, which a filter after it would be handed in place of the value. Lockstep with
+    // MarkdownReferenceValidator.VisitFilterExpression. A chain is only ever the whole of an output
+    // or an assign value, so the expressions handed to ValidateExpression are everywhere one can be.
+    void ValidateFilterOrder(Expression expression)
+    {
+        if (!TokenFilterOrder.TryFind(expression, markdownFlow: true, out var tokenFilter, out var following))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FilterAfterTokenFilter,
+                location,
+                templatePath,
+                TokenFilterOrder.Describe(expression),
+                TokenFilterOrder.Message(tokenFilter, following)));
     }
 
     // A format marker on a member reached through a loop variable cannot be honoured: the rewrite

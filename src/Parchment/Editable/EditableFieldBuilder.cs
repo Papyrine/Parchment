@@ -188,14 +188,14 @@ static class EditableFieldBuilder
     // Round-trippable ISO 8601 defaults for the text-backed temporal kinds. DateTimeOffset keeps
     // its offset (zzz); both are re-parsed verbatim by EditableFieldReader. Seconds precision by
     // default — a caller needing sub-seconds sets DateFormat (e.g. "o").
-    const string dateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
-    const string timeFormat = "HH:mm:ss";
+    public const string DateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
+    public const string TimeFormat = "HH:mm:ss";
 
     static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture)
     {
         if (value is DateTimeOffset offset)
         {
-            return offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture);
+            return offset.ToString(entry.DateFormat ?? DateTimeOffsetFormat, culture);
         }
 
         return null;
@@ -205,7 +205,7 @@ static class EditableFieldBuilder
     {
         if (value is Time time)
         {
-            return time.ToString(entry.DateFormat ?? timeFormat, culture);
+            return time.ToString(entry.DateFormat ?? TimeFormat, culture);
         }
 
         return null;

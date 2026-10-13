@@ -675,4 +675,100 @@ public class EditableFieldGeneratorTests
             "{% endfor %}");
         await Assert.That(ParchIds(result)).DoesNotContain("PARCH027");
     }
+
+    // An item member reached through the loop variable is a control like a root member: the
+    // runtime builds it from the member, so a filter would be dropped.
+    [Test]
+    public async Task EditableCollection_ItemMemberWithFilter_ReportsParch016()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount | plus: 1 }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH016"]);
+    }
+
+    [Test]
+    public async Task EditableCollection_ItemMemberBoundTwice_ReportsParch017()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "again: {{ line.Note }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH017"]);
+    }
+
+    // A loop nested in the repeating section renders read-only, so a filter or a repeat there is
+    // applied and only the read-only warning is due.
+    [Test]
+    public async Task EditableCollection_ItemMemberInNestedLoop_ReportsOnlyParch018()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }}",
+            "{% for other in Lines %}",
+            "{{ line.Note | upcase }}",
+            "{% endfor %}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH018"]);
+    }
+
+    // The collection is not a field itself — the runtime keeps it out of the scalar map — so its
+    // own token is an ordinary substitution.
+    [Test]
+    public async Task EditableCollection_OwnToken_NoDiagnostics()
+    {
+        var result = GeneratorDriver.Run(
+            collectionModel,
+            "{{ Lines | size }} of {{ Lines | size }}",
+            "{% for line in Lines %}",
+            "{{ line.Note }} {{ line.Amount }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEmpty();
+    }
+
+    // Inside any loop a root member renders read-only, whatever the loop iterates: a filter is
+    // applied and the body control stays the only one.
+    [Test]
+    [Arguments("Lines")]
+    [Arguments("Pages")]
+    public async Task RootTokenInsideLoop_WithFilterBesideBodyControl_ReportsOnlyParch018(string collection)
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public string PurchaseOrder { get; set; } = "";
+
+                public List<string> Pages { get; set; } = new();
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{{ PurchaseOrder }}",
+            $"{{% for item in {collection} %}}",
+            "{{ PurchaseOrder | upcase }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH018"]);
+    }
 }
