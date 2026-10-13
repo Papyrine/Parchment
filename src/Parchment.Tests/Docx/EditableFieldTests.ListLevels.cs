@@ -68,7 +68,7 @@ public partial class EditableFieldTests
         foreach (var lines in ListLineSequences())
         {
             var html = ExtractListLinesFrom(rendered, lines);
-            var label = string.Join(",", lines.Select(_ => Describe(_)));
+            var label = string.Join(",", lines.Select(DescribeLine));
 
             // Throws on anything that is not well-formed.
             var root = XElement.Parse($"<root>{html}</root>");
@@ -109,7 +109,7 @@ public partial class EditableFieldTests
         foreach (var lines in sequences)
         {
             var html = await ExtractListLines(lines);
-            var label = string.Join(",", lines.Select(_ => Describe(_)));
+            var label = string.Join(",", lines.Select(DescribeLine));
 
             using var again = await RenderModel(
                 "{{ Body }}",
@@ -176,7 +176,7 @@ public partial class EditableFieldTests
         }
     }
 
-    static string Describe(ListLine? line, int index)
+    static string DescribeLine(ListLine? line, int index)
     {
         if (line == null)
         {
