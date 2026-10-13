@@ -245,6 +245,46 @@ public class MarkdownValidatorTests
         await Assert.That(diagnostic.GetMessage()).DoesNotContain("endfor");
     }
 
+    // Runtime registration rejects the tag: Fluid does not run the statements inside it.
+    [Test]
+    [Arguments("{% liquid echo Lines.size %}")]
+    [Arguments("{% liquid echo Missing %}")]
+    [Arguments("[{%- liquid echo Lines.size -%}]")]
+    [Arguments("{% liquid %}")]
+    [Arguments("{% liquid\nassign n = Lines.size\necho n\n%}")]
+    [Arguments("{% liquid\r\nfor line in Lines\r\necho line.Quantity\r\nendfor\r\n%}")]
+    [Arguments("{% for line in Lines %}{% liquid echo line.Quantity %}{% endfor %}")]
+    [Arguments("{% for line in Lines %}{% else %}{% liquid echo Lines.size %}{% endfor %}")]
+    [Arguments("{% unless Lines.size > 1 %}{% liquid echo Lines.size %}{% endunless %}")]
+    [Arguments("{% case Lines.size %}{% when 1 %}{% liquid echo Lines.size %}{% endcase %}")]
+    [Arguments("{% capture text %}{% liquid echo Lines.size %}{% endcapture %}")]
+    public async Task LiquidTagIsUnsupported(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH003");
+        await Assert.That(diagnostic.GetMessage()).Contains("unsupported block tag '{% liquid ... %}'");
+        await Assert.That(diagnostic.GetMessage()).DoesNotContain("endfor");
+    }
+
+    [Test]
+    [Arguments("{% raw %}{% liquid echo Missing %}{% endraw %}")]
+    [Arguments("{% comment %}{% liquid echo Missing %}{% endcomment %}")]
+    [Arguments("{% echo Lines.size %}")]
+    public async Task LiquidTagAsTextIsAccepted(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+    }
+
+    [Test]
+    public async Task EchoTagIsValidated()
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, "{% echo Missing %}");
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH001");
+    }
+
     [Test]
     public async Task BadLoopSourceCascadeIsBounded()
     {

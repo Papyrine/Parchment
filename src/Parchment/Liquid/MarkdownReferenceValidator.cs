@@ -194,6 +194,20 @@ class MarkdownReferenceValidator :
         return captureStatement;
     }
 
+    // What MarkdownFluidParser leaves where a `{% liquid %}` tag stood. Fluid does not run the
+    // statements inside one, so there is nothing to validate and nothing that would render.
+    public override Statement VisitOtherStatement(Statement statement)
+    {
+        if (statement is UnsupportedLiquidTagStatement)
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                "Unsupported tag 'liquid'. The statements inside '{% liquid %}' do not run, and nothing after the tag renders. Write each statement as its own tag: '{% assign ... %}', '{% echo ... %}'.");
+        }
+
+        return base.VisitOtherStatement(statement);
+    }
+
     // `html` is the one filter that produces a token in this flow: it parks its value and writes a
     // placeholder, which a filter after it would be handed in place of the value. The scan of a
     // style source's headers and footers applies the docx form of the rule — see TokenScanner.

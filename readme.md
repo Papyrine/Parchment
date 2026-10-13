@@ -1962,7 +1962,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1030-L1038' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1069-L1077' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -2336,7 +2336,7 @@ Also raised for a supported tag written in a form liquid does not have. `else`, 
 {% foobar %}
 ```
 
-A markdown template accepts liquid's other tags (`assign`, `capture`, `unless`, `case` and so on), with one exception: `{% render %}` and `{% include %}` load a partial from a file, and a template is a single file with nowhere to load one from. Both are reported here, and rejected by `RegisterMarkdownTemplate`.
+A markdown template accepts liquid's other tags (`assign`, `capture`, `unless`, `case`, `echo` and so on), with two exceptions. `{% render %}` and `{% include %}` load a partial from a file, and a template is a single file with nowhere to load one from. The statements inside `{% liquid %}` do not run; write each statement as its own tag. All three are reported here, and rejected by `RegisterMarkdownTemplate`.
 
 
 ### `PARCH004` — no template found for model

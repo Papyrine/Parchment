@@ -8,7 +8,8 @@
 /// Diagnostics emitted:
 ///   PARCH001 — MissingMember
 ///   PARCH002 — LoopSourceNotEnumerable
-///   PARCH003 — UnsupportedBlockTag, for the partial tags `render` and `include` only
+///   PARCH003 — UnsupportedBlockTag, for the partial tags `render` and `include` and the
+///     `liquid` tag only
 ///   PARCH024 — FormatMarkerThroughLoopVariable
 ///   PARCH037 — FilterAfterTokenFilter
 /// PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
@@ -59,6 +60,7 @@ class MarkdownValidator
     {
         var validator = new MarkdownValidator(context, target, templatePath, location);
         validator.ReportPartialTags(template);
+        validator.ReportLiquidTags(template);
         validator.WalkStatements(((FluidTemplate) template).Statements);
     }
 
@@ -77,6 +79,26 @@ class MarkdownValidator
                     templatePath,
                     $"{{% {tag} ... %}}",
                     Diagnostics.MarkdownPartialTag,
+                    string.Empty));
+        }
+    }
+
+    // Fluid does not run the statements inside `{% liquid %}`, so the runtime refuses the tag at
+    // registration. MarkdownFluidParser leaves a statement where one stood; it is counted with a
+    // visitor of its own rather than in WalkStatement, which descends into the statements it
+    // validates references in and no others, and the tag is unsupported wherever it sits.
+    void ReportLiquidTags(IFluidTemplate template)
+    {
+        var count = LiquidTagCounter.Count(template);
+        for (var i = 0; i < count; i++)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedBlockTag,
+                    location,
+                    templatePath,
+                    "{% liquid ... %}",
+                    Diagnostics.MarkdownLiquidTag,
                     string.Empty));
         }
     }
@@ -103,6 +125,29 @@ class MarkdownValidator
         {
             tags.Add("render");
             return renderStatement;
+        }
+    }
+
+    sealed class LiquidTagCounter :
+        AstVisitor
+    {
+        int count;
+
+        public static int Count(IFluidTemplate template)
+        {
+            var counter = new LiquidTagCounter();
+            counter.VisitTemplate(template);
+            return counter.count;
+        }
+
+        public override Statement VisitOtherStatement(Statement statement)
+        {
+            if (statement is UnsupportedLiquidTagStatement)
+            {
+                count++;
+            }
+
+            return base.VisitOtherStatement(statement);
         }
     }
 

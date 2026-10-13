@@ -1238,7 +1238,7 @@ public sealed class ParchmentTemplateGenerator :
         EmitRegistration(context, target, GenerateMarkdownRegistration(target, matched, style));
     }
 
-    static readonly FluidParser markdownParser = new();
+    static readonly FluidParser markdownParser = new MarkdownFluidParser();
 
     static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source, string suffix = "ParchmentModel")
     {

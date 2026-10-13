@@ -52,10 +52,13 @@
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch002--loop-source-is-not-enumerable");
 
     // The reason is an argument because the two flows differ in it: a docx template supports a
-    // fixed list of block tags, a markdown one everything liquid parses except the partial tags.
+    // fixed list of block tags, a markdown one everything liquid parses except the partial tags
+    // and the liquid tag.
     public const string DocxBlockTags = "supported: for, endfor, if, elsif, else, endif";
 
     public const string MarkdownPartialTag = "a markdown template is a single file with nothing to load a partial from";
+
+    public const string MarkdownLiquidTag = "the statements inside it do not run; write each one as its own tag";
 
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
