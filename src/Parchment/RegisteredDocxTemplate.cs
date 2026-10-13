@@ -55,42 +55,52 @@ class RegisteredDocxTemplate(
             // need it, but it changes only across registrations, not within a render.
             var styles = new Lazy<StyleSet>(() => StyleSet.Read(mainPart));
 
-            foreach (var part in parts)
+            try
             {
-                cancel.ThrowIfCancellationRequested();
-                if (!partRoots.TryGetValue(part.PartUri, out var target))
+                foreach (var part in parts)
                 {
-                    continue;
+                    cancel.ThrowIfCancellationRequested();
+                    if (!partRoots.TryGetValue(part.PartUri, out var target))
+                    {
+                        continue;
+                    }
+
+                    await RenderPartAsync(mainPart, part, target.part, target.root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles).ConfigureAwait(false);
                 }
 
-                await RenderPartAsync(mainPart, part, target.part, target.root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles).ConfigureAwait(false);
-            }
-
-            foreach (var (_, root) in partRoots.Values)
-            {
-                Anchors.StripAll(root);
-                // Once every substitution in the part has run, so splitting a w:t can no longer
-                // disturb the offsets the substitutions were driven by.
-                LineBreaks.Apply(root);
-                // A loop copies a comment's anchors with its body, and a comment has one range.
-                if (templateIds.HoldsComments)
+                foreach (var (_, root) in partRoots.Values)
                 {
-                    CommentAnchors.KeepFirst(root);
+                    Anchors.StripAll(root);
+                    // Once every substitution in the part has run, so splitting a w:t can no longer
+                    // disturb the offsets the substitutions were driven by.
+                    LineBreaks.Apply(root);
+                    // A loop copies a comment's anchors with its body, and a comment has one range.
+                    if (templateIds.HoldsComments)
+                    {
+                        CommentAnchors.KeepFirst(root);
+                    }
+
+                    // A removed branch, an empty loop or a structural token can take a cell's only
+                    // paragraph with it, or leave a nested table as the cell's last block.
+                    TableCells.EnsureFinalParagraph(root);
                 }
 
-                // A removed branch, an empty loop or a structural token can take a cell's only
-                // paragraph with it, or leave a nested table as the cell's last block.
-                TableCells.EnsureFinalParagraph(root);
+                // After every part has rendered and been cleaned up, the notes parts included: a loop
+                // repeats a footnote reference and an unchosen branch removes one, and the copy of a
+                // note made here has to be of its final content. A body with no scope tree was never
+                // touched, so its references still pair with their notes.
+                if (!noteReferences.IsEmpty &&
+                    partRoots.TryGetValue(mainPartUri, out var body))
+                {
+                    noteReferences.Apply(mainPart, body.root);
+                }
             }
-
-            // After every part has rendered and been cleaned up, the notes parts included: a loop
-            // repeats a footnote reference and an unchosen branch removes one, and the copy of a
-            // note made here has to be of its final content. A body with no scope tree was never
-            // touched, so its references still pair with their notes.
-            if (!noteReferences.IsEmpty &&
-                partRoots.TryGetValue(mainPartUri, out var body))
+            catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
             {
-                noteReferences.Apply(mainPart, body.root);
+                // The last resort: a failure with a token or a tag to name was wrapped where it
+                // happened, and anything else inside a part by RenderPartAsync. Document properties
+                // are applied outside it - they are the caller's argument, not the template's.
+                throw RenderFailure.Wrap(exception, Name);
             }
 
             // compatibilityMode=15 is baked into the registration snapshot (see
@@ -138,11 +148,18 @@ class RegisteredDocxTemplate(
             numberingState,
             styles,
             imagePolicies);
-        await runner.RunAsync(part.Nodes).ConfigureAwait(false);
-        runner.ApplyStructural();
-        runner.SettleSectionBreaks();
-        runner.SeparateTables();
-        runner.ApplySectionBreaks(root);
-        relationships.Complete();
+        try
+        {
+            await runner.RunAsync(part.Nodes).ConfigureAwait(false);
+            runner.ApplyStructural();
+            runner.SettleSectionBreaks();
+            runner.SeparateTables();
+            runner.ApplySectionBreaks(root);
+            relationships.Complete();
+        }
+        catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
+        {
+            throw RenderFailure.Wrap(exception, Name, part.PartUri);
+        }
     }
 }

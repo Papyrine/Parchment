@@ -56,8 +56,15 @@ static class ExcelsiorTableBridge
     static BuilderInvoker CreateInvoker(Type elementType)
     {
         var method = genericBuildTable.MakeGenericMethod(elementType);
+        // DoNotWrapExceptions: what a Configure hook or a row getter throws reaches the render as
+        // itself rather than inside a TargetInvocationException.
         return (data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure) =>
-            (Table) method.Invoke(null, [data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure])!;
+            (Table) method.Invoke(
+                null,
+                BindingFlags.DoNotWrapExceptions,
+                null,
+                [data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure],
+                null)!;
     }
 
     delegate Table BuilderInvoker(object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure);
