@@ -1,8 +1,20 @@
 static class DocxArchiveReader
 {
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    static readonly XName paragraphName = w + "p";
-    static readonly XName textName = w + "t";
+    static readonly XNamespace strict = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    static readonly XName transitionalParagraph = w + "p";
+    static readonly XName transitionalText = w + "t";
+    static readonly XName strictParagraph = strict + "p";
+    static readonly XName strictText = strict + "t";
+    static readonly XName relationshipName = XName.Get("Relationship", "http://schemas.openxmlformats.org/package/2006/relationships");
+    static readonly Uri packageRoot = new("http://package/");
+
+    const string transitionalRelationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
+    const string strictRelationships = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
+
+    // The parts the runtime scans for tokens besides the body (DocxCloner.EnumerateParts), by the
+    // last segment of their relationship type.
+    static readonly string[] tokenPartTypes = ["header", "footer", "footnotes", "endnotes"];
     static readonly XName runName = w + "r";
     static readonly XName fieldCharName = w + "fldChar";
     static readonly XName fieldCharTypeName = w + "fldCharType";
@@ -39,31 +51,86 @@ static class DocxArchiveReader
         var valueControlSpans = new List<int>();
         var containerCount = 0;
         var hasRemovePersonalInformation = false;
-        var hasMainPart = false;
         var builder = new StringBuilder();
         using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
-        foreach (var entry in archive.Entries)
+
+        // Parts are found the way the package defines them, as the runtime does: the package
+        // relationships name the main part, and its own relationships name the rest. A part's
+        // file name is a convention only, so word/document2.xml is as valid as word/document.xml.
+        var mainPath = MainPartPath(archive);
+        if (mainPath == null)
         {
-            if (IsSettingsPart(entry.FullName))
+            throw new InvalidDataException("The file is not a Word package: it has no main document part.");
+        }
+
+        var mainEntry = FindEntry(archive, mainPath);
+        if (mainEntry == null)
+        {
+            throw new InvalidDataException($"The main document part '{mainPath}' is missing from the package.");
+        }
+
+        var relationships = ReadRelationships(archive, mainPath);
+        ReadPart(mainEntry, true);
+
+        // The order of DocxCloner.EnumerateParts: body, headers, footers, footnotes, endnotes.
+        var read = new List<string> {mainPath};
+        foreach (var type in tokenPartTypes)
+        {
+            foreach (var relationship in relationships)
             {
-                using var stream = entry.Open();
-                var settings = XDocument.Load(stream);
-                hasRemovePersonalInformation = settings.Root?.Element(w + "removePersonalInformation") != null;
+                if (relationship.Type != type ||
+                    Contains(read, relationship.Path))
+                {
+                    continue;
+                }
+
+                read.Add(relationship.Path);
+                if (FindEntry(archive, relationship.Path) is { } entry)
+                {
+                    ReadPart(entry, false);
+                }
+            }
+        }
+
+        foreach (var relationship in relationships)
+        {
+            if (relationship.Type != "settings" ||
+                FindEntry(archive, relationship.Path) is not { } entry)
+            {
                 continue;
             }
 
-            if (!LooksLikeWordPart(entry.FullName))
-            {
-                continue;
-            }
+            using var stream = entry.Open();
+            var root = XDocument.Load(stream).Root;
+            hasRemovePersonalInformation = root?.Element(root.Name.Namespace + "removePersonalInformation") != null;
+            break;
+        }
 
-            // Zip entry order is not guaranteed body-first, so track the body part explicitly —
-            // editable-field validation is body-scoped.
-            var isBody = IsBodyPart(entry.FullName);
-            hasMainPart |= isBody;
+        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, valueControlSpans, hasRemovePersonalInformation, true);
 
+        void ReadPart(ZipArchiveEntry entry, bool isBody)
+        {
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
+            var root = doc.Root!;
+            var isStrict = root.Name.Namespace == strict;
+            if (isBody &&
+                (root.Name.LocalName != "document" ||
+                 (!isStrict && root.Name.Namespace != w)))
+            {
+                throw new InvalidDataException($"The main part '{entry.FullName}' is not a Word document: its root element is '{root.Name.LocalName}' in namespace '{root.Name.NamespaceName}'.");
+            }
+
+            // A part is written in one namespace throughout: transitional, or Strict Open XML,
+            // which the runtime's SDK reads as the same elements. The form field, content control
+            // and text box rules below look for the transitional names only.
+            var paragraphName = transitionalParagraph;
+            var textName = transitionalText;
+            if (isStrict)
+            {
+                paragraphName = strictParagraph;
+                textName = strictText;
+            }
 
             // Numbered in order of first appearance and never reset between parts, so the ids are
             // stable for a given document and a header paragraph never shares one with the body.
@@ -93,7 +160,7 @@ static class DocxArchiveReader
 
                 builder.Clear();
                 var spans = isBody ? valueControlSpans : null;
-                AppendOwnText(paragraph, builder, fieldRuns, spans, bodyParagraphs.Count, InsideValueControl(paragraph));
+                AppendOwnText(paragraph, builder, paragraphName, textName, fieldRuns, spans, bodyParagraphs.Count, InsideValueControl(paragraph));
 
                 if (builder.Length > 0)
                 {
@@ -108,8 +175,117 @@ static class DocxArchiveReader
                 }
             }
         }
+    }
 
-        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, valueControlSpans, hasRemovePersonalInformation, hasMainPart);
+    /// <summary>
+    /// Whether the package names a main document part that is there. A file that does not is not
+    /// a Word document or template at all, which a caller may want to say in its own words.
+    /// </summary>
+    public static bool HasMainPart(byte[] content)
+    {
+        using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
+        return MainPartPath(archive) is { } mainPath &&
+               FindEntry(archive, mainPath) != null;
+    }
+
+    static string? MainPartPath(ZipArchive archive)
+    {
+        foreach (var relationship in ReadRelationships(archive, ""))
+        {
+            if (relationship.Type == "officeDocument")
+            {
+                return relationship.Path;
+            }
+        }
+
+        return null;
+    }
+
+    // The internal relationships of a part ("" for the package itself), each reduced to the last
+    // segment of its type and the zip entry name its target resolves to.
+    static List<(string Type, string Path)> ReadRelationships(ZipArchive archive, string sourcePath)
+    {
+        var relationships = new List<(string Type, string Path)>();
+        var slash = sourcePath.LastIndexOf('/') + 1;
+        var entry = FindEntry(archive, $"{sourcePath.Substring(0, slash)}_rels/{sourcePath.Substring(slash)}.rels");
+        if (entry == null)
+        {
+            return relationships;
+        }
+
+        using var stream = entry.Open();
+        var root = XDocument.Load(stream).Root;
+        if (root == null)
+        {
+            return relationships;
+        }
+
+        // Targets are relative to the source part, may climb with "..", and may be rooted.
+        var baseUri = new Uri(packageRoot, sourcePath);
+        foreach (var element in root.Elements(relationshipName))
+        {
+            var target = element.Attribute("Target")?.Value;
+            var type = TypeSuffix(element.Attribute("Type")?.Value);
+            if (type == null ||
+                target == null ||
+                string.Equals(element.Attribute("TargetMode")?.Value, "External", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate(baseUri, target, out var resolved))
+            {
+                continue;
+            }
+
+            relationships.Add((type, Uri.UnescapeDataString(resolved.AbsolutePath).TrimStart('/')));
+        }
+
+        return relationships;
+    }
+
+    // Transitional and Strict packages name the same relationship under different prefixes.
+    static string? TypeSuffix(string? type)
+    {
+        if (type == null)
+        {
+            return null;
+        }
+
+        if (type.StartsWith(transitionalRelationships, StringComparison.Ordinal))
+        {
+            return type.Substring(transitionalRelationships.Length);
+        }
+
+        if (type.StartsWith(strictRelationships, StringComparison.Ordinal))
+        {
+            return type.Substring(strictRelationships.Length);
+        }
+
+        return null;
+    }
+
+    // Part names compare case-insensitively, which ZipArchive.GetEntry does not.
+    static ZipArchiveEntry? FindEntry(ZipArchive archive, string path)
+    {
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.FullName.Equals(path, StringComparison.OrdinalIgnoreCase))
+            {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    static bool Contains(List<string> paths, string path)
+    {
+        foreach (var item in paths)
+        {
+            if (item.Equals(path, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The VML copy of a text box, which mirrors the DrawingML copy in the mc:Choice beside it.
@@ -150,7 +326,7 @@ static class DocxArchiveReader
     // spans collects, for the body part, the stretches of that text sitting inside a content
     // control that holds a single typed value: an [EditableField] token there would render as a
     // control nested in it, which Word refuses to open (PARCH016).
-    static void AppendOwnText(XElement element, StringBuilder builder, Dictionary<XElement, string?>? fieldRuns, List<int>? spans, int paragraphIndex, bool insideValueControl)
+    static void AppendOwnText(XElement element, StringBuilder builder, XName paragraphName, XName textName, Dictionary<XElement, string?>? fieldRuns, List<int>? spans, int paragraphIndex, bool insideValueControl)
     {
         foreach (var child in element.Elements())
         {
@@ -178,7 +354,7 @@ static class DocxArchiveReader
 
             if (child.Name != paragraphName)
             {
-                AppendOwnText(child, builder, fieldRuns, spans, paragraphIndex, insideValueControl || IsValueControl(child));
+                AppendOwnText(child, builder, paragraphName, textName, fieldRuns, spans, paragraphIndex, insideValueControl || IsValueControl(child));
             }
         }
     }
@@ -360,17 +536,4 @@ static class DocxArchiveReader
 
         return -1;
     }
-
-    static bool IsBodyPart(string path) =>
-        path.StartsWith("word/document.xml", StringComparison.OrdinalIgnoreCase);
-
-    static bool LooksLikeWordPart(string path) =>
-        path.StartsWith("word/document.xml", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("word/header", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("word/footer", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("word/footnotes.xml", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("word/endnotes.xml", StringComparison.OrdinalIgnoreCase);
-
-    static bool IsSettingsPart(string path) =>
-        path.Equals("word/settings.xml", StringComparison.OrdinalIgnoreCase);
 }

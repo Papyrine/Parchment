@@ -2389,7 +2389,7 @@ prefix {% for line in Lines %}
 
 ### `PARCH006` — template file unreadable
 
-The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error.
+The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file, or a zip that is not a Word package. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error.
 
 A markdown template's [style document](#how-a-style-document-is-found) is held to the same standard as a docx template: it must be a readable Word package with a main document part. One that is not is reported at the `.dotx` file, once, however many models inherit it.
 

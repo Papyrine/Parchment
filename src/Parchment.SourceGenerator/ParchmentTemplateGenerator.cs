@@ -480,11 +480,13 @@ public sealed class ParchmentTemplateGenerator :
             // style source fails the build instead of the first render. Its paragraphs are not
             // kept: only the package's shape is checked here.
             var bytes = ReadBytes(text.Path);
-            if (!DocxArchiveReader.Read(bytes).HasMainPart)
+            if (!DocxArchiveReader.HasMainPart(bytes))
             {
                 return new(text.Path, string.Empty, "it has no main document part (word/document.xml), so it is not a Word document or template");
             }
 
+            // Read as a docx template is, so a package the runtime could not open fails here too.
+            DocxArchiveReader.Read(bytes);
             return new(text.Path, Convert.ToBase64String(bytes), null);
         }
         catch (Exception exception)
