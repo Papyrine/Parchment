@@ -4,6 +4,13 @@
 /// </summary>
 static class ShapeResolver
 {
+    /// <summary>
+    /// What <see cref="TryResolve"/> reports for a path that is valid as far as it can be checked
+    /// but passes an index the shape cannot see through — a dictionary key, a member picked by
+    /// name at render. No type is named by an empty string.
+    /// </summary>
+    public const string Untyped = "";
+
     public static bool TryResolve(
         ModelShape shape,
         IReadOnlyList<string> segments,
@@ -32,6 +39,26 @@ static class ShapeResolver
         for (var i = start; i < segments.Count; i++)
         {
             var entry = FindType(shape, currentFqn);
+
+            // Lockstep with the runtime's LiquidMembers.TryResolveIndex: only an array says what
+            // an index into it yields. Anything else leaves the rest of the path unknown, which
+            // is not the same as wrong.
+            if (segments[i] == SegmentNames.Index)
+            {
+                if (entry is not
+                    {
+                        Liquid: LiquidKind.Array,
+                        ElementTypeFullyQualifiedName: not null
+                    })
+                {
+                    typeFqn = Untyped;
+                    return true;
+                }
+
+                currentFqn = entry.ElementTypeFullyQualifiedName;
+                continue;
+            }
+
             if (entry == null)
             {
                 return false;
@@ -75,10 +102,15 @@ static class ShapeResolver
 
     // Lockstep with the runtime's LiquidMembers.TryResolve: Fluid answers member access on these
     // values itself, with `size` on all three and `first` / `last` on a string or an array, and
-    // compares the name ordinally. None of the type's CLR members bind.
+    // compares the name ordinally. None of the type's CLR members bind. An enum resolves nothing.
     static bool TryResolveLiquidMember(TypeEntry entry, string name, [NotNullWhen(true)] out string? typeFqn)
     {
         typeFqn = null;
+        if (entry.Liquid == LiquidKind.Enum)
+        {
+            return false;
+        }
+
         if (name == "size")
         {
             typeFqn = "int";
@@ -102,6 +134,40 @@ static class ShapeResolver
         return true;
     }
 
+    /// <summary>
+    /// Whether a path <see cref="TryResolve"/> turned down stopped at an enum, and which part of
+    /// the path that enum is. Asked only to word the diagnostic, so it resolves again instead of
+    /// widening what every successful resolve returns.
+    /// </summary>
+    public static bool StopsAtEnum(
+        ModelShape shape,
+        IReadOnlyList<string> segments,
+        IReadOnlyDictionary<string, string> scope,
+        [NotNullWhen(true)] out string? enumPath)
+    {
+        enumPath = null;
+
+        // The longest part of the path that resolves is where the walk stopped.
+        for (var length = segments.Count - 1; length > 0; length--)
+        {
+            var resolved = segments.Take(length).ToList();
+            if (!TryResolve(shape, resolved, scope, out var typeFqn))
+            {
+                continue;
+            }
+
+            if (FindType(shape, typeFqn)?.Liquid != LiquidKind.Enum)
+            {
+                return false;
+            }
+
+            enumPath = string.Join('.', resolved);
+            return true;
+        }
+
+        return false;
+    }
+
     public static bool TryGetElementType(ModelShape shape, string typeFqn, [NotNullWhen(true)] out string? elementFqn)
     {
         elementFqn = FindType(shape, typeFqn)?.ElementTypeFullyQualifiedName;
@@ -109,34 +175,25 @@ static class ShapeResolver
     }
 
     /// <summary>
-    /// Returns true when the given path (walked from the root model, honoring loop scope) ends at
-    /// a member marked with <c>[ExcelsiorTable]</c>. Used by the generator to gate PARCH007 /
-    /// PARCH008 diagnostics without mutating the resolver's primary return signature.
+    /// Resolves a path to the member the runtime's attribute maps would hold it under: walked from
+    /// the model root through instance members only. Gates the rules that belong to a member the
+    /// maps dispatch — PARCH007 / PARCH008 / PARCH010.
     /// </summary>
-    public static bool IsExcelsiorTableMember(
+    /// <remarks>
+    /// Lockstep with the runtime map walkers (<c>ExcelsiorTableMap</c>, <c>FormatMap</c>) and with
+    /// <c>AccessorEmission.WalkForMaps</c>: none of them enters a static member, and none can
+    /// address a loop item. A token that reaches an annotated member either way is an ordinary
+    /// value the runtime hands to Fluid, so the caller rules a loop variable out first and this
+    /// refuses a static segment.
+    /// </remarks>
+    public static bool TryResolveMappedMember(
         ModelShape shape,
         IReadOnlyList<string> segments,
-        IReadOnlyDictionary<string, string> scope)
+        [NotNullWhen(true)] out MemberEntry? member)
     {
-        if (segments.Count == 0)
-        {
-            return false;
-        }
-
-        string currentFqn;
-        int start;
-        if (scope.TryGetValue(segments[0], out var scoped))
-        {
-            currentFqn = scoped;
-            start = 1;
-        }
-        else
-        {
-            currentFqn = shape.RootTypeFullyQualifiedName;
-            start = 0;
-        }
-
-        for (var i = start; i < segments.Count; i++)
+        member = null;
+        var currentFqn = shape.RootTypeFullyQualifiedName;
+        for (var i = 0; i < segments.Count; i++)
         {
             var entry = FindType(shape, currentFqn);
             if (entry == null)
@@ -145,23 +202,25 @@ static class ShapeResolver
             }
 
             MemberEntry? matched = null;
-            foreach (var member in entry.Members)
+            foreach (var candidate in entry.Members)
             {
-                if (string.Equals(member.Name, segments[i], StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(candidate.Name, segments[i], StringComparison.OrdinalIgnoreCase))
                 {
-                    matched = member;
+                    matched = candidate;
                     break;
                 }
             }
 
-            if (matched == null)
+            if (matched == null ||
+                matched.IsStatic)
             {
                 return false;
             }
 
             if (i == segments.Count - 1)
             {
-                return matched.IsExcelsiorTable;
+                member = matched;
+                return true;
             }
 
             currentFqn = matched.TypeFullyQualifiedName;
