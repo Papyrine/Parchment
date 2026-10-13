@@ -38,7 +38,7 @@
                 public MarkdownToken(string markdown) { }
             }
 
-            [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
+            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
             public sealed class ExcelsiorTableAttribute : System.Attribute
             {
                 public string? HeadingParagraphStyle { get; set; }
@@ -50,7 +50,7 @@
                 public string? Configure { get; set; }
             }
 
-            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
+            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
             public sealed class EditableFieldAttribute : System.Attribute
             {
                 public bool MultiLine { get; set; }

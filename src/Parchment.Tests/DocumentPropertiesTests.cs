@@ -216,7 +216,7 @@ public partial class DocumentPropertiesTests
     [Test]
     public async Task UnsupportedCustomValueTypeThrows()
     {
-        var exception = await Assert.ThrowsAsync<ArgumentException>(
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
             async () =>
             {
                 using var _ = await Render(
@@ -229,6 +229,176 @@ public partial class DocumentPropertiesTests
                     });
             });
         await Assert.That(exception!.Message).Contains("Bad");
+    }
+
+    // A type with no variant that holds it: an enum could mean its name or its number, and a
+    // TimeSpan or Uri has no property type at all. Each is named rather than guessed at.
+    [Test]
+    [Arguments(typeof(TimeSpan))]
+    [Arguments(typeof(Uri))]
+    [Arguments(typeof(DayOfWeek))]
+    [Arguments(typeof(DateTimeOffset))]
+    public async Task UnmappedCustomValueTypeNamesThePropertyAndType(Type type)
+    {
+        object value = new Uri("https://example.com");
+        if (type != typeof(Uri))
+        {
+            value = Activator.CreateInstance(type)!;
+        }
+
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
+            async () =>
+            {
+                using var _ = await Render(
+                    new()
+                    {
+                        Custom =
+                        {
+                            ["Bad"] = value
+                        }
+                    });
+            });
+        await Assert.That(exception!.Message).Contains("'Bad'");
+        await Assert.That(exception.Message).Contains(type.FullName!);
+    }
+
+    // The same rule token text gets: a character XML 1.0 cannot carry is dropped rather than
+    // failing the render from inside the XML writer.
+    [Test]
+    public async Task CharactersXmlCannotCarryAreStripped()
+    {
+        using var doc = await Render(
+            new()
+            {
+                Title = "Bill\u0001 42",
+                Author = "\uD800Drafting",
+                Company = "Papy\u0002rine",
+                Manager = "Alex\uDC00",
+                Custom =
+                {
+                    ["Cham\u0001ber"] = "Lo\u000Bwer\uD800",
+                    ["Initial"] = '\uDFFF',
+                    ["Kept"] = "tab\tand \U0001F600"
+                }
+            });
+
+        await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
+        await Assert.That(Core(doc, dc + "creator")).IsEqualTo("Drafting");
+        await Assert.That(doc.ExtendedFilePropertiesPart!.Properties!.Company!.Text).IsEqualTo("Papyrine");
+        await Assert.That(doc.ExtendedFilePropertiesPart.Properties.Manager!.Text).IsEqualTo("Alex");
+        await Assert.That(Custom(doc, "Chamber")).IsEqualTo("Lower");
+        await Assert.That(Custom(doc, "Initial")).IsEqualTo("");
+        await Assert.That(Custom(doc, "Kept")).IsEqualTo("tab\tand \U0001F600");
+        await AssertValid(doc);
+    }
+
+    // A name that only differs by a stripped character is the same property, so the later entry
+    // replaces the earlier one rather than writing two properties under one name.
+    [Test]
+    public async Task CustomNamesThatCollideOnceStrippedAreWrittenOnce()
+    {
+        using var doc = await Render(
+            new()
+            {
+                Custom =
+                {
+                    ["Chamber"] = "Lower",
+                    ["Cham\u0001ber"] = "Upper"
+                },
+                RemoveCustom =
+                {
+                    "ESearch\u0001Tags"
+                }
+            });
+
+        var names = doc.CustomFilePropertiesPart!.Properties!
+            .Elements<CustomProps.CustomDocumentProperty>()
+            .Select(_ => _.Name!.Value!)
+            .ToList();
+        await Assert.That(string.Join(",", names)).IsEqualTo("Chamber");
+        await Assert.That(Custom(doc, "Chamber")).IsEqualTo("Upper");
+    }
+
+    [Test]
+    public async Task EveryIntegerTypeIsWrittenLosslessly()
+    {
+        using var doc = await Render(
+            new()
+            {
+                Custom =
+                {
+                    ["SByte"] = sbyte.MinValue,
+                    ["UShort"] = ushort.MaxValue,
+                    ["UInt"] = uint.MaxValue,
+                    ["ULong"] = ulong.MaxValue,
+                    ["NInt"] = (nint) (-5),
+                    ["NUInt"] = (nuint) 5,
+                    ["Char"] = 'x'
+                }
+            });
+
+        await Assert.That(Variant(doc, "SByte")).IsEqualTo("i4:-128");
+        await Assert.That(Variant(doc, "UShort")).IsEqualTo("i4:65535");
+        await Assert.That(Variant(doc, "UInt")).IsEqualTo("ui4:4294967295");
+        await Assert.That(Variant(doc, "ULong")).IsEqualTo("ui8:18446744073709551615");
+        await Assert.That(Variant(doc, "NInt")).IsEqualTo("i8:-5");
+        await Assert.That(Variant(doc, "NUInt")).IsEqualTo("ui8:5");
+        await Assert.That(Variant(doc, "Char")).IsEqualTo("lpwstr:x");
+        await AssertValid(doc);
+    }
+
+    // xsd:double spells these INF, -INF and NaN; .NET's "Infinity" is not a lexical form of it.
+    [Test]
+    public async Task NonFiniteNumbersUseTheXsdDoubleForms()
+    {
+        using var doc = await Render(
+            new()
+            {
+                Custom =
+                {
+                    ["Up"] = double.PositiveInfinity,
+                    ["Down"] = double.NegativeInfinity,
+                    ["None"] = double.NaN,
+                    ["FloatUp"] = float.PositiveInfinity,
+                    ["FloatDown"] = float.NegativeInfinity,
+                    ["FloatNone"] = float.NaN,
+                    ["Half"] = (Half) 0.5,
+                    ["Finite"] = 1234.5
+                }
+            });
+
+        await Assert.That(Variant(doc, "Up")).IsEqualTo("r8:INF");
+        await Assert.That(Variant(doc, "Down")).IsEqualTo("r8:-INF");
+        await Assert.That(Variant(doc, "None")).IsEqualTo("r8:NaN");
+        await Assert.That(Variant(doc, "FloatUp")).IsEqualTo("r8:INF");
+        await Assert.That(Variant(doc, "FloatDown")).IsEqualTo("r8:-INF");
+        await Assert.That(Variant(doc, "FloatNone")).IsEqualTo("r8:NaN");
+        await Assert.That(Variant(doc, "Half")).IsEqualTo("r8:0.5");
+        await Assert.That(Variant(doc, "Finite")).IsEqualTo("r8:1234.5");
+        await AssertValid(doc);
+    }
+
+    static string? Variant(WordprocessingDocument doc, string name)
+    {
+        var variant = doc.CustomFilePropertiesPart?.Properties
+            ?.Elements<CustomProps.CustomDocumentProperty>()
+            .FirstOrDefault(_ => _.Name?.Value == name)
+            ?.FirstChild;
+        if (variant == null)
+        {
+            return null;
+        }
+
+        return $"{variant.LocalName}:{variant.InnerText}";
+    }
+
+    static async Task AssertValid(WordprocessingDocument doc)
+    {
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(DocumentFormat.OpenXml.FileFormatVersions.Microsoft365)
+            .Validate(doc)
+            .Select(_ => $"{_.Part?.Uri}: {_.Description}")
+            .ToList();
+        await Assert.That(string.Join("\n", errors)).IsEqualTo("");
     }
 
     [Test]
@@ -272,6 +442,48 @@ public partial class DocumentPropertiesTests
         await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
         await Assert.That(Custom(doc, "Chamber")).IsEqualTo("Lower");
         await Assert.That(Custom(doc, "ESearchTags")).IsEqualTo("legislation;bills");
+    }
+
+    [Test]
+    public async Task MarkdownFlowStripsAndRejectsLikeTheDocxFlow()
+    {
+        using var styleSource = BuildTemplateWithOwnProperties();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<Model>("# {{ Title }}", styleSource);
+        var model = new Model
+        {
+            Title = "x"
+        };
+
+        using var output = new MemoryStream();
+        await store.Render(
+            model,
+            output,
+            new WordDocumentProperties
+            {
+                Title = "Bill\u0001 42",
+                Custom =
+                {
+                    ["Count"] = uint.MaxValue
+                }
+            });
+        output.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(output, false);
+        await Assert.That(Core(doc, dc + "title")).IsEqualTo("Bill 42");
+        await Assert.That(Variant(doc, "Count")).IsEqualTo("ui4:4294967295");
+
+        await Assert.ThrowsAsync<ParchmentRenderException>(
+            async () => await store.Render(
+                model,
+                new MemoryStream(),
+                new WordDocumentProperties
+                {
+                    Custom =
+                    {
+                        ["Bad"] = TimeSpan.Zero
+                    }
+                }));
     }
 
     // The three parts in one pass, as the readme shows it.
@@ -442,7 +654,7 @@ public partial class DocumentPropertiesTests
     static readonly TimeZoneInfo behind = TimeZoneInfo.CreateCustomTimeZone("Behind", TimeSpan.FromHours(-8), "Behind", "Behind");
 
     static string FileTime(DateTime time, TimeZoneInfo zone) =>
-        DocumentPropertiesWriter.ToVariant("Time", time, zone).InnerText;
+        DocumentPropertiesWriter.ToVariant("Template", "Time", time, zone).InnerText;
 
     // An Unspecified value names no zone, so the machine's must not be applied to it: the same
     // model would otherwise write a different value on a different machine.

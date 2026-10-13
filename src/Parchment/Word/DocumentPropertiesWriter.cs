@@ -23,12 +23,18 @@ static class DocumentPropertiesWriter
     static readonly XNamespace cp = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
     static readonly XNamespace dc = "http://purl.org/dc/elements/1.1/";
 
-    public static void Apply(WordprocessingDocument document, WordDocumentProperties properties)
+    public static void Apply(WordprocessingDocument document, WordDocumentProperties properties, string templateName)
     {
         ApplyCore(document, properties);
         ApplyExtended(document, properties);
-        ApplyCustom(document, properties);
+        ApplyCustom(document, properties, templateName);
     }
+
+    // The rule substituted token text gets: a character XML 1.0 cannot carry (a C0 control, a lone
+    // surrogate) is dropped, since the writer would otherwise fail the whole render over it. Names
+    // go through it as well as values, as a custom property's name is written as an attribute.
+    static string Clean(string value) =>
+        XmlChars.Strip(value);
 
     // Written as an explicit CoreFilePropertiesPart rather than through
     // OpenXmlPackage.PackageProperties: the latter is backed by the package's intrinsic
@@ -116,11 +122,11 @@ static class DocumentPropertiesWriter
         var existing = root.Element(name);
         if (existing == null)
         {
-            root.Add(new XElement(name, value));
+            root.Add(new XElement(name, Clean(value)));
             return;
         }
 
-        existing.Value = value;
+        existing.Value = Clean(value);
     }
 
     static void ApplyExtended(WordprocessingDocument document, WordDocumentProperties properties)
@@ -153,16 +159,16 @@ static class DocumentPropertiesWriter
 
         if (properties.Company != null)
         {
-            extended.Company = new(properties.Company);
+            extended.Company = new(Clean(properties.Company));
         }
 
         if (properties.Manager != null)
         {
-            extended.Manager = new(properties.Manager);
+            extended.Manager = new(Clean(properties.Manager));
         }
     }
 
-    static void ApplyCustom(WordprocessingDocument document, WordDocumentProperties properties)
+    static void ApplyCustom(WordprocessingDocument document, WordDocumentProperties properties, string templateName)
     {
         if (properties.Custom.Count == 0 &&
             properties.RemoveCustom.Count == 0)
@@ -174,8 +180,11 @@ static class DocumentPropertiesWriter
                    document.AddNewPart<CustomFilePropertiesPart>(RelationshipIds.Named(document, "rIdCustom"));
         var custom = part.Properties ??= new();
 
-        foreach (var (name, value) in properties.Custom)
+        foreach (var (key, value) in properties.Custom)
         {
+            // Looked up by the cleaned name, so two keys that differ only by a stripped character
+            // land on one property instead of two sharing a name.
+            var name = Clean(key);
             var property = Find(custom, name);
             if (property == null)
             {
@@ -191,12 +200,12 @@ static class DocumentPropertiesWriter
                 property.RemoveAllChildren();
             }
 
-            property.AppendChild(ToVariant(name, value, TimeZoneInfo.Local));
+            property.AppendChild(ToVariant(templateName, name, value, TimeZoneInfo.Local));
         }
 
         foreach (var name in properties.RemoveCustom)
         {
-            Find(custom, name)?.Remove();
+            Find(custom, Clean(name))?.Remove();
         }
 
         // PropertyId is 1-based and 1 is reserved, so user-defined properties start at 2. They must
@@ -218,22 +227,32 @@ static class DocumentPropertiesWriter
         custom.Elements<CustomProps.CustomDocumentProperty>()
             .FirstOrDefault(_ => string.Equals(_.Name?.Value, name, StringComparison.OrdinalIgnoreCase));
 
+    // Each integer goes to i4 where every value of its type fits, then i8, and to an unsigned
+    // variant only for the types whose upper range the signed one of the same width would lose.
     // Every number and date goes through the invariant culture: the variant types are xsd lexical
     // forms, and a current culture with another calendar would write a different, wrong value
     // (th-TH put the year 2026 down as 2569). The zone is a parameter, rather than read here, only
     // so a test can name one.
-    internal static OpenXmlElement ToVariant(string name, object? value, TimeZoneInfo local) =>
+    internal static OpenXmlElement ToVariant(string templateName, string name, object? value, TimeZoneInfo local) =>
         value switch
         {
             null => new VTLPWSTR(string.Empty),
-            string s => new VTLPWSTR(s),
+            string s => new VTLPWSTR(Clean(s)),
+            char c => new VTLPWSTR(Clean(c.ToString())),
             bool b => new VTBool(b ? "true" : "false"),
             int i => new VTInt32(i.ToString(CultureInfo.InvariantCulture)),
             long l => new VTInt64(l.ToString(CultureInfo.InvariantCulture)),
+            nint n => new VTInt64(((long) n).ToString(CultureInfo.InvariantCulture)),
             short s => new VTInt32(((int) s).ToString(CultureInfo.InvariantCulture)),
             byte b => new VTInt32(((int) b).ToString(CultureInfo.InvariantCulture)),
-            double d => new VTDouble(d.ToString(CultureInfo.InvariantCulture)),
-            float f => new VTDouble(((double) f).ToString(CultureInfo.InvariantCulture)),
+            sbyte s => new VTInt32(((int) s).ToString(CultureInfo.InvariantCulture)),
+            ushort u => new VTInt32(((int) u).ToString(CultureInfo.InvariantCulture)),
+            uint u => new VTUnsignedInt32(u.ToString(CultureInfo.InvariantCulture)),
+            ulong u => new VTUnsignedInt64(u.ToString(CultureInfo.InvariantCulture)),
+            nuint u => new VTUnsignedInt64(((ulong) u).ToString(CultureInfo.InvariantCulture)),
+            double d => new VTDouble(DoubleText(d)),
+            float f => new VTDouble(DoubleText(f)),
+            Half h => new VTDouble(DoubleText((double) h)),
             decimal m => new VTDouble(m.ToString(CultureInfo.InvariantCulture)),
             DateTime time => new VTFileTime(ToUtc(time, local).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)),
             Date date => new VTFileTime(date.ToString("yyyy-MM-dd'T00:00:00Z'", CultureInfo.InvariantCulture)),
@@ -244,8 +263,9 @@ static class DocumentPropertiesWriter
             // Deliberately strict rather than falling back to value.ToString(): coercing an
             // unsupported type would write something like "System.Int32[]" into the property and
             // hide the caller's mistake.
-            _ => throw new ArgumentException(
-                $"Custom document property '{name}' has unsupported value type '{value.GetType()}'. Supported types are string, bool, integral and floating-point numbers, DateTime, DateOnly and Guid. Convert the value to one of these before adding it.")
+            _ => throw new ParchmentRenderException(
+                templateName,
+                $"Custom document property '{name}' has unsupported value type '{value.GetType()}'. Supported types are string, char, bool, integral and floating-point numbers, DateTime, DateOnly and Guid. Convert the value to one of these before adding it.")
         };
 
     // vt:filetime is a UTC instant. A Utc value is one already. An Unspecified value names no zone,
@@ -263,5 +283,22 @@ static class DocumentPropertiesWriter
 
         var reading = DateTime.SpecifyKind(time, DateTimeKind.Unspecified);
         return reading - local.GetUtcOffset(reading);
+    }
+
+    // vt:r8 is an xsd:double, which spells the non-finite values INF, -INF and NaN. .NET's own
+    // "Infinity" and "-Infinity" are not lexical forms of it.
+    static string DoubleText(double value)
+    {
+        if (double.IsPositiveInfinity(value))
+        {
+            return "INF";
+        }
+
+        if (double.IsNegativeInfinity(value))
+        {
+            return "-INF";
+        }
+
+        return value.ToString(CultureInfo.InvariantCulture);
     }
 }
