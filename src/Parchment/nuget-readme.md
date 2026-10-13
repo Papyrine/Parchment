@@ -6,7 +6,7 @@ A template belongs to its model type and is rendered by it — one template per 
 
 ## Source generator (recommended)
 
-Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator finds the template by convention — the `AdditionalFiles` entry named after the type (`Invoice.docx` or `Report.md`) — validates its tokens against the model at compile time, and embeds it into the generated source. A module initializer registers it when the assembly loads, so rendering is the whole API:
+Decorate the model class itself with `[ParchmentModel]` and Parchment's source generator finds the template by convention — the `AdditionalFiles` entry named after the type (`Invoice.parchment.docx` or `Report.parchment.md`) — validates its tokens against the model at compile time, and embeds it into the generated source. A module initializer registers it when the assembly loads, so rendering is the whole API:
 
 ```cs
 [ParchmentModel]
@@ -22,7 +22,7 @@ using var stream = new MemoryStream();
 await store.Render(invoice, stream);
 ```
 
-A markdown template's style source is found by convention too: `Report.dotx`, or the nearest `parchment.dotx` up the directory tree — embedded alongside the template.
+A markdown template's style source is found by convention too: `Report.parchment.dotx`, or the nearest `parchment.dotx` up the directory tree — embedded alongside the template.
 
 ## Registering by hand
 
@@ -62,7 +62,7 @@ The template may include:
 
 - Substitution tokens: `{{ Customer.Name }}`
 - Paragraph-scope loops: `{% for line in Lines %}` … `{% endfor %}`
-- Table-row-scope loops: put `{% for line in Lines %}` on its own in one row and `{% endfor %}` on its own in another
+- Loops over whole blocks: everything between the two tag paragraphs repeats, tables included. Both tags must sit in the same container — body paragraphs around a table, or one table cell; tags in different rows or cells are rejected
 - Conditionals: `{% if Customer.IsPreferred %}` … `{% endif %}`
 
 Members are resolved against the model by name. There is no snake-case translation layer, so use the property names as declared.

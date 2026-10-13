@@ -1,11 +1,15 @@
 /// <summary>
 /// Registration-time validator for substitution tokens that resolve to an
-/// <c>[EditableField]</c> member. Rules:
+/// <c>[EditableField]</c> member. The rules apply wherever the runner renders the token as a
+/// control — a root member outside every loop, and a member of an <c>[EditableField]</c>
+/// collection's item reached through the loop variable directly inside that loop — and nowhere
+/// else, since every other occurrence renders as plain read-only text. Rules:
 /// <list type="bullet">
 /// <item>plain member-access expression only — the editable render path bypasses Fluid, so a
 /// filter chain would be silently ignored;</item>
-/// <item>each editable path may appear at most once in the document body — the dotted path is
-/// the content control's tag, and extraction needs tags to be unique;</item>
+/// <item>each editable path may appear at most once in the document body, and each item member
+/// at most once in its collection's loop — the dotted path is the content control's tag, and
+/// extraction needs tags to be unique;</item>
 /// <item>an editable token may not share its paragraph with a structural token
 /// (<c>[ExcelsiorTable]</c> / <c>[Html]</c> / <c>[Markdown]</c>) — structural splice/split
 /// machinery clones paragraph halves, which would corrupt the field's perm-range markers.</item>
@@ -25,44 +29,74 @@ static class EditableTokenValidator
         string partUri,
         bool isBody)
     {
-        if (editables.IsEmpty)
+        // Only the body renders controls: every other part runs with an empty editable map, so a
+        // token there is an ordinary read-only substitution and none of the rules apply to it.
+        if (editables.IsEmpty ||
+            !isBody)
         {
             return;
         }
 
-        var seen = isBody ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The item map and the paths bound so far while a top-level loop over an [EditableField]
+        // collection is open. The map is the projection the runner renders each item with, so a
+        // token is matched to an item member here exactly when it becomes a control there.
+        EditableMap? itemEditables = null;
+        HashSet<string>? itemSeen = null;
 
         var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
-            // Only a top-level body loop renders as a repeating section: non-body parts and
-            // nested loop bodies run with an empty editable map and stay read-only, where a
-            // modifier is harmless. Checked before the tag opens its own variable.
-            if (isBody &&
-                loopVariables.Count == 0 &&
-                classification.Block is { Kind: BlockTagKind.For } block)
+            // Only a top-level body loop renders as a repeating section: a nested loop body runs
+            // with an empty editable map and stays read-only, where a modifier is harmless.
+            // Checked before the tag opens its own variable.
+            if (loopVariables.Count == 0 &&
+                classification.Block is { Kind: BlockTagKind.For } block &&
+                TryGetCollection(block, editables, out var collection))
             {
-                RejectModifiersOnCollectionLoop(block, editables, templateName, partUri);
+                RejectModifiersOnCollectionLoop(block, collection, templateName, partUri);
+                itemEditables = collection.ElementMap.ScopedToItem(block.LoopVariable!, null);
+                itemSeen = new(StringComparer.OrdinalIgnoreCase);
             }
 
             LoopScope.Track(loopVariables, classification);
+            if (loopVariables.Count == 0)
+            {
+                itemEditables = null;
+                itemSeen = null;
+            }
+
             if (classification.Kind != ParagraphKind.Substitution)
             {
                 continue;
             }
 
-            List<DocxTokenSite>? editableTokens = null;
-            foreach (var token in classification.Substitutions)
+            // Which map the runner holds here: the root's outside every loop, the item's directly
+            // inside a repeating section, and none anywhere deeper — a loop body renders editable
+            // members as plain text, so a filter or a second occurrence there is harmless.
+            var active = editables;
+            var activeSeen = seen;
+            if (loopVariables.Count > 0)
             {
-                // A token that starts with a loop variable reads the loop item, whatever root
-                // path it happens to spell — it is not a use of the root's editable member.
-                if (token.References.Count == 0 ||
-                    LoopScope.Shadows(loopVariables, token))
+                if (loopVariables.Count > 1 ||
+                    itemEditables == null)
                 {
                     continue;
                 }
 
-                if (!editables.TryGet(token.References[0].Dotted, out _))
+                active = itemEditables;
+                activeSeen = itemSeen!;
+            }
+
+            List<DocxTokenSite>? editableTokens = null;
+            foreach (var token in classification.Substitutions)
+            {
+                // No LoopScope check, as in ScopeTreeRunner.TryResolveEditable: the root map is
+                // only consulted with no loop open, and the item map is keyed under the loop
+                // variable itself.
+                if (token.References.Count == 0 ||
+                    !active.TryGet(token.References[0].Dotted, out _))
                 {
                     continue;
                 }
@@ -80,15 +114,25 @@ static class EditableTokenValidator
             {
                 RequirePlainIdentifier(token, templateName, partUri);
 
-                if (seen != null &&
-                    !seen.Add(token.References[0].Dotted))
+                if (activeSeen.Add(token.References[0].Dotted))
+                {
+                    continue;
+                }
+
+                if (loopVariables.Count > 0)
                 {
                     throw new ParchmentRegistrationException(
                         templateName,
-                        $"[EditableField] token '{token.Source}' appears more than once in the document body. The dotted path is the content control's tag and must be unique for extraction — reference each editable member once.",
+                        $"[EditableField] token '{token.Source}' appears more than once in the loop over its [EditableField] collection. The member's path is the content control's tag inside each repeated item and must be unique there for extraction — reference each editable member once.",
                         partUri,
                         token.Source);
                 }
+
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    $"[EditableField] token '{token.Source}' appears more than once in the document body. The dotted path is the content control's tag and must be unique for extraction — reference each editable member once.",
+                    partUri,
+                    token.Source);
             }
 
             if (classification.Substitutions.Count == editableTokens.Count)
@@ -118,7 +162,15 @@ static class EditableTokenValidator
         }
     }
 
-    static void RejectModifiersOnCollectionLoop(BlockMarker block, EditableMap editables, string templateName, string partUri)
+    static bool TryGetCollection(BlockMarker block, EditableMap editables, [NotNullWhen(true)] out CollectionEntry? collection)
+    {
+        collection = null;
+        var sourceRefs = IdentifierVisitor.Collect(block.LoopSource!);
+        return sourceRefs.Count > 0 &&
+               editables.TryGetCollection(sourceRefs[0].Dotted, out collection);
+    }
+
+    static void RejectModifiersOnCollectionLoop(BlockMarker block, CollectionEntry collection, string templateName, string partUri)
     {
         if (block.LoopLimit == null &&
             block.LoopOffset == null &&
@@ -127,16 +179,9 @@ static class EditableTokenValidator
             return;
         }
 
-        var sourceRefs = IdentifierVisitor.Collect(block.LoopSource!);
-        if (sourceRefs.Count == 0 ||
-            !editables.TryGetCollection(sourceRefs[0].Dotted, out _))
-        {
-            return;
-        }
-
         throw new ParchmentRegistrationException(
             templateName,
-            $"Loop '{block.Source}' iterates the [EditableField] collection '{sourceRefs[0].Dotted}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
+            $"Loop '{block.Source}' iterates the [EditableField] collection '{collection.DottedPath}' with a limit, offset or reversed modifier. The loop renders as a repeating section and extraction replaces the whole collection with the rows the document holds, so a windowed or reordered render would be written back as the collection. Remove the modifier, or drop [EditableField] from the member to render it read-only.",
             partUri,
             block.Source);
     }

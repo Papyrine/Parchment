@@ -5,8 +5,10 @@ using W14 = DocumentFormat.OpenXml.Office2010.Word;
 /// controls carry canonical values in their <c>sdtPr</c> (<c>w14:checked</c>, <c>w:fullDate</c>,
 /// <c>w:listItem/@w:value</c>), so those never depend on parsing display text. Numerics, and the
 /// text-backed temporal kinds (<c>DateTimeOffset</c>, <c>TimeOnly</c>, which have no canonical
-/// control slot), parse the run text with the caller's culture — which must match the render
-/// culture.
+/// control slot), parse the run text. The render always writes that text with the invariant
+/// culture, so every parse tries the invariant form first — an unedited control reads back as
+/// rendered whatever culture the caller passes — and the caller's culture only widens what a user
+/// may type instead.
 /// </summary>
 static class EditableFieldReader
 {
@@ -88,15 +90,24 @@ static class EditableFieldReader
         }
 
         var builder = new StringBuilder();
-        foreach (var element in content.Descendants())
+        foreach (var piece in EditableContent.Runs(content))
         {
-            if (element is Text text)
+            if (piece is not Run)
             {
-                builder.Append(text.Text);
+                builder.Append(piece.InnerText);
+                continue;
             }
-            else if (element is Break)
+
+            foreach (var element in piece.Elements())
             {
-                builder.Append('\n');
+                if (element is Text text)
+                {
+                    builder.Append(text.Text);
+                }
+                else if (element is Break)
+                {
+                    builder.Append('\n');
+                }
             }
         }
 
@@ -133,7 +144,25 @@ static class EditableFieldReader
         return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
     }
 
+    // Group separators are never accepted: one culture's group separator is another's decimal
+    // separator, so "12,5" read invariantly would silently become 125, and so would the rendered
+    // "12.5" read as de-DE. Without them a text has at most one reading — the invariant one the
+    // render wrote ('.' is always the decimal point), else the caller's culture, which adds its
+    // own decimal separator. Anything grouped ("1,000", "1.234,56") is a parse failure, as are
+    // currency and percent symbols.
+    const NumberStyles decimalStyle = NumberStyles.Number & ~NumberStyles.AllowThousands;
+
     static bool TryParseNumber(string raw, Type type, CultureInfo culture, out object? value)
+    {
+        if (TryParseNumberAs(raw, type, CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        return TryParseNumberAs(raw, type, culture, out value);
+    }
+
+    static bool TryParseNumberAs(string raw, Type type, CultureInfo culture, out object? value)
     {
         value = Type.GetTypeCode(type) switch
         {
@@ -145,9 +174,9 @@ static class EditableFieldReader
             TypeCode.UInt32 when uint.TryParse(raw, NumberStyles.Integer, culture, out var ui) => ui,
             TypeCode.Int64 when long.TryParse(raw, NumberStyles.Integer, culture, out var l) => l,
             TypeCode.UInt64 when ulong.TryParse(raw, NumberStyles.Integer, culture, out var ul) => ul,
-            TypeCode.Single when float.TryParse(raw, NumberStyles.Float | NumberStyles.AllowThousands, culture, out var f) => f,
-            TypeCode.Double when double.TryParse(raw, NumberStyles.Float | NumberStyles.AllowThousands, culture, out var d) => d,
-            TypeCode.Decimal when decimal.TryParse(raw, NumberStyles.Number, culture, out var m) => m,
+            TypeCode.Single when float.TryParse(raw, NumberStyles.Float, culture, out var f) => f,
+            TypeCode.Double when double.TryParse(raw, NumberStyles.Float, culture, out var d) => d,
+            TypeCode.Decimal when decimal.TryParse(raw, decimalStyle, culture, out var m) => m,
             _ => null
         };
         return value != null;
@@ -170,9 +199,11 @@ static class EditableFieldReader
         else
         {
             // Word maintains w:fullDate for picker selections; typed-in text may leave it stale
-            // or absent, so parse the display text with the declared format.
+            // or absent, so parse the display text with the declared format, as the render wrote
+            // it (invariant) first.
             var format = entry.DateFormat ?? "yyyy-MM-dd";
-            if (!DateTime.TryParseExact(raw, format, culture, DateTimeStyles.None, out dateTime) &&
+            if (!DateTime.TryParseExact(raw, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out dateTime) &&
+                !DateTime.TryParseExact(raw, format, culture, DateTimeStyles.None, out dateTime) &&
                 !DateTime.TryParse(raw, culture, DateTimeStyles.None, out dateTime))
             {
                 return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
@@ -193,9 +224,17 @@ static class EditableFieldReader
     {
         // The run text is the source of truth (w:fullDate cannot hold an offset). Parsing the
         // offset-bearing ISO text preserves the original offset — DateTimeOffset.TryParse keeps
-        // whatever offset the string carries.
+        // whatever offset the string carries. The rendered (invariant) form is tried first: the
+        // caller's culture may name months differently or default to another calendar, which
+        // would fail on, or shift the year of, text nobody edited.
+        var renderFormat = entry.DateFormat ?? EditableFieldBuilder.DateTimeOffsetFormat;
+        if (DateTimeOffset.TryParseExact(raw, renderFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value))
+        {
+            return new(entry.DottedPath, FieldState.Extracted, value, raw);
+        }
+
         var parsed = entry.DateFormat is { } format
-            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out var value)
+            ? DateTimeOffset.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
             : DateTimeOffset.TryParse(raw, culture, DateTimeStyles.None, out value);
 
         if (parsed)
@@ -208,8 +247,14 @@ static class EditableFieldReader
 
     static ExtractedField ReadTime(EditableEntry entry, string raw, CultureInfo culture)
     {
+        var renderFormat = entry.DateFormat ?? EditableFieldBuilder.TimeFormat;
+        if (Time.TryParseExact(raw, renderFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value))
+        {
+            return new(entry.DottedPath, FieldState.Extracted, value, raw);
+        }
+
         var parsed = entry.DateFormat is { } format
-            ? Time.TryParseExact(raw, format, culture, DateTimeStyles.None, out var value)
+            ? Time.TryParseExact(raw, format, culture, DateTimeStyles.None, out value)
             : Time.TryParse(raw, culture, DateTimeStyles.None, out value);
 
         if (parsed)
