@@ -1329,6 +1329,295 @@ public partial class EscapingTests
     public async Task EncoderTurnsLineEndingsIntoBreaks(string value, string expected) =>
         await Assert.That(MarkdownEncoder.Default.Encode(value)).IsEqualTo(expected);
 
+    // Every construct MarkdigPipeline reads at the start of a line. Whatever the value opens with,
+    // it is one plain paragraph of that text.
+    [Test]
+    [Arguments("    indented code")]
+    [Arguments("\tindented code")]
+    [Arguments("        deeper")]
+    [Arguments(" one space")]
+    [Arguments("   three spaces")]
+    [Arguments("    # indented heading")]
+    [Arguments("```")]
+    [Arguments("```cs")]
+    [Arguments("~~~")]
+    [Arguments("# heading")]
+    [Arguments("###### heading")]
+    [Arguments("#")]
+    [Arguments("> quote")]
+    [Arguments(">quote")]
+    [Arguments("- item")]
+    [Arguments("+ item")]
+    [Arguments("* item")]
+    [Arguments("-")]
+    [Arguments("1. item")]
+    [Arguments("1) item")]
+    [Arguments("a. item")]
+    [Arguments("A) item")]
+    [Arguments("i. item")]
+    [Arguments("IV) item")]
+    [Arguments("---")]
+    [Arguments("***")]
+    [Arguments("___")]
+    [Arguments("- - -")]
+    [Arguments("* * *")]
+    [Arguments("===")]
+    [Arguments("| a | b |")]
+    [Arguments("a | b")]
+    [Arguments("+---+---+")]
+    [Arguments("<div>block</div>")]
+    [Arguments("<!-- comment -->")]
+    [Arguments("<script>")]
+    [Arguments("<?php")]
+    [Arguments("<![CDATA[x]]>")]
+    [Arguments("</div>")]
+    [Arguments("[TOC]")]
+    [Arguments("[SECTION]")]
+    [Arguments("[TOC]{levels=1}")]
+    [Arguments("[SECTION]{orientation=landscape}")]
+    [Arguments("[label]: https://example.com")]
+    [Arguments("[^1]: footnote")]
+    [Arguments("*[HTML]: abbreviation")]
+    [Arguments(": definition")]
+    [Arguments("{.Heading1}")]
+    [Arguments("$$")]
+    [Arguments(":::")]
+    public async Task BlockSyntaxOpeningAValuePrintsAsItself(string value)
+    {
+        foreach (var template in (string[])
+                 [
+                     "{{ Details }}",
+                     "{{ Details }}\n",
+                     "{{ Title }}{{ Details }}",
+                     "before\n\n{{ Details }}\n\nafter"
+                 ])
+        {
+            var body = await Render(
+                template,
+                new()
+                {
+                    Details = value
+                });
+
+            var paragraph = body.Elements<Paragraph>().Single(_ => _.InnerText != "before" && _.InnerText != "after");
+            await AssertPlain(body, paragraph);
+            await Assert.That(paragraph.InnerText).IsEqualTo(value.Replace("\t", ""));
+            await Assert.That(paragraph.Descendants<TabChar>().Count()).IsEqualTo(value.Count(_ => _ == '\t'));
+        }
+    }
+
+    // A later line of the value never starts a line of the source: its newline is a <br />, so
+    // what follows is the middle of a paragraph whatever it reads as.
+    [Test]
+    [Arguments("    indented code")]
+    [Arguments("\tindented code")]
+    [Arguments("```")]
+    [Arguments("# heading")]
+    [Arguments("> quote")]
+    [Arguments("- item")]
+    [Arguments("1. item")]
+    [Arguments("---")]
+    [Arguments("===")]
+    [Arguments("| a | b |")]
+    [Arguments("|---|---|")]
+    [Arguments("<div>")]
+    [Arguments("[TOC]")]
+    [Arguments("[SECTION]")]
+    public async Task BlockSyntaxOnALaterLineOfAValuePrintsAsItself(string line)
+    {
+        foreach (var value in (string[])
+                 [
+                     $"text\n{line}",
+                     $"text\r\n{line}",
+                     $"text\n\n{line}",
+                     $"text\n{line}\nmore",
+                     $"\n{line}",
+                     $"    lead\n{line}"
+                 ])
+        {
+            var body = await Render(
+                "{{ Details }}",
+                new()
+                {
+                    Details = value
+                });
+
+            var paragraph = body.Elements<Paragraph>().Single();
+            await AssertPlain(body, paragraph);
+            await Assert.That(paragraph.InnerText).IsEqualTo(value.Replace("\r", "").Replace("\n", "").Replace("\t", ""));
+        }
+    }
+
+    // The value is on the line after text, where = or - alone would underline that text into a
+    // heading. Anything else is a continuation of the paragraph, which is where it belongs.
+    [Test]
+    [Arguments("===")]
+    [Arguments("---")]
+    [Arguments("=")]
+    [Arguments("-")]
+    [Arguments("    indented")]
+    [Arguments("# heading")]
+    [Arguments("> quote")]
+    [Arguments("- item")]
+    [Arguments("1. item")]
+    [Arguments("```")]
+    [Arguments("|---|---|")]
+    [Arguments("<div>")]
+    [Arguments("[TOC]")]
+    public async Task BlockSyntaxOnTheLineAfterTextStaysInThatParagraph(string value)
+    {
+        var body = await Render(
+            "Heading text\n{{ Details }}",
+            new()
+            {
+                Details = value
+            });
+
+        var paragraph = body.Elements<Paragraph>().Single();
+        await AssertPlain(body, paragraph);
+        await Assert.That(paragraph.InnerText).StartsWith("Heading text");
+        await Assert.That(paragraph.InnerText).EndsWith(value);
+    }
+
+    // A value that reads as a pipe-table row, over one that reads as its separator.
+    [Test]
+    public async Task TableSyntaxInAValueDoesNotMakeATable()
+    {
+        var body = await Render(
+            "{{ Title }}\n{{ Details }}",
+            new()
+            {
+                Title = "a | b",
+                Details = "--- | ---"
+            });
+
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(body.Elements<Paragraph>().Single().InnerText).Contains("a | b");
+    }
+
+    // The value the markers themselves are spelt with, in the places a marker is honoured: alone in
+    // a paragraph, and with the attributes a template attaches to one.
+    [Test]
+    [Arguments("{{ Details }}", "[TOC]", "[TOC]")]
+    [Arguments("{{ Details }}", " [TOC]", " [TOC]")]
+    [Arguments("{{ Details }}{levels=1}", "[TOC]", "[TOC]")]
+    [Arguments("{{ Details }}", "[SECTION]", "[SECTION]")]
+    [Arguments("{{ Details }}{orientation=landscape}", "[SECTION]", "[SECTION]")]
+    [Arguments("{{ Details }}{{ Title }}", "[TOC]", "[TOC]")]
+    [Arguments("# Heading\n\n{{ Details }}\n\ntext", "[TOC]", "Heading[TOC]text")]
+    public async Task MarkerInAValueIsNotAMarker(string template, string value, string expected)
+    {
+        var body = await Render(
+            template,
+            new()
+            {
+                Details = value
+            });
+
+        await Assert.That(body.Descendants<FieldChar>().Any()).IsFalse();
+        await Assert.That(body.Descendants<FieldCode>().Any()).IsFalse();
+        await Assert.That(body.Elements<Paragraph>().Any(_ => _.ParagraphProperties?.SectionProperties != null)).IsFalse();
+        await Assert.That(body.InnerText).IsEqualTo(expected);
+    }
+
+    // The template's own markers are untouched by any of this.
+    [Test]
+    public async Task MarkerInTheTemplateIsStillAMarker()
+    {
+        var body = await Render(
+            "[TOC]\n\n{{ Details }}\n\n[SECTION]{orientation=landscape}\n\nwide",
+            new()
+            {
+                Details = "[TOC]"
+            });
+
+        await Assert.That(body.Descendants<FieldCode>().Count()).IsEqualTo(1);
+        await Assert.That(body.Elements<Paragraph>().Count(_ => _.ParagraphProperties?.SectionProperties != null)).IsEqualTo(1);
+        await Assert.That(body.Elements<Paragraph>().Count(_ => _.InnerText == "[TOC]")).IsEqualTo(1);
+    }
+
+    // The indent of a value is part of the value. It survives as the spaces it is, the way it does
+    // in the docx flow, rather than being stripped as source indentation or read as a code block.
+    [Test]
+    [Arguments("{{ Details }}")]
+    [Arguments("| a |\n| --- |\n| {{ Details }} |")]
+    [Arguments("# {{ Details }}")]
+    [Arguments("> {{ Details }}")]
+    [Arguments("- {{ Details }}")]
+    public async Task LeadingWhitespaceOfAValueSurvives(string template)
+    {
+        var body = await Render(
+            template,
+            new()
+            {
+                Details = "    four"
+            });
+
+        var texts = body.Descendants<Text>().Where(_ => _.Text.Contains("four")).ToList();
+        await Assert.That(string.Concat(texts.Select(_ => _.Text))).IsEqualTo("    four");
+        await Assert.That(texts[0].Space?.Value).IsEqualTo(SpaceProcessingModeValues.Preserve);
+    }
+
+    // The filter's marker is followed by the item, and five columns after a marker is an indented
+    // code block inside the item.
+    [Test]
+    public async Task ListFilterItemKeepsItsIndentAndStaysAnItem()
+    {
+        var body = await Render(
+            "{{ Items | bullet_list }}",
+            new()
+            {
+                Items = ["     five", "\ttab", "[TOC]"]
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(paragraphs[0].InnerText).IsEqualTo("     five");
+        await Assert.That(paragraphs[2].InnerText).IsEqualTo("[TOC]");
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties!.NumberingProperties != null)).IsTrue();
+        await Assert.That(paragraphs.Select(_ => _.ParagraphProperties!.ParagraphStyleId?.Val?.Value).Distinct().Count()).IsEqualTo(1);
+        await Assert.That(body.Descendants<FieldChar>().Any()).IsFalse();
+    }
+
+    [Test]
+    [Arguments(" a", "&#32;a")]
+    [Arguments("    a", "&#32;   a")]
+    [Arguments("\ta", "&#9;a")]
+    [Arguments(" \ta", "&#32;\ta")]
+    [Arguments(" ", "&#32;")]
+    [Arguments(" - a", @"&#32;\- a")]
+    [Arguments("[TOC]", @"&#91;TOC\]")]
+    [Arguments("a[b]", @"a\[b\]")]
+    [Arguments("a b ", "a b ")]
+    [Arguments("a\n    b", "a<br />    b")]
+    public async Task EncoderWritesTheLeadingCharacterAsAReference(string value, string expected)
+    {
+        await Assert.That(MarkdownEncoder.Default.Encode(value)).IsEqualTo(expected);
+
+        using var writer = new StringWriter();
+        MarkdownEncoder.Default.Encode(writer, value);
+        await Assert.That(writer.ToString()).IsEqualTo(expected);
+    }
+
+    // What the leading character of a value is carried as. Markdig parses a reference into an
+    // inline of its own, which has to be rendered or the character is dropped from the document.
+    [Test]
+    public async Task CharacterReferenceInTheTemplatePrintsItsCharacter()
+    {
+        var body = await Render("Fish &amp; chips &#169;{{ Title }}", new());
+
+        await Assert.That(body.InnerText).IsEqualTo("Fish & chips ©");
+    }
+
+    static async Task AssertPlain(Body body, Paragraph paragraph)
+    {
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(body.Descendants<FieldChar>().Any()).IsFalse();
+        await Assert.That(paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value).IsNull();
+        await Assert.That(paragraph.ParagraphProperties?.NumberingProperties).IsNull();
+        await Assert.That(paragraph.ParagraphProperties?.SectionProperties).IsNull();
+    }
+
     static async Task<Body> Render(string template, EscapeModel model)
     {
         using var styleSource = DocxTemplateBuilder.Build();

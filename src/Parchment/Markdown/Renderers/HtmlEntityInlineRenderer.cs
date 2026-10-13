@@ -6,7 +6,8 @@
 /// for a leaf inline that no renderer claims — so with none registered <c>AT&amp;amp;T</c> reached
 /// the document as "ATT", with no error to say so. The decoded text takes the literal's route from
 /// there, which is what drops a character xml cannot carry (<c>&amp;#1;</c>) and makes a tab
-/// (<c>&amp;#9;</c>) a real Word tab.
+/// (<c>&amp;#9;</c>) a real Word tab. <see cref="MarkdownEncoder"/> depends on it: a reference is how the
+/// leading space or tab of a bound value is carried past the block parser.
 /// </remarks>
 class HtmlEntityInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, HtmlEntityInline>

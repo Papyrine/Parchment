@@ -71,6 +71,40 @@ class MarkdownEncoder(StringBuilder? written) :
     /// </summary>
     static readonly SearchValues<char> encodable = SearchValues.Create("\r\n" + @"\`*_~^[]()<>&#|{}!+-.=");
 
+    /// <summary>
+    /// What the first character of a value is written as when no backslash can make it literal:
+    /// a character reference, which CommonMark reads as the character and as nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A space or tab, because indentation is block syntax: four columns of it make the line an
+    /// indented code block, and less than that is stripped. A reference cannot stand in for
+    /// structural whitespace, so the value keeps its indent and the line gains none. Only the
+    /// first character needs it — once the line opens with something that is not whitespace, the
+    /// rest of the run is ordinary text.
+    /// </para>
+    /// <para>
+    /// An opening bracket, because <c>[TOC]</c> and <c>[SECTION]</c> are not syntax at all: they
+    /// are plain text that <see cref="TableOfContents"/> and <see cref="SectionBreaks"/> recognise
+    /// after parsing, and an escaped bracket is still the text of a bracket. Both ask for a
+    /// paragraph of nothing but literals, and a reference is parsed into an inline of its own, so
+    /// a paragraph a value opens is never a marker. A bracket further in cannot open one.
+    /// </para>
+    /// <para>
+    /// A later line of the value needs neither: its newline became <see cref="Break"/>, so it
+    /// never starts a line of the source, and the paragraph it is in already holds an inline that
+    /// is not a literal.
+    /// </para>
+    /// </remarks>
+    static string? LeadingReference(char character) =>
+        character switch
+        {
+            ' ' => "&#32;",
+            '\t' => "&#9;",
+            '[' => "&#91;",
+            _ => null
+        };
+
     public override int MaxOutputCharactersPerInputCharacter => Break.Length;
 
     public override bool WillEncode(int unicodeScalar) =>
@@ -84,7 +118,7 @@ class MarkdownEncoder(StringBuilder? written) :
             return EncodeDestination(value);
         }
 
-        if (value.AsSpan().IndexOfAny(encodable) < 0)
+        if (IsUntouched(value))
         {
             return value;
         }
@@ -107,7 +141,7 @@ class MarkdownEncoder(StringBuilder? written) :
             return EncodeDestination(value);
         }
 
-        if (value.IndexOfAny(encodable) < 0)
+        if (IsUntouched(value))
         {
             return value.ToString();
         }
@@ -116,6 +150,16 @@ class MarkdownEncoder(StringBuilder? written) :
         Write(builder, value);
         return builder.ToString();
     }
+
+    static bool IsUntouched(CharSpan value) =>
+        value.IndexOfAny(encodable) < 0 &&
+        !StartsWithIndent(value);
+
+    // A bracket is in encodable already. Indentation is the one thing that needs work and holds
+    // no character from that set.
+    static bool StartsWithIndent(CharSpan value) =>
+        value.Length > 0 &&
+        value[0] is ' ' or '\t';
 
     // Only a value holding a space or a control character can end a destination early, and only
     // then is what has been written so far worth looking at.
@@ -243,7 +287,15 @@ class MarkdownEncoder(StringBuilder? written) :
 
     static void Write(StringBuilder builder, CharSpan value)
     {
-        for (var index = 0; index < value.Length; index++)
+        var start = 0;
+        if (value.Length > 0 &&
+            LeadingReference(value[0]) is { } reference)
+        {
+            builder.Append(reference);
+            start = 1;
+        }
+
+        for (var index = start; index < value.Length; index++)
         {
             var character = value[index];
 

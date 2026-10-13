@@ -1519,6 +1519,8 @@ The rendered docx:
 
 Four things to read off it. The `|` stayed inside the Comment cell rather than opening a third column. `**check**` printed as the reviewer typed it instead of turning bold. The `\n` became a real line break, inside the cell. And `Verdict` — annotated `[Markdown]` — rendered its `**Approved**` bold, because the annotation is the claim that the value is markup.
 
+The same holds for syntax that is read from the shape of a line rather than from a character. A value that opens with spaces or a tab keeps them as the whitespace they are instead of becoming an indented code block, matching the docx flow, and a value that reads `[TOC]` or `[SECTION]` prints that text: a [table of contents](#table-of-contents) or a [section break](#page-orientation) comes from a marker the template spells, or from a value declared as markup in one of the ways below.
+
 Escaping is an **output** concern only. Conditions, filter inputs and loop sources see exactly what the model holds, so `{% if Title == "a|b" %}` still matches.
 
 Three ways to say a value *is* markup — one per site, and two that say it once at the model:

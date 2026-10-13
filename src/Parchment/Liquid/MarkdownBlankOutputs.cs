@@ -87,9 +87,11 @@ static class MarkdownBlankOutputs
             return completion;
         }
 
+        // MarkdownEncoder writes the first space or tab of a value as a character reference, so
+        // a blank value opens with one.
         static bool IsBlank(StringBuilder builder, int start)
         {
-            for (var index = start; index < builder.Length; index++)
+            for (var index = start + LeadingSpaceReference(builder, start); index < builder.Length; index++)
             {
                 if (!IsInlineSpace(builder[index]))
                 {
@@ -99,6 +101,36 @@ static class MarkdownBlankOutputs
 
             return true;
         }
+
+        static int LeadingSpaceReference(StringBuilder builder, int start)
+        {
+            foreach (var reference in spaceReferences)
+            {
+                if (builder.Length - start < reference.Length)
+                {
+                    continue;
+                }
+
+                var matches = true;
+                for (var index = 0; index < reference.Length; index++)
+                {
+                    if (builder[start + index] != reference[index])
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    return reference.Length;
+                }
+            }
+
+            return 0;
+        }
+
+        static readonly string[] spaceReferences = ["&#32;", "&#9;"];
     }
 
     /// <summary>
