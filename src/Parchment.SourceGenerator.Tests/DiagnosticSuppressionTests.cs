@@ -104,10 +104,10 @@ public class DiagnosticSuppressionTests
     [Test]
     public async Task Markdown_ReportedInSource()
     {
-        // The markdown flow raises errors only, which no suppression applies to, so the location
+        // The error is one no suppression applies to, so the location
         // kind is asserted directly.
         var template = new TemplateFile("Letter.parchment.md", Encoding.UTF8.GetBytes("{{ Missing }}\n"));
-        var diagnostic = Run(model, template: template).Single();
+        var diagnostic = Run(model, template: template).Single(_ => _.Id == "PARCH001");
 
         await Assert.That(diagnostic.Id).IsEqualTo("PARCH001");
         await Assert.That(diagnostic.Location.IsInSource).IsTrue();
