@@ -909,6 +909,134 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(emitted).DoesNotContain("FormatMapKind.Markdown");
     }
 
+    // An override carries no attributes of its own, but C# gives it those of the member it
+    // overrides. Reading only what the override declares dropped the marker, and the model rendered
+    // its html as visible tags the moment a derived model overrode the member.
+    const string overriddenMarkerModel =
+        """
+        using System.Collections.Generic;
+        using System.Diagnostics.CodeAnalysis;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public class HtmlAttribute : System.Attribute { }
+
+        public sealed class RichAttribute : HtmlAttribute { }
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class MarkdownAttribute : System.Attribute { }
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        public interface IHasCaption
+        {
+            [Html]
+            string Caption { get; set; }
+        }
+
+        public class Root
+        {
+            public virtual string Body { get; set; } = "";
+        }
+
+        public class Middle : Root
+        {
+            [Html]
+            public override string Body { get; set; } = "";
+
+            [Markdown]
+            public virtual string Notes { get; set; } = "";
+
+            [Rich]
+            public virtual string Derived { get; set; } = "";
+
+            [StringSyntax("html")]
+            public virtual string Syntax { get; set; } = "";
+
+            [Html]
+            public virtual string Hidden { get; set; } = "";
+
+            [EditableField(MultiLine = true)]
+            public virtual string Comment { get; set; } = "";
+
+            [ExcelsiorTable(Configure = nameof(ConfigureLines))]
+            public virtual List<Line> Lines { get; set; } = new();
+
+            internal static void ConfigureLines(object builder)
+            {
+            }
+        }
+
+        public class Lower : Middle
+        {
+            public override string Body { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Doc : Lower, IHasCaption
+        {
+            public override string Body { get; set; } = "";
+
+            public override string Notes { get; set; } = "";
+
+            public override string Derived { get; set; } = "";
+
+            public override string Syntax { get; set; } = "";
+
+            public new string Hidden { get; set; } = "";
+
+            public string Caption { get; set; } = "";
+
+            public override string Comment { get; set; } = "";
+
+            public override List<Line> Lines { get; set; } = new();
+        }
+        """;
+
+    [Test]
+    public async Task FormatMarker_OnOverriddenMember_IsInherited()
+    {
+        var result = GeneratorDriver.Run(overriddenMarkerModel, "{{ Body }}", "{{ Notes }}", "{{ Derived }}");
+        var emitted = Emitted(result);
+
+        await Assert.That(result.Results.Single().Diagnostics.Where(_ => _.Id.StartsWith("PARCH"))).IsEmpty();
+        // Two overrides deep, so the walk is of the whole chain rather than one step.
+        await Assert.That(emitted).Contains("new(\"Body\", global::Parchment.Generated.FormatMapKind.Html");
+        await Assert.That(emitted).Contains("new(\"Notes\", global::Parchment.Generated.FormatMapKind.Markdown");
+        // An attribute deriving from the marker is the marker.
+        await Assert.That(emitted).Contains("new(\"Derived\", global::Parchment.Generated.FormatMapKind.Html");
+    }
+
+    [Test]
+    public async Task FormatMarker_NotInheritedByCSharp_IsNotInherited()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(overriddenMarkerModel, "{{ Body }}"));
+
+        // [StringSyntax] declares Inherited = false, a member hiding another with `new` overrides
+        // nothing, and an implementation does not take the attributes of the interface member.
+        await Assert.That(emitted).DoesNotContain("new(\"Syntax\", global::Parchment.Generated.FormatMapKind");
+        await Assert.That(emitted).DoesNotContain("new(\"Hidden\", global::Parchment.Generated.FormatMapKind");
+        await Assert.That(emitted).DoesNotContain("new(\"Caption\", global::Parchment.Generated.FormatMapKind");
+    }
+
+    [Test]
+    public async Task MemberAttributes_OnOverriddenMember_AreInherited()
+    {
+        var result = GeneratorDriver.Run(overriddenMarkerModel, "{{ Comment }}", "{{ Lines }}");
+        var emitted = Emitted(result);
+
+        await Assert.That(result.Results.Single().Diagnostics.Where(_ => _.Id.StartsWith("PARCH"))).IsEmpty();
+        // The editable entry, with the MultiLine option the base declared.
+        await Assert.That(emitted).Contains("new(\"Comment\", global::Parchment.Generated.EditableFieldKind.Text, typeof(string), false, o => ((global::Sample.Doc)o).Comment, (o, v) => { ((global::Sample.Doc)o).Comment = (string)v!; }, static o => true, true, null)");
+        // The configure method is resolved in the type that named it, not the overriding one.
+        await Assert.That(emitted).Contains("b => global::Sample.Middle.ConfigureLines((global::Excelsior.WordTableBuilder<global::Sample.Line>)b)");
+    }
+
     // A format marker on a loop element. The runtime resolves one by walking the model from its
     // root, so it cannot address the item an iteration is on — the marker is silently not applied
     // and the markup shows in the document.

@@ -93,20 +93,23 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure);
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure, out var excelsiorConfigureOwner);
                     // Resolved here, where the declaring symbol is at hand: the generated code
                     // calls the method directly, so the name has to become a qualified target - and
-                    // a name that resolves to no static method becomes the diagnostic instead.
+                    // a name that resolves to no static method becomes the diagnostic instead. The
+                    // type searched is the one the attribute was written in, which for an override
+                    // inheriting it is the base that named the method.
                     string? excelsiorConfigureCall = null;
                     var excelsiorConfigureMissing = false;
-                    if (excelsiorConfigure != null)
+                    if (excelsiorConfigure != null &&
+                        excelsiorConfigureOwner != null)
                     {
-                        var hasMethod = current.GetMembers(excelsiorConfigure)
+                        var hasMethod = excelsiorConfigureOwner.GetMembers(excelsiorConfigure)
                             .OfType<IMethodSymbol>()
                             .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
                         if (hasMethod)
                         {
-                            excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
+                            excelsiorConfigureCall = $"{Fqn(excelsiorConfigureOwner)}.{excelsiorConfigure}";
                         }
                         else
                         {
@@ -262,7 +265,7 @@ static class ShapeBuilder
         var hasHtml = false;
         var hasMarkdown = false;
         string? stringSyntax = null;
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, _) in AttributesOf(member))
         {
             var cls = attribute.AttributeClass;
             if (cls == null)
@@ -278,12 +281,13 @@ static class ShapeBuilder
             // how a whole report silently stopped rendering its html. Nothing is lost by accepting
             // the short form: this has only ever matched on the bare name, never on where the
             // attribute came from.
-            var name = cls.Name;
-            if (name is "HtmlAttribute" or "Html")
+            // The base chain is walked so that an attribute deriving from one of the markers is
+            // the marker too, as it is to anything reading attributes by type.
+            if (IsOrDerivesFrom(cls, "HtmlAttribute", "Html"))
             {
                 hasHtml = true;
             }
-            else if (name is "MarkdownAttribute" or "Markdown")
+            else if (IsOrDerivesFrom(cls, "MarkdownAttribute", "Markdown"))
             {
                 hasMarkdown = true;
             }
@@ -314,6 +318,75 @@ static class ShapeBuilder
         }
 
         return (false, false, false);
+    }
+
+    static bool IsOrDerivesFrom(INamedTypeSymbol cls, string name, string shortName)
+    {
+        for (var current = cls; current != null; current = current.BaseType)
+        {
+            if (current.Name == name ||
+                current.Name == shortName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // What C# attribute inheritance gives a member: its own attributes, then those of each member
+    // it overrides whose attribute class is inherited. The owner is the member the attribute was
+    // written on, for what has to be resolved beside it. A member hiding another with `new`
+    // overrides nothing, and an interface member's attributes are not inherited by its
+    // implementation, so neither contributes.
+    static IEnumerable<(AttributeData attribute, ISymbol owner)> AttributesOf(ISymbol member)
+    {
+        foreach (var attribute in member.GetAttributes())
+        {
+            yield return (attribute, member);
+        }
+
+        var overridden = (member as IPropertySymbol)?.OverriddenProperty;
+        while (overridden != null)
+        {
+            foreach (var attribute in overridden.GetAttributes())
+            {
+                if (IsInherited(attribute.AttributeClass))
+                {
+                    yield return (attribute, overridden);
+                }
+            }
+
+            overridden = overridden.OverriddenProperty;
+        }
+    }
+
+    // [AttributeUsage] is itself inherited, so the nearest one up the attribute's base chain
+    // decides, and Inherited is true unless it says otherwise.
+    static bool IsInherited(INamedTypeSymbol? cls)
+    {
+        for (var current = cls; current != null; current = current.BaseType)
+        {
+            foreach (var attribute in current.GetAttributes())
+            {
+                if (attribute.AttributeClass?.ToDisplayString(format) != "global::System.AttributeUsageAttribute")
+                {
+                    continue;
+                }
+
+                foreach (var named in attribute.NamedArguments)
+                {
+                    if (named is { Key: "Inherited", Value.Value: bool inherited })
+                    {
+                        return inherited;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        return true;
     }
 
     // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
@@ -371,18 +444,19 @@ static class ShapeBuilder
         return false;
     }
 
-    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure)
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure, out INamedTypeSymbol? configureOwner)
     {
         headingParagraphStyle = null;
         bodyParagraphStyle = null;
         tableStyle = null;
         configure = null;
+        configureOwner = null;
         if (excelsiorTableType is null)
         {
             return false;
         }
 
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, owner) in AttributesOf(member))
         {
             if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, excelsiorTableType))
             {
@@ -413,6 +487,7 @@ static class ShapeBuilder
                 else if (named.Key == "Configure")
                 {
                     configure = value;
+                    configureOwner = owner.ContainingType;
                 }
             }
 
@@ -431,7 +506,7 @@ static class ShapeBuilder
             return false;
         }
 
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, _) in AttributesOf(member))
         {
             if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, editableFieldType))
             {
