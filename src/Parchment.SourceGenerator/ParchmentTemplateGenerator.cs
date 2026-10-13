@@ -1806,13 +1806,6 @@ public sealed class ParchmentTemplateGenerator :
             builder.AppendLine();
         }
 
-        builder.Append(
-            """
-
-            using System.Collections.Generic;
-
-            """);
-
         if (target.DeclaringNamespace != null)
         {
             builder.AppendLine($"namespace {target.DeclaringNamespace};");
