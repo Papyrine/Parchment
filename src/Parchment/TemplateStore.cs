@@ -199,7 +199,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         {
             throw new ParchmentRegistrationException(
                 name,
-                $"Failed to parse markdown as a liquid template: {error}");
+                BlockTagArguments.MarkdownParseFailure(rewritten, error));
         }
 
         MarkdownReferenceValidator.Validate(template, model, name);

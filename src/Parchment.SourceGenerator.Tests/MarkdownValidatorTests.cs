@@ -40,6 +40,22 @@ public class MarkdownValidatorTests
         }
         """;
 
+    // Fluid refuses these on its own, naming the tag it expected instead; the diagnostic leads
+    // with the tag that is wrong, in the words the docx flow uses.
+    [Test]
+    [Arguments("{% if Lines %}a{% else if Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% if Lines %}a{% elseif Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% if Lines %}a{% else Lines %}b{% endif %}", "'{% else %}' takes no arguments.")]
+    [Arguments("{% if Lines %}a{% endif extra %}", "'{% endif %}' takes no arguments.")]
+    [Arguments("{% for line in Lines %}a{% endfor extra %}", "'{% endfor %}' takes no arguments.")]
+    public async Task BlockTagWithArguments(string markdown, string expected)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH006");
+        await Assert.That(diagnostic.GetMessage()).Contains(expected);
+    }
+
     [Test]
     public async Task NestedLoopsShadowSameVariable()
     {

@@ -1926,7 +1926,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1009-L1017' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1030-L1038' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -2292,6 +2292,8 @@ public class Letter
 ### `PARCH003` — unsupported block tag
 
 Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
+
+Also raised for a supported tag written in a form liquid does not have. `else`, `endif` and `endfor` take no arguments, so `{% else if Flag %}` is refused instead of being read as a plain `{% else %}`; the liquid spelling is `{% elsif Flag %}`. `{% elseif Flag %}` is refused for the same reason. A markdown template with any of these fails to parse, which is `PARCH006` carrying the same explanation.
 
 ```
 // Template paragraph — "foobar" is not a recognised tag

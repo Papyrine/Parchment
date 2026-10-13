@@ -60,7 +60,7 @@
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
         title: "Unsupported block tag",
-        messageFormat: "Template '{0}' uses unsupported block tag '{1}' ({2})",
+        messageFormat: "Template '{0}' uses unsupported block tag '{1}' ({2}){3}",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

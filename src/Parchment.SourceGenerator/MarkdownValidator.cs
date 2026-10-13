@@ -75,7 +75,8 @@ class MarkdownValidator
                     location,
                     templatePath,
                     $"{{% {tag} ... %}}",
-                    Diagnostics.MarkdownPartialTag));
+                    Diagnostics.MarkdownPartialTag,
+                    string.Empty));
         }
     }
 

@@ -1133,7 +1133,7 @@ public sealed class ParchmentTemplateGenerator :
                     Diagnostics.TemplateReadError,
                     location,
                     templatePath,
-                    $"Failed to parse markdown as a liquid template: {error}"));
+                    BlockTagArguments.MarkdownParseFailure(matched.Text, error)));
             return;
         }
 
@@ -1369,13 +1369,20 @@ public sealed class ParchmentTemplateGenerator :
                     break;
 
                 case TokenKind.UnknownBlock:
+                    var hint = string.Empty;
+                    if (token.Problem != null)
+                    {
+                        hint = $". {token.Problem}";
+                    }
+
                     context.ReportDiagnostic(
                         Diagnostic.Create(
                             Diagnostics.UnsupportedBlockTag,
                             location,
                             templatePath,
                             token.Source,
-                            Diagnostics.DocxBlockTags));
+                            Diagnostics.DocxBlockTags,
+                            hint));
                     break;
             }
         }

@@ -388,6 +388,7 @@ public partial class MarkdownFlowTests
     {
         public required IReadOnlyList<Row> Rows { get; init; }
         public int Count { get; init; }
+        public bool Flag { get; init; }
     }
 
     public class Row
@@ -400,6 +401,26 @@ public partial class MarkdownFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
         new TemplateStore().RegisterMarkdownTemplate<LoopModel>(markdown, styleSource);
     }
+
+    // Liquid has no `else if`, and `else` / `endif` / `endfor` take no arguments. The docx flow
+    // scans its own tags and has to agree with what Fluid rejects here.
+    [Test]
+    [Arguments("{% if Flag %}a{% else if Flag %}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{%- else if Flag -%}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{% elseif Flag %}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{% else Flag %}b{% endif %}", "'{% else %}' takes no arguments")]
+    [Arguments("{% if Flag %}a{% endif extra %}", "'{% endif %}' takes no arguments")]
+    [Arguments("{% for row in Rows %}a{% endfor extra %}", "'{% endfor %}' takes no arguments")]
+    public async Task BlockTagWithArgumentsFailsRegistration(string markdown, string expected)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register(markdown));
+        await Assert.That(exception.Message).Contains(expected);
+    }
+
+    [Test]
+    public void WhitespaceControlOnArgumentlessTagsIsAccepted() =>
+        Register("{%- for row in Rows -%}a{%- endfor -%}{%- if Flag -%}a{%- else -%}b{%-endif-%}");
 
     // Leading whitespace control is exactly what a markdown template needs, since markdown ends an
     // html block at the first blank line. The old text scan looked for a literal "{% for row in "
