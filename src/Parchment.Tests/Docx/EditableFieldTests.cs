@@ -509,6 +509,114 @@ public partial class EditableFieldTests
         await Assert.That(result.Fields.Single(_ => _.Path == "Stage").Value).IsEqualTo(ReviewStage.InProgress);
     }
 
+    public enum AliasedLevel
+    {
+        Low = 1,
+        Minor = 1,
+
+        [Display(Name = "Top")]
+        High = 2,
+        VeryHigh = 2,
+        Other = 3
+    }
+
+    public enum SameLabelChoice
+    {
+        [Display(Name = "Same")]
+        First,
+
+        [Display(Name = "Same")]
+        Second,
+        Third
+    }
+
+    [ParchmentBindable]
+    public partial class AliasedModel
+    {
+        [EditableField]
+        public AliasedLevel Level { get; set; }
+
+        [EditableField]
+        public AliasedLevel? Optional { get; set; }
+
+        [EditableField]
+        public SameLabelChoice Choice { get; set; }
+    }
+
+    static List<(string Text, string Value)> DropDownItems(SdtRun sdt) =>
+        sdt.SdtProperties!.GetFirstChild<SdtContentDropDownList>()!
+            .Elements<ListItem>()
+            .Select(_ => (_.DisplayText!.Value!, _.Value!.Value!))
+            .ToList();
+
+    static void PickDropDownText(Stream stream, string tag, string text)
+    {
+        using var doc = WordprocessingDocument.Open(stream, true);
+        var sdt = FindSdt(doc.MainDocumentPart!.Document!.Body!, tag);
+        var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+        content.RemoveAllChildren();
+        content.AppendChild(new Run(new Text(text)));
+        doc.Save();
+    }
+
+    [Test]
+    public async Task DropDownGivesEachNameOfASharedEnumValueItsOwnLabel()
+    {
+        // Minor is an alias of Low and VeryHigh of High; the model holds the alias both times.
+        using var stream = await RenderModel(
+            "{{ Level }} {{ Optional }}",
+            new AliasedModel { Level = AliasedLevel.Minor, Optional = AliasedLevel.VeryHigh });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var level = FindSdt(body, "Level");
+            var items = DropDownItems(level);
+            await Assert.That(items.Select(_ => _.Value)).IsEquivalentTo(["Low", "Minor", "High", "VeryHigh", "Other"]);
+            await Assert.That(items.Select(_ => _.Text)).IsEquivalentTo(["Low", "Minor", "Top", "Very high", "Other"]);
+
+            // The selection is the first declared name of the value.
+            await Assert.That(level.InnerText).IsEqualTo("Low");
+            await Assert.That(FindSdt(body, "Optional").InnerText).IsEqualTo("Top");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Level").Value).IsEqualTo(AliasedLevel.Low);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Optional").Value).IsEqualTo(AliasedLevel.High);
+
+        // Picking an alias entry extracts its value.
+        stream.Position = 0;
+        PickDropDownText(stream, "Level", "Very high");
+        stream.Position = 0;
+        result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Level").Value).IsEqualTo(AliasedLevel.High);
+    }
+
+    [Test]
+    public async Task DropDownKeepsMembersWithTheSameLabelDistinguishable()
+    {
+        using var stream = await RenderModel("{{ Choice }}", new AliasedModel { Choice = SameLabelChoice.Second });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var choice = FindSdt(doc.MainDocumentPart!.Document!.Body!, "Choice");
+            await Assert.That(DropDownItems(choice).Select(_ => _.Text)).IsEquivalentTo(["Same", "Same (Second)", "Third"]);
+            await Assert.That(choice.InnerText).IsEqualTo("Same (Second)");
+        }
+
+        // Second used to read back as First, the first item showing "Same".
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Choice").Value).IsEqualTo(SameLabelChoice.Second);
+
+        stream.Position = 0;
+        PickDropDownText(stream, "Choice", "Same");
+        stream.Position = 0;
+        result = ParchmentExtractor.Extract<AliasedModel>(stream);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Choice").Value).IsEqualTo(SameLabelChoice.First);
+    }
+
     [Test]
     public async Task TemporalKindsRenderWithCorrectControls()
     {
@@ -629,6 +737,92 @@ public partial class EditableFieldTests
         using var doc = WordprocessingDocument.Open(stream, false);
         var protection = doc.MainDocumentPart!.DocumentSettingsPart?.Settings?.GetFirstChild<DocumentProtection>();
         await Assert.That(protection).IsNull();
+    }
+
+    const string legacyPassword = "w:cryptProviderType=\"rsaAES\" w:cryptAlgorithmClass=\"hash\" w:cryptAlgorithmType=\"typeAny\" w:cryptAlgorithmSid=\"14\" w:cryptSpinCount=\"100000\" w:hash=\"q2FzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhcw==\" w:salt=\"c2FsdHNhbHRzYWx0c2FsdA==\"";
+    const string modernPassword = "w:algorithmName=\"SHA-512\" w:hashValue=\"q2FzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhc2RmYXNkZmFzZGZhcw==\" w:saltValue=\"c2FsdHNhbHRzYWx0c2FsdA==\" w:spinCount=\"100000\"";
+
+    [Test]
+    [Arguments("forms", legacyPassword)]
+    [Arguments("readOnly", legacyPassword)]
+    [Arguments("comments", legacyPassword)]
+    [Arguments("trackedChanges", legacyPassword)]
+    [Arguments("none", legacyPassword)]
+    [Arguments("forms", modernPassword)]
+    [Arguments("readOnly", modernPassword)]
+    public async Task ProtectionKeepsTheTemplatePassword(string edit, string password)
+    {
+        // Elements on both sides, so the kept element has to land back in its schema slot.
+        using var stream = await RenderProtected(
+            $"<w:zoom w:percent=\"100\"/><w:documentProtection w:edit=\"{edit}\" w:formatting=\"1\" w:enforcement=\"0\" {password}/><w:defaultTabStop w:val=\"720\"/>");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var settings = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!;
+        var protection = settings.Elements<DocumentProtection>().Single();
+
+        // Whatever the author chose, the render needs enforced read-only for the editable ranges.
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.ReadOnly);
+        await Assert.That(protection.Enforcement!.Value).IsTrue();
+
+        var kept = protection.GetAttributes()
+            .Where(_ => _.LocalName is not ("edit" or "enforcement"))
+            .Select(_ => $"w:{_.LocalName}=\"{_.Value}\"");
+        await Assert.That(string.Join(' ', kept)).IsEqualTo($"w:formatting=\"1\" {password}");
+
+        var names = settings.ChildElements.Select(_ => _.LocalName).Take(3);
+        await Assert.That(string.Join(',', names)).IsEqualTo("zoom,documentProtection,defaultTabStop");
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365).Validate(doc).ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    [Test]
+    public async Task ProtectionWithoutAPasswordIsReplaced()
+    {
+        using var stream = await RenderProtected(
+            "<w:zoom w:percent=\"100\"/><w:documentProtection w:edit=\"forms\" w:formatting=\"1\" w:enforcement=\"1\"/><w:defaultTabStop w:val=\"720\"/>");
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var settings = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!;
+        var protection = settings.Elements<DocumentProtection>().Single();
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.ReadOnly);
+        await Assert.That(protection.Enforcement!.Value).IsTrue();
+        await Assert.That(protection.GetAttributes().Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task ProtectionModeNoneLeavesTheTemplateProtectionAlone()
+    {
+        using var stream = await RenderProtected(
+            $"<w:documentProtection w:edit=\"forms\" w:enforcement=\"1\" {legacyPassword}/>",
+            ProtectionMode.None);
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var protection = doc.MainDocumentPart!.DocumentSettingsPart!.Settings!.Elements<DocumentProtection>().Single();
+        await Assert.That(protection.Edit!.Value).IsEqualTo(DocumentProtectionValues.Forms);
+        await Assert.That(protection.Hash).IsNotNull();
+    }
+
+    // Renders an editable field from a template whose settings already hold the given children.
+    static async Task<MemoryStream> RenderProtected(string settingsChildren, ProtectionMode mode = ProtectionMode.WhenEditable)
+    {
+        using var template = DocxTemplateBuilder.Build("{{ PurchaseOrder }}");
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var main = doc.MainDocumentPart!;
+            var part = main.DocumentSettingsPart ?? main.AddNewPart<DocumentSettingsPart>();
+            part.Settings = new($"<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">{settingsChildren}</w:settings>");
+            doc.Save();
+        }
+
+        template.Position = 0;
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template, mode);
+
+        var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+        return stream;
     }
 
     [Test]
@@ -999,6 +1193,48 @@ public partial class EditableFieldTests
         await Assert.That(header.InnerText).IsEqualTo("PO: PO-2026-17");
     }
 
+    // The plain-access and once-only rules exist for the control. A loop body and a header render
+    // the member as read-only text through Fluid, so a filter is applied there and a repeat is
+    // only a mirror of the one body control.
+    [Test]
+    public async Task ReadOnlyLoopOccurrenceTakesAFilterBesideTheBodyControl()
+    {
+        using var stream = await Render(
+            """
+            {{ PurchaseOrder }}
+
+            {% for tag in Tags %}
+
+            {{ PurchaseOrder | downcase }}
+
+            {% endfor %}
+            """,
+            NewOrder());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.Descendants<SdtRun>().Count()).IsEqualTo(1);
+        await Assert.That(body.InnerText).IsEqualTo("PO-2026-17po-2026-17po-2026-17");
+    }
+
+    [Test]
+    public async Task HeaderOccurrenceTakesAFilter()
+    {
+        using var template = BuildTemplateWithHeader(
+            bodyText: "{{ PurchaseOrder }}",
+            headerText: "PO: {{ PurchaseOrder | downcase }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(NewOrder(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        await Assert.That(doc.MainDocumentPart!.Document!.Body!.Descendants<SdtRun>().Count()).IsEqualTo(1);
+        await Assert.That(doc.MainDocumentPart.HeaderParts.Single().Header!.InnerText).IsEqualTo("PO: po-2026-17");
+    }
+
     [Test]
     public async Task OutputValidates()
     {
@@ -1015,6 +1251,122 @@ public partial class EditableFieldTests
         using var doc = WordprocessingDocument.Open(stream, false);
         var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
         var errors = validator.Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    // A template can hold content controls and editable ranges of its own. Their ids share one
+    // space with the ones a render adds, across the body, headers and footers, and the render used
+    // to number from 1 regardless.
+    [Test]
+    public async Task IdsStartAboveTheTemplatesOwn()
+    {
+        using var template = DocxTemplateBuilder.Build("PO: {{ PurchaseOrder }}\n\n{{ Approved }} {{ Status }}");
+        using (var doc = WordprocessingDocument.Open(template, true))
+        {
+            var main = doc.MainDocumentPart!;
+            main.Document!.Body!.InsertAt(
+                new Paragraph(
+                    new PermStart
+                    {
+                        Id = 1,
+                        EditorGroup = RangePermissionEditingGroupValues.Everyone
+                    },
+                    new SdtRun(
+                        new SdtProperties(
+                            new Tag
+                            {
+                                Val = "authorControl"
+                            },
+                            new SdtId
+                            {
+                                Val = 2
+                            }),
+                        new SdtContentRun(new Run(new Text("author's own control")))),
+                    new PermEnd
+                    {
+                        Id = 1
+                    }),
+                0);
+
+            // Token-free, so a render never reads it: the ids have to be found at registration.
+            var header = main.AddNewPart<HeaderPart>();
+            header.Header = new(
+                new Paragraph(
+                    new PermStart
+                    {
+                        Id = 6,
+                        EditorGroup = RangePermissionEditingGroupValues.Everyone
+                    },
+                    new SdtRun(
+                        new SdtProperties(
+                            new SdtId
+                            {
+                                Val = 4
+                            }),
+                        new SdtContentRun(new Run(new Text("header control")))),
+                    new PermEnd
+                    {
+                        Id = 6
+                    }));
+            // Word writes ids anywhere in the signed range; a negative one is not a floor.
+            var footer = main.AddNewPart<FooterPart>();
+            footer.Footer = new(
+                new Paragraph(
+                    new SdtRun(
+                        new SdtProperties(
+                            new SdtId
+                            {
+                                Val = -12345
+                            }),
+                        new SdtContentRun(new Run(new Text("footer control"))))));
+            doc.Save();
+        }
+
+        template.Position = 0;
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<EditableOrder>(template);
+
+        using var first = new MemoryStream();
+        await store.Render(NewOrder(), first);
+        using var second = new MemoryStream();
+        await store.Render(NewOrder(), second);
+        await Assert.That(first.ToArray().SequenceEqual(second.ToArray())).IsTrue();
+
+        first.Position = 0;
+        using var rendered =WordprocessingDocument.Open(first, false);
+        var renderedMain = rendered.MainDocumentPart!;
+        var roots = new List<OpenXmlCompositeElement>
+        {
+            renderedMain.Document!.Body!
+        };
+        roots.AddRange(renderedMain.HeaderParts.Select(_ => _.Header!));
+        roots.AddRange(renderedMain.FooterParts.Select(_ => _.Footer!));
+
+        var sdtIds = roots
+            .SelectMany(_ => _.Descendants<SdtId>())
+            .Select(_ => _.Val!.Value)
+            .Order()
+            .ToList();
+        var permIds = roots
+            .SelectMany(_ => _.Descendants<PermStart>())
+            .Select(_ => _.Id!.Value)
+            .Order()
+            .ToList();
+        await Assert.That(sdtIds).IsEquivalentTo([-12345, 2, 4, 7, 8, 9]);
+        await Assert.That(permIds).IsEquivalentTo([1, 6, 7, 8, 9]);
+
+        foreach (var start in roots.SelectMany(_ => _.Descendants<PermStart>()))
+        {
+            var ends = roots
+                .SelectMany(_ => _.Descendants<PermEnd>())
+                .Count(_ => _.Id!.Value == start.Id!.Value);
+            await Assert.That(ends).IsEqualTo(1);
+        }
+
+        var validator = new OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var errors = validator.Validate(rendered)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();
         await Assert.That(errors).IsEmpty();
@@ -1164,6 +1516,40 @@ public partial class EditableFieldTests
         await Assert.That(field.Value).IsEqualTo("<p>one</p><p>two</p><p>three</p>");
     }
 
+    [Test]
+    public async Task HtmlEditableHoldingTableAloneInTableCellIsFollowedByParagraph()
+    {
+        const string html = "<p>intro</p><table><tr><td>x</td></tr></table>";
+        using var stream = await RenderTableModel(
+            "Body:",
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = html
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            // The control's content ends with the table, and Word wants the cell to end with a
+            // paragraph. It goes after the control and not into it, where it would be read back
+            // as part of the value.
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            await Assert.That(sdt.SdtContentBlock!.LastChild).IsTypeOf<Table>();
+            var cell = (TableCell)sdt.Parent!;
+            await Assert.That(cell.ChildElements.Count).IsEqualTo(2);
+            await Assert.That(cell.LastChild).IsTypeOf<Paragraph>();
+            await Assert.That(cell.LastChild!.InnerText).IsEqualTo("");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        var field = result.Fields.Single(_ => _.Path == "Body");
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        // What the same value reads back as from a control in the body, where nothing is added.
+        await Assert.That(field.Value).IsEqualTo(await ExtractHtml(html));
+    }
+
     [ParchmentBindable]
     public partial class RichTextShapes
     {
@@ -1309,6 +1695,199 @@ public partial class EditableFieldTests
         await Assert.That(extracted).IsEqualTo("<ul><li>a</li><li>b</li></ul>");
     }
 
+    // Unedited content is a fixed point: the bold a heading is drawn with and the underline a link
+    // is drawn with are implied by the element, not formatting to report on top of it.
+    [Test]
+    public Task HtmlEditableSupportedSubsetRoundTrips() =>
+        AssertHtmlRoundTrips(
+            "<h1>Title</h1>" +
+            "<h2>Sub <em>stressed</em> <u>under</u> <a href=\"https://example.com/h\">link</a></h2>" +
+            "<p>Hello <strong>bold</strong> <em>ital</em> <u>under</u> <s>strike</s> x<sup>2</sup> H<sub>2</sub>O<br>next</p>" +
+            "<p>see <a href=\"https://example.com/a?x=1&amp;y=2\">link</a> and " +
+            "<a href=\"https://example.com/b\"><strong>bold</strong> link</a> and <a href=\"#local\">local</a></p>" +
+            "<ul><li>a <a href=\"https://example.com/c\">c</a><ol><li><strong>b</strong></li></ol></li></ul>" +
+            "<h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6>");
+
+    [Test]
+    public async Task HtmlEditableImpliedFormattingIsNotReported()
+    {
+        var extracted = await ExtractHtml(
+            "<h1><strong>Title</strong></h1><p><a href=\"https://example.com/a\"><u>link</u></a></p>");
+
+        await Assert.That(extracted).IsEqualTo("<h1>Title</h1><p><a href=\"https://example.com/a\">link</a></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkWithUnderlineRemovedRoundTrips()
+    {
+        // Ctrl+U over a link the render wrote drops its direct w:u.
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\">link</a></p>",
+            content =>
+            {
+                foreach (var underline in content.Descendants<Underline>().ToList())
+                {
+                    underline.Remove();
+                }
+            });
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\" style=\"text-decoration:none\">link</a></p>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkWithUnderlineRemovedFromPartRoundTrips()
+    {
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\"><strong>one</strong> two</a></p>",
+            content =>
+                content.Descendants<Hyperlink>().Single()
+                    .Elements<Run>().First()
+                    .RunProperties!.Underline = new()
+                {
+                    Val = UnderlineValues.None
+                });
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\" style=\"text-decoration:none\"><strong>one</strong><u> two</u></a></p>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkInsertedInWordIsUnderlinedByItsStyle()
+    {
+        // Word draws its own links through the Hyperlink character style, with no direct w:u.
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\">link</a></p>",
+            content =>
+                content.Descendants<Hyperlink>().Single()
+                    .Elements<Run>().Single()
+                    .RunProperties = new(
+                    new RunStyle
+                    {
+                        Val = "Hyperlink"
+                    }));
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\">link</a></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableHeadingRunWithBoldSwitchedOffRoundTrips()
+    {
+        var extracted = await ExtractHtml(
+            "<h1>one <em>two</em></h1>",
+            content =>
+                content.Descendants<Run>().Last()
+                    .RunProperties!.Bold = new()
+                {
+                    Val = false
+                });
+
+        await Assert.That(extracted).IsEqualTo("<h1>one <span style=\"font-weight:normal\"><em>two</em></span></h1>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableParagraphGivenHeadingStyleInWordIsAPlainHeading()
+    {
+        // The style gallery sets w:pStyle and leaves the runs alone, so they carry no w:b.
+        var extracted = await ExtractHtml(
+            "<p>Title <strong>bold</strong></p>",
+            content =>
+                content.Descendants<Paragraph>().Single()
+                    .ParagraphProperties = new(
+                    new ParagraphStyleId
+                    {
+                        Val = "Heading2"
+                    }));
+
+        await Assert.That(extracted).IsEqualTo("<h2>Title bold</h2>");
+    }
+
+    [Test]
+    public Task HtmlEditableOrderedListStartRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"5\"><li>five</li><li>six</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartingAtZeroRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"0\"><li>zero</li><li>one</li></ol>");
+
+    [Test]
+    public Task HtmlEditableNestedOrderedListStartRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"3\"><li>a<ol start=\"7\"><li>b</li><li>c</li></ol></li><li>d</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartNestedInBulletItemRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a<ol start=\"4\"><li>b</li></ol></li><li>c</li></ul>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartAfterBulletListRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a</li></ul><ol start=\"2\"><li>b</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListsEitherSideOfParagraphKeepTheirOwnStart() =>
+        AssertHtmlRoundTrips("<ol start=\"5\"><li>a</li></ol><p>mid</p><ol><li>b</li></ol><p>end</p><ol start=\"9\"><li>c</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListStartOfOneExtractsWithoutStart()
+    {
+        // The render writes a start override of 1 on every ordered list; that is html's default,
+        // not an attribute.
+        var extracted = await ExtractHtml("<ol start=\"1\"><li>a</li></ol>");
+
+        await Assert.That(extracted).IsEqualTo("<ol><li>a</li></ol>");
+    }
+
+    [Test]
+    public async Task HtmlEditableOrderedListStartReadsDefinitionLevelStart()
+    {
+        // A list numbered in Word can carry its first number on the definition's level, with no
+        // override on the instance.
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<ol start=\"5\"><li>a</li><li>b</li></ol>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var main = doc.MainDocumentPart!;
+            var numberingId = FindSdtBlock(main.Document!.Body!, "Body")
+                .Descendants<NumberingId>()
+                .First()
+                .Val!.Value;
+            var numbering = main.NumberingDefinitionsPart!.Numbering!;
+            var instance = numbering.Elements<NumberingInstance>().Single(_ => _.NumberID!.Value == numberingId);
+            instance.RemoveAllChildren<LevelOverride>();
+            numbering
+                .Elements<AbstractNum>()
+                .Single(_ => _.AbstractNumberId!.Value == instance.AbstractNumId!.Val!.Value)
+                .Elements<Level>()
+                .Single(_ => _.LevelIndex!.Value == 0)
+                .StartNumberingValue = new() { Val = 8 };
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(model.Body).IsEqualTo("<ol start=\"8\"><li>a</li><li>b</li></ol>");
+    }
+
+    [Test]
+    [Arguments("mailto:a@b.co?subject=Hi%20there")]
+    [Arguments("tel:+61-2-5550-1234")]
+    [Arguments("https://example.com")]
+    [Arguments("https://example.com/a%20b?q=%C3%A9#frag")]
+    public async Task HtmlEditableLinkKeepsItsHref(string href)
+    {
+        // The relationship target is read back as written. Uri.ToString() unescapes it, turning
+        // %20 into a space, and adds the slash an authority-only url did not have.
+        var extracted = await ExtractHtml($"<p><a href=\"{href}\">text</a></p>");
+        await Assert.That(extracted).Contains($"<a href=\"{href}\">");
+    }
+
     static async Task AssertHtmlRoundTrips(string html)
     {
         var extracted = await ExtractHtml(html);
@@ -1316,7 +1895,7 @@ public partial class EditableFieldTests
         await Assert.That(extracted).IsEqualTo(html);
     }
 
-    static async Task<string?> ExtractHtml(string html)
+    static async Task<string?> ExtractHtml(string html, Action<OpenXmlElement>? edit = null)
     {
         var model = new EditableArticle
         {
@@ -1324,6 +1903,18 @@ public partial class EditableFieldTests
             Body = html
         };
         using var stream = await RenderModel("{{ Body }}", model);
+
+        if (edit != null)
+        {
+            using (var doc = WordprocessingDocument.Open(stream, true))
+            {
+                var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+                edit(sdt.ChildElements.First(_ => _.LocalName == "sdtContent"));
+                doc.Save();
+            }
+
+            stream.Position = 0;
+        }
 
         var result = ParchmentExtractor.Extract<EditableArticle>(stream);
         model.Body = "";
@@ -1361,6 +1952,326 @@ public partial class EditableFieldTests
         result.ApplyTo(model);
 
         await Assert.That(model.Body).IsEqualTo("<p><strong>edited</strong></p>");
+    }
+
+    const string wordXmlns =
+        """xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:v="urn:schemas-microsoft-com:vml" """;
+
+    const string revision = """w:id="901" w:author="u" w:date="2026-01-01T00:00:00Z" """;
+
+    static string WordRun(string text) =>
+        $"""<w:r><w:t xml:space="preserve">{text}</w:t></w:r>""";
+
+    // Extraction reads a document with every tracked change accepted. The link run carries the
+    // Hyperlink style, as one inserted in Word does: without it the link reads as not underlined.
+    [Test]
+    public async Task HtmlEditableKeepsTrackedInsertionsAndDropsDeletions()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("keep ")}<w:ins {revision}>{WordRun("typed")}</w:ins><w:del {revision}><w:r><w:delText> gone</w:delText></w:r></w:del></w:p>
+             <w:p><w:pPr><w:rPr><w:ins {revision}/></w:rPr></w:pPr><w:ins {revision}>{WordRun("new paragraph")}</w:ins></w:p>
+             <w:p><w:pPr><w:rPr><w:del {revision}/></w:rPr></w:pPr><w:del {revision}><w:r><w:delText>gone paragraph</w:delText></w:r></w:del></w:p>
+             <w:p><w:hyperlink w:anchor="bm"><w:ins {revision}><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t>link</w:t></w:r></w:ins></w:hyperlink></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("""<p>keep typed</p><p>new paragraph</p><p><a href="#bm">link</a></p>""");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsMovedTextAtItsDestination()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p><w:pPr><w:rPr><w:moveFrom {revision}/></w:rPr></w:pPr><w:moveFrom {revision}>{WordRun("moved")}</w:moveFrom></w:p>
+             <w:p>{WordRun("stay")}</w:p>
+             <w:p><w:moveTo {revision}>{WordRun("moved")}</w:moveTo></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>stay</p><p>moved</p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsThroughInlineWrappers()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("on ")}<w:fldSimple w:instr=" DATE ">{WordRun("6/07/2026")}</w:fldSimple></w:p>
+             <w:p><w:smartTag w:uri="urn:x" w:element="place">{WordRun("Paris")}</w:smartTag>{WordRun(" trip")}</w:p>
+             <w:p><w:dir w:val="rtl">{WordRun("dir ")}</w:dir><w:bdo w:val="ltr">{WordRun("bdo ")}</w:bdo><w:customXml w:uri="urn:x" w:element="e">{WordRun("custom")}</w:customXml></w:p>
+             <w:p>{WordRun("a ")}<w:sdt><w:sdtPr><w:tag w:val="inner"/></w:sdtPr><w:sdtContent><w:r><w:rPr><w:b/></w:rPr><w:t>inner</w:t></w:r></w:sdtContent></w:sdt></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>on 6/07/2026</p><p>Paris trip</p><p>dir bdo custom</p><p>a <strong>inner</strong></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsThroughBlockWrappers()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("a")}</w:p>
+             <w:sdt><w:sdtPr><w:tag w:val="inner"/></w:sdtPr><w:sdtContent>
+               <w:p>{WordRun("inner block")}</w:p>
+               <w:tbl><w:tr><w:tc><w:p>{WordRun("cell")}</w:p></w:tc></w:tr><w:tr><w:trPr><w:del {revision}/></w:trPr><w:tc><w:p>{WordRun("deleted row")}</w:p></w:tc></w:tr></w:tbl>
+             </w:sdtContent></w:sdt>
+             <w:customXml w:uri="urn:x" w:element="e"><w:p>{WordRun("custom block")}</w:p></w:customXml>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>a</p><p>inner block</p><p>cell</p><p>custom block</p>");
+    }
+
+    // Neither has an HTML form in the supported subset, so both degrade to their text. A text box
+    // is stored twice (the shape and its VML fallback) and is read once.
+    [Test]
+    public async Task HtmlEditableKeepsTheTextOfMathAndTextBoxes()
+    {
+        var boxed = $"<w:txbxContent><w:p>{WordRun("boxed")}</w:p></w:txbxContent>";
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("math ")}<m:oMath><m:r><m:t>x&lt;1</m:t></m:r></m:oMath></w:p>
+             <w:p>{WordRun("before ")}<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wps:wsp><wps:txbx>{boxed}</wps:txbx></wps:wsp></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox>{boxed}</v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>math x&lt;1</p><p>before boxed</p>");
+    }
+
+    static async Task<string?> ExtractEditedHtml(string contentXml)
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>original</p>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            sdt.ReplaceChild(new SdtContentBlock($"<w:sdtContent {wordXmlns}>{contentXml}</w:sdtContent>"), content);
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+        return model.Body;
+    }
+
+    const string fragmentUrl = "https://example.com/docs/page#section-two";
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentSplitByWordIsRejoined()
+    {
+        // On any save Word moves a link's fragment out of the relationship target and into
+        // w:anchor on the w:hyperlink.
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/docs/page", _ => _.Anchor = "section-two");
+
+        var extracted = ExtractBody(stream);
+
+        await Assert.That(extracted).Contains($"<a href=\"{fragmentUrl}\">");
+
+        // The extracted html renders back to the link the document started with.
+        using var again = await RenderLink(extracted!, wrap: false);
+        await Assert.That(LinkTargets(again)).IsEquivalentTo([fragmentUrl]);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentInDocLocationIsRejoined()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/docs/page", _ => _.DocLocation = "section-two");
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkAnchorWinsOverDocLocation()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(
+            stream,
+            "https://example.com/docs/page",
+            _ =>
+            {
+                _.Anchor = "section-two";
+                _.DocLocation = "elsewhere";
+            });
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentLeftInTargetExtractsOnce()
+    {
+        // The shape Parchment writes, before Word has saved the document.
+        using var stream = await RenderLink(fragmentUrl);
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableBookmarkLinkExtractsAsFragmentOnly()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, null, _ => _.Anchor = "section-two");
+
+        await Assert.That(ExtractBody(stream)).Contains("<a href=\"#section-two\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkKeepsPercentEscapesAndEscapesTheAttribute()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/q?a=%22x%22&b=Hi%20there", _ => _.Anchor = "a<b");
+
+        await Assert.That(ExtractBody(stream))
+            .Contains("<a href=\"https://example.com/q?a=%22x%22&amp;b=Hi%20there#a&lt;b\">");
+    }
+
+    static Task<MemoryStream> RenderLink(string value, bool wrap = true)
+    {
+        var body = value;
+        if (wrap)
+        {
+            body = $"<p>See <a href=\"{value}\">section two</a> for more</p>";
+        }
+
+        return RenderModel(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = body
+            });
+    }
+
+    /// <summary>
+    /// Points the rendered link at <paramref name="target"/> through a new relationship (none when
+    /// null) and lets the caller set the attributes Word keeps on the <c>w:hyperlink</c> itself.
+    /// </summary>
+    static void RewriteLink(MemoryStream stream, string? target, Action<Hyperlink> edit)
+    {
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var mainPart = doc.MainDocumentPart!;
+            var hyperlink = FindSdtBlock(mainPart.Document!.Body!, "Body")
+                .Descendants<Hyperlink>()
+                .Single();
+            mainPart.DeleteReferenceRelationship(hyperlink.Id!.Value!);
+            hyperlink.Id = null;
+            if (target != null)
+            {
+                mainPart.AddHyperlinkRelationship(new(target, UriKind.Absolute), true, "rIdWord1");
+                hyperlink.Id = "rIdWord1";
+            }
+
+            edit(hyperlink);
+            doc.Save();
+        }
+
+        stream.Position = 0;
+    }
+
+    static string? ExtractBody(MemoryStream stream)
+    {
+        var field = ParchmentExtractor.Extract<EditableArticle>(stream)
+            .Fields.Single(_ => _.Path == "Body");
+        stream.Position = 0;
+        return field.Value as string;
+    }
+
+    static List<string> LinkTargets(MemoryStream stream)
+    {
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.HyperlinkRelationships
+            .Select(_ => _.Uri.OriginalString)
+            .ToList();
+    }
+
+    [Test]
+    public async Task HtmlEditableTabRoundTrips()
+    {
+        // The bare character would fold to a space in html, so a tab is the span OpenXmlHtml
+        // renders as w:tab — and what it renders has to extract as the same span again.
+        const string html = "<p>left<span style=\"white-space:pre\">&#9;</span>right</p>";
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = html
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            await Assert.That(sdt.Descendants<TabChar>().Count()).IsEqualTo(1);
+            await Assert.That(sdt.InnerText).IsEqualTo("leftright");
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        model.Body = "";
+        result.ApplyTo(model);
+
+        await Assert.That(model.Body).IsEqualTo(html);
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsTheRunContentWordWritesAsElements()
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>original</p>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        // Word writes each of these as an element of its own rather than as text in w:t.
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            content.RemoveAllChildren();
+            content.AppendChild(
+                new Paragraph(
+                    new Run(
+                        new Text("a"),
+                        new TabChar(),
+                        new Text("b")),
+                    new Run(
+                        new RunProperties(new Bold()),
+                        new TabChar()),
+                    new Run(
+                        new Text("co"),
+                        new NoBreakHyphen(),
+                        new Text("op"),
+                        new SoftHyphen(),
+                        new Text("s"),
+                        new CarriageReturn(),
+                        new SymbolChar
+                        {
+                            Font = "Arial",
+                            Char = "2022"
+                        },
+                        new SymbolChar
+                        {
+                            Font = "Wingdings",
+                            Char = "F0E0"
+                        })));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        const string tab = "<span style=\"white-space:pre\">&#9;</span>";
+        await Assert.That(model.Body)
+            .IsEqualTo($"<p>a{tab}b<strong>{tab}</strong>co‑ops<br>•</p>");
     }
 
     [Test]

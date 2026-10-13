@@ -6,6 +6,12 @@ namespace Parchment;
 /// </summary>
 public interface IOpenXmlContext
 {
+    /// <summary>
+    /// The main document part, whichever part the token sits in. A relationship id resolves
+    /// against the part holding the element that carries it, so when the token sits in a header,
+    /// footer, footnote or endnote, a relationship added here that the token's content refers to
+    /// is moved to that part once the delegate returns, and the content pointed at its new id.
+    /// </summary>
     MainDocumentPart MainPart { get; }
     int CurrentHeadingLevel { get; }
 
@@ -18,6 +24,10 @@ public interface IOpenXmlContext
     /// </summary>
     Paragraph? HostParagraph { get; }
 
+    /// <summary>
+    /// Adds an image to the part the token sits in — the main document part, or the header,
+    /// footer, footnotes or endnotes part — and returns the relationship id to refer to it by.
+    /// </summary>
     string AddImagePart(byte[] bytes, string contentType);
     bool TryGetStyle(string styleId, out StyleType styleType);
     int CreateBulletNumbering();
