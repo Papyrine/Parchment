@@ -51,7 +51,6 @@ class ListBlockRenderer :
                 // one before the list attaches to the ListBlock and covers every item. The item
                 // wins where both are present.
                 var leaf = (LeafBlock) child;
-                var heading = leaf as HeadingBlock;
                 var styleId = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph";
                 ParagraphProperties properties;
                 if (numbered)
@@ -70,7 +69,7 @@ class ListBlockRenderer :
                     numbered = true;
                 }
 
-                if (heading != null)
+                if (leaf is HeadingBlock heading)
                 {
                     // A heading takes the marker and the indent like any other item text, but
                     // under its own style rather than the list's, so it is still a heading.
