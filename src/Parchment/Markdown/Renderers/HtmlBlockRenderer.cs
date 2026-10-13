@@ -11,8 +11,7 @@ class HtmlBlockRenderer :
         }
 
         var html = block.Lines.ToString();
-        var settings = renderer.ImagePolicies.BuildSettings(headingOffset: renderer.HeadingOffset);
-        var elements = renderer.Numbering.ConvertHtml(html, settings);
+        var elements = renderer.Numbering.ConvertHtml(html, renderer.ImagePolicies, renderer.HeadingOffset);
         renderer.MayHoldBookmarks = true;
         renderer.MayHoldSections = true;
         var indent = renderer.CurrentIndent;
