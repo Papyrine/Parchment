@@ -11,7 +11,15 @@
 /// model's own collection class — resolves to nil and renders blank, which is why validation
 /// resolves these types here instead of by reflection. The source generator mirrors this in
 /// <c>ShapeResolver</c>, keyed off the <c>LiquidKind</c> its <c>ShapeBuilder</c> records.
+/// <para>
+/// An enum is the same case by another route: the value converter in <see cref="SharedFluid"/>
+/// hands it over as the text it prints as. Reflection lists its constants, and the
+/// <c>value__</c> it stores its number in, as public fields, and none of them bind — so
+/// <c>{{ Status.Final }}</c> is blank and <c>{% if Status == Status.Final %}</c> is false for every
+/// model. An enum resolves no member at all.
+/// </para>
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class LiquidMembers
 {
     public static LiquidKind Classify(Type type)
@@ -19,6 +27,11 @@ static class LiquidMembers
         if (type == typeof(string))
         {
             return LiquidKind.String;
+        }
+
+        if (EnumType(type).IsEnum)
+        {
+            return LiquidKind.Enum;
         }
 
         if (IsDictionary(type))
@@ -37,6 +50,11 @@ static class LiquidMembers
     public static bool TryResolve(LiquidKind kind, Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
         memberType = null;
+        if (kind == LiquidKind.Enum)
+        {
+            return false;
+        }
+
         if (name == "size")
         {
             memberType = typeof(int);
@@ -64,8 +82,27 @@ static class LiquidMembers
         return true;
     }
 
+    /// <summary>
+    /// What <see cref="IdentifierPath.Index"/> yields on a value of <paramref name="type"/>, where
+    /// the type can say: the element of an array. A dictionary is read by key and an object by a
+    /// member named at render, so neither says what comes back, and a string has no index at all.
+    /// False leaves everything past the index unknown rather than wrong.
+    /// </summary>
+    public static bool TryResolveIndex(Type type, [NotNullWhen(true)] out Type? elementType)
+    {
+        elementType = null;
+        return Classify(type) == LiquidKind.Array &&
+               ModelValidator.TryResolveElementType(type, out elementType);
+    }
+
     public static string MissingMessage(LiquidKind kind, Type type, string name)
     {
+        if (kind == LiquidKind.Enum)
+        {
+            return $"Member '{name}' of '{EnumType(type).Name}' is not available to a template. " +
+                   "Liquid sees an enum as the text it renders as, so its constants cannot be named: compare against that text instead.";
+        }
+
         var prefix = $"Member '{name}' of '{type.Name}' is not available to a template. ";
         if (kind == LiquidKind.Dictionary)
         {
@@ -79,6 +116,10 @@ static class LiquidMembers
 
         return prefix + "Liquid sees a collection as an array, which has only 'size', 'first' and 'last'.";
     }
+
+    // A nullable enum is boxed on its way to Fluid, so what arrives is the enum or nothing.
+    static Type EnumType(Type type) =>
+        Nullable.GetUnderlyingType(type) ?? type;
 
     // Fluid makes a DictionaryValue of a non-generic IDictionary or an IDictionary<string, V>. The
     // read-only interface is included because the declared type is all there is to go on here and
@@ -120,5 +161,6 @@ enum LiquidKind
     None,
     String,
     Array,
-    Dictionary
+    Dictionary,
+    Enum
 }

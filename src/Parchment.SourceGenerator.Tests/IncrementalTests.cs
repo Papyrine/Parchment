@@ -36,6 +36,36 @@ public class IncrementalTests
         await AssertOutputsNotModified(runResult);
     }
 
+    // The model's syntax tree rides along with its snapshot so diagnostics land at a source
+    // location. The tree only changes identity when its own file is edited, so an edit to another
+    // file must leave the pipeline cached and the reported diagnostic in source.
+    [Test]
+    public async Task PipelineCachesWhenAnotherFileEdited()
+    {
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            source,
+            new TemplateFile("Letter.parchment.docx", GeneratorDriver.BuildDocxBytesWithoutPrivacyFlag("Hello {{ Customer.Name }}!")));
+        var compilation1 = setup.Compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText("namespace Unrelated; public class Noise { public int X { get; set; } }"));
+        var driver = (CSharpGeneratorDriver) setup.Driver.RunGenerators(compilation1);
+
+        var compilation2 = compilation1.ReplaceSyntaxTree(
+            compilation1.SyntaxTrees[2],
+            CSharpSyntaxTree.ParseText("namespace Unrelated; public class Noise { public int X { get; set; } public int Y { get; set; } }"));
+        driver = (CSharpGeneratorDriver) driver.RunGenerators(compilation2);
+
+        var runResult = driver.GetRunResult().Results.Single();
+
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Targets);
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.TargetsCollected);
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Combined);
+        await AssertOutputsNotModified(runResult);
+
+        var diagnostic = runResult.Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH012");
+        await Assert.That(diagnostic.Location.SourceTree).IsSameReferenceAs(compilation2.SyntaxTrees[1]);
+    }
+
     // Note: we intentionally do not test "editing the model class in a separate file
     // re-runs validation" — ForAttributeWithMetadataName only re-fires on syntax changes to
     // the attributed class itself, so this scenario is a known gap documented in
