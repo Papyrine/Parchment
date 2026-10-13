@@ -1,4 +1,4 @@
-﻿/// <summary>
+/// <summary>
 /// Reflection adapter that constructs the closed-generic <c>Excelsior.WordTableBuilder&lt;T&gt;</c>
 /// for a model element type known only at runtime, then renders the table against the host
 /// <see cref="MainDocumentPart"/>.
@@ -20,6 +20,9 @@ static class ExcelsiorTableBridge
     public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, BookmarkNames names, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
+        // Excelsior adds the relationship of a link cell to the main part itself, and the rewrite
+        // below removes the ones a "#name" link no longer needs.
+        RelationshipIds.Forget(mainPart);
         var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure);
 
         // Both flows, and every table that comes back through here: a "#name" link means the same
