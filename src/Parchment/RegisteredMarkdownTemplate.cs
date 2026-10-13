@@ -83,6 +83,11 @@ class RegisteredMarkdownTemplate(
                 // The markdown walk cannot see the template name, so it is attached here.
                 throw new ParchmentRenderException(Name, exception.Message);
             }
+            catch (TableColumnLimitException exception)
+            {
+                // The table renderer cannot see the template name either, so it is attached here.
+                throw new ParchmentRenderException(Name, exception.Message);
+            }
 
             foreach (var element in elements)
             {

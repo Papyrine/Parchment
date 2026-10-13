@@ -311,7 +311,7 @@ class ScopeTreeRunner(
     /// </summary>
     Paragraph? ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
-        var produced = RenderTokenValue(value, host);
+        var produced = RenderTokenValue(value, host, token);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
@@ -353,20 +353,34 @@ class ScopeTreeRunner(
     List<OpenXmlElement> BuildStructuralReplacements(Paragraph host, IReadOnlyList<(DocxTokenSite site, object value)> tokens)
     {
         var result = new List<OpenXmlElement>();
-        foreach (var (_, value) in tokens)
+        foreach (var (site, value) in tokens)
         {
-            result.AddRange(RenderTokenValue(value, host));
+            result.AddRange(RenderTokenValue(value, host, site));
         }
 
         return result;
     }
 
-    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host)
+    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host, DocxTokenSite site)
     {
         if (value is MarkdownToken md)
         {
-            // Renumbers its own bookmarks, from the same counter.
-            return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            try
+            {
+                // Renumbers its own bookmarks, from the same counter.
+                return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+            }
+            catch (TableColumnLimitException exception)
+            {
+                // The table renderer knows neither the template nor the token its markdown came
+                // through, so both are attached here.
+                throw new ParchmentRenderException(
+                    templateName,
+                    exception.Message,
+                    partUri,
+                    Snippet(host, site),
+                    site.Source);
+            }
         }
 
         IReadOnlyList<OpenXmlElement> produced = value switch
