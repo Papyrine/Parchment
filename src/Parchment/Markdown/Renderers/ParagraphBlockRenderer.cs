@@ -7,13 +7,11 @@ class ParagraphBlockRenderer :
         var cls = MarkdownStyle.Resolve(block);
         if (cls != null)
         {
-            properties = new()
-            {
-                ParagraphStyleId = new()
+            properties = new(
+                new ParagraphStyleId
                 {
                     Val = cls
-                }
-            };
+                });
         }
 
         if (TableOfContents.TryWrite(renderer, block, properties))

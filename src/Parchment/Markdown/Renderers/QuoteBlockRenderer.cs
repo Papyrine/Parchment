@@ -18,13 +18,11 @@ class QuoteBlockRenderer :
                 HeadingBlockRenderer.Write(
                     renderer,
                     heading,
-                    new()
-                    {
-                        Indentation = new()
+                    new(
+                        new Indentation
                         {
                             Left = Indent(depth)
-                        }
-                    });
+                        }));
                 continue;
             }
 
@@ -33,21 +31,21 @@ class QuoteBlockRenderer :
                 not CodeBlock and
                 not ThematicBreakBlock)
             {
-                var properties = new ParagraphProperties
-                {
-                    ParagraphStyleId = new()
+                var properties = new ParagraphProperties(
+                    new ParagraphStyleId
                     {
                         Val = MarkdownStyle.Resolve(leaf) ?? blockStyle ?? "Quote"
-                    }
-                };
+                    });
                 if (depth > 0)
                 {
                     // The style indents every quote by the same amount, so a quote inside a quote
-                    // sat level with the one around it. Each level in states its own indent.
-                    properties.Indentation = new()
-                    {
-                        Left = Indent(depth)
-                    };
+                    // sat level with the one around it. Each level in states its own indent, which
+                    // the pPr sequence puts after the pStyle.
+                    properties.Append(
+                        new Indentation
+                        {
+                            Left = Indent(depth)
+                        });
                 }
 
                 renderer.WriteLeafInline(leaf);
