@@ -39,22 +39,42 @@ static class RelationshipIds
 
     /// <summary>
     /// The id of an external hyperlink relationship to <paramref name="url"/>, added when the owner
-    /// has none. A target linked several times shares one relationship.
+    /// has none. A target linked several times shares one relationship. False, with nothing added,
+    /// when <paramref name="url"/> is not something a relationship can point at.
     /// </summary>
-    public static string Hyperlink(OpenXmlPartContainer owner, string url)
+    /// <remarks>
+    /// Only an absolute url qualifies, the rule OpenXmlHtml applies to an <c>&lt;a href&gt;</c>
+    /// (<c>LinkTarget.TryParseAbsolute</c>), so a markdown link and an html one agree. A url is as
+    /// often a bound value as template text, and one that does not parse (<c>http://</c>, a space in
+    /// the host) used to reach <c>new Uri</c> and throw <see cref="UriFormatException"/> out of the
+    /// render. A relative one has nothing to be relative to in a generated document. A url that
+    /// starts with a slash is tested by hand because <see cref="Uri.TryCreate(string, UriKind, out Uri)"/>
+    /// accepts it as a file path on some platforms (<c>//host/page</c> on Windows, <c>/docs/page</c>
+    /// elsewhere), which would make the output depend on the machine.
+    /// </remarks>
+    public static bool TryHyperlink(OpenXmlPartContainer owner, string url, [NotNullWhen(true)] out string? id)
     {
+        id = null;
+        if (url.Length == 0 ||
+            url[0] is '/' or '\\' ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
         foreach (var existing in owner.HyperlinkRelationships)
         {
             if (existing.IsExternal &&
                 string.Equals(existing.Uri.OriginalString, url, StringComparison.Ordinal))
             {
-                return existing.Id;
+                id = existing.Id;
+                return true;
             }
         }
 
-        var id = Next(owner, "rIdLink");
-        owner.AddHyperlinkRelationship(new(url, UriKind.RelativeOrAbsolute), true, id);
-        return id;
+        id = Next(owner, "rIdLink");
+        owner.AddHyperlinkRelationship(uri, true, id);
+        return true;
     }
 
     static string Format(string prefix, long counter) =>
