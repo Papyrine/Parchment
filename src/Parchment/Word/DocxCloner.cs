@@ -73,7 +73,7 @@ static class DocxCloner
     /// on save whether or not anything in it changed. <paramref name="only"/> names, by uri, the
     /// parts a caller has work in, so the rest stay as the bytes the package was opened with.
     /// </remarks>
-    public static IEnumerable<(string uri, OpenXmlCompositeElement root)> EnumerateParts(WordprocessingDocument doc, IReadOnlySet<string>? only = null)
+    public static IEnumerable<(string uri, OpenXmlPart part, OpenXmlCompositeElement root)> EnumerateParts(WordprocessingDocument doc, IReadOnlySet<string>? only = null)
     {
         var main = doc.MainDocumentPart;
         if (main == null)
@@ -85,7 +85,7 @@ static class DocxCloner
         if (Wanted(only, mainUri) &&
             main.Document?.Body is { } body)
         {
-            yield return (mainUri, body);
+            yield return (mainUri, main, body);
         }
 
         foreach (var headerPart in main.HeaderParts)
@@ -94,7 +94,7 @@ static class DocxCloner
             if (Wanted(only, uri) &&
                 headerPart.Header is { } header)
             {
-                yield return (uri, header);
+                yield return (uri, headerPart, header);
             }
         }
 
@@ -104,7 +104,7 @@ static class DocxCloner
             if (Wanted(only, uri) &&
                 footerPart.Footer is { } footer)
             {
-                yield return (uri, footer);
+                yield return (uri, footerPart, footer);
             }
         }
 
@@ -114,7 +114,7 @@ static class DocxCloner
             if (Wanted(only, uri) &&
                 footnotesPart.Footnotes is { } footnotes)
             {
-                yield return (uri, footnotes);
+                yield return (uri, footnotesPart, footnotes);
             }
         }
 
@@ -124,7 +124,7 @@ static class DocxCloner
             if (Wanted(only, uri) &&
                 endnotesPart.Endnotes is { } endnotes)
             {
-                yield return (uri, endnotes);
+                yield return (uri, endnotesPart, endnotes);
             }
         }
     }
