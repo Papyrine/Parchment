@@ -329,7 +329,7 @@ public class GeneratedIdentifierTests
         var result = Run(source);
         var generated = await AssertGenerated(result, "Sample_Letter_ParchmentBindable.g.cs");
 
-        await Assert.That(generated).Contains("RegisterFluidAccessors(typeof(global::A_B.C), _Accessors_global__A_B_C);");
-        await Assert.That(generated).Contains("RegisterFluidAccessors(typeof(global::A.B_C), _Accessors_global__A_B_C_2);");
+        await Assert.That(generated).Contains("RegisterFluidAccessors(typeof(global::A_B.C), _Accessors_global__A_95_B_C);");
+        await Assert.That(generated).Contains("RegisterFluidAccessors(typeof(global::A.B_C), _Accessors_global__A_B_95_C);");
     }
 }
