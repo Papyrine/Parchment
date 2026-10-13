@@ -23,13 +23,17 @@ public sealed class ExtractResult<TModel>
     /// <summary>
     /// One entry per editable member of <typeparamref name="TModel"/> (plus a
     /// <see cref="FieldState.Duplicate"/> entry per extra occurrence), in document order with
-    /// missing members appended.
+    /// missing members appended. An editable collection adds one entry per member of each
+    /// extracted row, after the others, with the row in the path — <c>Budgets[1].Amount</c> — where
+    /// the index is the item's position in the rebuilt list.
+    /// A row member whose value could not be stored is <see cref="FieldState.Unreachable"/>.
     /// </summary>
     public IReadOnlyList<ExtractedField> Fields { get; }
 
     /// <summary>
     /// True when every field read cleanly (<see cref="FieldState.Extracted"/> or
-    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, or duplicates.
+    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, duplicates, or
+    /// unreachable members, in the rows of an editable collection included.
     /// </summary>
     public bool AllExtracted { get; }
 
@@ -37,10 +41,13 @@ public sealed class ExtractResult<TModel>
     /// Writes the extracted values onto <paramref name="model"/>:
     /// <see cref="FieldState.Extracted"/> values are assigned;
     /// <see cref="FieldState.Empty"/> assigns null to nullable members and leaves non-nullable
-    /// members untouched; all other states are skipped. Reachability is validated first — if any
+    /// members untouched; all other states are skipped. An editable collection is replaced by its
+    /// rebuilt list, in which a row member that was not <see cref="FieldState.Extracted"/> holds
+    /// the element type's default. Reachability is validated first — if any
     /// applicable path has a null intermediate object, a <see cref="ParchmentExtractionException"/>
     /// is thrown before anything is mutated.
     /// </summary>
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void ApplyTo(TModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -108,10 +115,11 @@ public sealed class ExtractResult<TModel>
         }
 
         // Replace-all: the rebuilt list is the new collection state (added rows appear, removed rows
-        // are absent). Callers needing identity preservation diff the rebuilt list themselves.
+        // are absent). Callers needing identity preservation diff the rebuilt list themselves. The
+        // list and its items are built per call, so models applied from one result share nothing.
         foreach (var collection in applicableCollections)
         {
-            collection.Entry.Setter(model, collection.List);
+            collection.Entry.Setter(model, collection.Build());
         }
     }
 }

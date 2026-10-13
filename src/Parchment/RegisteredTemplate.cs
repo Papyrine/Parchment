@@ -1,3 +1,5 @@
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 abstract class RegisteredTemplate(string name, Type modelType)
 {
     public string Name { get; } = name;
