@@ -87,7 +87,12 @@ class LinkInlineRenderer :
     {
         var top = renderer.Top;
         var before = top.CurrentRuns.Count;
+
+        // These runs go into the hyperlink, which the flush does not fold, so each literal keeps
+        // the run it always had.
+        renderer.BeginUnfoldedRuns();
         renderer.WriteChildren(inline);
+        renderer.EndUnfoldedRuns();
         var produced = top.CurrentRuns.Skip(before).ToList();
 
         var styleId = MarkdownStyle.Resolve(inline) ?? "Hyperlink";
