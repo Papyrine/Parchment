@@ -53,8 +53,10 @@ static class MarkdownExcelsiorTables
         foreach (var token in MarkdownOutputTokens.Scan(markdown, SharedFluid.Parser))
         {
             // A token that starts with a loop variable reads the loop item, whatever root path
-            // it happens to spell: Fluid renders it, and neither rule below is its to break.
+            // it happens to spell: Fluid renders it, and neither rule below is its to break. Nor
+            // is the text of a raw or comment region, which is not a token at all.
             if (token.Path == null ||
+                loops.IsLiteral(token.Start) ||
                 loops.Shadows(token.Start, token.Path) ||
                 !tables.TryGet(token.Path, out _))
             {

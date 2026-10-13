@@ -82,17 +82,6 @@ class MarkdownReferenceValidator :
             Visit(statement);
         }
 
-        // The else branch runs when the source is empty. Overriding VisitForStatement means base is
-        // never called, so without this the whole branch goes unvisited and a typo inside it throws
-        // nothing — the same silent skip this class was written to remove.
-        if (forStatement.Else != null)
-        {
-            foreach (var statement in forStatement.Else.Statements)
-            {
-                Visit(statement);
-            }
-        }
-
         // Restore, so a name bound by one loop does not leak into a sibling or an enclosing scope.
         scope.Remove(forStatement.Identifier);
         untyped.Remove(forStatement.Identifier);
@@ -109,6 +98,19 @@ class MarkdownReferenceValidator :
         if (addedForLoop)
         {
             untyped.Remove("forloop");
+        }
+
+        // The else branch runs when the source is empty. Overriding VisitForStatement means base is
+        // never called, so without this the whole branch goes unvisited and a typo inside it throws
+        // nothing — the same silent skip this class was written to remove. Nothing was iterated, so
+        // neither the loop variable nor `forloop` is bound in it: it is visited in the enclosing
+        // scope, after the restore.
+        if (forStatement.Else != null)
+        {
+            foreach (var statement in forStatement.Else.Statements)
+            {
+                Visit(statement);
+            }
         }
 
         return forStatement;

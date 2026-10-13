@@ -258,6 +258,65 @@ public partial class MarkdownExcelsiorTableTests
         await Assert.That(paragraphs).IsEquivalentTo(["3", "Next: 4", "5", "Next: 6"]);
     }
 
+    // A raw region is printed as written, so the token in it is text and no table is built.
+    [Test]
+    public async Task TokenInsideRawIsNotATable()
+    {
+        using var stream = await Render("{% raw %}\n{{ Lines }}\n{% endraw %}");
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        await Assert.That(body.Descendants<Table>().Any()).IsFalse();
+        await Assert.That(body.InnerText).IsEqualTo("{{ Lines }}");
+    }
+
+    // Nothing in a comment is rendered, so neither rule about how the token is written applies.
+    [Test]
+    [Arguments("{% comment %}Lines: {{ Lines }}{% endcomment %}")]
+    [Arguments("{% comment %}\n{{ Lines | size }}\n{% endcomment %}")]
+    [Arguments("{% # Lines: {{ Lines }} %}")]
+    public async Task TokenInsideCommentIsNotJudged(string comment)
+    {
+        using var stream = await Render(comment + "\n\n{{ Lines }}");
+        using var doc = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Count()).IsEqualTo(1);
+    }
+
+    // The else of a loop renders when there was nothing to iterate, so `Order` is not bound in it
+    // and `Order.Lines` is the root's table.
+    [Test]
+    public async Task LoopVariableIsNotBoundInTheElseOfItsLoop()
+    {
+        var markdown =
+            """
+            {% for Order in Orders %}
+            {{ Order.Lines }}
+            {% else %}
+            {{ Order.Lines }}
+            {% endfor %}
+            """;
+
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<ShadowedQuoteModel>(markdown, styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new ShadowedQuoteModel
+            {
+                Order = Quote(),
+                Orders = []
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var table = doc.MainDocumentPart!.Document!.Body!.Descendants<Table>().Single();
+
+        await Assert.That(table.InnerText).Contains("Site survey");
+    }
+
     // Sharing a line means the table would have to discard the text beside it, so it is refused at
     // registration rather than rendering the collection's ToString into the document.
     [Test]

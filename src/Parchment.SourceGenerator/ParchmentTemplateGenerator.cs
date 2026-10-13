@@ -1066,8 +1066,10 @@ public sealed class ParchmentTemplateGenerator :
         {
             // Root paths only, matching the map the render looks the table up in: a loop
             // variable's members are not reachable from the root and fall through to Fluid,
-            // including when the loop variable happens to spell a root path.
+            // including when the loop variable happens to spell a root path. The text of a raw
+            // or comment region is not a token at all.
             if (token.Path == null ||
+                loops.IsLiteral(token.Start) ||
                 loops.Shadows(token.Start, token.Path) ||
                 !ShapeResolver.IsExcelsiorTableMember(target.Shape, token.Path.Split('.'), EmptyScope))
             {

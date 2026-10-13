@@ -211,12 +211,15 @@ public partial class EscapingTests
     {
         public required AnnotatedPerson Customer { get; init; }
         public required List<PlainPerson> Customers { get; init; }
+        public List<PlainPerson> Nobody { get; init; } = [];
     }
 
     public class AnnotatedPerson
     {
         [Html]
         public required string Notes { get; init; }
+
+        public string Name { get; init; } = "Root";
     }
 
     public class PlainPerson
@@ -294,6 +297,91 @@ public partial class EscapingTests
 
         await Assert.That(paragraph.InnerText).IsEqualTo("ROOT");
         await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
+    }
+
+    static List<Paragraph> Filled(Body body) =>
+        body.Elements<Paragraph>()
+            .Where(_ => _.InnerText.Length > 0)
+            .ToList();
+
+    // A raw region is printed as written. The rewrite used to reach into it and add the filter, so
+    // the document showed `{{ Customer.Notes | html }}`, which nobody wrote.
+    [Test]
+    [Arguments("{% raw %}{{ Customer.Notes }}{% endraw %}")]
+    [Arguments("{%- raw -%}{{ Customer.Notes }}{%- endraw -%}")]
+    public async Task TokenInsideRawIsPrintedAsWritten(string template)
+    {
+        var body = await RenderShadowed(template);
+
+        await Assert.That(Filled(body).Select(_ => _.InnerText)).IsEquivalentTo(["{{ Customer.Notes }}"]);
+    }
+
+    // What reads as a loop tag inside a raw or comment region opens no loop, so the token after it
+    // is the root's member and carries its annotation.
+    [Test]
+    [Arguments("{% raw %}{% for Customer in Customers %}{% endraw %}", 2)]
+    [Arguments("{% comment %}{% for Customer in Customers %}{% endcomment %}", 1)]
+    [Arguments("{%- comment -%}{% for Customer in Customers %}{%- endcomment -%}", 1)]
+    [Arguments("{% # {% for Customer in Customers %}", 1)]
+    public async Task LoopTagInsideRawOrCommentBindsNothing(string region, int expected)
+    {
+        var body = await RenderShadowed(region + "\n\n{{ Customer.Notes }}");
+
+        var paragraphs = Filled(body);
+        await Assert.That(paragraphs.Count).IsEqualTo(expected);
+        await Assert.That(paragraphs[^1].InnerText).IsEqualTo("ROOT");
+        await Assert.That(paragraphs[^1].Descendants<Bold>().Any()).IsTrue();
+    }
+
+    // Nor does an `{% endfor %}` in such a region close one: the token after it is still the item.
+    [Test]
+    [Arguments("{% raw %}{% endfor %}{% endraw %}", 2)]
+    [Arguments("{% comment %}{% endfor %}{% endcomment %}", 1)]
+    public async Task EndTagInsideRawOrCommentClosesNothing(string region, int expected)
+    {
+        var body = await RenderShadowed(
+            "{% for Customer in Customers %}" + region + "\n\n{{ Customer.Notes }}\n\n{% endfor %}");
+
+        var paragraphs = Filled(body);
+        await Assert.That(paragraphs.Count).IsEqualTo(expected);
+        await Assert.That(paragraphs[^1].InnerText).IsEqualTo("<b>one</b>");
+        await Assert.That(paragraphs[^1].Descendants<Bold>().Any()).IsFalse();
+    }
+
+    // The else of a loop renders when there was nothing to iterate, so the loop variable is not
+    // bound in it and the same spelling reads the root member.
+    [Test]
+    public async Task LoopVariableIsNotBoundInTheElseOfItsLoop()
+    {
+        var body = await RenderShadowed(
+            "{% for Customer in Nobody %}{{ Customer.Notes }}{% else %}{{ Customer.Notes }}{% endfor %}");
+
+        var paragraph = Filled(body).Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("ROOT");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
+    }
+
+    // An else inside the loop that belongs to an if is not the loop's, and ends nothing.
+    [Test]
+    public async Task ElseOfANestedIfDoesNotEndTheLoop()
+    {
+        var body = await RenderShadowed(
+            "{% for Customer in Customers %}{% if false %}x{% else %}{{ Customer.Notes }}{% endif %}{% endfor %}");
+
+        var paragraph = Filled(body).Single();
+        await Assert.That(paragraph.InnerText).IsEqualTo("<b>one</b>");
+        await Assert.That(paragraph.Descendants<Bold>().Any()).IsFalse();
+    }
+
+    // The validator agrees: in the else, `Customer.Name` is the root's member, which the item type
+    // does not have. Bound to the item it failed registration for a template that renders.
+    [Test]
+    public async Task ElseOfALoopIsValidatedAgainstTheEnclosingScope()
+    {
+        var body = await RenderShadowed(
+            "{% for Customer in Nobody %}x{% else %}{{ Customer.Name }}{% endfor %}");
+
+        await Assert.That(Filled(body).Single().InnerText).IsEqualTo("Root");
     }
 
     // The original breakage: a value carrying a pipe took over the row it sat in, silently turning

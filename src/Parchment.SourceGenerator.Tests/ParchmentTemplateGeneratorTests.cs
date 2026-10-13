@@ -920,6 +920,48 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
     }
 
+    // A raw region is printed as written and a comment is dropped, so what reads as a token in
+    // either is not one and breaks no rule.
+    [Test]
+    [Arguments("{% raw %}Lines: {{ Order.Lines }}{% endraw %}")]
+    [Arguments("{%- raw -%}\n{{ Order.Lines | reverse }}\n{%- endraw -%}")]
+    [Arguments("{% comment %}Lines: {{ Order.Lines }}{% endcomment %}")]
+    [Arguments("{% # Lines: {{ Order.Lines }} %}")]
+    public async Task TokenInsideRawOrComment_NoAttributeDiagnostics_Markdown(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
+    // What reads as a loop tag in such a region opens no loop, so the token after it is the root
+    // member, and the else of a real loop is outside the loop's extent for the same purpose.
+    [Test]
+    [Arguments("{% raw %}{% for Order in Orders %}{% endraw %}\nLines: {{ Order.Lines }}")]
+    [Arguments("{% comment %}{% for Order in Orders %}{% endcomment %}\nLines: {{ Order.Lines }}")]
+    [Arguments("{% # {% for Order in Orders %}\nLines: {{ Order.Lines }}")]
+    [Arguments("{% for Order in Orders %}\nx\n{% else %}\nLines: {{ Order.Lines }}\n{% endfor %}")]
+    public async Task RootMemberWhereNoLoopVariableIsBound_StillReported_Markdown(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);
+
+        var diagnostics = result.Results.Single().Diagnostics;
+        await Assert.That(diagnostics.Any(_ => _.Id == "PARCH007")).IsTrue();
+    }
+
+    // An else that belongs to an if inside the loop is not the loop's, and ends nothing.
+    [Test]
+    public async Task ElseOfANestedIfDoesNotEndTheLoop_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            shadowedModel,
+            "{% for Order in Orders %}\n{% if false %}x{% else %}\nNext: {{ Order.Lines | plus: 1 }}\n{% endif %}\n{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Intersect(attributeRuleIds)).IsEmpty();
+    }
+
     const string formatModel =
         """
         using System.Diagnostics.CodeAnalysis;
@@ -1210,6 +1252,20 @@ public class ParchmentTemplateGeneratorTests
             "{% for line in Lines %}\n{{ line.Body }}\n{% endfor %}");
 
         await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH024")).IsTrue();
+    }
+
+    // The else of a loop renders when there was nothing to iterate, so the loop variable is not
+    // bound in it: `line` there is an unknown root identifier rather than a marker being lost.
+    [Test]
+    public async Task LoopVariableInTheElseOfItsLoop_IsNotBound_Markdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(
+            loopedMarkerModel,
+            "{% for line in Lines %}x{% else %}{{ line.Body }}{% endfor %}");
+
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids).Contains("PARCH001");
+        await Assert.That(ids).DoesNotContain("PARCH024");
     }
 
     [Test]
