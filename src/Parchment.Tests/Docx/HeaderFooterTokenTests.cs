@@ -92,6 +92,43 @@ public partial class HeaderFooterTokenTests
             .Throws<ParchmentRegistrationException>();
     }
 
+    // A filter after one that produces a token is refused wherever the token sits, not in the body
+    // alone: a header rendered the token's type name the same way.
+    [Test]
+    public async Task FilterAfterTokenFilterInHeaderIsRejectedAtRegistration()
+    {
+        using var template = BuildDocxWithHeaderFooter(
+            bodyText: "{{ Title }}",
+            headerText: "{{ Title | markdown | upcase }}",
+            footerText: "ok");
+
+        var store = new TemplateStore();
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterDocxTemplate<Doc>(template));
+
+        await Assert.That(exception.Message).Contains("Filter 'upcase' is applied after 'markdown'");
+        await Assert.That(exception.PartUri!).Contains("header");
+    }
+
+    // A markdown template's header is the style source's, rendered the way a docx template's is. So
+    // it takes the docx rule, where every one of these filters produces a token, whatever the
+    // markdown body is allowed.
+    [Test]
+    public async Task MarkdownFlowRejectsFilterAfterTokenFilterInHeader()
+    {
+        using var styleSource = BuildDocxWithHeaderFooter(
+            bodyText: "replaced by the markdown",
+            headerText: "{{ Title | markdown | upcase }}",
+            footerText: "ok");
+
+        var store = new TemplateStore();
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<Doc>("# {{ Title }}", styleSource));
+
+        await Assert.That(exception.Message).Contains("Filter 'upcase' is applied after 'markdown'");
+        await Assert.That(exception.PartUri!).Contains("header");
+    }
+
     // The markdown flow replaces the body and inherits every other part from the style source, so a
     // token in the style source's header has to bind there too. It binding in one flow and rendering
     // as literal text in the other is the inconsistency this covers.
@@ -126,6 +163,48 @@ public partial class HeaderFooterTokenTests
         await Assert.That(bodyText).IsEqualTo("Annual Report");
         await Assert.That(headerText).IsEqualTo("Header: Annual Report");
         await Assert.That(footerText).IsEqualTo("Footer by Ada Lovelace");
+    }
+
+    // Markdown in a header goes through the same table renderer as the body's, in either flow, so
+    // a table wider than Word's 63 columns is refused there as well and the error names the part.
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MarkdownTableOverTheColumnLimitInHeaderIsRejected(bool markdownFlow)
+    {
+        using var template = BuildDocxWithHeaderFooter(
+            bodyText: "Body",
+            headerText: "{{ Title | markdown }}",
+            footerText: "ok");
+
+        var store = new TemplateStore();
+        if (markdownFlow)
+        {
+            store.RegisterMarkdownTemplate<Doc>("Body", template);
+        }
+        else
+        {
+            store.RegisterDocxTemplate<Doc>(template);
+        }
+
+        var model = new Doc
+        {
+            Title = string.Join(
+                '\n',
+                "|" + string.Concat(Enumerable.Repeat(" h |", 64)),
+                "|" + string.Concat(Enumerable.Repeat("---|", 64)),
+                "|" + string.Concat(Enumerable.Repeat(" c |", 64))),
+            Author = "A",
+            FootnoteText = "fn",
+            EndnoteText = "en"
+        };
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.That(() => store.Render(model, stream))
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("64 columns");
+        await Assert.That(exception.Message).Contains("at most 63");
+        await Assert.That(exception.PartUri).IsEqualTo("/word/header1.xml");
     }
 
     // A header with no tokens is left exactly as the style source had it.
