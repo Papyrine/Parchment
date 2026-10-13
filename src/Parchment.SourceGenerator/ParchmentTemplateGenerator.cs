@@ -388,13 +388,9 @@ public sealed class ParchmentTemplateGenerator :
         EquatableArray<MarkdownData> markdowns,
         string? projectDirectory)
     {
-        var paths = docs.Select(static _ => _.Path)
-            .Concat(markdowns.Select(static _ => _.Path))
-            .Select(_ => DisplayPath(_, projectDirectory))
-            // Ordered rather than left in AdditionalFiles order: the message should read the same
-            // way whatever order the item groups happened to be evaluated in.
-            .OrderBy(static _ => _, StringComparer.Ordinal)
-            .ToList();
+        var paths = DisplayPaths(
+            docs.Select(static _ => _.Path).Concat(markdowns.Select(static _ => _.Path)),
+            projectDirectory);
 
         if (paths.Count == 0)
         {
@@ -413,6 +409,14 @@ public sealed class ParchmentTemplateGenerator :
     // A project with hundreds of templates would otherwise turn one missing name into a diagnostic
     // nobody reads to the end of.
     const int maxTemplatesListed = 10;
+
+    // Ordered rather than left in AdditionalFiles order: a message that lists files should read
+    // the same way whatever order the item groups happened to be evaluated in.
+    static List<string> DisplayPaths(IEnumerable<string> fullPaths, string? projectDirectory) =>
+        fullPaths
+            .Select(_ => DisplayPath(_, projectDirectory))
+            .OrderBy(static _ => _, StringComparer.Ordinal)
+            .ToList();
 
     static string DisplayPath(string fullPath, string? projectDirectory)
     {
@@ -552,9 +556,9 @@ public sealed class ParchmentTemplateGenerator :
 
         if (total > 1)
         {
-            var paths = docxCandidates.Select(static _ => _.Path)
-                .Concat(markdownCandidates.Select(static _ => _.Path))
-                .Select(_ => DisplayPath(_, projectDirectory));
+            var paths = DisplayPaths(
+                docxCandidates.Select(static _ => _.Path).Concat(markdownCandidates.Select(static _ => _.Path)),
+                projectDirectory);
             context.ReportDiagnostic(
                 Diagnostic.Create(
                     Diagnostics.AmbiguousTemplate,
@@ -1353,7 +1357,7 @@ public sealed class ParchmentTemplateGenerator :
                     Diagnostics.AmbiguousStyleDoc,
                     location,
                     target.DeclaringName,
-                    string.Join(", ", styleCandidates.Select(_ => DisplayPath(_.Path, projectDirectory)))));
+                    string.Join(", ", DisplayPaths(styleCandidates.Select(static _ => _.Path), projectDirectory))));
             return;
         }
 

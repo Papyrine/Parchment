@@ -185,6 +185,119 @@ public class TemplateConventionTests
         await Assert.That(Codes(result)).Contains("PARCH020");
     }
 
+    // AdditionalFiles order follows the csproj, the globs and the file system, none of which the
+    // model's author changed. Neither the diagnostics nor the generated source may follow it.
+    static async Task AssertSameWhateverTheFileOrder(string source, params TemplateFile[] files)
+    {
+        var forward = GeneratorDriver.RunInProject(source, files);
+        var reversed = GeneratorDriver.RunInProject(source, files.AsEnumerable().Reverse().ToArray());
+
+        await Assert.That(Describe(reversed)).IsEqualTo(Describe(forward));
+        await Assert.That(Generated(reversed)).IsEqualTo(Generated(forward));
+    }
+
+    // Id, where it points and what it says. The path is reduced to the file name: each run gets a
+    // project directory of its own.
+    static string Describe(GeneratorDriverRunResult result)
+    {
+        var builder = new StringBuilder();
+        foreach (var diagnostic in result.Diagnostics)
+        {
+            var span = diagnostic.Location.GetLineSpan();
+            builder.AppendLine(
+                $"{diagnostic.Id} {Path.GetFileName(span.Path)}{span.Span} +{diagnostic.AdditionalLocations.Count}: {diagnostic.GetMessage()}");
+        }
+
+        return builder.ToString();
+    }
+
+    [Test]
+    public async Task AmbiguousTemplatesAreListedInPathOrder()
+    {
+        var result = GeneratorDriver.RunInProject(
+            reportModel,
+            new TemplateFile("Templates/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Drafts/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Archive/Report.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Name }}")));
+
+        await Assert.That(Messages(result)).Contains(
+            "more than one template file: Archive/Report.parchment.docx, Drafts/Report.parchment.md, Templates/Report.parchment.md.");
+    }
+
+    [Test]
+    public async Task AmbiguousStyleDocsAreListedInPathOrder()
+    {
+        var result = GeneratorDriver.RunInProject(
+            reportModel,
+            new TemplateFile("Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Templates/Report.parchment.dotx", GeneratorDriver.BuildDocxBytes("styled")),
+            new TemplateFile("Drafts/Report.parchment.dotx", GeneratorDriver.BuildDocxBytes("styled")));
+
+        await Assert.That(Messages(result)).Contains(
+            "more than one style document: Drafts/Report.parchment.dotx, Templates/Report.parchment.dotx.");
+    }
+
+    [Test]
+    public Task AmbiguousTemplateIsTheSameWhateverTheFileOrder() =>
+        AssertSameWhateverTheFileOrder(
+            reportModel,
+            new TemplateFile("Templates/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Drafts/Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Archive/Report.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Name }}")));
+
+    [Test]
+    public Task AmbiguousStyleDocIsTheSameWhateverTheFileOrder() =>
+        AssertSameWhateverTheFileOrder(
+            reportModel,
+            new TemplateFile("Report.parchment.md", Markdown("Hello {{ Name }}")),
+            new TemplateFile("Templates/Report.parchment.dotx", GeneratorDriver.BuildDocxBytes("styled")),
+            new TemplateFile("Drafts/Report.parchment.dotx", GeneratorDriver.BuildDocxBytes("styled")));
+
+    [Test]
+    public Task MissingTemplateIsTheSameWhateverTheFileOrder() =>
+        AssertSameWhateverTheFileOrder(
+            reportModel,
+            new TemplateFile("Templates/Other.parchment.md", Markdown("Hello")),
+            new TemplateFile("Templates/Reprot.parchment.docx", GeneratorDriver.BuildDocxBytes("typo")),
+            new TemplateFile("Another.parchment.md", Markdown("Hello")));
+
+    // Several models, each with diagnostics of its own, and a style document picked from more than
+    // one candidate: what is reported, in what order, and what is generated all hold.
+    [Test]
+    public Task SeveralModelsAreTheSameWhateverTheFileOrder()
+    {
+        var source =
+            """
+            using Parchment;
+
+            [ParchmentModel]
+            public partial class Report
+            {
+                public required string Name { get; init; }
+            }
+
+            [ParchmentModel]
+            public partial class Letter
+            {
+                public required string Name { get; init; }
+            }
+
+            [ParchmentModel]
+            public partial class Memo
+            {
+                public required string Name { get; init; }
+            }
+            """;
+
+        return AssertSameWhateverTheFileOrder(
+            source,
+            new TemplateFile("Templates/Report.parchment.md", Markdown("Hello {{ Name }} {{ Missing }} {{ Gone }}")),
+            new TemplateFile("Templates/parchment.dotx", GeneratorDriver.BuildDocxBytes("near")),
+            new TemplateFile("parchment.dotx", GeneratorDriver.BuildDocxBytes("far")),
+            new TemplateFile("Letter.parchment.docx", GeneratorDriver.BuildDocxBytes("Hello {{ Name }} {{ Missing }}", "{{ Gone }}")),
+            new TemplateFile("Other/Letter.parchment.dotx", GeneratorDriver.BuildDocxBytes("unused")));
+    }
+
     [Test]
     public async Task TypeNamedDotxIsTheStyleSource()
     {
