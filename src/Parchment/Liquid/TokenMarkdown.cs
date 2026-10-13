@@ -10,14 +10,15 @@ namespace Parchment;
 /// So a value that has no text form is parked against a marker instead, and swapped for what it
 /// produces once the parse is done — see <see cref="MarkdownTokenBlocks"/>. What is left with no
 /// answer at all is <see cref="MutateToken"/>, which mutates the paragraph a docx template already
-/// had; markdown has no such paragraph to hand it.
+/// had; markdown has no such paragraph to hand it. A <see cref="TextToken"/> is not markdown
+/// source and is not rendered here: it reaches Fluid as the string it wraps, and is escaped on
+/// output like one — see <c>SharedFluid.BuildOptions</c>.
 /// </remarks>
 static class TokenMarkdown
 {
     public static string Render(TokenValue token) =>
         token switch
         {
-            TextToken text => text.Value,
             // Markdown source written into a markdown template is already what it will be parsed
             // as, so it passes straight through.
             MarkdownToken markdown => markdown.Source,

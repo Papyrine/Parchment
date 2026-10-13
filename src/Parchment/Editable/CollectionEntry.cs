@@ -17,4 +17,19 @@ sealed record CollectionEntry(
 {
     /// <summary>Friendly name surfaced in the repeating-section control chrome (<c>w:alias</c>).</summary>
     public string Alias { get; } = DottedPath[(DottedPath.LastIndexOf('.') + 1)..];
+
+    /// <summary>
+    /// Whether <paramref name="dotted"/>, a token path inside a loop over this collection, names an
+    /// editable member of the item — the token the loop renders as a control. Matched the way
+    /// <see cref="EditableMap.ScopedToItem"/> keys the per-item map, so registration, the choice
+    /// between a repeating section and a read-only loop, and the render agree on what a control is.
+    /// </summary>
+    public bool TryGetItemEntry(string loopVariable, string dotted, [NotNullWhen(true)] out EditableEntry? entry)
+    {
+        entry = null;
+        return dotted.Length > loopVariable.Length + 1 &&
+               dotted[loopVariable.Length] == '.' &&
+               dotted.StartsWith(loopVariable, StringComparison.OrdinalIgnoreCase) &&
+               ElementMap.TryGet(dotted[(loopVariable.Length + 1)..], out entry);
+    }
 }

@@ -6,9 +6,15 @@
 /// plain read-only text by design. <paramref name="ParagraphContainers"/> runs parallel to
 /// <paramref name="Paragraphs"/>: two paragraphs carry the same id exactly when they share a parent
 /// element, which is what the block-tag sibling rule (PARCH028) compares.
+/// <paramref name="BodyValueControlSpans"/> is a flat list of triples — index into
+/// <paramref name="BodyParagraphs"/>, start offset, end offset — one per stretch of paragraph text
+/// that sits inside a content control holding a single typed value.
+/// <paramref name="HasMainPart"/> is what tells a Word package from any other zip.
 /// </summary>
 readonly record struct DocxReadResult(
     List<string> Paragraphs,
     List<string> BodyParagraphs,
     List<int> ParagraphContainers,
-    bool HasRemovePersonalInformation);
+    List<int> BodyValueControlSpans,
+    bool HasRemovePersonalInformation,
+    bool HasMainPart);
