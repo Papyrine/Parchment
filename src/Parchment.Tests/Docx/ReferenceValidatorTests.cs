@@ -37,6 +37,18 @@ public partial class ReferenceValidatorTests
         await Assert.That(exception!.Message).Contains("Missing");
     }
 
+    // The docx flow has its own list of block tags, and liquid's `liquid` tag is not on it.
+    [Test]
+    public async Task LiquidTag_FailsRegistration()
+    {
+        using var template = DocxTemplateBuilder.Build("{% liquid echo Name %}");
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<Doc>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("Unsupported block tag 'liquid'");
+    }
+
     [Test]
     public async Task UnknownNestedMember_FailsRegistration()
     {
@@ -266,6 +278,188 @@ public partial class ReferenceValidatorTests
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => new TemplateStore().RegisterDocxTemplate<Envelope>(template));
         await Assert.That(exception.Message).Contains(path[(path.IndexOf('.') + 1)..]);
+    }
+
+#pragma warning disable CA1822
+    public interface IThing
+    {
+        static abstract string Kind { get; }
+
+        static virtual string Fallback => "fallback";
+
+        static string Default => "default";
+
+        string Name { get; }
+    }
+
+    public class Thing :
+        IThing
+    {
+        public static string Kind => "kind";
+
+        public string Name => "thing";
+    }
+
+    public ref struct Cursor
+    {
+        public int Position;
+    }
+
+    public class Wrapper<T>
+    {
+        public T Value { get; set; } = default!;
+    }
+
+    public class HiddenBase
+    {
+        public string Kept { get; set; } = "kept";
+
+        public string ByMethod { get; set; } = "";
+
+        public string ByEvent { get; set; } = "";
+
+        public string ByType { get; set; } = "";
+
+        public string ByWriteOnly { get; set; } = "";
+
+        public string BySpan { get; set; } = "";
+    }
+
+    public class Hiding :
+        HiddenBase
+    {
+        public new void ByMethod()
+        {
+        }
+
+        public new event Action ByEvent
+        {
+            add { }
+            remove { }
+        }
+
+        public new class ByType;
+
+        public new string ByWriteOnly
+        {
+            set => Kept = value;
+        }
+
+        public new ReadOnlySpan<char> BySpan => Kept.AsSpan();
+    }
+
+    // Every member here is legal C#, and several are ones no accessor can be written for. That this
+    // file compiles is the first assertion: the generator emits this model's accessors into it.
+    [ParchmentBindable]
+    public unsafe partial class Awkward
+    {
+        int count = 3;
+
+        public string Name { get; set; } = "";
+
+        public ref int Count => ref count;
+
+        public ReadOnlySpan<char> Chars => Name.AsSpan();
+
+        public Span<int> Numbers => default;
+
+        public Cursor Cursor => default;
+
+        public int* Pointer = null;
+
+        public delegate*<int, int> Function = null;
+
+        public int*[] Pointers { get; set; } = [];
+
+        public List<int*[]> PointerLists { get; set; } = [];
+
+        public IThing Thing { get; set; } = new Thing();
+
+        public dynamic? Dyn { get; set; }
+
+        public List<dynamic> Dyns { get; set; } = [];
+
+        public Dictionary<string, dynamic> Map { get; set; } = [];
+
+        public Wrapper<dynamic> Wrapped { get; set; } = new();
+
+        public (int dynamic, dynamic B) Pair { get; set; }
+
+        public Hiding Hiding { get; set; } = new();
+    }
+#pragma warning restore CA1822
+
+    // A ref struct or a pointer cannot become an object, a static abstract interface member is
+    // reachable through a type parameter only, and a name a derived type reuses for a method no
+    // longer means the inherited property. None has an accessor, so none may register.
+    [Test]
+    [Arguments("Chars")]
+    [Arguments("Numbers")]
+    [Arguments("Cursor")]
+    [Arguments("Pointer")]
+    [Arguments("Function")]
+    [Arguments("Pointers")]
+    [Arguments("PointerLists")]
+    [Arguments("Thing.Kind")]
+    [Arguments("Thing.Fallback")]
+    [Arguments("Hiding.ByMethod")]
+    [Arguments("Hiding.ByEvent")]
+    [Arguments("Hiding.ByType")]
+    [Arguments("Hiding.ByWriteOnly")]
+    public async Task UnbindableMember_FailsRegistration(string path)
+    {
+        using var template = DocxTemplateBuilder.Build($"{{{{ {path} }}}}");
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => new TemplateStore().RegisterDocxTemplate<Awkward>(template));
+        await Assert.That(exception.Message).Contains(path[(path.LastIndexOf('.') + 1)..]);
+
+        var markdown = Assert.Throws<ParchmentRegistrationException>(
+            () => new TemplateStore().RegisterMarkdownTemplate<Awkward>($"{{{{ {path} }}}}"));
+        await Assert.That(markdown.Message).Contains(path[(path.LastIndexOf('.') + 1)..]);
+    }
+
+    [Test]
+    public async Task MembersBesideUnbindableOnes_Render()
+    {
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Name }}|{{ Count }}|{{ Dyn }}|{{ Wrapped.Value }}|{{ Hiding.Kept }}|{{ Thing.Name }}|{{ Thing.Default }}
+
+            {% for item in Dyns %}
+
+            item {{ item }}
+
+            {% endfor %}
+            """);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Awkward>(template);
+
+        using var output = new MemoryStream();
+        await store.Render(
+            new Awkward
+            {
+                Name = "name",
+                Dyn = 5,
+                Dyns = ["one", 2],
+                Wrapped =
+                {
+                    Value = "wrapped"
+                }
+            },
+            output);
+
+        output.Position = 0;
+        using var document = WordprocessingDocument.Open(output, false);
+        var paragraphs = document.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Select(_ => _.InnerText)
+            .ToList();
+        await Assert.That(paragraphs).IsEquivalentTo(
+            [
+                "name|3|5|wrapped|kept|thing|default",
+                "item one",
+                "item 2"
+            ]);
     }
 
     [Test]

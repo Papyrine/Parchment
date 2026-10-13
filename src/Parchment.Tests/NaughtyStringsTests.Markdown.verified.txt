@@ -660,12 +660,13 @@ but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, vio
 • ' OR 1=1 -- 1
 • ' OR ‘1’='1
 • '; EXEC sp_MSForEachTable 'DROP TABLE ?'; --
+•
 • %
-• _
     },
     {
       Number: 53,
       Text:
+• _
 • -
 • --
 • --version
@@ -682,11 +683,11 @@ but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, vio
 • Kernel.exit(1)
 • %x('ls -al /')
 • <?xml version=“1.0” encoding=“ISO-8859- 1”?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM “file:///etc/passwd” >]><foo>&xxe;</foo>
-• $HOME
     },
     {
       Number: 54,
       Text:
+• $HOME
 • $ENV{‘HOME’}
 • %d
 • %s%s%s%s%s
@@ -704,11 +705,11 @@ but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, vio
 • CON
 • PRN
 • AUX
-• CLOCK$
     },
     {
       Number: 55,
       Text:
+• CLOCK$
 • NUL
 • A:
 • ZZ:
@@ -727,11 +728,11 @@ but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, vio
 • Horniman Museum
 • shitake mushrooms
 • RomansInSussex.co.uk
-• http://www.cum.qc.ca/
     },
     {
       Number: 56,
       Text:
+• http://www.cum.qc.ca/
 • Craig Cockburn, Software Specialist
 • Linda Callahan
 • Dr. Herman I. Libshitz

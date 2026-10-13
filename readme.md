@@ -82,12 +82,15 @@ A template authored as a Word *form* holds its placeholders as legacy `FORMTEXT`
 tokens. Registration rewrites each one into a `{{ FieldName }}` token, so such a template binds with no
 change to the document: name the form field after the model member and it substitutes like any other
 token. The run properties of the field result are kept, so the substituted text is formatted as the
-field displayed.
+field displayed. A field inside a hyperlink, a tracked insertion or a content control is rewritten the
+same way, and a field nested in the result of a form field is replaced along with it.
 
-Two kinds are left untouched, because neither can be a substitution site:
+These are left untouched, because none can be a substitution site:
 
  * Checkbox and dropdown fields, whose values Word manages itself.
  * A field whose name could not be a member reference — `Due date` rather than `DueDate`.
+ * A field that begins in one paragraph and ends in a later one.
+ * A field inside a tracked deletion.
 
 
 ### Render
@@ -107,7 +110,7 @@ await store.Render(SampleData.Invoice(), stream);
 
 ### Token naming
 
-Tokens match model members case-insensitively via Fluid's default member access strategy, but Parchment uses PascalCase by convention (`{{ Customer.Name }}`), not snake_case. There is no snake-case translation layer — stick with the property name as declared on the model.
+Tokens match model members case-insensitively, in both flows and at every depth of a path (`{{ customer.name }}` reads `Customer.Name`), but Parchment uses PascalCase by convention (`{{ Customer.Name }}`), not snake_case. There is no snake-case translation layer — stick with the property name as declared on the model.
 
 Tokens in `MainDocumentPart`, every `HeaderPart` / `FooterPart`, `FootnotesPart`, and `EndnotesPart` are all scanned and substituted, so page headers, footers, and footnotes can use `{{ ... }}` and `{% ... %}` exactly like body paragraphs.
 
@@ -133,7 +136,13 @@ The body isn't restricted to paragraphs. Anything between the open and close par
 {% endfor %}
 ```
 
+A footnote or endnote whose reference sits in the repeated content is repeated with it: every iteration gets a note of its own, numbered in reading order. The note's text binds against the model like any other footnote, so it cannot use the loop variable. A reference removed by an empty loop or an unchosen `{% if %}` branch takes its note with it.
+
+Each copy of a table is a table of its own. Word joins two tables that have nothing between them, so an empty paragraph is written between one copy and the next when the loop body starts and ends with a table. The same applies to any two tables of the template left with nothing between them once the tag paragraphs of a loop or a conditional are removed. For one table with a row per item, bind the collection as an [Excelsior table](#excelsior-tables) instead of looping over a one-row table.
+
 The open and close tags must be siblings (same parent element). A `{% for %}` paragraph in the body and an `{% endfor %}` paragraph inside a table cell do not pair up, and neither do tags in two different cells or rows of one table: registration fails with a `ParchmentRegistrationException` naming both tags, and the source generator reports [`PARCH028`](#parch028--block-tags-in-different-containers). The same holds for every tag of a conditional — `{% if %}`, each `{% elsif %}` / `{% else %}`, and `{% endif %}`.
+
+A tag paragraph is removed from the output, and only the tag goes with it. A page break, a picture, a text box or a footnote or endnote reference sharing the paragraph stays where the tag was. A tag paragraph is not part of the block it delimits, so what it holds is kept once: it is not repeated per iteration and does not depend on which branch is chosen. Content meant to repeat or to be conditional belongs in a paragraph of its own between the tags. A section break is kept as well. Word stores one on the last paragraph of its section, which is the `{% endfor %}` or `{% endif %}` paragraph when the section ends with a block, and it moves to the paragraph before it in the output. Where a table comes before it instead, or a paragraph that already ends another section, the break stays on an empty paragraph. A bookmark, a comment or a field on a tag paragraph is removed with it.
 
 ### Conditionals
 
@@ -373,6 +382,8 @@ await store.Render(
 <!-- endSnippet -->
 
 Both approaches produce the same structural replacement — the host paragraph is swapped with the rendered markdown elements when the token is the entire paragraph. If the token shares its paragraph with other text or with sibling tokens, the runtime falls back to inline splicing (single produced paragraph → its runs are extracted and merged into the host) or paragraph splitting (multiple produced blocks → host is split at the token offset and the produced blocks slot between the two halves). See [Inline-aware structural replacement](#inline-aware-structural-replacement) for the full rules.
+
+**Filter order**: `markdown`, `html`, `bullet_list` and `numbered_list` turn the value into Word content, so each has to be the last filter of its token. Filters that work on the text go before it — `{{ Content | upcase | markdown }}` — and one placed after it fails registration ([`PARCH037`](#parch037--filter-after-a-format-filter), which also covers how a markdown template differs).
 
 **Markdown templates**: the filter is needed here too. A markdown template's substitutions are escaped — see [Bound values are escaped](#bound-values-are-escaped) — so a plain `string` property containing markdown syntax prints that syntax instead of applying it. `| markdown` is what says the value is source, and a `[Markdown]` annotation or a `MarkdownToken` says the same thing at the model:
 
@@ -623,7 +634,7 @@ await store.Render(
 
 #### Mutate paragraph
 
-Use `new MutateToken(...)` to receive the host paragraph and modify it in place. The token text is cleared before the callback runs, so the original paragraph structure (properties, styles) is preserved:
+Use `new MutateToken(...)` to receive the host paragraph and modify it in place. The token text is cleared before the callback runs, so the original paragraph structure (properties, styles) is preserved. Any other tokens in the paragraph are substituted first, so the callback sees their values and is free to change anything in the paragraph:
 
 Model:
 
@@ -678,6 +689,8 @@ await store.Render(
 ```
 <sup><a href='/src/Parchment.Tests/Docx/TokenOverrideTests.cs#L133-L154' title='Snippet source file'>snippet source</a> | <a href='#snippet-MutateRender' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+A bookmark the callback opens and closes inside the paragraph is renumbered once the callback returns, so that its `w:id` is unique in the document: the id the callback writes only has to match between its own `w:bookmarkStart` and `w:bookmarkEnd`. The name is left as written.
 
 
 ### Excelsior tables
@@ -758,7 +771,7 @@ var model = new Quote
 using var stream = new MemoryStream();
 await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L517-L553' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/ExcelsiorTableTests.cs#L542-L578' title='Snippet source file'>snippet source</a> | <a href='#snippet-ExcelsiorTableUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output:
@@ -832,6 +845,8 @@ public partial class ConfiguredQuoteModel
 
 The name is resolved at compile time: the source generator emits a direct call, so a missing method is [`PARCH026`](#parch026--excelsiortable-configure-method-not-found) on the member that named it, and a wrong signature is an ordinary compile error.
 
+The method can be private when the member sits on the model itself, or on a `partial` type the model reaches (a nested object's class, or a base class). On a type that is not `partial` it has to be `internal` or wider, since the generated registration lives in the model and calls it from there; a private one is `PARCH026` too.
+
 #### Loop-scoped or fully-custom tables
 
 `[ExcelsiorTable]` only resolves for collections reachable from the root model — a token like `{{ dept.Lines }}` inside a `{% for dept in Departments %}` loop falls through to plain Fluid output. In those cases, bypass the attribute and build the table directly with Excelsior's [`WordTableBuilder`](https://github.com/Papyrine/Excelsior#word-tables), returning it from an [`OpenXmlToken`](#custom-openxmltoken-programmatic-embedding) on a `TokenValue`-typed property:
@@ -868,6 +883,8 @@ Reference the property with a solo `{{ LinesTable }}` token (it must sit alone i
 Mark a `string` property with `[Html]` or `[Markdown]` (any attribute named `HtmlAttribute` / `MarkdownAttribute`, or `[StringSyntax("html")]` / `[StringSyntax("markdown")]`) and the matching `{{ ... }}` substitution is rendered as a structurally-replaced block of Word content instead of raw text. Html runs through the `OpenXmlHtml` converter; markdown runs through the same Markdig pipeline used by the full markdown template flow.
 
 **Both flows read the annotation.** A docx template resolves it per token at render time; a markdown template rewrites the token to carry `| html` or `| markdown` at registration, which is what exempts it from [escaping](#bound-values-are-escaped). Either way the format is declared once, on the member, rather than at every site that renders it. The annotation applies to a member reached from the model root — an annotated member of a loop item is not resolved in either flow — and only to a token that is a plain member access, per [`PARCH010`](#parch010--html--markdown-token-with-filters-or-complex-expression). In a markdown template it applies to the body; a style source's header or footer binds substitutions, loops and conditionals only. An `[Html]` member in a markdown template also inherits that filter's rule that the token be alone in its block, since its value replaces the block it converts into.
+
+The annotation follows C# attribute inheritance. A property that overrides an annotated one is annotated too, unless the attribute class declares `Inherited = false` (as `StringSyntaxAttribute` does), and an attribute class deriving from `HtmlAttribute` or `MarkdownAttribute` counts as its base. A member hiding another with `new`, or implementing an annotated interface member, takes nothing from it. `[ExcelsiorTable]` and `[EditableField]` are inherited by an override in the same way.
 
 The attributes are detected by name — Parchment does not ship them. Define them in a consuming project (or use `[StringSyntax("html")]` from `System.Diagnostics.CodeAnalysis`):
 
@@ -988,9 +1005,11 @@ When an `[Html]` / `[Markdown]` token shares its paragraph with other text or si
 
 | Token position | Rendered shape | Result |
 | --- | --- | --- |
-| Solo (covers the whole paragraph) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. |
+| Solo (the only token in the paragraph, with nothing but whitespace around it) | Anything | Host paragraph is replaced by the rendered elements. The host's `pPr` is lost; rendered paragraphs/tables stand on their own. A section break on the host moves to the last rendered paragraph, and a page break, picture or note reference sharing the host stays in a paragraph of its own, before or after the rendered elements. |
 | Non-solo | A single paragraph (typical for inline-only HTML like `<b>x</b>`, or single-line markdown) | The produced paragraph's `pPr` is dropped; its runs are spliced into the host at the token offset. Surrounding text and the host's `pPr` are preserved. |
 | Non-solo | Multiple block-level elements, or a non-paragraph block (table) | The host is split at the token offset: text before becomes its own paragraph (cloning host's `pPr`), the rendered blocks slot in between, and text after becomes another paragraph (also cloning host's `pPr`). Empty before/after halves are still emitted. |
+
+The two halves of a split share the host's `pPr` as formatting, but three of its settings belong to one end of the paragraph and are kept once. A section break (`w:sectPr`) goes to the half after the rendered blocks, so the section still ends where the host paragraph ended. A page break before (`w:pageBreakBefore`) and list numbering (`w:numPr`) stay on the half before them, so a split list item is still one numbered item. This applies to what the paragraph states directly: a page break or numbering that comes from the paragraph style still reaches both halves.
 
 Two non-solo block-shaped tokens in the same paragraph are rejected at render time — the splits would overlap and there is no defined way to compose them. Move one of the tokens to its own paragraph.
 
@@ -1048,7 +1067,8 @@ Behavior:
 
 - The auto path is **opportunistic, not strict**: it only fires when the token sits alone in its paragraph and has no filter chain. Otherwise the substitution falls through to standard Fluid evaluation — so existing `{{ Tags | bullet_list }}` and `{{ Tags | numbered_list }}` filter usage keeps working unchanged.
 - A null collection renders as empty (no error). An empty collection renders as no paragraphs.
-- Properties marked `[ExcelsiorTable]` keep ownership — the Excelsior path runs first and wins for `[ExcelsiorTable] IEnumerable<string>` (though Excelsior itself rejects `string` as an element type, so this combination is rarely useful in practice).
+- Properties marked `[ExcelsiorTable]` keep ownership — the Excelsior path runs first. `[ExcelsiorTable]` on an `IEnumerable<string>` itself is [`PARCH034`](#parch034--excelsiortable-member-is-not-a-collection-of-rows): a string has no columns to tabulate.
+- Only a sequence of strings counts: `string[]` and anything else implementing `IEnumerable<string>`. A multi-dimensional `string[,]` is not an `IEnumerable<string>` and a jagged `string[][]` is a sequence of arrays, so neither is a string list.
 - Loop-scoped tokens fall through. The detection map is keyed on dotted paths from the root model only, matching the `[ExcelsiorTable]` and `[Html]`/`[Markdown]` limitations. Inside `{% for c in Customers %}{{ c.Tags }}{% endfor %}`, use the explicit `bullet_list` filter.
 - Numbered output: opt out of the auto path with `{{ Tags | numbered_list }}`.
 
@@ -1139,7 +1159,7 @@ result.ApplyTo(model);
 <sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L104-L108' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-`ExtractResult.Fields` reports a per-field outcome — `Extracted`, `Empty` (placeholder showing), `Missing` (control deleted, or the document wasn't produced from a template bound to this model), `ParseFailed` (with the raw text for diagnostics), or `Duplicate` — and `AllExtracted` is true when every field read cleanly. `ApplyTo` assigns `Extracted` values and applies `Empty` as null to nullable members only — an `Empty` field targeting a non-nullable member is skipped, preserving whatever value the caller-supplied model already holds (a cleared control can't overwrite a non-nullable member with a default, because there's no null to assign). It validates that every intermediate object on nested paths is non-null *before* mutating anything (throwing `ParchmentExtractionException` otherwise). Extraction needs no `TemplateStore` — controls are matched by tag, so a service that only receives filled-in documents never has to register the template.
+`ExtractResult.Fields` reports a per-field outcome — `Extracted`, `Empty` (placeholder showing), `Missing` (control deleted, or the document wasn't produced from a template bound to this model), `ParseFailed` (with the raw text for diagnostics), `Duplicate`, or `Unreachable` (a value inside an [editable collection](#editable-collections) row that had no object to be stored on) — and `AllExtracted` is true when every field read cleanly. `ApplyTo` assigns `Extracted` values and applies `Empty` as null to nullable members only — an `Empty` field targeting a non-nullable member is skipped, preserving whatever value the caller-supplied model already holds (a cleared control can't overwrite a non-nullable member with a default, because there's no null to assign). It validates that every intermediate object on nested paths is non-null *before* mutating anything (throwing `ParchmentExtractionException` otherwise). Extraction needs no `TemplateStore` — controls are matched by tag, so a service that only receives filled-in documents never has to register the template. A document that cannot be read (not a docx package, no main body, a part that is not well-formed XML, a Strict Open XML save) throws `ParchmentExtractionException` with the underlying error as `InnerException`; a null or disposed stream and a missing file keep their own exception types.
 
 ### Control kinds
 
@@ -1150,16 +1170,19 @@ result.ApplyTo(model);
 | `DateOnly` / `DateTime` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | canonical `w:fullDate`, maintained by Word's picker |
 | `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
 | `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
-| enums | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
-| numeric types | plain text | text parsed with the extraction culture |
+| enums (not `[Flags]`) | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
+| numeric types | plain text (invariant format) | the text, parsed without group separators (see [Culture](#culture)) |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
+
+Dropdown labels are unique. Enum names that share a value each get an item labelled from that name's own `[Display]` attribute or humanized name, and such a value selects its first declared name. A label already used by an earlier item is suffixed with the member name, as in `Same (Second)`.
 
 Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`, which `ApplyTo` writes back as null on a nullable member and skips on a non-nullable one (leaving its existing value). A member reached through a null parent object renders the same way; a checkbox, having no placeholder, renders unchecked and extracts as `false`. Members must have a public non-init setter so extraction can write back.
 
 **Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
 
-- A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
-- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
+- A `DateTime` is a wall-clock value end to end: `w:fullDate` is written from the value's own clock reading with no zone conversion and no offset, whatever its `Kind`, and it comes back as the same reading with `DateTimeKind.Unspecified` — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
+- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. These parse display text: the rendered form is read first, then the extraction culture (see [Culture](#culture)).
+- Parsed date text never borrows from the machine running the extraction. Text with no offset reads as `+00:00` (so a `DateTimeOffset` `DateFormat` without `zzz` does not round-trip the offset), and text with no year, such as `09:00` or `6 July`, is `ParseFailed` rather than today's date. Outside the declared `DateFormat` the year must be written with four digits. The same applies to a `DateOnly` / `DateTime` whose `w:fullDate` is absent.
 
 **Friendly enum labels.** A dropdown shows a friendly label but stores the member name. The label comes from the same [Excelsior](https://github.com/Papyrine/Excelsior) rendering used for inline `{{ enum }}` substitutions and Excelsior table cells: a `[Display(Name = …)]` / `[Description]` attribute or a global `ValueRenderer.ForEnums` override if configured, otherwise the humanized member name (`NotYetCommenced` → `Not yet commenced`). Only the *display* is affected — each `w:listItem` keeps the member name as its `w:val`, so extraction reads the enum back from that regardless of the label, and no `[Display]` attribute or culture setting can break the round-trip.
 
@@ -1180,10 +1203,10 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1079-L1089' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1693-L1703' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
-The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
+The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. A heading is bold and a link is underlined by default, so neither is reported as `<strong>` or `<u>` and an unedited field extracts to the HTML it was rendered from. A departure from the default is reported as an inline style: `<span style="font-weight:normal">` for heading text whose bold was switched off, and `style="text-decoration:none"` on a link that is not underlined throughout. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
 
 When a model has an `[EditableField] [Html]` member, registration seeds list and style definitions into the template so Word's list buttons and style gallery work inside the editable block. Word can apply a list or a named style only against a definition that already exists — creating one writes to the document-level `word/numbering.xml` or `word/styles.xml`, which read-only protection locks — so without the seed the bullet and numbering buttons and the heading styles stay greyed out. Seeding definitions Word can reference makes them live, so a user can add a list or apply a heading to a field that started with neither:
 
@@ -1196,6 +1219,8 @@ Both are idempotent (a definition the template already provides is left alone) a
 
 Word enforces `w:documentProtection` in its UI only. No password is set (a password would add no real protection while forcing non-deterministic salt generation into the output), so any user can lift the protection via Review → Restrict Editing, and any program can edit the underlying XML regardless. Editable fields are the right tool for *guiding* users to fill in specific values — not for tamper-proofing.
 
+The exception is a template its author already protected with a password in Word: that password (the salt and hash, copied as-is, so output stays deterministic) and any formatting restrictions are kept, and lifting the protection in the output asks for it. Whatever edit mode the template had (forms, comments, tracked changes, or protection configured but not enforced) becomes enforced `readOnly`, the strictest mode, with the editable fields as its only exceptions. Existing protection without a password is replaced.
+
 Protection is applied at registration whenever the model declares at least one `[EditableField]` member. Opt out per template:
 
 <!-- snippet: ProtectionModeNone -->
@@ -1203,7 +1228,7 @@ Protection is applied at registration whenever the model declares at least one `
 ```cs
 store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L602-L604' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L710-L712' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:
@@ -1229,9 +1254,19 @@ With `ProtectionMode.None` the fields still render as tagged controls (and still
 
 A plain `[EditableField]` renders as a Word plain-text content control (`<w:text/>`). That element constrains the control's *content model* — a single run of text, no images, no nested controls, no extra paragraphs — but it says nothing about run properties, and Word deliberately lets a user bold or italicise the control's contents. Nothing on `w:sdt` forbids it: `w:lock="sdtLocked"` only stops the control being deleted.
 
-The formatting is cosmetic. Extraction reads the control's `w:t` text (turning `w:br` into a newline) and ignores `w:rPr` entirely, so a bolded field extracts exactly as an unbolded one and the emphasis never reaches the model. This applies to plain fields only — for an `[EditableField] [Html]` field, formatting *is* the value, and bold round-trips as `<strong>`.
+The formatting is cosmetic. Extraction reads the control's text (see [What extraction reads as text](#what-extraction-reads-as-text)) and ignores `w:rPr` entirely, so a bolded field extracts exactly as an unbolded one and the emphasis never reaches the model. This applies to plain fields only — for an `[EditableField] [Html]` field, formatting *is* the value, and bold round-trips as `<strong>`.
 
 The one way to make Word refuse the keystroke is `w:documentProtection w:edit="forms"`, which disallows formatting inside the protected region. Parchment writes `readOnly` instead, because forms protection also blocks selecting and copying the locked text.
+
+### What extraction reads as text
+
+Word does not keep every character of a control in `w:t`. Some are elements of their own, and both the plain-text and the rich-text reader return the character each stands for:
+
+- `w:tab` is a tab. A tab in a rendered value is written as `w:tab` too, not left inside `w:t`, where Word draws it as a space and rewrites it on the first save. A rich-text value carries it as `<span style="white-space:pre">&#9;</span>`, since a bare tab in html folds to a space; that span renders back to a `w:tab`.
+- `w:br` and `w:cr` are a newline (`<br>` in rich text).
+- `w:noBreakHyphen` is U+2011.
+- `w:softHyphen` is nothing. It marks where a word may be hyphenated and is not part of the word.
+- `w:sym` (Insert → Symbol) is the character at its code point. The font is not part of a value, so a symbol-font glyph (Symbol, Wingdings) comes back as the private use code point Word stored for it (`U+F000` plus the font's character code), which only means something in that font.
 
 ### Rich content cannot be whitelisted in Word
 
@@ -1242,21 +1277,31 @@ There is no way to tell Word "allow bold and italic in this control, but not tab
 
 `w:sdt` itself offers only a fixed menu of discrete control types — plain text, rich text, combo box, dropdown, date, checkbox, picture. "Rich text" means any content: paragraphs, images, tables. There is no inline-emphasis-only variant.
 
-So the boundary is enforced on extraction, not in Word. Whatever a user pastes into an `[EditableField] [Html]` control, only the supported subset survives the round-trip: a table degrades to its cell paragraphs (no text is dropped, but it never returns as `<table>`), and other unsupported content degrades to its text. Tighten the rule further — stripping `<strong>`, say — in the serializer, not in the protection settings.
+So the boundary is enforced on extraction, not in Word. Whatever a user pastes into an `[EditableField] [Html]` control, only the supported subset survives the round-trip: a table degrades to its cell paragraphs (no text is dropped, but it never returns as `<table>`), and other unsupported content degrades to its text. A text box and an equation degrade the same way, a picture has no text and is dropped, and a field contributes its result. Tracked changes are read as if every one had been accepted, in plain-text controls too: inserted text is kept and deleted text is not. Tighten the rule further — stripping `<strong>`, say — in the serializer, not in the protection settings.
 
 ### Culture
 
-Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Only free-text *numerics* are culture-sensitive: they render via the Fluid template culture (invariant by default) and parse back with `Extract`'s `culture` parameter — which defaults to `CultureInfo.InvariantCulture` to match. If renders are configured for another culture, pass the same culture to `Extract`.
+Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Numerics, `DateTimeOffset` and `TimeOnly` are read from display text, and that text is always rendered with the invariant culture — the render culture is not configurable. Extraction therefore reads the invariant form first, so a document nobody edited extracts the rendered values whatever `culture` is passed to `Extract`. The `culture` parameter (default `CultureInfo.InvariantCulture`) describes what a person may type instead; it never needs to match the render.
+
+Rules for a typed number:
+
+- A `.` is always the decimal point, as rendered. The extraction culture adds its own decimal separator: `12,5` extracts as 12.5 under `de-DE` and is `ParseFailed` under the invariant culture.
+- Group separators are never accepted, for any numeric type or culture. `1,000`, `1.234,56` and `1 234` are `ParseFailed` instead of a guess, since one culture's group separator is another's decimal separator.
+- Integer types take digits and a leading sign only.
+- Currency and percent symbols are `ParseFailed`.
+
+A date or time typed in a form other than the rendered one is parsed with the extraction culture.
 
 ### Rules and limitations
 
 - **Docx flow only.** Markdown templates substitute into text before parsing, so substitution sites don't exist in the output; `[EditableField]` is ignored there — same rule as `[ExcelsiorTable]` and `[Html]`/`[Markdown]`.
 - **Document body only.** A token referencing an editable member in a header or footer renders as a plain read-only substitution — deliberate, so an editable body field can be mirrored read-only in a footer. Extraction reads the single body control.
 - **Loops render read-only.** An editable token inside `{% for %}` would stamp one control per iteration and produce duplicate tags, so loop bodies render editable members as plain text (`PARCH018` warns at compile time).
-- **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. Plain member access only; filters are rejected (`PARCH016`).
+- **One token per member** in the body (`PARCH017`) — the dotted path is the control's tag and must be unique for extraction. A token inside a text box counts once: Word stores a text box as a DrawingML shape with a VML fallback copy, both copies render the control, and extraction reads the DrawingML one. Plain member access only; filters are rejected (`PARCH016`).
 - **No structural mixing.** An editable token cannot share a paragraph with an `[ExcelsiorTable]` / `[Html]` / `[Markdown]` token — structural replacement clones paragraph halves and would corrupt the editable range. Rejected at registration.
 - `[EditableField]` combined with `[ExcelsiorTable]` or `[Markdown]` on the same member is rejected (`PARCH015`); `[Html]` (or `[StringSyntax("html")]`) instead selects the rich-text kind (see [Rich text (HTML)](#rich-text-html)). Unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All fail fast at runtime registration.
 - **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
+- **No structs on the way to an editable member.** Extraction writes each value back along the member path, and a write through a struct lands on a copy. An `[EditableField]` member declared in a struct, or in a class held by one, is rejected ([`PARCH032`](#parch032--editablefield-member-is-reached-through-a-struct)). A struct member without `[EditableField]` still binds and renders.
 
 ### Editable collections
 
@@ -1308,9 +1353,13 @@ result.ApplyTo(model);
 <!-- endSnippet -->
 
 - **Replace-all round-trip.** The document's rows are the new state. A caller that preserves entity identity (matching rebuilt items onto tracked records by id) performs that mapping itself — the library does not infer identity.
+- **One loop binds the collection.** The loop holding the tokens for the item's editable members is the repeating section, and each of those tokens appears in it once; a second such loop, or a second token for one member, is rejected at registration ([`PARCH017`](#parch017--editablefield-member-referenced-more-than-once-in-the-body)). A loop over the same collection that holds none of them — a summary printing members that are not `[EditableField]` — renders as an ordinary read-only loop, and extraction leaves the collection alone when no loop binds it.
 - **No loop modifiers.** `limit:`, `offset:` and `reversed` on the loop are rejected at registration ([`PARCH027`](#parch027--loop-over-an-editablefield-collection-carries-a-modifier)): the rows rendered are the rows extracted, so a window or a reversal would be written back as the collection.
-- **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it.
-- **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member. One nesting level — an element type cannot itself hold an editable collection.
+- **Item tokens follow the field rules.** Directly inside the loop, a token through the loop variable (`{{ b.Year }}`) is a control: plain member access only (`PARCH016` — a filter such as `{{ b.Year | plus: 1 }}` is rejected, since the control is built from the member and the filtered text could not be read back) and one token per member within the loop (`PARCH017`). A loop nested inside it, and a root editable member used inside it, render read-only (`PARCH018`), where filters and repeats are fine.
+- **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it, and a row added in Word and left untouched adds nothing. A checkbox is always either checked or not, so an unchecked box alone makes an entry only in a row rendered from an item.
+- **Row fields are reported like any other.** `ExtractResult.Fields` carries one entry per member of each extracted row, with the row in the path — `Budgets[1].Amount` — where the index is the item's position in the rebuilt list (a dropped row is not counted and reports nothing). A value that does not parse (`abc` in a number, a dropdown value that is not a member name) is `ParseFailed` with its raw text, and a control deleted from the row is `Missing`; either makes `AllExtracted` false. `ApplyTo` still assigns the rebuilt list, in which such a member holds the element type's default, so check `AllExtracted` or the row entries before trusting it. A row whose only content is unparseable text is kept, not dropped as cleared.
+- **The element type must be reconstructable**: a class with a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member declared as `List<T>`, `T[]`, or an interface `List<T>` implements ([`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape)). A struct element type is rejected as well. One nesting level — an element type cannot itself hold an editable collection.
+- **Members on a nested object** (`{{ b.Owner.Name }}`) round-trip: extraction builds each item from nothing, so it creates the objects on the way to an extracted value. That needs a settable member whose type is a concrete class with a public parameterless constructor, unless the element initializes the object itself. Where neither holds the value cannot be stored: the rebuilt item is left without it, the row's entry for that member in `Fields` is `Unreachable` (`Budgets[1].Owner.Name`), and `AllExtracted` is false.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
 - **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
 
@@ -1423,6 +1472,8 @@ The markdown replaces the body and nothing else, so those inherited parts arrive
 
 A Word template (`.dotx`/`.dotm`) is accepted as a style source. The style source is cloned and the clone becomes the rendered output, so the package is retyped to a document at registration — otherwise the output would be template-typed and Word would open it as a new unsaved document based on it rather than as the document itself. The same applies to a template passed to `RegisterDocxTemplate`.
 
+The output is always a plain, macro-free document. A macro-enabled source (`.docm`/`.dotm`) is accepted in both flows, and its VBA project is removed at registration together with the parts that exist only for it (the supplementary VBA data, signatures, and the keyboard and toolbar customizations bound to the macros), so the rendered package is a valid `.docx` and never a `.docx` with macros inside. Macros in the template do not run in, and are not carried into, the output.
+
 
 ### Bound values are escaped
 
@@ -1488,6 +1539,8 @@ The rendered docx:
 
 Four things to read off it. The `|` stayed inside the Comment cell rather than opening a third column. `**check**` printed as the reviewer typed it instead of turning bold. The `\n` became a real line break, inside the cell. And `Verdict` — annotated `[Markdown]` — rendered its `**Approved**` bold, because the annotation is the claim that the value is markup.
 
+The same holds for syntax that is read from the shape of a line rather than from a character. A value that opens with spaces or a tab keeps them as the whitespace they are instead of becoming an indented code block, matching the docx flow, and a value that reads `[TOC]` or `[SECTION]` prints that text: a [table of contents](#table-of-contents) or a [section break](#page-orientation) comes from a marker the template spells, or from a value declared as markup in one of the ways below.
+
 Escaping is an **output** concern only. Conditions, filter inputs and loop sources see exactly what the model holds, so `{% if Title == "a|b" %}` still matches.
 
 Three ways to say a value *is* markup — one per site, and two that say it once at the model:
@@ -1506,6 +1559,8 @@ An annotated member reached by a token carrying anything else — a filter, an e
 Quotes and dashes are deliberately *not* escaped, so [smarty pants](#smarty-pants) still applies to bound text. Values landing inside a code span or fence are the one place escaping cannot help: backslash escapes are not processed there, so the escape prints.
 
 A url written in the template with a bound tail — `https://example.com/orders/{{ Id }}`, bare or as `<https://example.com/orders/{{ Id }}>` — is the other place escapes are read verbatim, and there they are removed again, so the link's text and target carry the value as it is. The value is still not syntax: the link ends where a url typed out in full would end — at a space, a `<` or a line break, and before trailing punctuation such as a final `.` — and whatever follows is escaped text. A `file:` url is the exception, left exactly as written because a backslash is a path separator there.
+
+Emphasis written around a token goes with a blank value. Markdown has no empty emphasis — `****` prints as four asterisks, and alone on a line it is a horizontal rule — so when the value between the delimiters is null, empty or only spaces, `**{{ Name }}**`, `_{{ Name }}_`, `~~{{ Name }}~~` and `` `{{ Name }}` `` leave what the bare token would: nothing. Only delimiters directly around a token are affected; empty emphasis typed into the template, or arriving in a value that is markdown source, prints as written.
 
 The docx flow needs none of this. It substitutes into Word runs rather than into source, so a value there was always the text it is.
 
@@ -1593,6 +1648,7 @@ Behaviour notes:
 
 - When all column widths are equal (uniform separators like `|---|---|`), no explicit widths are emitted and the table is left on Word's default autofit, which sizes each column to its content rather than distributing evenly. Uniform separators are the conventional way to write a separator row rather than a request for equal columns, so they are read as "no opinion on widths". The consequence is that equal columns cannot currently be stated at all — equal dash counts are indistinguishable from the conventional separator, so relative widths are the only thing dash counts can express.
 - Tables nested in blockquotes or list items are auto-sized to fit their indented container, so the explicit dxa column widths are skipped regardless of dash counts.
+- Word holds at most 63 columns in a table and does not open a document with a wider one, so a pipe or grid table that is wider than that at its widest row fails the render with a `ParchmentRenderException` naming both counts.
 
 #### [Grid tables](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/GridTableSpecs.md)
 
@@ -1616,11 +1672,13 @@ Rendered output:
 
 #### [Auto links](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/AutoLinks.md)
 
-Bare URLs and email addresses are automatically converted to hyperlinks with the `Hyperlink` character style:
+Bare URLs are automatically converted to hyperlinks with the `Hyperlink` character style. A URL is recognised by how it starts: `http://`, `https://`, `ftp://`, `mailto:`, `tel:` or `www.`. An email address on its own is not one, so it takes the `mailto:` prefix, which is left out of the link text, or angle brackets:
 
 ```markdown
-Visit https://example.com or email user@example.com
+Visit https://example.com or email mailto:user@example.com or <user@example.com>
 ```
+
+A token can supply the tail of a bare URL (`https://example.com/orders/{{ Id }}`), but not its host or the address after `mailto:` — those stay text. Use an inline link for them: `[{{ Email }}](mailto:{{ Email }})`.
 
 #### [List extras](https://github.com/xoofx/markdig/blob/main/src/Markdig.Tests/Specs/ListExtraSpecs.md)
 
@@ -1652,6 +1710,7 @@ ASCII quotes and dashes are replaced with typographic equivalents:
 |---|---|
 | `'text'` | \u2018text\u2019 (curly single quotes) |
 | `"text"` | \u201Ctext\u201D (curly double quotes) |
+| `<<text>>` | \u00ABtext\u00BB (angle quotes) |
 | `--` | \u2013 (en-dash) |
 | `---` | \u2014 (em-dash) |
 | `...` | \u2026 (ellipsis) |
@@ -1696,7 +1755,7 @@ Emphasis is the only inline markdown that can carry a style, so it is the only o
 Delivery Goal <span class="Heading3-lightChar">[Required]</span>
 ```
 
-The class becomes the `RunStyle` for every run the span encloses, nested spans resolve innermost-first, and a span with no class styles nothing. Only the class is read: an inline `style` attribute is ignored here, unlike a span inside an html *block*, which [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml) renders in full.
+The class becomes the `RunStyle` for every run the span encloses, nested spans resolve innermost-first, and a span with no class styles nothing. A run takes one character style, so where several apply to the same text the one on emphasis wins, then a span's class, then one on inline code, then the link's (`Hyperlink` unless the link names its own) — whichever of them encloses the other. Only the class is read: an inline `style` attribute is ignored here, unlike a span inside an html *block*, which [OpenXmlHtml](https://github.com/Papyrine/OpenXmlHtml) renders in full.
 
 A list takes it on its own line, and it applies to every item. A style on an individual item wins over one on the list. Without either, items keep the built-in `ListParagraph`:
 
@@ -1751,9 +1810,11 @@ An id on a heading or paragraph becomes a Word bookmark wrapping that text, and 
 Detail that refers back to the [summary](#summary).
 ```
 
-A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word.
+A bookmark name is far more restricted than an html id: it must start with a letter or underscore, may then carry only letters, digits and underscores, and stops at 40 characters. Rather than reject an id that html would accept, anything else is folded to an underscore and the name truncated — `{#my-id}` becomes `my_id`, `{#9lives}` becomes `_9lives`. A link target is folded by the same rules, so `[jump](#my-id)` still resolves. Markdown carrying ids for html therefore keeps working under Word. Two ids that fold to the same name, or differ only by case, which Word ignores, stay separate bookmarks: the later one takes a numeric suffix (`{#my-id}` then `{#my_id}` gives `my_id` and `my_id_2`), and each link reaches the heading whose id it was written with. When the same id is written twice, or sits on a heading inside a loop, the first occurrence keeps it, as in html, and the later ones get no bookmark. A link to an id that nothing carries is still written, and does nothing when clicked.
 
 An id and a style can sit on the same block: `Text {#note}{.BOXText}`.
+
+Any other link target has to be an absolute url (`https://…`, `mailto:…`, `file:///…`) to become a hyperlink. A relative target (`page.html`, `/docs/page`) has nothing to be relative to in a generated document, and a target that is not a url at all, which a bound value can easily be, cannot be linked. Both are written as the link text followed by the target in parentheses — `text (page.html)` — which is also what an `<a href>` in `[Html]` content becomes. Text that already is the target is not repeated.
 
 A link with **no text** and a `#` target becomes a page reference instead — the page the bookmark lands on, which only Word can compute:
 
@@ -1815,11 +1876,19 @@ And back to portrait.
 
 The two distances are their own attributes rather than a fifth and sixth margin because they measure something else — where the header and footer sit relative to the page edge, not where the text sits — and because a template moving only the text should not have to restate them. They are the setting to reach for when a page edge will not come in any further: a top margin below the distance the header needs is one Word overrides, pushing the text back down to clear it, so shortening the run of the page means moving the header up as well as the margin in.
 
-Each attribute is read on its own, and a value that does not parse is ignored rather than rejected — a typo costs that one setting, not the section break or the settings beside it. Anything a marker does not name keeps what the style source had, the gutter included. `header` and `footer` are measured from the page edge inwards, so a negative one has nothing it could mean and is ignored; a page edge may legitimately be negative.
+Each attribute is read on its own, and a value that does not parse is ignored rather than rejected — a typo costs that one setting, not the section break or the settings beside it. Anything a marker does not name keeps what the style source had, the gutter included. `header` and `footer` are measured from the page edge inwards, so a negative one has nothing it could mean and is ignored. A top or bottom margin may legitimately be negative; a left or right margin may not.
+
+A number that parses but cannot be a measurement on a page is rejected rather than ignored, and the render throws a `ParchmentRenderException` naming the attribute and the value: a negative left or right margin, or any value beyond 31680 twips (22 inches, the longest side Word gives a page) in either direction.
 
 Everything else about the page comes from the [style source](#markdown-template): each section is derived from its `<w:sectPr>`, so headers, footers, page borders and paper size carry into all of them rather than being dropped for the two properties the marker named. Page numbering continues across the breaks — only the first section keeps a `w:pgNumType` start, matching what Word writes when a section break is inserted by hand. A template with no style source has no page setup to derive from, and rendering one throws.
 
+A paragraph that arrives already carrying a finished `<w:sectPr>` — one returned by an `OpenXmlToken`, say — is not a marker and is left exactly as written. It ends the section before it and nothing more: the next marker, and the rest of the document, continue from the settings that were in force before it (the previous marker's, or the style source's), and it counts as a section when deciding which one is first and keeps a page number start.
+
 The marker reads as "from here on", which is not how Word stores it: a `<w:sectPr>` inside a paragraph describes the section that *ends* there. That inversion is handled on the way in, so the settings a marker declares apply to what follows it, and the last marker in the template describes the rest of the document.
+
+A break is only written between content, so no section is ever empty and no blank page comes of one: a marker with nothing before it sets up the first section rather than ending an empty one, markers with nothing between them are one break whose settings are read in order exactly as they are with content between them (so the later marker wins whatever both name), and a marker with nothing after it is ignored. Blank lines are not content, and a `[TOC]` is.
+
+A markdown value rendered by a [docx template](#docx-template) — a [`[Markdown]` member](#html-and-markdown-properties), a `MarkdownToken`, or `| markdown` — can hold the marker as well. The template stands in for the style source: each section is derived from the `<w:sectPr>` of the template section the value lands in, and the marker reaches as far as that section's end, where the page setup the template gave the next section takes over again. Only the document body can hold a section break, so a marker in a value rendered into a table cell, a header, a footer, a footnote or an endnote throws `ParchmentRenderException`, as does one in a template whose body has no `<w:sectPr>`.
 
 `[SECTION]` follows `[TOC]` in costing no syntax: with no `(url)` or `[label]` after it, markdown leaves it as the literal text `[SECTION]`, so a template that also renders to html degrades to showing the marker. An `orientation` that is missing or unrecognised is not read as a marker at all and stays that text, which is what makes a typo visible rather than a section break that quietly changes nothing. As with any [generic attribute](#generic-attributes), a marker in a table cell cannot receive one and stays text too.
 
@@ -1844,7 +1913,7 @@ public interface IPageNumberResolver
 }
 ```
 
-With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything.
+With a resolver configured, a `[TOC]` is built out into real entries — one per heading in range, each styled `TOC1`…`TOC9`, linked to its heading and ending in a page number, with a dot leader to the right margin, or to the edge of the cell for a `[TOC]` in a table cell. A heading in a table cell is listed like any other. Headings that carry no `{#id}` are bookmarked automatically, the way Word names its own. Page references get their numbers the same way, and nothing is left marked dirty, so Word opens the document without asking to recalculate anything. The exception is a `[TOC]` with no heading in range: there is nothing to build, so it keeps its placeholder and stays dirty for Word.
 
 **A table of contents changes its own pagination**, which is why the entries are written before anything measures: growing the field from a one-line placeholder to thirty entries pushes every heading below it down a page and would invalidate the numbers already taken. Filling a number into a line that already exists reflows nothing, so one measuring pass is enough.
 
@@ -1898,7 +1967,7 @@ var store = new TemplateStore
     WebImages = OpenXmlHtml.ImagePolicy.Deny()
 };
 ```
-<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L989-L997' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Markdown/MarkdownFlowTests.cs#L1069-L1077' title='Snippet source file'>snippet source</a> | <a href='#snippet-ImagePolicies' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The `ImagePolicy` type is OpenXmlHtml's — `Deny`, `AllowAll`, `SafeDomains(...)`, `SafeDirectories(...)`, `Filter(predicate)`. See [OpenXmlHtml's image-policy docs](https://github.com/Papyrine/OpenXmlHtml#image-policy) for the full surface.
@@ -1908,7 +1977,7 @@ Determinism holds as long as the bytes at the resolved source don't change betwe
 
 ### Custom `OpenXmlToken` (programmatic embedding)
 
-For full control — explicit sizing, anchored positioning, charts, anything outside markdown or HTML — return an `OpenXmlToken` from a `TokenValue`-typed model property. The render delegate receives an `IOpenXmlContext` whose `AddImagePart(byte[] bytes, string contentType)` adds an `ImagePart` to the document and returns its relationship ID. Build the `<w:drawing>` directly (inline or anchor element, EMU-sized extents, blip ref pointing at the rel-id) and yield it as one of the produced elements.
+For full control — explicit sizing, anchored positioning, charts, anything outside markdown or HTML — return an `OpenXmlToken` from a `TokenValue`-typed model property. The render delegate receives an `IOpenXmlContext` whose `AddImagePart(byte[] bytes, string contentType)` adds an `ImagePart` to the document and returns its relationship ID. The content type selects the part type and has to be one the Open XML SDK has an image part for: `image/png`, `image/jpeg`, `image/gif`, `image/bmp`, `image/tiff`, `image/x-icon`, `image/x-pcx`, `image/jp2`, `image/x-emf`, `image/x-wmf` or `image/svg+xml`. Case and parameters (`image/png; charset=binary`) are ignored and common aliases such as `image/jpg`, `image/x-png` and `image/svg` are accepted; any other type, `image/webp` for example, throws an `ArgumentException`. Build the `<w:drawing>` directly (inline or anchor element, EMU-sized extents, blip ref pointing at the rel-id) and yield it as one of the produced elements.
 
 Use this path when image bytes live in memory (rendered chart, database blob, dynamically generated PNG) and round-tripping through base64 or a temp file would be wasteful.
 
@@ -2049,14 +2118,18 @@ await store.Render(
         }
     });
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L290-L308' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L502-L520' title='Snippet source file'>snippet source</a> | <a href='#snippet-WordDocumentProperties' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 Title, Author, Subject, Keywords, Comments, Category, Status and LastModifiedBy map to the core part (`docProps/core.xml`); Company and Manager to the extended part (`docProps/app.xml`); and `Custom` to the user-defined part (`docProps/custom.xml`).
 
 **Every part is merged, never rewritten.** A template usually arrives carrying properties of its own, and replacing a part wholesale drops them silently. Only the values set are touched: an unset member leaves that property as the template had it, a `Custom` entry whose name matches an existing property replaces it, and one that does not is added. Properties the template carries that `Custom` does not name are left alone — to drop one, name it in `RemoveCustom`.
 
-Supported `Custom` value types are `string`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws an `ArgumentException` rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+Supported `Custom` value types are `string`, `char`, `bool`, integral and floating-point numbers, `DateTime`, `DateOnly` and `Guid`. Anything else throws a `ParchmentRenderException` naming the property and the type rather than coercing, which would write something like `System.Int32[]` into the property and hide the mistake.
+
+A character XML cannot carry (a control character, an unpaired surrogate) is dropped from every property value and from `Custom` names, the same as from substituted token text.
+
+Numbers and dates are written culture-invariantly, so the current culture's calendar and separators never reach the part. A date property is a UTC instant: a `DateOnly` is written as midnight UTC of that day, a `DateTime` of kind `Utc` or `Unspecified` is written with its clock reading unchanged, and only a `DateTime` of kind `Local` is converted from the machine's time zone to UTC. A `Local` value keeps the instant it names, which makes the output depend on the machine's zone; pass `Utc` or `Unspecified` values where the [determinism](#determinism) guarantee matters.
 
 Set `ClearBuiltIn` where the template's properties are not wanted. It discards them before the values above are applied, so the output starts empty rather than inheriting them:
 
@@ -2069,7 +2142,7 @@ var properties = new WordDocumentProperties
     Title = "Bill 42"
 };
 ```
-<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L353-L361' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/DocumentPropertiesTests.cs#L565-L573' title='Snippet source file'>snippet source</a> | <a href='#snippet-ClearBuiltIn' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 A template that a person has edited carries their editing history — `Creator` and `LastModifiedBy` name them, and `Revision` and `LastPrinted` describe work that has nothing to do with the generated document. Clearing covers the core part in full, including the values this type cannot set, plus `Company` and `Manager` on the extended part. User-defined properties are left alone, since those are normally the template's own data rather than metadata about who edited it — use `RemoveCustom` to drop those by name.
@@ -2089,9 +2162,21 @@ Validation covers loop bodies. A loop variable is bound to the element type of w
 
 If `HasVariations` is not a member of the element type, registration throws. Left unchecked this is a silent failure rather than a loud one — liquid resolves the unknown member to nil, the `{% if %}` goes false, and the whole block vanishes from the rendered document with nothing reported.
 
-A collection or a string reaches a template as liquid's own array or string rather than as the CLR object, so the members that bind on one are liquid's: `size`, `first` and `last`, in lower case. `first` and `last` are typed as the element, so `{{ Lines.first.Name }}` is checked like any other path. CLR members such as `Count` and `Length`, and the properties of a model's own collection class, do not bind and are rejected at registration, since `{% if Lines.Count > 0 %}` would otherwise be false for every model; the form that works is `{% if Lines.size > 0 %}`. On a dictionary only `size` is accepted.
+A collection or a string reaches a template as liquid's own array or string rather than as the CLR object, so the members that bind on one are liquid's: `size`, `first` and `last`, in lower case. `first` and `last` are typed as the element, so `{{ Lines.first.Name }}` is checked like any other path. CLR members such as `Count` and `Length`, and the properties of a model's own collection class, do not bind and are rejected at registration, since `{% if Lines.Count > 0 %}` would otherwise be false for every model; the form that works is `{% if Lines.size > 0 %}`. On a dictionary only `size` is accepted. A loop over a dictionary with string keys binds its variable to the entry, in the dictionary's own order: `{% for kv in Lookup %}{{ kv.Key }}: {{ kv.Value }}{% endfor %}`, with `kv.Value.Name` checked against the value type. `kv[0]` and `kv[1]` read the same two halves.
+
+An enum reaches a template as the text it prints as, so nothing can be read off it and its constants cannot be named. `{{ Status.Final }}` and `{% if Status == Status.Final %}` are rejected at registration, since the first would print nothing and the second would be false for every model. The form that works compares against the text `{{ Status }}` prints: `{% if Status == "Final" %}`.
 
 **Markdown templates only:** identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws. Docx templates support none of the three: they iterate through Parchment's own scope tree rather than liquid's `{% for %}`, so `forloop` is never populated, and `assign` / `capture` are not among the supported block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so in both cases rather than rendering a blank.
+
+The other liquid tags a markdown template can hold are walked the same way: the condition and both branches of `{% unless %}`, the value, every `{% when %}` option and every branch of `{% case %}`, the values and the group of `{% cycle %}`, and the body of `{% capture %}` and `{% ifchanged %}`. A variable assigned inside any of them is known after it. A counter is not a variable: liquid keeps `{% increment n %}` and `{% decrement n %}` apart from `{% assign %}`, so a later `{{ n }}` renders blank and is rejected as an unknown member.
+
+`{% tablerow row in Rows %}` is validated as a loop: `row` is bound to the element type for the body, `tablerowloop` is accepted inside it, and the source and the `cols:`, `limit:` and `offset:` arguments are checked against the scope around the tag. Liquid writes the rows as html (`<tr>` and `<td>`) with nothing around them, so the tag belongs inside a raw `<table>` block, where the rows become a Word table. Outside one there is no table for the rows to belong to.
+
+```handlebars
+<table>
+{% tablerow line in Lines cols: 3 %}{{ line.Name }}{% endtablerow %}
+</table>
+```
 
 Whitespace control is transparent to validation: `{%- for row in Rows %}` and `{% for row in Rows -%}` behave the same as the plain form. This matters for markdown templates, where `{%-` is often needed to keep a raw-html block free of the blank line that would otherwise end it.
 
@@ -2102,7 +2187,11 @@ The source generator is the recommended way to register templates. Decorate the 
 
 **Nothing to register, nothing to deploy.** The generated code carries the template's bytes and registers them from a module initializer when the model's assembly loads; a `TemplateStore` picks the definition up on the model's first render. There is no registration call to write, no template file to copy beside the assembly, and no path to resolve at runtime.
 
-**No runtime reflection over the model — at all.** The generator emits every member accessor and per-template map at compile time, and there is no reflection fallback: a model that never went through the generator is rejected at registration with a pointer to `[ParchmentModel]` / `[ParchmentBindable]`. This makes Parchment safe for trimming and NativeAOT scenarios, and matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
+**No reflection to read the model.** The generator emits every member accessor and per-template map at compile time, and there is no reflection fallback: a model that never went through the generator is rejected at registration with a pointer to `[ParchmentModel]` / `[ParchmentBindable]`. This matches the modern .NET pattern set by `System.Text.Json`'s `JsonSerializerContext`, EF Core's compiled models, and the regex source generator.
+
+**NativeAOT is not supported, and trimming is not guaranteed.** Generated accessors read the model's values, but three places still work from a runtime `Type`: registration checks each template token against the model's member types through reflection, an `[ExcelsiorTable]` member reaches Excelsior through a generic method constructed at runtime (and Excelsior reflects over the element type for its columns), and `ParchmentExtractor` constructs the `List<T>` or array of an editable collection. Published with `PublishAot`, registration throws `Identifier 'Name' is not a member of 'Letter'` for a member that exists, and an `[ExcelsiorTable]` renders with an empty header row and empty cells. A trimmed publish without AOT (`PublishTrimmed`, `TrimMode=full`) of a generated-registration model, a hand-registered `[ParchmentBindable]` model and an `[ExcelsiorTable]` rendered correctly when measured, with trim warning IL2104 reported for Parchment, Excelsior, Fluid and Parlot — an observation for that one consumer, not a guarantee, and the assembly is not marked `IsTrimmable`. The `TemplateStore` registration and render methods carry `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`, and `ParchmentExtractor.Extract` carries `[RequiresDynamicCode]`, so a project that publishes trimmed or AOT is warned (IL2026 / IL3050) at each call. A project that does neither sees no warning.
+
+**C# 14 or later.** The generated code is compiled with the project's own `LangVersion`, and is written for C# 14. A project compiled as anything older gets [`PARCH038`](#parch038--c-14-or-later-is-required) on each model and no generated code. The default for a .NET 10 project is C# 14, so this only matters where `LangVersion` is set by hand or the project targets an older framework.
 
 The model must be `partial` — the generator emits the embedded template and its module initializer onto the same class. Both docx and markdown templates are supported — the generator branches on the matched file's extension (`.docx` → docx flow, `.md` → markdown flow):
 
@@ -2183,6 +2272,16 @@ Discovery covers the project folder. A template outside it, or under a path the 
 
 `ParchmentTemplate` expands to `AdditionalFiles` and nothing else. `<AdditionalFiles>` directly works the same way; the dedicated item type is there so a file listing says what the files are for. Set `EnableDefaultParchmentTemplates` to `false` to take the globs off entirely and declare every template by hand.
 
+A discovered template is an ordinary `ParchmentTemplate` item by the time the project file is read, so `Remove` takes a file or a folder out of discovery — a drafts folder, say, whose templates would otherwise collide with the real ones as [`PARCH020`](#parch020--model-matches-more-than-one-template-file):
+
+```xml
+<ItemGroup>
+  <ParchmentTemplate Remove="Drafts\**" />
+</ItemGroup>
+```
+
+The item to remove from is `ParchmentTemplate`, not `AdditionalFiles`: the package copies the templates across only after the project file has been read, so an `<AdditionalFiles Remove="..." />` written there finds nothing to remove.
+
 **A template should carry exactly one item type.** Listing the same file as an `<AdditionalFiles>` entry and also as `<EmbeddedResource>` or `<Content>` satisfies MSBuild, but an IDE that models one build action per file can resolve it to the other identity and hand the generator nothing — surfacing as a [`PARCH004`](#parch004--no-template-found-for-model) that a command-line build cannot reproduce. Since the template is embedded into the generated source, the second item type is never needed. A hand-written second identity is reported as `PARCH100`; the `None` item the SDK's default glob adds to every template is the exception and is left in place: `None` is never handed to the compiler, so it cannot shadow the template, and it is what keeps the file listed in the IDE's solution explorer.
 
 #### How a template is found
@@ -2222,6 +2321,8 @@ public class Customer
 {{ Customer.Missing }}
 ```
 
+A constant of an enum is reported the same way, with a message naming the enum: `{{ Status.Final }}` reads a member off a value that reaches the template as text. See [Registration-time validation](#registration-time-validation).
+
 
 ### `PARCH002` — loop source is not enumerable
 
@@ -2245,10 +2346,14 @@ public class Letter
 
 Only `for`/`endfor`/`if`/`elsif`/`else`/`endif` are supported as block tags.
 
+Also raised for a supported tag written in a form liquid does not have. `else`, `endif` and `endfor` take no arguments, so `{% else if Flag %}` is refused instead of being read as a plain `{% else %}`; the liquid spelling is `{% elsif Flag %}`. `{% elseif Flag %}` is refused for the same reason. A markdown template with any of these fails to parse, which is `PARCH006` carrying the same explanation.
+
 ```
 // Template paragraph — "foobar" is not a recognised tag
 {% foobar %}
 ```
+
+A markdown template accepts liquid's other tags (`assign`, `capture`, `unless`, `case`, `echo` and so on), with two exceptions. `{% render %}` and `{% include %}` load a partial from a file, and a template is a single file with nowhere to load one from. The statements inside `{% liquid %}` do not run; write each statement as its own tag. All three are reported here, and rejected by `RegisterMarkdownTemplate`.
 
 
 ### `PARCH004` — no template found for model
@@ -2286,7 +2391,7 @@ A correct `FullPath` in that output means the build is right and the IDE's proje
 
 ### `PARCH005` — block tag shares a paragraph
 
-**Docx only.** Block tags (`{% for %}`, `{% if %}`, etc.) must sit alone in their own paragraph. Mixing a block tag with other text on the same line is rejected. Markdown templates are exempt — Fluid parses the whole file as one template, so inline block tags like `Hello {% if x %}World{% endif %}` are legal.
+**Docx only.** Block tags (`{% for %}`, `{% if %}`, etc.) must sit alone in their own paragraph. Mixing a block tag with other text, a `{{ ... }}` token or another block tag in the same paragraph is rejected. Markdown templates are exempt — Fluid parses the whole file as one template, so inline block tags like `Hello {% if x %}World{% endif %}` are legal.
 
 ```
 // Template paragraphs — "prefix" is on the same line as the for tag
@@ -2298,12 +2403,14 @@ prefix {% for line in Lines %}
 
 ### `PARCH006` — template file unreadable
 
-The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error.
+The template at the path exists in `<AdditionalFiles>` but couldn't be opened. For docx, typically a corrupt or truncated file, or a zip that is not a Word package. For markdown, this also fires when Fluid fails to parse the file (e.g. an unclosed `{% for %}` block) — the diagnostic message includes the parser error. For docx, it also fires for a `{{ ... }}` token Fluid cannot parse, such as an empty `{{ }}` or method-call syntax (`{{ Name.ToUpper() }}`); the message carries the parser error and the token.
+
+A markdown template's [style document](#how-a-style-document-is-found) is held to the same standard as a docx template: it must be a readable Word package with a main document part. One that is not is reported at the `.dotx` file, once, however many models inherit it.
 
 
 ### `PARCH007` — `[ExcelsiorTable]` token not alone in its block
 
-An `[ExcelsiorTable]` substitution replaces its whole block with a Word table. If the block contains other text, that text would be discarded, so the token must be the only content in it — its own paragraph in a docx template, its own line in a markdown one.
+An `[ExcelsiorTable]` substitution replaces its whole block with a Word table. If the block contains other text, that text would be discarded, so the token must be the only content in it — its own paragraph in a docx template, its own line in a markdown one. Whitespace around the token (spaces, tabs, non-breaking spaces) does not count as content; a second token does.
 
 ```
 // Model
@@ -2345,7 +2452,7 @@ The decorated model is nested inside another type that is not declared `partial`
 ```cs
 public partial class Outer  // <-- partial
 {
-    [ParchmentModel("template.docx")]
+    [ParchmentModel]
     public partial class Letter
     {
         public Customer Customer { get; set; } = new();
@@ -2361,7 +2468,7 @@ public partial class Outer  // <-- partial
 
 ### `PARCH013` — `[EditableField]` member has an unsupported type
 
-**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
+**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null). A `[Flags]` enum is rejected: a dropdown selects one item, so a combined value such as `Read | Write` has no item to show or to read back. An enum without the attribute is a dropdown of its named members, including any member that names a combination.
 
 ```cs
 public partial class Order
@@ -2384,12 +2491,28 @@ public partial class Order
 
 ### `PARCH016` — `[EditableField]` token with filters or complex expression
 
-**Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`).
+**Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`). The rule covers every token that renders as a control, including an item member reached through the loop variable of an [editable collection](#editable-collections) loop; a header, a footer or a read-only loop body renders through Fluid and takes filters.
+
+The same id is reported for an `[EditableField]` token placed inside a content control of the template's own that holds a single value: plain text, date picker, drop-down list, combo box, checkbox or picture. The token renders as a content control where it sits, and Word refuses to open a document with a control nested in one of those. Move the token out of the control or make the control rich text; a rich-text control, a hyperlink and a tracked insertion can all hold the token.
 
 
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body
 
-**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count.)
+**Docx only.** The dotted path is the content control's tag, and extraction requires tags to be unique. Reference each editable member once in the document body. (A header or footer occurrence is fine — it renders as a plain read-only mirror and doesn't count, and neither does one inside a read-only loop body.) Inside an [editable collection](#editable-collections) loop the same holds per item: each item member may be bound once within the loop. A token typed once into a text box is one reference, although Word stores the box twice.
+
+The same holds for an [editable collection](#editable-collections): the token for an item's editable member may appear once in the loop, and only one loop may hold such tokens. Extraction reads one control per member in a row and one repeating section per collection, so the edits made in a second would be discarded.
+
+```
+{% for b in Budgets %}
+{{ b.Year }} {{ b.Year }}     ← the same member twice in a row
+{% endfor %}
+
+{% for b in Budgets %}
+{{ b.Amount }}                ← a second loop binding the collection
+{% endfor %}
+```
+
+A loop that holds no editable member of the item is not a binding, and neither is a use that is not a loop, such as `{% if Budgets.size > 0 %}`.
 
 
 ### `PARCH018` — `[EditableField]` token inside a loop
@@ -2404,7 +2527,7 @@ public partial class Order
 
 ### `PARCH019` — render attribute on a static member has no effect
 
-**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time.
+**Warning, not error.** The per-template maps that dispatch `[ExcelsiorTable]`, `[Html]`, `[Markdown]` and `[EditableField]` walk instance members only, so the attribute is dropped. The value still binds and renders as plain text, which makes this silent at render time. A markdown template ignores `[EditableField]` on every member, so a static member carrying only that attribute is not reported there.
 
 ```cs
 public partial class Report
@@ -2438,7 +2561,7 @@ More than one `.dotx` `AdditionalFiles` entry is named after the model type — 
 
 ### `PARCH022` — `[EditableField]` collection has an unsupported shape
 
-An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The message names which constraint failed.
+**Docx only.** An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must be a class with a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The rebuilt collection is a `List<T>`, or a `T[]` for an array member, so the member must be declared as `List<T>`, `T[]`, or an interface `List<T>` implements (`IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`); a `HashSet<T>`, `Collection<T>`, `ObservableCollection<T>`, immutable collection or class deriving from `List<T>` is rejected. The message names which constraint failed.
 
 
 ### `PARCH023` — member carries conflicting format markers
@@ -2481,6 +2604,8 @@ static void ConfigureLines(WordTableBuilder<Line> builder) =>
     ...
 ```
 
+The same id is reported when the method exists but the generated code cannot call it. The registration is generated into the model, so it sees a private method of the model and of nothing else. For a member on any other type — a class the model reaches through a property, or a base class — the generator adds a forwarding method to a `partial` part of that type, which needs the type, and every type enclosing it, to be declared `partial`. Where it is not, either make it `partial` or make the method `internal`. A type in another assembly cannot be given a part, so its method has to be accessible from the model's assembly.
+
 
 ### `PARCH027` — loop over an `[EditableField]` collection carries a modifier
 
@@ -2508,6 +2633,128 @@ Remove the modifier, or drop `[EditableField]` from the member to render it read
 Move the tags into one container. To repeat a whole table, put both tags in body paragraphs around it; to repeat content within a cell, put both tags inside that cell. See [Loops](#loops).
 
 
+### `PARCH029` — format marker on a member that is not a string
+
+An `[Html]` / `[Markdown]` / `[StringSyntax]` marker converts a string, so it belongs on a `string` or `string?` member. On anything else — an `int`, a `decimal?`, an `object`, a class — there is no string to convert, and the member would render as nothing while the rest of the document looked complete.
+
+```cs
+[Html]
+public int Count { get; set; }   ← not a string
+```
+
+Type the member as a `string`, or remove the marker. Reported for docx models, markdown models and `[ParchmentBindable]` types alike. A member typed `HtmlToken` or `MarkdownToken` is [`PARCH025`](#parch025--format-marker-on-a-member-already-typed-as-a-token) instead.
+
+### `PARCH034` — `[ExcelsiorTable]` member is not a collection of rows
+
+`[ExcelsiorTable]` renders one row per element and one column per public property (or field) of the element type, so it needs a member that is an array, a list or another `IEnumerable<T>` of such a type. On anything else there is nothing to tabulate. Before this diagnostic the attribute was dropped without a word and the token printed whatever the plain value prints.
+
+```cs
+[ExcelsiorTable]
+public Customer Owner { get; set; }        // a single object, not a collection
+
+[ExcelsiorTable]
+public List<string> Tags { get; set; }     // strings, numbers and enums have no columns
+
+[ExcelsiorTable]
+public Line[,] Grid { get; set; }          // a multi-dimensional array is not an IEnumerable<T>
+```
+
+Also reported for a `string`, an untyped `IEnumerable`, and a collection of `object` or `dynamic`. Change the member to a collection of a type with the columns to show, or remove the attribute; a collection of strings renders as a [bullet list](#enumerable-string-properties) without it. A static member is reported as [`PARCH019`](#parch019--render-attribute-on-a-static-member-has-no-effect) only.
+
+### `PARCH037` — filter after a format filter
+
+A filter that turns a value into Word content has to be the last filter of its token. What it hands on is that content rather than text, so a filter placed after it has no text to work on.
+
+In a docx template the filters concerned are `markdown`, `html`, `bullet_list` and `numbered_list`. A filter after one would be handed the content object, and the token would print that object's type name.
+
+```
+// Template paragraph — upcase would be handed the rendered markdown, not the text
+{{ Notes | markdown | upcase }}
+```
+
+In a markdown template it is `html` alone: the value is held aside for conversion, and a filter after it would be handed the placeholder standing in for it. `markdown`, `bullet_list` and `numbered_list` write markdown source there, which is still text, so a filter after one of those is accepted and transforms that source. A header or footer taken from the style source follows the docx rule.
+
+Put the filters that work on the text first, and the format filter last:
+
+```
+{{ Notes | upcase | markdown }}
+```
+
+The runtime throws `ParchmentRegistrationException` for the same token at registration.
+
+### `PARCH032` — `[EditableField]` member is reached through a struct
+
+**Docx only.** Extraction writes a value back by walking the member path from the model and assigning at the end of it. A struct on that path is copied when it is read, so the assignment would change the copy and the model would keep its old value. The member is rejected where it is declared: in the struct itself, or in a class the struct holds.
+
+```cs
+public struct Address
+{
+    [EditableField]
+    public string City { get; set; }   // PARCH032: written through a copy of Address
+}
+
+public partial class Order
+{
+    public Address Address { get; set; }
+}
+```
+
+Make the struct a class, or drop `[EditableField]` to render the member read-only. A struct as the element type of an editable collection is [`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape).
+
+### `PARCH031` — model declaration cannot be registered
+
+The `[ParchmentModel]` or `[ParchmentBindable]` type is declared in a way no generated partial can register, so nothing is emitted for it. The message names which:
+
+ * **Generic**, or nested inside a generic type. A template binds to one closed type, and the module initializer that registers the model cannot sit inside a generic type. Declare a closed, non-generic model and give it the members the template needs.
+ * **File-local** (`file partial class`), or nested inside a file-local type. The generated partial lives in another file, where the same name declares a different type. Drop the `file` modifier; `internal` or a `private` nested model keeps the type out of the public surface.
+
+```cs
+[ParchmentModel]
+public partial class Report<T>  // PARCH031: generic
+{
+    public T? Value { get; set; }
+}
+```
+
+See [Nested, generic and file-local models](#nested-generic-and-file-local-models).
+
+### `PARCH035` — block tags are not balanced
+
+**Docx only.** Every `{% for %}` needs its `{% endfor %}` and every `{% if %}` its `{% endif %}`, blocks must nest and not cross, `{% elsif %}` / `{% else %}` belong inside an `{% if %}`, and nothing but `{% endif %}` follows an `{% else %}`. Tags pair within one part: a block opened in a header cannot be closed in the body. The message is the one registration would otherwise throw at run time, and names the first tag that does not fit; the tags after it cannot be paired reliably, so each part is reported once.
+
+```
+{% for line in Lines %}
+{% if line.Description %}
+{{ line.Description }}
+{% endfor %}                 ← closes the loop while the if is still open
+{% endif %}
+```
+
+A markdown template reports the same mistakes through [`PARCH006`](#parch006--template-file-unreadable), with the Fluid parser's wording.
+
+### `PARCH036` — protection is not a defined ProtectionMode value
+
+`[ParchmentModel(Protection = ...)]` was given a value that `ProtectionMode` does not name. The compiler accepts any integer cast to an enum as an attribute argument, so this is legal C# that means nothing:
+
+```cs
+[ParchmentModel(Protection = (ProtectionMode)5)]   // <-- neither WhenEditable nor None
+public partial class OrderForm
+```
+
+Use `ProtectionMode.WhenEditable` (the default) or `ProtectionMode.None`. Reported for docx and markdown templates alike, although a markdown template ignores the setting. See [Protection is cooperative, not security](#protection-is-cooperative-not-security).
+
+
+### `PARCH038` — C# 14 or later is required
+
+The project is compiled as a C# version older than 14. The code the generator emits is compiled with the project's own `LangVersion`, and is only written for C# 14 and later, so nothing is generated and no other Parchment diagnostic is reported for the model until the version is raised.
+
+```xml
+<LangVersion>12</LangVersion>   <!-- too old -->
+```
+
+Remove the `LangVersion` setting or set it to `14` or above (`latest` and `preview` qualify with a .NET 10 SDK). A project with no setting takes the default for its target framework, which is older than 14 for anything before `net10.0` — set `LangVersion` explicitly there. Reported once for each `[ParchmentModel]` and `[ParchmentBindable]` type.
+
+
 ### `PARCH100` — template carries a second item type
 
 **Build warning, raised by MSBuild rather than the generator.** A template listed as an `<AdditionalFiles>` entry is also an `<EmbeddedResource>` or `<Content>` item. The build is unaffected, which is the problem: an IDE that models one build action per file can resolve it to the other identity, hide it from the generator, and report [`PARCH004`](#parch004--no-template-found-for-model) against a csproj entry that is plainly present.
@@ -2521,11 +2768,19 @@ Suppress with `<NoWarn>$(NoWarn);PARCH100</NoWarn>` if a template genuinely need
 
 Parchment binds tokens by reflecting on the model type. Public properties and public fields — both **instance** and **static** — are bindable at every depth, including nested traversal like `{{ Customer.Address.City }}` whether each hop is a property or a field. The source generator's `ShapeBuilder` mirrors the same rules. The following kinds of members are **not** bound — a token referencing them fails registration (`ParchmentRegistrationException`) or compile-time validation (`PARCH001`).
 
-**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position is reported either way: at compile time as `PARCH019` when the model carries `[ParchmentModel]`, and otherwise as a warning on the `ILogger` passed to `TemplateStore` when the template is registered. Auto-bullet-list dispatch is reported by neither, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
+**Static-member caveat**: static members participate in Fluid substitution (`{{ Logo }}` against `public static string Logo`) but **do not** participate in the per-template maps. `[ExcelsiorTable]` on a static collection, `[Html]` / `[Markdown]` on a static string, `[EditableField]` on a static member, and auto-bullet-list dispatch on a static `IEnumerable<string>` are all no-ops — the runtime map walkers and the SG dotted-path walker both skip static members. The value still binds and renders as plain text; only the attribute is dropped. Mark the member instance, or wrap it in an instance computed property, when attribute-driven dispatch is required. A hand-written attribute in this position is reported at compile time, as [`PARCH019`](#parch019--render-attribute-on-a-static-member-has-no-effect); nothing is reported when the template is registered or rendered, and nothing is written to the `ILogger` passed to `TemplateStore`. Auto-bullet-list dispatch is reported by neither, since it is inferred from the member's type rather than written, so a static `IEnumerable<string>` is not evidence of a mistake.
 
 ### Interfaces as the binding model
 
 `RegisterDocxTemplate<IFoo>(...)` / `RegisterMarkdownTemplate<IFoo>(...)` is rejected at registration time with a `ParchmentRegistrationException` ("Model type 'IFoo' is an interface. Parchment binds against a concrete type's properties via reflection — register against a class, record, or struct instead."). Reflection on an interface returns only members declared directly on that interface, missing inherited base-interface members. The source-generator path is blocked at the language level — `[ParchmentModel]` is declared with `AttributeUsage(AttributeTargets.Class)`, so applying it to an interface is a CS0592 compile error. Abstract classes **are** supported and work as a polymorphic binding surface: register against the abstract type and pass any concrete subclass to `Render`.
+
+### Nested, generic and file-local models
+
+A model can be nested inside a class, record, struct, record struct or interface, at any depth and with any accessibility — including `private` and `protected` — provided every enclosing type is `partial` ([PARCH011](#parch011--enclosing-type-of-parchmentmodel-target-must-be-partial)). A generic model, a model nested inside a generic type, and a file-local model cannot be registered and are reported as [PARCH031](#parch031--model-declaration-cannot-be-registered).
+
+### A collection as the binding model
+
+A model that is itself a collection — `class Order : List<Line>`, or a class implementing `IEnumerable<T>` or deriving from `Dictionary<K, V>` — binds the members it declares, like any other model: `{{ Name }}` reads `Order.Name`. The model has no name inside a template, so it cannot be a loop source, and neither the members of its collection base (`Count`, `Keys`) nor liquid's `size` / `first` / `last` are available on it; a token naming one fails registration, or compile-time validation with `PARCH001`. Expose the items through a member (`public IEnumerable<Line> Items => this;`) to loop over or measure them. Where the same type is reached as a member or a loop element it is a liquid array: `size`, `first` and `last` bind, it can be looped over, and the members its class declares do not bind.
 
 ### Default implementations on interfaces
 
@@ -2534,6 +2789,23 @@ A property declared with a body on an interface — e.g. `interface IDocument { 
 ### C# 14 extension properties
 
 Extension properties compile to static methods on the extension container class, not as instance properties of the target type. `typeof(Customer).GetProperties(...)` does not return them, and `ITypeSymbol.GetMembers()` on the target returns only members declared on the type symbol. Neither the runtime walkers nor `ShapeBuilder` see them. Workaround: declare the property on the model class itself — the model already pays the partial-class / Parchment-reference cost, so helper / computed properties belong there.
+
+### Obsolete and experimental members
+
+The source generator writes an accessor for every bindable member, so the generated file names members the consumer has marked as deprecated or experimental. What happens depends on whether the compiler allows the reference at all:
+
+- **`[Obsolete]` as a warning** (the default): the member stays bindable. The generated file disables `CS0612` and `CS0618` for itself, or the attribute's own `DiagnosticId` when one is set, so a deprecated member does not warn from generated code or break a build that treats warnings as errors. The same applies to a member whose type is obsolete.
+- **`[Obsolete(..., error: true)]`**: no reference to the member compiles and the error cannot be suppressed, so the generator leaves it out, along with any member whose type is obsolete as an error. A token naming it is `PARCH001`. Runtime registration without the generator binds by reflection and is unaffected.
+- **`[Experimental("ID")]`** on a member, its type, a base class it is inherited from, or the declaring assembly: the member stays bindable and the generated file disables that id.
+- **`[RequiresUnreferencedCode]`, `[RequiresDynamicCode]`, `[RequiresAssemblyFiles]`** on a property accessor: the member stays bindable and the generated file disables `IL2026`, `IL3050` or `IL3002`.
+
+The `#pragma warning disable` line is only emitted for a model that has such a member, lists only the ids that model needs, and covers the generated file alone.
+
+### Members of system types
+
+Accessors are generated for the types a model is built from, not for a type in the `System` namespace or one beneath it, so the CLR members of such a type are not bound: `{{ When.Year }}` on a `DateTime`, `{{ Maybe.Value }}` and `{{ Maybe.HasValue }}` on an `int?`, `{{ Pair.Item1 }}` on a tuple. A nullable struct is a `Nullable<T>` as well, so the members of the struct are not reached through it. The value itself binds as usual (`{{ When }}`, `{{ Maybe }}`). The exceptions are liquid's own `size`, `first` and `last` on a string or a collection (see [Registration-time validation](#registration-time-validation)), and `Key` and `Value` on a `KeyValuePair`. Workaround: expose the value as a computed property on the model, such as `public int Year => When.Year;`.
+
+The model has no name of its own inside a template either. Its members are the root identifiers, so `{{ model.Name }}` and `{{ Invoice.Name }}` are unknown members; the form that binds is `{{ Name }}`.
 
 
 ## Benchmarks
@@ -2592,9 +2864,11 @@ Rendering the same template with the same model produces a byte-identical output
 
 Zip entry timestamps are pinned to a stable date (2020-01-01) rather than taken from the clock. Entries cloned from the registration snapshot keep their stamps through a save, but a part added during the render — the settings part, a numbering part for a list, an image — would otherwise carry the wall-clock time at the zip format's 2-second resolution. Without the pin, byte-identity held only for renders landing inside the same 2-second window, and never across days.
 
-Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. One exception remains: a hyperlink inside `[Html]` content, or inside an Excelsior table cell, is given a random relationship id by the library that renders it, so a document containing one is not byte-identical between renders.
+Relationship ids are assigned rather than random: a part or relationship added during registration or render (settings, numbering, document properties, an image from `AddImagePart`, a markdown link) gets a fixed or sequential id that steps past the ids the template already uses. Markdown links to the same target share one relationship. A hyperlink inside `[Html]` content is covered too: OpenXmlHtml assigns its relationship a deterministic id. One exception remains: a hyperlink to a url inside an Excelsior table cell is given a random relationship id by Excelsior, so a document containing one is not byte-identical between renders.
 
-[Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security.
+Date tokens do not read the rendering machine's time zone. A `DateTime` of `Kind` `Unspecified` prints its own wall-clock value, exactly as a `Utc` one does: `new DateTime(2026, 3, 1, 13, 5, 9)` in `{{ When }}` is `2026-03-01 13:05:09Z` on every machine, and `%z` in a `date` filter format reports `+0000`. A `DateTimeOffset` prints its instant in UTC as a bare token, and its own wall clock and offset through `date` with a format. A string or a unix timestamp handed to the `date` filter is read as UTC. Two inputs remain machine-dependent by nature and fall outside the guarantee: a `DateTime` of `Kind` `Local` is an instant on the machine that built it, so the bare token prints it converted to UTC and a `date` format prints it with that machine's offset; and `"now"` / `"today"` passed to the `date` filter read the machine's clock and zone at render time. Convert a `Local` value with `ToUniversalTime()` or `DateTime.SpecifyKind` before binding, and put the render time on the model, where the output has to be reproducible.
+
+[Editable fields](#editable-fields-two-way-binding) preserve the guarantee: content-control and editable-range ids are assigned sequentially in processing order, and document protection is passwordless by design — a password would require a random salt, breaking byte-identical output while adding no real security. A password the template already carries is copied through unchanged, which is equally deterministic.
 
 
 ## Icon

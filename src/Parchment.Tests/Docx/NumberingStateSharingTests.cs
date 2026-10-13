@@ -26,6 +26,15 @@ public partial class NumberingStateSharingTests
     }
 
     [ParchmentBindable]
+    public partial class MarkdownAndFilterDoc
+    {
+        [Markdown]
+        public required string Attributed { get; init; }
+
+        public required string Filtered { get; init; }
+    }
+
+    [ParchmentBindable]
     public partial class MixedDoc
     {
         public required IReadOnlyList<string> Tags { get; init; }
@@ -340,6 +349,90 @@ public partial class NumberingStateSharingTests
 
         await Assert.That(orderedDecimalAbstracts.Count).IsEqualTo(1);
         await Assert.That(instancesPointingAtOrdered.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task MarkdownOrderedListsEachRestart()
+    {
+        // Sharing the abstract is what makes Word carry one count through every instance of it,
+        // so each ordered list has to restart its own: without that the second value's list read
+        // 3, 4. Covers the [Markdown] member and the markdown filter, which render the same way.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {{ Attributed }}
+
+            {{ Filtered | markdown }}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<MarkdownAndFilterDoc>(template);
+
+        var model = new MarkdownAndFilterDoc
+        {
+            Attributed = "1. a1\n2. a2",
+            Filtered = "1. b1\n2. b2\n\ntext\n\n1. c1\n2. c2"
+        };
+
+        await AssertEveryOrderedInstanceRestarts(store, model, expectedInstanceCount: 3);
+    }
+
+    [Test]
+    public async Task NumberedListFiltersEachRestart()
+    {
+        // The numbered_list filter builds its paragraphs directly rather than through the markdown
+        // renderer, but takes its instance from the same state.
+        using var template = DocxTemplateBuilder.Build(
+            """
+            {% for group in Groups %}
+
+            {{ group.Items | numbered_list }}
+
+            {% endfor %}
+
+            {{ Outer | numbered_list }}
+            """);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<GroupsDoc>(template);
+
+        var model = new GroupsDoc
+        {
+            Groups =
+            [
+                new() { Items = ["g1a", "g1b"] },
+                new() { Items = ["g2a", "g2b"] }
+            ],
+            Outer = ["o1", "o2"]
+        };
+
+        await AssertEveryOrderedInstanceRestarts(store, model, expectedInstanceCount: 3);
+    }
+
+    static async Task AssertEveryOrderedInstanceRestarts<TModel>(
+        TemplateStore store,
+        TModel model,
+        int expectedInstanceCount)
+    {
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var numbering = doc.MainDocumentPart!.NumberingDefinitionsPart!.Numbering!;
+        var restarts = numbering
+            .Elements<NumberingInstance>()
+            .Select(_ => _.GetFirstChild<LevelOverride>())
+            .Select(_ => $"{_?.LevelIndex?.Value}:{_?.StartOverrideNumberingValue?.Val?.Value}")
+            .ToList();
+
+        await Assert.That(restarts).IsEquivalentTo(Enumerable.Repeat("0:1", expectedInstanceCount));
+
+        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var errors = validator
+            .Validate(doc)
+            .Select(_ => $"{_.Path?.XPath}: {_.Description}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
     }
 
     static async Task AssertOneSharedBulletAbstract<TModel>(

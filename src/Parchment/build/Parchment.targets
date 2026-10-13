@@ -1,32 +1,11 @@
 <Project>
 
   <!--
-    Template authoring for Parchment.
+    The late half of template authoring. Parchment.props, imported ahead of the project body, globs
+    the templates into ParchmentTemplate; this file, imported after it, hands them to the source
+    generator through AdditionalFiles — the only channel Roslyn gives a generator. Being last is
+    what lets it see everything the project declared, removed, or updated.
 
-    The source generator reads templates through AdditionalFiles — the only channel Roslyn gives a
-    generator — and embeds their content into the generated source. Nothing is copied beside the
-    assembly and nothing is embedded as a manifest resource; the generated module initializer
-    carries the template itself.
-
-    A template names itself: Invoice.parchment.md, Invoice.parchment.docx, Invoice.parchment.dotx.
-    The marker is what makes the glob below safe — a readme, a changelog, or a design note named
-    after a model cannot be mistaken for a template — so a template needs no csproj entry at all.
-
-    Set EnableDefaultParchmentTemplates to false to take the globs off and declare every template
-    by hand.
-  -->
-  <ItemGroup Condition="'$(EnableDefaultParchmentTemplates)' != 'false'">
-    <!-- The shared style document is parchment.dotx with no stem, so it needs its own pattern:
-         *.parchment.dotx wants a name and a separating dot in front of the marker. -->
-    <_ParchmentDiscovered Include="**\*.parchment.md;
-                                   **\*.parchment.docx;
-                                   **\*.parchment.dotx;
-                                   **\parchment.dotx"
-                          Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);@(ParchmentTemplate);@(AdditionalFiles)" />
-    <ParchmentTemplate Include="@(_ParchmentDiscovered)" />
-  </ItemGroup>
-
-  <!--
     <ParchmentTemplate Include="..\Shared\Invoice.parchment.docx" />
 
     declares a template the globs cannot reach — one outside the project folder, or under a path
@@ -35,7 +14,14 @@
     marker: declaring a file says where it is, not what it binds to.
   -->
   <ItemGroup>
-    <AdditionalFiles Include="@(ParchmentTemplate)" />
+    <_ParchmentDiscovered Include="@(ParchmentTemplate->WithMetadataValue('ParchmentDiscovered', 'true'))" />
+    <_ParchmentDeclared Include="@(ParchmentTemplate->WithMetadataValue('ParchmentDiscovered', 'false'))" />
+    <AdditionalFiles Include="@(_ParchmentDeclared)" />
+    <!-- A discovered template the project also declares by hand reaches the generator once, under
+         the declared spelling. The glob cannot make that exclusion itself: it runs before the
+         project body, when nothing has been declared yet. -->
+    <AdditionalFiles Include="@(_ParchmentDiscovered)"
+                     Exclude="@(_ParchmentDeclared);@(AdditionalFiles)" />
   </ItemGroup>
 
   <!--
