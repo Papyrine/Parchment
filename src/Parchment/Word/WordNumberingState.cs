@@ -20,7 +20,7 @@ class WordNumberingState(MainDocumentPart mainPart)
         var numbering = GetNumbering();
         var abstractId = bulletAbstractNumId ?? CreateBulletAbstract(numbering);
         bulletAbstractNumId = abstractId;
-        return AppendInstance(numbering, abstractId);
+        return AppendInstance(numbering, abstractId, out _);
     }
 
     // The abstractNum is shared by every list of its format, and Word runs one count per level
@@ -38,8 +38,8 @@ class WordNumberingState(MainDocumentPart mainPart)
             orderedAbstractNumIds[format] = abstractId;
         }
 
-        var numId = AppendInstance(numbering, abstractId);
-        numbering.LastChild!.Append(
+        var numId = AppendInstance(numbering, abstractId, out var instance);
+        instance.Append(
             new LevelOverride
             {
                 LevelIndex = ilvl,
@@ -137,7 +137,7 @@ class WordNumberingState(MainDocumentPart mainPart)
             abstractNum.Append(BuildBulletLevel(ilvl, glyph, font));
         }
 
-        numbering.InsertAt(abstractNum, 0);
+        InsertAbstract(numbering, abstractNum);
         return id;
     }
 
@@ -150,14 +150,29 @@ class WordNumberingState(MainDocumentPart mainPart)
             abstractNum.Append(BuildOrderedLevel(ilvl, format));
         }
 
-        numbering.InsertAt(abstractNum, 0);
+        InsertAbstract(numbering, abstractNum);
         return id;
     }
 
-    int AppendInstance(Numbering numbering, int abstractId)
+    // w:numbering is a sequence: every w:numPicBullet, then every w:abstractNum, then every w:num,
+    // then w:numIdMacAtCleanup. Word refuses to open a document whose numbering part has an
+    // abstractNum ahead of a picture bullet, so a new one follows the last of them.
+    static void InsertAbstract(Numbering numbering, AbstractNum abstractNum)
+    {
+        var pictureBullet = numbering.Elements<NumberingPictureBullet>().LastOrDefault();
+        if (pictureBullet == null)
+        {
+            numbering.InsertAt(abstractNum, 0);
+            return;
+        }
+
+        numbering.InsertAfter(abstractNum, pictureBullet);
+    }
+
+    int AppendInstance(Numbering numbering, int abstractId, out NumberingInstance instance)
     {
         var numId = nextNumId++;
-        var instance = new NumberingInstance
+        instance = new()
         {
             NumberID = numId
         };
@@ -166,6 +181,16 @@ class WordNumberingState(MainDocumentPart mainPart)
             {
                 Val = abstractId
             });
+
+        // The sequence closes with w:numIdMacAtCleanup, which Word for Mac writes after the
+        // instances. A new instance goes in ahead of it, so it is not always the last child - hence
+        // handing it back.
+        if (numbering.LastChild is NumberingIdMacAtCleanup cleanup)
+        {
+            numbering.InsertBefore(instance, cleanup);
+            return numId;
+        }
+
         numbering.Append(instance);
         return numId;
     }
