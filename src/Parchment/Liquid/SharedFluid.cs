@@ -37,6 +37,14 @@ static class SharedFluid
         {
             MaxRecursion = 100
         };
+
+        // A token names a model member without regard to case. Every validator resolves it that
+        // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
+        // ordinally unless told otherwise, and that left a token registration had accepted reading
+        // nothing at render. It has to be set here, ahead of the first registered accessor: the
+        // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
+        // the map was last built with.
+        options.MemberAccessStrategy.IgnoreCasing = true;
         Filters.Register(options.Filters);
         // Route enum substitutions through Excelsior so inline `{{ Model.Status }}` tokens
         // render with the same humanization (Display attribute / source-gen switch /

@@ -110,7 +110,7 @@ await store.Render(SampleData.Invoice(), stream);
 
 ### Token naming
 
-Tokens match model members case-insensitively via Fluid's default member access strategy, but Parchment uses PascalCase by convention (`{{ Customer.Name }}`), not snake_case. There is no snake-case translation layer — stick with the property name as declared on the model.
+Tokens match model members case-insensitively, in both flows and at every depth of a path (`{{ customer.name }}` reads `Customer.Name`), but Parchment uses PascalCase by convention (`{{ Customer.Name }}`), not snake_case. There is no snake-case translation layer — stick with the property name as declared on the model.
 
 Tokens in `MainDocumentPart`, every `HeaderPart` / `FooterPart`, `FootnotesPart`, and `EndnotesPart` are all scanned and substituted, so page headers, footers, and footnotes can use `{{ ... }}` and `{% ... %}` exactly like body paragraphs.
 
