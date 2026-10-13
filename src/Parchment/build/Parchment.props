@@ -1,0 +1,45 @@
+<Project>
+
+  <!--
+    Template discovery for Parchment.
+
+    The source generator reads templates through AdditionalFiles and embeds their content into the
+    generated source. Nothing is copied beside the assembly and nothing is embedded as a manifest
+    resource; the generated module initializer carries the template itself.
+
+    A template names itself: Invoice.parchment.md, Invoice.parchment.docx, Invoice.parchment.dotx.
+    The marker is what makes the glob below safe — a readme, a changelog, or a design note named
+    after a model cannot be mistaken for a template — so a template needs no csproj entry at all.
+
+    The glob lives in a props file because props are imported ahead of the project body. Declared
+    in Parchment.targets it would run after the body, and an item operation written there —
+
+      <ParchmentTemplate Remove="Drafts\**" />
+
+    — would act on a list that did not exist yet and do nothing. The properties in the condition
+    and the exclude are still the final ones: MSBuild settles every property, wherever it is set,
+    before it evaluates the first item.
+
+    Set EnableDefaultParchmentTemplates to false to take the globs off and declare every template
+    by hand.
+  -->
+  <ItemDefinitionGroup>
+    <!-- Tells a discovered template from a declared one, which Parchment.targets needs in order to
+         drop the discovered copy of a file the project also declares. -->
+    <ParchmentTemplate>
+      <ParchmentDiscovered>false</ParchmentDiscovered>
+    </ParchmentTemplate>
+  </ItemDefinitionGroup>
+
+  <ItemGroup Condition="'$(EnableDefaultParchmentTemplates)' != 'false'">
+    <!-- The shared style document is parchment.dotx with no stem, so it needs its own pattern:
+         *.parchment.dotx wants a name and a separating dot in front of the marker. -->
+    <ParchmentTemplate Include="**\*.parchment.md;
+                                **\*.parchment.docx;
+                                **\*.parchment.dotx;
+                                **\parchment.dotx"
+                       Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)"
+                       ParchmentDiscovered="true" />
+  </ItemGroup>
+
+</Project>
