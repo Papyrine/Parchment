@@ -1,4 +1,6 @@
 // ReSharper disable PartialTypeWithSinglePart
+using DocumentFormat.OpenXml.Validation;
+
 public partial class ListBlockRendererTests
 {
     [ParchmentBindable]
@@ -115,18 +117,18 @@ public partial class ListBlockRendererTests
     }
 
     // The start number was ignored: "5. five" rendered as 1. A list starting at the format's first
-    // value carries no override, so its numbering stays as it was.
+    // value says so as well, or it would carry on from the list before it.
     [Test]
-    [Arguments("1. first\n2. second", null)]
+    [Arguments("1. first\n2. second", 1)]
     [Arguments("5. five\n6. six", 5)]
     [Arguments("0. zero\n1. one", 0)]
-    [Arguments("a. first\nb. second", null)]
+    [Arguments("a. first\nb. second", 1)]
     [Arguments("c. third\nd. fourth", 3)]
     [Arguments("C. third\nD. fourth", 3)]
-    [Arguments("i. first\nii. second", null)]
+    [Arguments("i. first\nii. second", 1)]
     [Arguments("iv. fourth\nv. fifth", 4)]
     [Arguments("IV. fourth\nV. fifth", 4)]
-    public async Task OrderedListStartsAtTheAuthoredNumber(string md, int? expected)
+    public async Task OrderedListStartsAtTheAuthoredNumber(string md, int expected)
     {
         var (paragraphs, renderer) = RenderListWithRenderer(md);
 
@@ -168,7 +170,7 @@ public partial class ListBlockRendererTests
             .Descendants<StartOverrideNumberingValue>()
             .Select(_ => _.Val!.Value)
             .ToList();
-        await Assert.That(starts).IsEquivalentTo([5]);
+        await Assert.That(starts).IsEquivalentTo([5, 1]);
 
         var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
         var errors = validator
@@ -176,6 +178,66 @@ public partial class ListBlockRendererTests
             .Select(_ => $"{_.Path?.XPath}: {_.Description}")
             .ToList();
         await Assert.That(errors).IsEmpty();
+    }
+
+    // Every list has its own w:num, but one abstractNum is shared per format, and Word carries a
+    // single count across the instances of an abstractNum unless an instance restarts it. Three
+    // lists came out as 1,2,3 / 4,5 / 6,7.
+    [Test]
+    public async Task SeparateOrderedListsEachRestart()
+    {
+        using var stream = await Render("1. a\n2. b\n3. c\n\ntext\n\n1. d\n2. e\n\ntext\n\n1. f\n2. g");
+        using var document = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(ListRestarts(document)).IsEqualTo("0:1 0:1 0:1");
+        await AssertSchemaValid(document);
+    }
+
+    // A nested list is an instance of its own as well, so the one under the second parent carried
+    // on from the one under the first: a,b then c,d.
+    [Test]
+    public async Task NestedOrderedListsRestartUnderEachParent()
+    {
+        const string md =
+            """
+            1. top one
+               a. inner one-a
+               b. inner one-b
+            2. top two
+               a. inner two-a
+               b. inner two-b
+
+            Break paragraph.
+
+            1. again one
+               1. nested decimal one
+               2. nested decimal two
+            2. again two
+               1. nested decimal one (second parent)
+            """;
+        using var stream = await Render(md);
+        using var document = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(ListRestarts(document)).IsEqualTo("0:1 1:1 1:1 0:1 1:1 1:1");
+
+        // One override per list, on the level its items use and nowhere else.
+        var numbering = document.MainDocumentPart!.NumberingDefinitionsPart!.Numbering!;
+        var overrideCounts = numbering
+            .Elements<NumberingInstance>()
+            .Select(_ => _.Elements<LevelOverride>().Count())
+            .ToList();
+        await Assert.That(overrideCounts).IsEquivalentTo([1, 1, 1, 1, 1, 1]);
+        await AssertSchemaValid(document);
+    }
+
+    // A bullet has nothing to count, so its instance stays bare.
+    [Test]
+    public async Task BulletListsCarryNoRestart()
+    {
+        using var stream = await Render("- a\n- b\n\ntext\n\n- c\n  1. d\n- e");
+        using var document = WordprocessingDocument.Open(stream, false);
+
+        await Assert.That(ListRestarts(document)).IsEqualTo("0: 0: 1:1");
     }
 
     // Every paragraph of an item used to carry the numPr, so a continuation paragraph took a marker
@@ -265,6 +327,119 @@ public partial class ListBlockRendererTests
         await Assert.That(numbering.Descendants<LevelOverride>().Count()).IsEqualTo(1);
     }
 
+    // An item with nothing in it produced no paragraph, so the bullet vanished and an ordered list
+    // numbered the item after it one too low. Html renders an empty <li>.
+    [Test]
+    [Arguments("1. first\n2.\n3. third")]
+    [Arguments("1. first\n2.   \n3. third")]
+    [Arguments("- first\n- \n- third")]
+    public async Task EmptyItemKeepsItsMarker(string md)
+    {
+        var paragraphs = RenderList(md);
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        var numId = paragraphs[0].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value;
+        foreach (var paragraph in paragraphs)
+        {
+            var properties = paragraph.ParagraphProperties!;
+            await Assert.That(properties.ParagraphStyleId!.Val?.Value).IsEqualTo("ListParagraph");
+            await Assert.That(properties.NumberingProperties!.NumberingId!.Val!.Value).IsEqualTo(numId);
+            await Assert.That(properties.NumberingProperties.NumberingLevelReference!.Val!.Value).IsEqualTo(0);
+        }
+
+        await Assert.That(paragraphs[1].Elements<Run>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task LeadingAndTrailingEmptyItemsKeepTheirMarkers()
+    {
+        var paragraphs = RenderList("1.\n2. second\n3.");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        foreach (var paragraph in paragraphs)
+        {
+            await Assert.That(paragraph.ParagraphProperties!.NumberingProperties).IsNotNull();
+        }
+    }
+
+    [Test]
+    public async Task EmptyItemTakesTheListStyle()
+    {
+        var paragraphs = RenderList("{.ListStyle}\n- first\n-\n- third");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(paragraphs[1].ParagraphProperties!.ParagraphStyleId!.Val?.Value).IsEqualTo("ListStyle");
+    }
+
+    // The outer item's only content is a list whose only item is empty: both are items.
+    [Test]
+    public async Task ItemHoldingOnlyAnEmptyNestedListKeepsBothMarkers()
+    {
+        var paragraphs = RenderList("- first\n- -\n- third");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(4);
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 0, 1, 0]);
+        await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value)
+            .IsEqualTo(paragraphs[0].ParagraphProperties!.NumberingProperties!.NumberingId!.Val!.Value);
+    }
+
+    [Test]
+    public async Task ItemHoldingOnlyANestedListKeepsItsMarker()
+    {
+        var paragraphs = RenderList("1. 1. nested\n2. second");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        var levels = paragraphs
+            .Select(_ => _.ParagraphProperties!.NumberingProperties!.NumberingLevelReference!.Val!.Value)
+            .ToList();
+        await Assert.That(levels).IsEquivalentTo([0, 1, 0]);
+        await Assert.That(paragraphs[0].Elements<Run>().Any()).IsFalse();
+    }
+
+    // No paragraph to carry the marker, so the item used to go uncounted and "next" took its number.
+    [Test]
+    public async Task ItemHoldingOnlyACodeBlockKeepsItsMarker()
+    {
+        var paragraphs = RenderList("1. ```\n   code\n   ```\n2. next");
+
+        await Assert.That(paragraphs.Count).IsEqualTo(3);
+        await Assert.That(paragraphs[0].ParagraphProperties!.NumberingProperties).IsNotNull();
+        await Assert.That(paragraphs[0].Elements<Run>().Any()).IsFalse();
+        await Assert.That(paragraphs[1].ParagraphProperties!.NumberingProperties).IsNull();
+        await Assert.That(paragraphs[1].ParagraphProperties!.Indentation!.Left?.Value).IsEqualTo("480");
+        await Assert.That(paragraphs[2].ParagraphProperties!.NumberingProperties).IsNotNull();
+    }
+
+    [Test]
+    [Arguments("1. first\n2.\n3. third")]
+    [Arguments("- first\n- -\n- third")]
+    [Arguments("1. | a | b |\n   |---|---|\n   | 1 | 2 |\n2. next")]
+    [Arguments("> - first\n> -\n> - third")]
+    public async Task EmptyItemsRenderSchemaValid(string md)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(md, styleSource);
+        using var stream = new MemoryStream();
+        await store.Render(new EmptyModel(), stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+            .Validate(doc)
+            .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+
+        var marked = doc.MainDocumentPart!.Document!.Body!
+            .Elements<Paragraph>()
+            .Count(_ => _.ParagraphProperties?.NumberingProperties != null);
+        await Assert.That(marked).IsGreaterThanOrEqualTo(2);
+    }
+
     static int? ReadStartOverride(Paragraph paragraph, OpenXmlMarkdownRenderer renderer)
     {
         var properties = paragraph.ParagraphProperties!.NumberingProperties!;
@@ -274,6 +449,52 @@ public partial class ListBlockRendererTests
         var instance = numbering.Elements<NumberingInstance>().Single(_ => _.NumberID?.Value == numId);
         var levelOverride = instance.Elements<LevelOverride>().SingleOrDefault(_ => _.LevelIndex?.Value == ilvl);
         return levelOverride?.StartOverrideNumberingValue?.Val?.Value;
+    }
+
+    // One entry per list in document order, as "level:start": the level its items sit at and the
+    // number its instance restarts that level at, empty where the instance does not restart it.
+    static string ListRestarts(WordprocessingDocument document)
+    {
+        var mainPart = document.MainDocumentPart!;
+        var numbering = mainPart.NumberingDefinitionsPart!.Numbering!;
+        var seen = new HashSet<int>();
+        var lists = new List<string>();
+        foreach (var properties in mainPart.Document!.Body!.Descendants<NumberingProperties>())
+        {
+            var numId = properties.NumberingId!.Val!.Value;
+            if (!seen.Add(numId))
+            {
+                continue;
+            }
+
+            var ilvl = properties.NumberingLevelReference!.Val!.Value;
+            var instance = numbering.Elements<NumberingInstance>().Single(_ => _.NumberID?.Value == numId);
+            var levelOverride = instance.Elements<LevelOverride>().SingleOrDefault(_ => _.LevelIndex?.Value == ilvl);
+            lists.Add($"{ilvl}:{levelOverride?.StartOverrideNumberingValue?.Val?.Value}");
+        }
+
+        return string.Join(' ', lists);
+    }
+
+    static async Task AssertSchemaValid(WordprocessingDocument document)
+    {
+        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var errors = validator
+            .Validate(document)
+            .Select(_ => $"{_.Path?.XPath}: {_.Description}")
+            .ToList();
+        await Assert.That(errors).IsEmpty();
+    }
+
+    static async Task<MemoryStream> Render(string markdown)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown, styleSource);
+        var stream = new MemoryStream();
+        await store.Render(new EmptyModel(), stream);
+        stream.Position = 0;
+        return stream;
     }
 
     static Indentation LevelIndent(Paragraph numbered, OpenXmlMarkdownRenderer renderer)

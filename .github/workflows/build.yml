@@ -102,6 +102,13 @@ jobs:
       - name: Build
         run: dotnet build src --configuration Release ${{ env.VERSION_ARGUMENT }}
 
+      # The cache restored above can hold a Parchment of this same Version, packed by an earlier
+      # run. NuGet reads the global packages folder before any feed, so the integration tests
+      # would build against that one and not the nupkg just built.
+      - name: Drop cached Parchment packages
+        shell: bash
+        run: rm -rf ~/.nuget/packages/parchment ~/.nuget/packages/parchment.*
+
       # Same Version so IntegrationTests' Parchment PackageVersion resolves the nupkg just built.
       - name: Build integration tests
         run: dotnet build IntegrationTests --configuration Release ${{ env.VERSION_ARGUMENT }}
