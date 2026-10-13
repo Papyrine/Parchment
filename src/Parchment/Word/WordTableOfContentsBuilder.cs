@@ -29,7 +29,7 @@ static partial class WordTableOfContentsBuilder
         }
 
         var bookmarks = new WordBookmarkAllocator(ids);
-        var tabStop = TextWidth(body);
+        var tabStop = TextWidth(SectionOf(body, field.Paragraph));
         var entries = new List<Paragraph>();
 
         // The section's width is the room a field in the body has. One in a table cell has the cell.
@@ -152,10 +152,35 @@ static partial class WordTableOfContentsBuilder
         return 3;
     }
 
-    // Where the page number sits: hard against the right margin, so the dot leader spans the gap.
-    static int TextWidth(Body body)
+    // The section the field sits in, which is not the document's last once [SECTION] has split it: a
+    // w:sectPr describes the section that ends at its paragraph, so the one in force here is the
+    // first to close at or below the field, and the document-final one only when none does. Looked
+    // for among the body's own children, where a section break has to be, starting from whichever
+    // of them holds the field — the paragraph itself, or the table it is in a cell of. Read after
+    // SectionBreaks.Apply, which is what turns each marker into the full section measured here.
+    static SectionProperties? SectionOf(Body body, Paragraph paragraph)
     {
-        var section = body.Elements<SectionProperties>().LastOrDefault();
+        OpenXmlElement block = paragraph;
+        while (block.Parent != null &&
+               !ReferenceEquals(block.Parent, body))
+        {
+            block = block.Parent;
+        }
+
+        for (var current = block; current != null; current = current.NextSibling())
+        {
+            if (current is Paragraph { ParagraphProperties.SectionProperties: { } section })
+            {
+                return section;
+            }
+        }
+
+        return body.Elements<SectionProperties>().LastOrDefault();
+    }
+
+    // Where the page number sits: hard against the right margin, so the dot leader spans the gap.
+    static int TextWidth(SectionProperties? section)
+    {
         var size = section?.GetFirstChild<PageSize>();
         var margin = section?.GetFirstChild<PageMargin>();
         if (size?.Width?.Value is not { } width)
