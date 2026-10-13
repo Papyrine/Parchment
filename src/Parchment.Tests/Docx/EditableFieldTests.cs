@@ -1525,6 +1525,111 @@ public partial class EditableFieldTests
         await Assert.That(model.Body).IsEqualTo("<p><strong>edited</strong></p>");
     }
 
+    const string wordXmlns =
+        """xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:v="urn:schemas-microsoft-com:vml" """;
+
+    const string revision = """w:id="901" w:author="u" w:date="2026-01-01T00:00:00Z" """;
+
+    static string WordRun(string text) =>
+        $"""<w:r><w:t xml:space="preserve">{text}</w:t></w:r>""";
+
+    // Extraction reads a document with every tracked change accepted.
+    [Test]
+    public async Task HtmlEditableKeepsTrackedInsertionsAndDropsDeletions()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("keep ")}<w:ins {revision}>{WordRun("typed")}</w:ins><w:del {revision}><w:r><w:delText> gone</w:delText></w:r></w:del></w:p>
+             <w:p><w:pPr><w:rPr><w:ins {revision}/></w:rPr></w:pPr><w:ins {revision}>{WordRun("new paragraph")}</w:ins></w:p>
+             <w:p><w:pPr><w:rPr><w:del {revision}/></w:rPr></w:pPr><w:del {revision}><w:r><w:delText>gone paragraph</w:delText></w:r></w:del></w:p>
+             <w:p><w:hyperlink w:anchor="bm"><w:ins {revision}>{WordRun("link")}</w:ins></w:hyperlink></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("""<p>keep typed</p><p>new paragraph</p><p><a href="#bm">link</a></p>""");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsMovedTextAtItsDestination()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p><w:pPr><w:rPr><w:moveFrom {revision}/></w:rPr></w:pPr><w:moveFrom {revision}>{WordRun("moved")}</w:moveFrom></w:p>
+             <w:p>{WordRun("stay")}</w:p>
+             <w:p><w:moveTo {revision}>{WordRun("moved")}</w:moveTo></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>stay</p><p>moved</p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsThroughInlineWrappers()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("on ")}<w:fldSimple w:instr=" DATE ">{WordRun("6/07/2026")}</w:fldSimple></w:p>
+             <w:p><w:smartTag w:uri="urn:x" w:element="place">{WordRun("Paris")}</w:smartTag>{WordRun(" trip")}</w:p>
+             <w:p><w:dir w:val="rtl">{WordRun("dir ")}</w:dir><w:bdo w:val="ltr">{WordRun("bdo ")}</w:bdo><w:customXml w:uri="urn:x" w:element="e">{WordRun("custom")}</w:customXml></w:p>
+             <w:p>{WordRun("a ")}<w:sdt><w:sdtPr><w:tag w:val="inner"/></w:sdtPr><w:sdtContent><w:r><w:rPr><w:b/></w:rPr><w:t>inner</w:t></w:r></w:sdtContent></w:sdt></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>on 6/07/2026</p><p>Paris trip</p><p>dir bdo custom</p><p>a <strong>inner</strong></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableReadsThroughBlockWrappers()
+    {
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("a")}</w:p>
+             <w:sdt><w:sdtPr><w:tag w:val="inner"/></w:sdtPr><w:sdtContent>
+               <w:p>{WordRun("inner block")}</w:p>
+               <w:tbl><w:tr><w:tc><w:p>{WordRun("cell")}</w:p></w:tc></w:tr><w:tr><w:trPr><w:del {revision}/></w:trPr><w:tc><w:p>{WordRun("deleted row")}</w:p></w:tc></w:tr></w:tbl>
+             </w:sdtContent></w:sdt>
+             <w:customXml w:uri="urn:x" w:element="e"><w:p>{WordRun("custom block")}</w:p></w:customXml>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>a</p><p>inner block</p><p>cell</p><p>custom block</p>");
+    }
+
+    // Neither has an HTML form in the supported subset, so both degrade to their text. A text box
+    // is stored twice (the shape and its VML fallback) and is read once.
+    [Test]
+    public async Task HtmlEditableKeepsTheTextOfMathAndTextBoxes()
+    {
+        var boxed = $"<w:txbxContent><w:p>{WordRun("boxed")}</w:p></w:txbxContent>";
+        var extracted = await ExtractEditedHtml(
+            $"""
+             <w:p>{WordRun("math ")}<m:oMath><m:r><m:t>x&lt;1</m:t></m:r></m:oMath></w:p>
+             <w:p>{WordRun("before ")}<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wps:wsp><wps:txbx>{boxed}</wps:txbx></wps:wsp></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox>{boxed}</v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>
+             """);
+
+        await Assert.That(extracted).IsEqualTo("<p>math x&lt;1</p><p>before boxed</p>");
+    }
+
+    static async Task<string?> ExtractEditedHtml(string contentXml)
+    {
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<p>original</p>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+            sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+            var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+            sdt.ReplaceChild(new SdtContentBlock($"<w:sdtContent {wordXmlns}>{contentXml}</w:sdtContent>"), content);
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+        return model.Body;
+    }
+
     [Test]
     public async Task HtmlEditableRendersPlaceholderWhenEmpty()
     {

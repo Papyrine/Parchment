@@ -1260,7 +1260,7 @@ There is no way to tell Word "allow bold and italic in this control, but not tab
 
 `w:sdt` itself offers only a fixed menu of discrete control types — plain text, rich text, combo box, dropdown, date, checkbox, picture. "Rich text" means any content: paragraphs, images, tables. There is no inline-emphasis-only variant.
 
-So the boundary is enforced on extraction, not in Word. Whatever a user pastes into an `[EditableField] [Html]` control, only the supported subset survives the round-trip: a table degrades to its cell paragraphs (no text is dropped, but it never returns as `<table>`), and other unsupported content degrades to its text. Tighten the rule further — stripping `<strong>`, say — in the serializer, not in the protection settings.
+So the boundary is enforced on extraction, not in Word. Whatever a user pastes into an `[EditableField] [Html]` control, only the supported subset survives the round-trip: a table degrades to its cell paragraphs (no text is dropped, but it never returns as `<table>`), and other unsupported content degrades to its text. A text box and an equation degrade the same way, a picture has no text and is dropped, and a field contributes its result. Tracked changes are read as if every one had been accepted, in plain-text controls too: inserted text is kept and deleted text is not. Tighten the rule further — stripping `<strong>`, say — in the serializer, not in the protection settings.
 
 ### Culture
 
