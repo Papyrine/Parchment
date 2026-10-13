@@ -44,10 +44,10 @@ public class WordDocumentProperties
 
     /// <summary>
     /// User-defined properties shown on the "Custom" tab of Word's Advanced Properties dialog.
-    /// Supported value types are <see cref="string"/>, <see cref="bool"/>, integral and
-    /// floating-point numbers, <see cref="DateTime"/>, <see cref="DateOnly"/> and <see cref="Guid"/>;
-    /// any other value type throws an <see cref="ArgumentException"/> at render, so convert it to a
-    /// supported type first. A <c>null</c> value is written as empty text.
+    /// Supported value types are <see cref="string"/>, <see cref="char"/>, <see cref="bool"/>,
+    /// integral and floating-point numbers, <see cref="DateTime"/>, <see cref="DateOnly"/> and
+    /// <see cref="Guid"/>; any other value type throws a <see cref="ParchmentRenderException"/> at
+    /// render, so convert it to a supported type first. A <c>null</c> value is written as empty text.
     /// </summary>
     /// <remarks>
     /// Entries here are merged over whatever the template already defines: a name that matches an

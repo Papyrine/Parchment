@@ -11,6 +11,8 @@
 /// Rewriting at registration rather than at render keeps it off the hot path: the marked-up source
 /// is parsed into the cached <c>IFluidTemplate</c>, so a render sees markers and nothing else.
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 static class MarkdownExcelsiorTables
 {
     /// <summary>
@@ -25,20 +27,15 @@ static class MarkdownExcelsiorTables
     static string MarkerFor(int index) =>
         $"parchment-table-{index}";
 
-    // A solo substitution of a plain dotted path: what the docx flow requires of an Excelsior
-    // token, expressed as the markdown equivalent. Anything more (filters, arithmetic) is not a
-    // path the Excelsior getter can walk.
-    static readonly Regex soloToken = new(
-        @"^\{\{\s*(?<path>[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}$",
-        RegexOptions.Compiled);
-
-    // Any substitution, to find the ones that are NOT alone on their line.
-    static readonly Regex anyToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
-
     /// <summary>
     /// Replaces each Excelsior token with a marker, returning the rewritten source and what each
     /// marker stands for. Returns the source unchanged when the model declares no tables.
     /// </summary>
+    /// <remarks>
+    /// A token is taken when it is a plain path alone on its line: what the docx flow requires of
+    /// an Excelsior token, expressed as the markdown equivalent. Both are read off the token as
+    /// Fluid parses it (see <see cref="MarkdownOutputTokens"/>), so every spelling of it counts.
+    /// </remarks>
     public static (string Markdown, IReadOnlyList<Placeholder> Placeholders) Rewrite(
         string markdown,
         ExcelsiorTableMap tables,
@@ -51,34 +48,32 @@ static class MarkdownExcelsiorTables
 
         var placeholders = new List<Placeholder>();
         var loops = MarkdownLoopScope.Scan(markdown);
-        var lines = markdown.Split('\n');
-
-        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
-        var lineStart = 0;
-        for (var index = 0; index < lines.Length; index++)
+        var builder = new StringBuilder();
+        var copied = 0;
+        foreach (var token in MarkdownOutputTokens.Scan(markdown, SharedFluid.Parser))
         {
-            // Split on \n alone so a CRLF source keeps its \r; the trim below takes it off the
-            // comparison and the line is replaced wholesale when it matches.
-            var line = lines[index];
-            var trimmed = line.Trim();
-            var trimmedStart = lineStart + line.Length - line.TrimStart().Length;
-            lineStart += line.Length + 1;
-
-            var match = soloToken.Match(trimmed);
-            if (match.Success)
+            // A token that starts with a loop variable reads the loop item, whatever root path
+            // it happens to spell: Fluid renders it, and neither rule below is its to break. Nor
+            // is the text of a raw or comment region, which is not a token at all.
+            if (token.Path == null ||
+                loops.IsLiteral(token.Start) ||
+                loops.Shadows(token.Start, token.Path) ||
+                !tables.TryGet(token.Path, out _))
             {
-                var path = Normalize(match.Groups["path"].Value);
-                if (!loops.Shadows(trimmedStart, path) &&
-                    tables.TryGet(path, out _))
-                {
-                    var marker = MarkerFor(placeholders.Count);
-                    placeholders.Add(new(marker, path));
-                    lines[index] = marker;
-                    continue;
-                }
+                continue;
             }
 
-            GuardUnrenderableToken(trimmed, trimmedStart, tables, loops, templateName);
+            var alone = MarkdownOutputTokens.IsAlone(markdown, token, out var lineStart, out var lineEnd);
+            GuardRenderable(markdown, token, alone, lineStart, lineEnd, templateName);
+
+            var marker = MarkerFor(placeholders.Count);
+            placeholders.Add(new(marker, token.Path));
+
+            // The whole line goes, not only the token: indentation left in front of the marker
+            // could make it a code block, and a CRLF source's \r has nothing left to end.
+            builder.Append(markdown, copied, lineStart - copied);
+            AppendMarker(builder, marker, token);
+            copied = lineEnd;
         }
 
         if (placeholders.Count == 0)
@@ -86,63 +81,65 @@ static class MarkdownExcelsiorTables
             return (markdown, []);
         }
 
-        return (string.Join("\n", lines), placeholders);
+        builder.Append(markdown, copied, markdown.Length - copied);
+        return (builder.ToString(), placeholders);
     }
 
     /// <summary>
-    /// Rejects an Excelsior token the rewrite above could not take.
+    /// Writes the marker in place of its token. A token with whitespace control becomes an output
+    /// of the marker carrying the same dashes, so it still trims what it trimmed; <c>raw</c> keeps
+    /// <c>MarkdownEncoder</c> off the marker's punctuation.
+    /// </summary>
+    static void AppendMarker(StringBuilder builder, string marker, MarkdownOutputToken token)
+    {
+        if (!token.TrimLeft &&
+            !token.TrimRight)
+        {
+            builder.Append(marker);
+            return;
+        }
+
+        builder.Append(token.TrimLeft ? "{{- '" : "{{ '");
+        builder.Append(marker);
+        builder.Append(token.TrimRight ? "' | raw -}}" : "' | raw }}");
+    }
+
+    /// <summary>
+    /// Rejects an Excelsior token the rewrite above cannot take.
     /// </summary>
     /// <remarks>
     /// Left to render, such a token falls through to plain Fluid output and writes the collection's
     /// ToString into the document — a wrong document rather than a failed one. The docx flow rejects
     /// both shapes too, as PARCH007 and PARCH008, so this keeps the two flows answering the same way.
     /// </remarks>
-    static void GuardUnrenderableToken(
-        string trimmedLine,
+    static void GuardRenderable(
+        string markdown,
+        MarkdownOutputToken token,
+        bool alone,
         int lineStart,
-        ExcelsiorTableMap tables,
-        MarkdownLoopScope loops,
+        int lineEnd,
         string templateName)
     {
-        foreach (Match match in anyToken.Matches(trimmedLine))
+        if (!alone)
         {
-            var body = match.Groups["body"].Value.Trim();
-
-            // The leading path, up to whatever ends it — a filter pipe, an operator, a space.
-            var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
-            var leading = Normalize(end < 0 ? body : body[..end]);
-            // A token that starts with a loop variable reads the loop item, whatever root path
-            // it happens to spell: Fluid renders it, and neither rule below is its to break.
-            if (leading.Length == 0 ||
-                loops.Shadows(lineStart + match.Index, leading) ||
-                !tables.TryGet(leading, out _))
-            {
-                continue;
-            }
-
-            // Alone on the line, so what disqualified it was the expression rather than its
-            // company: the getter walks the model directly and never sees a filter's output.
-            if (match.Value == trimmedLine)
-            {
-                throw new ParchmentRegistrationException(
-                    templateName,
-                    $"'{trimmedLine}' renders the [ExcelsiorTable] '{leading}' as a Word table, which " +
-                    "is built from the model rather than from Fluid's output, so the token has to be " +
-                    "a plain member access. Filters and expressions cannot be applied to it.");
-            }
-
             throw new ParchmentRegistrationException(
                 templateName,
-                $"'{{{{ {leading} }}}}' renders an [ExcelsiorTable] as a Word table, which replaces " +
+                $"'{{{{ {token.Path} }}}}' renders an [ExcelsiorTable] as a Word table, which replaces " +
                 "the whole block it sits in, so it has to be alone on its line. It currently shares " +
-                $"a line with other content: {trimmedLine}");
+                $"a line with other content: {markdown[lineStart..lineEnd].Trim()}");
+        }
+
+        // Alone on the line, so what disqualifies it is the expression rather than its company:
+        // the getter walks the model directly and never sees a filter's output.
+        if (!token.IsPlain)
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                $"'{markdown[token.Start..token.End]}' renders the [ExcelsiorTable] '{token.Path}' as a Word table, which " +
+                "is built from the model rather than from Fluid's output, so the token has to be " +
+                "a plain member access. Filters and expressions cannot be applied to it.");
         }
     }
-
-    // Fluid tolerates spaces around the dots; the map is keyed on the bare path.
-    static string Normalize(string path) =>
-        path.Replace(" ", "").Replace("\t", "");
-
     /// <summary>
     /// Swaps each marker's paragraph for the table it stands for.
     /// </summary>
@@ -198,7 +195,15 @@ static class MarkdownExcelsiorTables
 
         if (data == null)
         {
-            // Nothing to tabulate. The marker still has to go, or it renders as text.
+            // Nothing to tabulate. The marker still has to go, or it renders as text. Between two
+            // tables the paragraph was all that kept them apart, so there it stays, emptied.
+            if (AdjacentTables.BlockBefore(host) is Table &&
+                AdjacentTables.BlockAfter(host) is Table)
+            {
+                host.RemoveAllChildren();
+                return;
+            }
+
             host.Remove();
             return;
         }
@@ -207,6 +212,7 @@ static class MarkdownExcelsiorTables
             entry.ElementType,
             data,
             mainPart,
+            bookmarks.Names,
             entry.HeadingParagraphStyle,
             entry.BodyParagraphStyle,
             entry.TableStyle,
@@ -216,10 +222,16 @@ static class MarkdownExcelsiorTables
         // Configure hook is caller code, and the table of contents numbers its entries from the
         // same counter on the strength of nothing in the body having bypassed it.
         bookmarks.Renumber(table);
-        parent.InsertBefore(table, host);
 
         // Word merges adjacent tables and mishandles a table that ends a body, so the host
-        // paragraph is emptied and kept as the separator rather than removed.
+        // paragraph is emptied and kept as the separator rather than removed. That keeps the table
+        // from whatever follows it; a table before it needs a paragraph of its own.
+        if (AdjacentTables.BlockBefore(host) is Table)
+        {
+            parent.InsertBefore(new Paragraph(), host);
+        }
+
+        parent.InsertBefore(table, host);
         host.RemoveAllChildren();
     }
 }

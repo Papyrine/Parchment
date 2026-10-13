@@ -7,12 +7,15 @@ namespace Parchment;
 /// the other half of two-way binding. Content controls are matched by their <c>w:tag</c>
 /// (the dotted model path), so no <see cref="TemplateStore"/> or template registration is
 /// required. Checkbox / date / dropdown controls are read from canonical control state; string
-/// and numeric fields read display text, with numerics parsed using the <c>culture</c> argument —
-/// which must match the render culture (Parchment renders with Fluid's default invariant
-/// culture unless customized, so the default here is also <see cref="CultureInfo.InvariantCulture"/>).
+/// and numeric fields read display text. That text is always rendered with the invariant culture,
+/// and is read back that way first, so an unedited document extracts the rendered values whatever
+/// <c>culture</c> is passed. The <c>culture</c> argument (default
+/// <see cref="CultureInfo.InvariantCulture"/>) describes what a user may type instead: its decimal
+/// separator and date forms. Group separators are never accepted in a number.
 /// </summary>
 public static class ParchmentExtractor
 {
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public static ExtractResult<TModel> Extract<TModel>(string path, CultureInfo? culture = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -20,6 +23,7 @@ public static class ParchmentExtractor
         return Extract<TModel>(file, culture);
     }
 
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public static ExtractResult<TModel> Extract<TModel>(Stream docx, CultureInfo? culture = null)
     {
         ArgumentNullException.ThrowIfNull(docx);
@@ -62,6 +66,7 @@ public static class ParchmentExtractor
 
             var fields = new List<ExtractedField>();
             var collections = new List<ExtractedCollection>();
+            var rowFields = new List<ExtractedField>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var consumed = new HashSet<SdtElement>();
@@ -84,7 +89,7 @@ public static class ParchmentExtractor
                     continue;
                 }
 
-                collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!)));
+                collections.Add(new(collectionEntry, FieldState.Extracted, ReconstructCollection(sdt, collectionEntry, effectiveCulture, mainPart!, rowFields)));
                 MarkConsumed(sdt, consumed);
             }
 
@@ -127,6 +132,8 @@ public static class ParchmentExtractor
                 }
             }
 
+            fields.AddRange(rowFields);
+
             return new(fields, collections, map);
         }
         finally
@@ -150,7 +157,8 @@ public static class ParchmentExtractor
         }
     }
 
-    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart)
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
+    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart, List<ExtractedField> rowFields)
     {
         var listType = typeof(List<>).MakeGenericType(entry.ElementType);
         var list = (IList)Activator.CreateInstance(listType)!;
@@ -160,37 +168,71 @@ public static class ParchmentExtractor
             var item = entry.ElementFactory();
             var isBlank = EditableRepeatingBuilder.IsBlankItem(itemSdt);
             var anyValue = false;
+            var itemFields = new List<ExtractedField>();
             foreach (var elementEntry in entry.ElementMap.Entries)
             {
                 var control = FindControl(itemSdt, elementEntry.DottedPath);
                 if (control == null)
                 {
+                    itemFields.Add(new(elementEntry.DottedPath, FieldState.Missing, null, null));
                     continue;
                 }
 
                 var field = EditableFieldReader.Read(control, elementEntry, culture, mainPart);
-                if (field.State == FieldState.Extracted &&
-                    elementEntry.CanReach(item))
+
+                // Text that does not parse is still something the user entered: the row is kept
+                // and the failure reported, with the member left at the element's default.
+                if (field.State == FieldState.ParseFailed)
                 {
-                    elementEntry.Setter(item, field.Value);
-
-                    // A checkbox cannot be rendered empty, so in the blank item of an empty
-                    // collection an unchecked box is still the untouched state, not an entry.
-                    if (isBlank &&
-                        field.Value is false)
-                    {
-                        continue;
-                    }
-
                     anyValue = true;
                 }
+
+                if (field.State != FieldState.Extracted)
+                {
+                    itemFields.Add(field);
+                    continue;
+                }
+
+                // The item is new, so an object between it and the member is null unless the
+                // element initializes it. The setter creates the ones it can.
+                elementEntry.Setter(item, field.Value);
+
+                // Where an object on the way could not be created the value has nowhere to go,
+                // and the row's entry says so instead of the value being dropped.
+                if (!elementEntry.CanReach(item))
+                {
+                    field = field with
+                    {
+                        State = FieldState.Unreachable
+                    };
+                }
+
+                itemFields.Add(field);
+
+                // A checkbox cannot be rendered empty, so in the blank item of an empty
+                // collection an unchecked box is still the untouched state, not an entry.
+                if (isBlank &&
+                    field.Value is false)
+                {
+                    continue;
+                }
+
+                anyValue = true;
             }
 
             // Drop all-empty items: the blank clone template Word needs, or a row the user cleared.
-            if (anyValue)
+            // A dropped row reports nothing, so a row's index is its position in the rebuilt list.
+            if (!anyValue)
             {
-                list.Add(item);
+                continue;
             }
+
+            foreach (var field in itemFields)
+            {
+                rowFields.Add(field with { Path = $"{entry.DottedPath}[{list.Count}].{field.Path}" });
+            }
+
+            list.Add(item);
         }
 
         if (!entry.IsArray)

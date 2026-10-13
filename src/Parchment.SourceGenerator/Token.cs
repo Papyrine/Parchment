@@ -12,4 +12,11 @@
     int Container = 0,
     // A `for` over a range such as `(1..Count)`. References are then the range's bounds rather
     // than the thing iterated, and the loop variable is untyped.
-    bool LoopSourceIsRange = false);
+    bool LoopSourceIsRange = false,
+    // UnknownBlock only: why a tag that is otherwise supported was refused, such as an `else`
+    // carrying arguments. Null for a tag that is not supported at all.
+    string? Problem = null,
+    // Substitution only, and set together: a filter that produces a token, and the filter applied
+    // after it. See TokenFilterOrder.
+    string? TokenFilter = null,
+    string? FilterAfterTokenFilter = null);
