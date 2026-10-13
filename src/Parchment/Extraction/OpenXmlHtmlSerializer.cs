@@ -57,58 +57,80 @@ static class OpenXmlHtmlSerializer
 
     static int EmitList(StringBuilder builder, List<OpenXmlElement> blocks, int start, Numbering? numbering, MainDocumentPart mainPart)
     {
+        // One open list per depth, so openTags.Count - 1 is the level of the innermost list. Only
+        // that innermost list can be without an open <li>, and only until its first item is
+        // written: a deeper list is always opened inside an item.
         var openTags = new Stack<string>();
-        var currentLevel = -1;
+        var itemOpen = false;
         var index = start;
 
         while (index < blocks.Count &&
                blocks[index] is Paragraph paragraph &&
                IsListItem(paragraph, out var numberingId, out var level))
         {
-            if (level > currentLevel)
-            {
-                // Open one list per new depth; a deeper list nests inside the still-open <li>.
-                for (var open = currentLevel + 1; open <= level; open++)
-                {
-                    var tag = ListTag(numbering, numberingId, open);
-                    builder.Append('<').Append(tag).Append('>');
-                    openTags.Push(tag);
-                }
-            }
-            else
-            {
-                while (currentLevel > level)
-                {
-                    builder.Append("</li></").Append(openTags.Pop()).Append('>');
-                    currentLevel--;
-                }
+            level = Math.Max(level, 0);
 
+            // Back out of every list deeper than this item, however many levels that is.
+            while (openTags.Count > level + 1)
+            {
+                CloseList(builder, openTags, ref itemOpen);
+            }
+
+            if (openTags.Count == level + 1)
+            {
                 builder.Append("</li>");
+                itemOpen = false;
 
                 // A sibling of the other kind (bullet next to ordered) is a new list, not another
                 // item. Only the kind splits: Word hands out a fresh w:numId for bullets a user
                 // sees as one list, so the numbering instance alone is not a boundary.
-                var tag = ListTag(numbering, numberingId, level);
-                if (tag != openTags.Peek())
+                if (ListTag(numbering, numberingId, level) != openTags.Peek())
                 {
-                    builder.Append("</").Append(openTags.Pop()).Append('>');
-                    builder.Append('<').Append(tag).Append('>');
-                    openTags.Push(tag);
+                    CloseList(builder, openTags, ref itemOpen);
                 }
             }
 
+            // Open one list per missing depth. Word lets a level be skipped (an item at level 2
+            // straight after one at level 0, or a list that starts indented); HTML does not, so a
+            // skipped depth gets a list holding an empty <li> for the deeper list to nest in.
+            while (openTags.Count < level + 1)
+            {
+                if (openTags.Count > 0 &&
+                    !itemOpen)
+                {
+                    builder.Append("<li>");
+                }
+
+                var tag = ListTag(numbering, numberingId, openTags.Count);
+                builder.Append('<').Append(tag).Append('>');
+                openTags.Push(tag);
+                itemOpen = false;
+            }
+
             builder.Append("<li>");
+            itemOpen = true;
             EmitInline(builder, paragraph, mainPart, false);
-            currentLevel = level;
             index++;
         }
 
         while (openTags.Count > 0)
         {
-            builder.Append("</li></").Append(openTags.Pop()).Append('>');
+            CloseList(builder, openTags, ref itemOpen);
         }
 
         return index;
+    }
+
+    // Closes the innermost list, leaving the enclosing list with the <li> that held it still open.
+    static void CloseList(StringBuilder builder, Stack<string> openTags, ref bool itemOpen)
+    {
+        if (itemOpen)
+        {
+            builder.Append("</li>");
+        }
+
+        builder.Append("</").Append(openTags.Pop()).Append('>');
+        itemOpen = true;
     }
 
     // linkUnderlined is null outside a link. Inside one it says whether the link is underlined
