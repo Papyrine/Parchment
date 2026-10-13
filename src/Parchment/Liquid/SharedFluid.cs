@@ -19,8 +19,10 @@ static class SharedFluid
     /// This cannot go on <see cref="Options"/>: the docx flow needs the TokenValue to survive as an
     /// ObjectValue so <c>ScopeTreeRunner.InterpretFluidValue</c> can dispatch it structurally.
     /// Without a converter the markdown flow falls through to Fluid's default object handling,
-    /// which calls ToString() and writes the type name into the document. The MemberAccessStrategy
-    /// is shared, so RegisterModel covers both sets of options.
+    /// which calls ToString() and writes the type name into the document. The one kind with nothing
+    /// structural about it is a <see cref="TextToken"/>, and that one is converted for both flows,
+    /// in <see cref="BuildOptions"/>. The MemberAccessStrategy is shared, so RegisterModel covers
+    /// both sets of options.
     /// </remarks>
     public static TemplateOptions MarkdownOptions { get; } = BuildMarkdownOptions();
 
@@ -42,6 +44,14 @@ static class SharedFluid
             // different time on a machine in another zone.
             TimeZone = TimeZoneInfo.Utc
         };
+
+        // A token names a model member without regard to case. Every validator resolves it that
+        // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
+        // ordinally unless told otherwise, and that left a token registration had accepted reading
+        // nothing at render. It has to be set here, ahead of the first registered accessor: the
+        // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
+        // the map was last built with.
+        options.MemberAccessStrategy.IgnoreCasing = true;
         Filters.Register(options.Filters);
         // A DateTime of Kind Unspecified names no zone. Fluid stores every date as a
         // DateTimeOffset and gets there through the implicit conversion, which reads an
@@ -72,8 +82,39 @@ static class SharedFluid
                     return new StringValue(EnumRender.Render(e));
                 }
 
+                // A TextToken is a plain string wearing a TokenValue coat, so Fluid is handed the
+                // string: what a filter receives, a condition compares and a substitution writes
+                // is then what a string member would have produced, in either flow. Left as an
+                // object it has no text form, and the docx flow wrote its type name. A null string
+                // is nil, as it is from a string member — and returning null here would mean "not
+                // converted".
+                if (value is TextToken text)
+                {
+                    if (text.Value == null)
+                    {
+                        return NilValue.Instance;
+                    }
+
+                    return new StringValue(text.Value);
+                }
+
+                // Fluid turns a TimeSpan into a date counted from 1970 in the machine's time zone,
+                // and prints a TimeOnly in the short pattern, which has no seconds. Both become
+                // the invariant text of the value instead: a duration in the constant format, and
+                // a time in the format an editable TimeOnly field defaults to.
+                if (value is TimeSpan span)
+                {
+                    return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
+                }
+
+                if (value is TimeOnly time)
+                {
+                    return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+                }
+
                 return null;
             });
+        DictionaryLoops.Register(options);
 
         return options;
     }
@@ -87,11 +128,12 @@ static class SharedFluid
             {
                 if (value is TokenValue token)
                 {
-                    // A TextToken is a plain string wearing a TokenValue coat, so it is escaped
-                    // like any other bound value. A MarkdownToken or HtmlToken is markup the caller
-                    // picked the type to say so — that declaration is what turns MarkdownEncoder
-                    // off for them.
-                    return new StringValue(TokenMarkdown.Render(token), encode: token is TextToken);
+                    // A MarkdownToken, HtmlToken or OpenXmlToken is markup the caller picked the
+                    // type to say so — that declaration is what turns MarkdownEncoder off for them.
+                    // A TextToken makes no such claim and never gets this far: the converter
+                    // BuildOptions added runs ahead of this one and has already made it a string,
+                    // which is escaped like any other bound value.
+                    return new StringValue(TokenMarkdown.Render(token), encode: false);
                 }
 
                 return null;
@@ -99,6 +141,22 @@ static class SharedFluid
 
         return options;
     }
+
+    /// <summary>
+    /// The context a render evaluates against, with the model held as an object.
+    /// </summary>
+    /// <remarks>
+    /// Handing the model to <c>TemplateContext</c> as it is runs it through
+    /// <c>FluidValue.Create</c>, which makes an <c>ArrayValue</c> or a <c>DictionaryValue</c> of a
+    /// model that is itself a collection (<c>class Order : List&lt;Line&gt;</c>). Those answer only
+    /// to <c>size</c>, <c>first</c> and <c>last</c>, or to a key, so every member the model declares
+    /// rendered blank although all four validators accept it. Wrapped here, the root binds through
+    /// its accessors like any other model. Only the root: the same type reached as a member or as a
+    /// loop element is still converted by Fluid, which is what lets it be looped over, and
+    /// <see cref="LiquidMembers"/> validates it as the array it is there.
+    /// </remarks>
+    public static TemplateContext CreateContext(object model, TemplateOptions options) =>
+        new(new ObjectValue(model), options);
 
     /// <summary>
     /// Registers a user filter against every option set.
@@ -117,11 +175,21 @@ static class SharedFluid
     }
 
     /// <summary>
-    /// Whether the source generator registered <paramref name="modelType"/> — its module
+    /// Whether the source generator emitted <paramref name="modelType"/> as a model — its module
     /// initializer always emits the root type's accessor block, even for a member-less model.
     /// </summary>
+    /// <remarks>
+    /// Having accessors is not enough. The generator emits an accessor block for every type a model
+    /// reaches, so a type it saw only as a member is in <see cref="registeredTypes"/> too, while
+    /// the per-model maps — formats, string lists, tables, editable fields — are emitted for the
+    /// model alone. Taken as a model, such a type would bind and then render with every attribute
+    /// ignored. The attribute is what the generator keys on, so it is what tells the two apart;
+    /// neither attribute is inherited, which leaves out a type merely derived from a model.
+    /// </remarks>
     public static bool IsModelRegistered(Type modelType) =>
-        registeredTypes.ContainsKey(modelType);
+        registeredTypes.ContainsKey(modelType) &&
+        (Attribute.IsDefined(modelType, typeof(ParchmentModelAttribute), false) ||
+         Attribute.IsDefined(modelType, typeof(ParchmentBindableAttribute), false));
 
     /// <summary>
     /// Guards that <paramref name="modelType"/> arrived with pre-compiled accessors. There is no
@@ -145,8 +213,8 @@ static class SharedFluid
 
     /// <summary>
     /// Source-generator entry point (invoked via `Generated.GeneratedRegistration`).
-    /// Registers pre-built accessors for a single type and marks it known to
-    /// <see cref="EnsureModelRegistered"/>.
+    /// Registers pre-built accessors for a single type. That makes it bindable as a member or a
+    /// loop element; <see cref="IsModelRegistered"/> decides whether it is also a model.
     /// </summary>
     internal static void RegisterPrecompiledAccessors(
         Type type,

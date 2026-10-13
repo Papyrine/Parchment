@@ -361,6 +361,37 @@ public partial class StringListTests
         await Verify(stream, "docx");
     }
 
+    // Padding typed around a token is invisible in Word and does not stop it being alone in its
+    // paragraph. A tab and a line break typed as characters count as padding too.
+    [Test]
+    [Arguments("{{ Tags }} ")]
+    [Arguments(" {{ Tags }}")]
+    [Arguments("\t{{ Tags }}\u00A0")]
+    [Arguments("{{ Tags }}\n")]
+    public async Task WhitespaceAroundSoloStringListStillRendersBullets(string paragraph)
+    {
+        using var template = DocxTemplateBuilder.Build(paragraph);
+
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Person>(template);
+
+        var model = new Person
+        {
+            Name = "Ada",
+            Tags = ["a", "b"]
+        };
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var paragraphs = doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().ToList();
+
+        await Assert.That(paragraphs.Select(_ => _.InnerText)).IsEquivalentTo(["a", "b"]);
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+    }
+
     [Test]
     public async Task TwoStringListsShareOneBulletAbstract()
     {
@@ -480,5 +511,89 @@ public partial class StringListTests
         await store.Render(model, stream);
         stream.Position = 0;
         await Verify(stream, "docx");
+    }
+
+    [ParchmentBindable]
+    public partial class ListShapes
+    {
+        public string[] Array { get; init; } = [];
+        public List<string> List { get; init; } = [];
+        public IEnumerable<string> Enumerable { get; init; } = [];
+        public IReadOnlyList<string> ReadOnlyList { get; init; } = [];
+        public HashSet<string> Set { get; init; } = [];
+        public string[][] Jagged { get; init; } = [];
+        public string[,] Grid { get; init; } = new string[0, 0];
+    }
+
+    static async Task<List<(string Text, bool IsListItem)>> RenderShape(string template, ListShapes model)
+    {
+        using var input = DocxTemplateBuilder.Build(template);
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<ListShapes>(input);
+
+        using var stream = new MemoryStream();
+        await store.Render(model, stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>()
+            .Select(_ => (_.InnerText, _.ParagraphProperties?.NumberingProperties != null))
+            .ToList();
+    }
+
+    [Test]
+    [Arguments("Array")]
+    [Arguments("List")]
+    [Arguments("Enumerable")]
+    [Arguments("ReadOnlyList")]
+    [Arguments("Set")]
+    public async Task EveryStringSequenceShapeRendersAsBulletList(string member)
+    {
+        var model = new ListShapes
+        {
+            Array = ["a", "b"],
+            List = ["a", "b"],
+            Enumerable = ["a", "b"],
+            ReadOnlyList = ["a", "b"],
+            Set = ["a", "b"]
+        };
+
+        var paragraphs = await RenderShape($"{{{{ {member} }}}}", model);
+
+        await Assert.That(paragraphs).IsEquivalentTo([("a", true), ("b", true)]);
+    }
+
+    // A rank-2 array is not an IEnumerable<string>. It used to be classified as a string list
+    // anyway, so the solo-token path replaced its paragraph with a list of no items and the member
+    // vanished from the document without a word. It is an ordinary member now: the token reaches
+    // Fluid alone in its paragraph exactly as it does with text beside it.
+    [Test]
+    [Arguments("{{ Grid }}")]
+    [Arguments("Grid: {{ Grid }}")]
+    public async Task MultiDimensionalArrayIsNotAStringList(string template)
+    {
+        var model = new ListShapes
+        {
+            Grid = new[,] { { "a", "b" }, { "c", "d" } }
+        };
+
+        var exception = await Assert.That(async () => { await RenderShape(template, model); })
+            .Throws<ParchmentRenderException>();
+        await Assert.That(exception!.Message).Contains("{{ Grid }}");
+    }
+
+    // A jagged array is a sequence of string[], never of string, so it was never a string list and
+    // is not one now: no list paragraphs, and the rows print the way Fluid prints nested arrays.
+    [Test]
+    public async Task JaggedArrayIsNotAStringList()
+    {
+        var model = new ListShapes
+        {
+            Jagged = [["a", "b"], ["c"]]
+        };
+
+        var paragraphs = await RenderShape("{{ Jagged }}", model);
+
+        await Assert.That(paragraphs).IsEquivalentTo([("abc", false)]);
     }
 }

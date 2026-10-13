@@ -396,6 +396,73 @@ public partial class EscapingTests
         await Assert.That(paragraph.Descendants<Bold>().Any()).IsFalse();
     }
 
+    const string entitiesAndDelimiters = "AT&T &amp; &copy; &#169; <Research> a < b [open ![image <<x>> \"Labs\" it's";
+
+    // The renderer turns an entity in the template into its character and prints a bracket that
+    // never closed. Neither is to reach into a value: one holding "&amp;" holds five characters,
+    // and they print as five - once, not decoded, and not decoded twice.
+    [Test]
+    [Arguments("{0}", "{0}")]
+    [Arguments("**{0}**", "{0}")]
+    [Arguments("# {0}", "{0}")]
+    [Arguments("- {0}", "{0}")]
+    [Arguments("| Head |\n| --- |\n| {0} |", "Head{0}")]
+    [Arguments("[{0}](https://example.com)", "{0}")]
+    [Arguments("<u>{0}</u>", "{0}")]
+    public async Task EntitiesAndDelimitersInAValuePrintAsThemselves(string container, string expected)
+    {
+        // Quotes are left to smarty pants by design, so they are kept out of this one.
+        var value = entitiesAndDelimiters.Replace("\"Labs\" it's", "end");
+        var body = await Render(
+            string.Format(container, "{{ Title }}"),
+            new()
+            {
+                Title = value
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo(string.Format(expected, value));
+    }
+
+    // escape_xml opts out of the encoder and writes entities in its place, so in running text it is
+    // the renderer that turns them back - a value through it used to lose every character the
+    // filter had touched. What the filter leaves alone is markdown source, which is where the open
+    // bracket comes from; it prints too.
+    [Test]
+    [Arguments("{0}", "{0}")]
+    [Arguments("Company: {0}.", "Company: {0}.")]
+    [Arguments("**{0}**", "{0}")]
+    [Arguments("# {0}", "{0}")]
+    [Arguments("- {0}", "{0}")]
+    [Arguments("| Head |\n| --- |\n| {0} |", "Head{0}")]
+    [Arguments("<u>{0}</u>", "{0}")]
+    public async Task EscapeXmlValuePrintsAsItself(string container, string expected)
+    {
+        // Angle quotes need two angle brackets in the source, and the filter has made entities of
+        // them, so those print as typed as well.
+        var body = await Render(
+            string.Format(container, "{{ Title | escape_xml }}"),
+            new()
+            {
+                Title = entitiesAndDelimiters
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo(string.Format(expected, entitiesAndDelimiters));
+    }
+
+    // The docx flow puts the value in a run and never parses it, so there is nothing to decode.
+    [Test]
+    public async Task DocxSubstitutionKeepsEntitiesAndDelimiters()
+    {
+        var body = await RenderDocx(
+            "{{ Title }}",
+            new()
+            {
+                Title = entitiesAndDelimiters
+            });
+
+        await Assert.That(body.Elements<Paragraph>().First().InnerText).IsEqualTo(entitiesAndDelimiters);
+    }
+
     [Test]
     public async Task NewlineBecomesABreak()
     {
