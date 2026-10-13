@@ -25,13 +25,22 @@ public enum FieldState
 
     /// <summary>
     /// The control's content could not be parsed as the member's type (see
-    /// <c>ExtractedField.RawText</c>). Typically a culture mismatch or free-typed text in a
-    /// numeric / date field.
+    /// <c>ExtractedField.RawText</c>). Typically free-typed text in a numeric / date field: a
+    /// number with group separators, or a decimal separator the extraction culture does not use.
     /// </summary>
     ParseFailed,
 
     /// <summary>
     /// A second control with an already-seen tag. The first occurrence won; this one is ignored.
     /// </summary>
-    Duplicate
+    Duplicate,
+
+    /// <summary>
+    /// A control inside an editable collection's item held a value, but the member sits on a nested
+    /// object that is null on the rebuilt item and cannot be created: its type is abstract or an
+    /// interface, has no public parameterless constructor, or the member holding it has no setter.
+    /// The value is not on the rebuilt item. <c>ExtractedField.Path</c> is the collection's path
+    /// followed by the member's path within an item, reported once however many items hit it.
+    /// </summary>
+    Unreachable
 }
