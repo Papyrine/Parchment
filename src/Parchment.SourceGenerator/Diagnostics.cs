@@ -33,7 +33,7 @@
         IReadOnlyList<string> path,
         IReadOnlyDictionary<string, string> scope)
     {
-        var reference = string.Join('.', path);
+        var reference = SegmentNames.Join(path);
         if (ShapeResolver.StopsAtEnum(target.Shape, path, scope, out var enumPath))
         {
             return Diagnostic.Create(EnumHasNoMembers, location, templatePath, tokenSource, reference, enumPath);

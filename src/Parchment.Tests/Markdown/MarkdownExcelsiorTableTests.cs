@@ -470,7 +470,6 @@ public partial class MarkdownExcelsiorTableTests
     [Arguments("{{- Order.Lines | reverse -}}")]
     [Arguments("{{ Order['Lines'] | size }}")]
     [Arguments("{{\n  Order.Lines\n  | reverse\n}}")]
-    [Arguments("{{ Order['Lines'][0] }}")]
     public async Task FilteredTokenIsRejectedInEverySpelling(string markdown)
     {
         using var styleSource = DocxTemplateBuilder.Build();

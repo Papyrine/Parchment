@@ -870,7 +870,6 @@ public class ParchmentTemplateGeneratorTests
     [Arguments("{{- Order.Lines | reverse -}}")]
     [Arguments("{{ Order['Lines'] | size }}")]
     [Arguments("{{\n  Order.Lines\n  | reverse\n}}")]
-    [Arguments("{{ Order['Lines'][0] }}")]
     public async Task Markdown_ExcelsiorToken_EverySpelling_WithFilter_Diagnostic(string markdown)
     {
         var result = GeneratorDriver.RunMarkdown(shadowedModel, markdown);

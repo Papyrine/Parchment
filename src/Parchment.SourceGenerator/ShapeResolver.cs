@@ -4,6 +4,13 @@
 /// </summary>
 static class ShapeResolver
 {
+    /// <summary>
+    /// What <see cref="TryResolve"/> reports for a path that is valid as far as it can be checked
+    /// but passes an index the shape cannot see through — a dictionary key, a member picked by
+    /// name at render. No type is named by an empty string.
+    /// </summary>
+    public const string Untyped = "";
+
     public static bool TryResolve(
         ModelShape shape,
         IReadOnlyList<string> segments,
@@ -32,6 +39,26 @@ static class ShapeResolver
         for (var i = start; i < segments.Count; i++)
         {
             var entry = FindType(shape, currentFqn);
+
+            // Lockstep with the runtime's LiquidMembers.TryResolveIndex: only an array says what
+            // an index into it yields. Anything else leaves the rest of the path unknown, which
+            // is not the same as wrong.
+            if (segments[i] == SegmentNames.Index)
+            {
+                if (entry is not
+                    {
+                        Liquid: LiquidKind.Array,
+                        ElementTypeFullyQualifiedName: not null
+                    })
+                {
+                    typeFqn = Untyped;
+                    return true;
+                }
+
+                currentFqn = entry.ElementTypeFullyQualifiedName;
+                continue;
+            }
+
             if (entry == null)
             {
                 return false;

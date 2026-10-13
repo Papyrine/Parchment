@@ -631,7 +631,9 @@ class ScopeTreeRunner(
         // all flow through the same lookup. Loop-scope variables (e.g. `{{ line.SubItems }}`
         // inside `{% for line in Lines %}`) never match: the map is keyed on paths from the root
         // model only, and a loop variable that happens to spell a root path was ruled out above
-        // — they fall through to normal Fluid evaluation.
+        // — they fall through to normal Fluid evaluation. So does a token that indexes into the
+        // member (`{{ Lines[0].Name }}`): its path keeps the index (IdentifierPath.Index) and
+        // is no key of this map or of the three consulted after it.
         var reference = site.References[0];
         if (!excelsiorTables.TryGet(reference.Dotted, out var entry))
         {
