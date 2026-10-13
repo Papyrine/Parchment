@@ -104,8 +104,12 @@ static class TemplateConvention
                 continue;
             }
 
-            // The longest ancestor directory is the closest one to the template.
-            if (directory.Length > nearestLength)
+            // The longest ancestor directory is the closest one to the template. Two in the same
+            // directory — names differing only by case, on a file system that allows it — are
+            // settled by path rather than by which one AdditionalFiles happened to list first.
+            if (directory.Length > nearestLength ||
+                (directory.Length == nearestLength &&
+                 string.CompareOrdinal(dotx.Path, nearest!.Path) < 0))
             {
                 nearest = dotx;
                 nearestLength = directory.Length;

@@ -472,6 +472,31 @@ public partial class ExcelsiorTableTests
     }
 
     [Test]
+    [Arguments("{{ Lines }} ")]
+    [Arguments(" {{ Lines }}")]
+    [Arguments("\t{{ Lines }}\u00A0")]
+    public async Task WhitespaceAroundTableTokenStillCountsAsAlone(string paragraph)
+    {
+        // The padding is invisible in Word and goes with the paragraph the table replaces.
+        using var template = BuildTemplateWithBlocks(BuildParagraph(paragraph));
+
+        var blocks = await RenderBlockNames(template);
+
+        await Assert.That(string.Join(' ', blocks)).IsEqualTo("tbl");
+    }
+
+    [Test]
+    public async Task TwoTableTokensPaddedApartInOneParagraphAreRejected()
+    {
+        using var template = BuildTemplateWithBlocks(BuildParagraph("{{ Lines }} {{ Lines }}"));
+
+        var store = new TemplateStore();
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<Catalogue>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("must sit alone in its own paragraph");
+    }
+
+    [Test]
     public async Task MixedInlineContentInSameParagraphIsRejected()
     {
         // "Prefix {{ Lines }}" — the token doesn't cover the whole paragraph. Structural

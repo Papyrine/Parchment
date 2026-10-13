@@ -67,6 +67,156 @@ public partial class BoundAutolinkTests
         await Assert.That(body.InnerText).IsEqualTo("text");
     }
 
+    // A space or a control character is the one thing an escape cannot keep in a destination: it
+    // ended the destination, the link was no longer a link, and the markdown printed as text. The
+    // target is still the value as bound, not a percent-encoded copy of it.
+    [Test]
+    [Arguments("a b")]
+    [Arguments(" a  b ")]
+    [Arguments("a\tb")]
+    [Arguments("a b (1)")]
+    [Arguments("a) b")]
+    [Arguments("a <b> c")]
+    [Arguments("a \"b\" 'c'")]
+    [Arguments("a b](http://evil)")]
+    [Arguments("a b) *c*")]
+    public async Task InlineLinkDestinationWithASpaceInTheValue(string value)
+    {
+        var (body, targets) = await Render(
+            "[text](https://portal.example.com/orders/{{ Id }})",
+            value);
+
+        await Assert.That(targets).IsEquivalentTo([Prefix + value]);
+        await Assert.That(body.InnerText).IsEqualTo("text");
+        await AssertNoMarkup(body);
+    }
+
+    [Test]
+    [Arguments("[text]({{ Id }})")]
+    [Arguments("[text](<{{ Id }}>)")]
+    [Arguments("[text]({{ Id }} \"a title\")")]
+    [Arguments("[text]({{ Id }} 'a title')")]
+    [Arguments("[text]({{ Id }} (a title))")]
+    [Arguments("[text](<{{ Id }}> \"a title\")")]
+    [Arguments("{% if true %}[text]({% endif %}{{ Id }})")]
+    [Arguments("| [text]({{ Id }}) |\n| --- |")]
+    [Arguments("- [text]({{ Id }})")]
+    [Arguments("> **[text]({{ Id }})**")]
+    public async Task WholeDestinationBoundToAValueWithASpace(string template)
+    {
+        var value = "https://example.com/a b (1)/c d?q=\"x y\"";
+        var (body, targets) = await Render(template, value);
+
+        await Assert.That(targets).IsEquivalentTo([value]);
+        await Assert.That(body.InnerText).IsEqualTo("text");
+    }
+
+    [Test]
+    public async Task TwoValuesInOneDestination()
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<LinkModel>(
+            "[one](https://portal.example.com/{{ Id }}/{{ Id }}) and [two]({{ Id }}) for {{ Id }}.",
+            styleSource);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new LinkModel
+            {
+                Id = "a b"
+            },
+            stream);
+        stream.Position = 0;
+
+        using var document = WordprocessingDocument.Open(stream, false);
+        var main = document.MainDocumentPart!;
+        var targets = main.HyperlinkRelationships
+            .Select(_ => _.Uri.OriginalString)
+            .ToList();
+
+        // The second destination is relative, which nothing in a generated document can be
+        // relative to, so that link stays text.
+        await Assert.That(targets).IsEquivalentTo(["https://portal.example.com/a b/a b"]);
+        await Assert.That(main.Document!.Body!.InnerText).IsEqualTo("one and two (a b) for a b.");
+    }
+
+    // The same value outside a destination is unchanged: a closed destination is not one, and
+    // neither is a bracket the template escaped. A code span cannot be told apart from the output
+    // alone, so link syntax quoted in one shows the character references.
+    [Test]
+    [Arguments("[text](https://example.com/x){{ Id }}", "texta  b")]
+    [Arguments("[text](https://example.com/x(y)){{ Id }}", "texta  b")]
+    [Arguments(@"\[text\]({{ Id }})", "[text](a  b)")]
+    [Arguments("`[text]({{ Id }})`", "[text](a&#32;&#32;b)")]
+    public async Task ValueWithASpaceOutsideADestination(string template, string text)
+    {
+        var (body, _) = await Render(template, "a  b");
+
+        await Assert.That(body.InnerText).IsEqualTo(text);
+    }
+
+    // There is no line break in a url. The value still reaches the link whole rather than ending
+    // it with the html a break is written as everywhere else.
+    [Test]
+    [Arguments("a\nb")]
+    [Arguments("a\r\nb")]
+    public async Task NewlineInADestinationValue(string value)
+    {
+        var (body, targets) = await Render(
+            "[text](https://portal.example.com/orders/{{ Id }})",
+            value);
+
+        await Assert.That(targets).IsEquivalentTo([Prefix + value]);
+        await Assert.That(body.InnerText).IsEqualTo("text");
+        await Assert.That(body.Descendants<Break>().Any()).IsFalse();
+    }
+
+    // No destination is no link, and the text is still there.
+    [Test]
+    [Arguments("[text]({{ Id }})", "text")]
+    [Arguments("![alt]({{ Id }})", "alt")]
+    public async Task EmptyDestinationValue(string template, string text)
+    {
+        var (body, targets) = await Render(template, "");
+
+        await Assert.That(targets).IsEmpty();
+        await Assert.That(body.InnerText).IsEqualTo(text);
+    }
+
+    // An image source is a path read from disk, so it has to arrive with its spaces and brackets
+    // as they are on disk. It used to print — the path, in the document — instead of loading.
+    [Test]
+    [Arguments("![pixel]({{ Id }})", false)]
+    [Arguments("![pixel](<{{ Id }}>)", false)]
+    [Arguments("![pixel]({{ Id }} \"a title\")", false)]
+    [Arguments("![pixel]({{ Id }})", true)]
+    public async Task ImageSourceWithASpaceInTheValue(string template, bool forwardSlashes)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"parchment md img (1) {Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "pixel two.png");
+        await File.WriteAllBytesAsync(
+            path,
+            Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAeImBZsAAAAASUVORk5CYII="));
+        try
+        {
+            if (forwardSlashes)
+            {
+                path = path.Replace('\\', '/');
+            }
+
+            var (body, _) = await Render(template, path);
+
+            await Assert.That(body.Descendants<Drawing>().Count()).IsEqualTo(1);
+            await Assert.That(body.InnerText).IsEqualTo("");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     // Every character of the value prints exactly once and none of it is markup. Where the link
     // ends is Markdig's call, the same one it makes for a url typed out in full: not at a space, a
     // < or an entity, and not on trailing punctuation.
@@ -177,6 +327,52 @@ public partial class BoundAutolinkTests
 
         await Assert.That(body.InnerText).IsEqualTo(value);
         await Assert.That(targets).IsEmpty();
+    }
+
+    // Markdig checks a host and an address character by character, and the escapes around a value
+    // are not characters either may hold, so the bare form stays text when the value supplies one.
+    [Test]
+    [Arguments("See https://{{ Id }}/orders for details.", "portal.example.com", "See https://portal.example.com/orders for details.")]
+    [Arguments("See www.{{ Id }}/orders for details.", "example.com", "See www.example.com/orders for details.")]
+    [Arguments("Write to mailto:{{ Id }} for details.", "first.last@example.com", "Write to mailto:first.last@example.com for details.")]
+    [Arguments("Write to <{{ Id }}> for details.", "first.last@example.com", "Write to <first.last@example.com> for details.")]
+    public async Task BoundHostOrAddressIsNotLinked(string template, string value, string text)
+    {
+        var (body, targets) = await Render(template, value);
+
+        await Assert.That(body.InnerText).IsEqualTo(text);
+        await Assert.That(targets).IsEmpty();
+    }
+
+    // An inline link is how a bound host or address is linked.
+    [Test]
+    [Arguments("[mail](mailto:{{ Id }})", "first.last@example.com", "mailto:first.last@example.com")]
+    [Arguments("[site](https://{{ Id }}/orders)", "portal.example.com", "https://portal.example.com/orders")]
+    public async Task InlineLinkWithBoundHostOrAddress(string template, string value, string target)
+    {
+        var (_, targets) = await Render(template, value);
+
+        await Assert.That(targets).IsEquivalentTo([target]);
+    }
+
+    // What the template itself spells out: an address is a link behind mailto: or in angle
+    // brackets, and text on its own.
+    [Test]
+    [Arguments("mail mailto:user@example.com now", true)]
+    [Arguments("mail <user@example.com> now", true)]
+    [Arguments("mail user@example.com now", false)]
+    public async Task LiteralEmailAddress(string template, bool linked)
+    {
+        var (body, targets) = await Render(template, "");
+
+        if (!linked)
+        {
+            await Assert.That(targets).IsEmpty();
+            return;
+        }
+
+        await Assert.That(targets).IsEquivalentTo(["mailto:user@example.com"]);
+        await Assert.That(body.Descendants<Hyperlink>().Single().InnerText).IsEqualTo("user@example.com");
     }
 
     static async Task AssertNoMarkup(Body body)
