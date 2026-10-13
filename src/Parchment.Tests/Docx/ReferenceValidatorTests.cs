@@ -385,9 +385,6 @@ public partial class ReferenceValidatorTests
 
         public (int dynamic, dynamic B) Pair { get; set; }
 
-        [ExcelsiorTable]
-        public List<dynamic> Table { get; set; } = [];
-
         public Hiding Hiding { get; set; } = new();
     }
 #pragma warning restore CA1822

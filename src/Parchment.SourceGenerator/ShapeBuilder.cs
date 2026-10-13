@@ -1032,5 +1032,4 @@ static class ShapeBuilder
 
         return $"{type.Name}<{string.Join(", ", type.TypeParameters.Select(_ => _.Name))}>";
     }
-
 }
