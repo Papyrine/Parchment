@@ -14,28 +14,88 @@ static class ShapeBuilder
 
     static readonly SymbolDisplayFormat format = SymbolDisplayFormat.FullyQualifiedFormat;
 
+    // What the models of one compilation have in common: the entry of every type any of them has
+    // reached so far. Each model still walks its own graph, since the order of ModelShape.Types is
+    // the order that walk meets the types in, but a type's members are read once per compilation
+    // rather than once per model reaching it. Held through the compilation, weakly, so the symbols
+    // in it live exactly as long as the compilation they belong to, and never enter the pipeline:
+    // what a model takes from here is the primitive TypeEntry.
+    // Keyed with nullability, tuple names and dynamic all significant, because a member's entry
+    // reads them off the symbol (`Box<string?>.Value` is a nullable member, `Box<string>.Value` is
+    // not) while the walk tells types apart by name alone and keeps the first symbol it met.
+    static readonly ConditionalWeakTable<Compilation, ConcurrentDictionary<ITypeSymbol, BuiltEntry>> sharedEntries = new();
+
     public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Compilation compilation, Cancel cancel)
     {
+        var shared = sharedEntries.GetValue(compilation, static _ => new(SymbolEqualityComparer.IncludeNullability));
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<ITypeSymbol>();
         // Sorted, so the pragma the ids end up in reads the same whatever order the walk met them.
         var suppressed = new SortedSet<string>(StringComparer.Ordinal);
-        var pending = new List<string>();
 
-        Enqueue(root, visited, queue);
+        var rootFqn = Fqn(root);
+        visited.Add(rootFqn);
+        queue.Enqueue(root);
         while (queue.Count > 0)
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, root, compilation, visited, queue, suppressed, pending));
+            if (!shared.TryGetValue(type, out var built))
+            {
+                built = BuildEntry(type, excelsiorTableType, editableFieldType, root, compilation);
+                if (!built.DependsOnRoot)
+                {
+                    shared.TryAdd(type, built);
+                }
+            }
+
+            entries.Add(built.Entry);
+            suppressed.UnionWith(built.Suppressed);
+            foreach (var reached in built.Reached)
+            {
+                if (visited.Add(reached.Fqn))
+                {
+                    queue.Enqueue(reached.Type);
+                }
+            }
         }
 
-        return new(Fqn(root), new(entries.ToImmutable()), new(suppressed.ToImmutableArray()));
+        return new(rootFqn, new(entries.ToImmutable()), new(suppressed.ToImmutableArray()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, INamedTypeSymbol root, Compilation compilation, HashSet<string> visited, Queue<ITypeSymbol> queue, SortedSet<string> suppressed, List<string> pending)
+    // A type's entry together with what the walk takes from building it: the types it leads to, in
+    // the order they were met and under the name the walk knows each by, and the diagnostic ids a
+    // reference to it or to its members raises.
+    sealed class BuiltEntry(TypeEntry entry, ImmutableArray<ReachedType> reached, ImmutableArray<string> suppressed, bool dependsOnRoot)
     {
+        public TypeEntry Entry { get; } = entry;
+        public ImmutableArray<ReachedType> Reached { get; } = reached;
+        public ImmutableArray<string> Suppressed { get; } = suppressed;
+
+        // The entry was decided by what the model it was built for may access, so it is that
+        // model's alone and is not shared.
+        public bool DependsOnRoot { get; } = dependsOnRoot;
+    }
+
+    readonly struct ReachedType(ITypeSymbol type, string fqn)
+    {
+        public ITypeSymbol Type { get; } = type;
+        public string Fqn { get; } = fqn;
+    }
+
+    static BuiltEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, INamedTypeSymbol root, Compilation compilation)
+    {
+        var reached = ImmutableArray.CreateBuilder<ReachedType>();
+        var suppressed = new HashSet<string>(StringComparer.Ordinal);
+        var dependsOnRoot = false;
+        var entry = BuildEntry(type, excelsiorTableType, editableFieldType, root, compilation, reached, suppressed, ref dependsOnRoot);
+        return new(entry, reached.ToImmutable(), suppressed.ToImmutableArray(), dependsOnRoot);
+    }
+
+    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, INamedTypeSymbol root, Compilation compilation, ImmutableArray<ReachedType>.Builder reached, HashSet<string> suppressed, ref bool dependsOnRoot)
+    {
+        var pending = new List<string>();
         // Every type in the shape is named by the generated code (a cast, a typeof), the root
         // included. One that is obsolete as an error only gets here as the root, where there is no
         // member to leave out.
@@ -48,7 +108,7 @@ static class ShapeBuilder
             ModelSymbolResolver.TryGetElementType(type, out var element))
         {
             elementFqn = Fqn(element);
-            Enqueue(element, visited, queue);
+            reached.Add(new(element, elementFqn));
         }
 
         var liquid = LiquidKindFor(type);
@@ -76,10 +136,12 @@ static class ShapeBuilder
         if (type is INamedTypeSymbol { IsGenericType: true } pair &&
             pair.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>")
         {
-            members.Add(new("Key", Fqn(pair.TypeArguments[0])));
-            members.Add(new("Value", Fqn(pair.TypeArguments[1])));
-            Enqueue(pair.TypeArguments[0], visited, queue);
-            Enqueue(pair.TypeArguments[1], visited, queue);
+            var keyFqn = Fqn(pair.TypeArguments[0]);
+            var valueFqn = Fqn(pair.TypeArguments[1]);
+            members.Add(new("Key", keyFqn));
+            members.Add(new("Value", valueFqn));
+            reached.Add(new(pair.TypeArguments[0], keyFqn));
+            reached.Add(new(pair.TypeArguments[1], valueFqn));
             return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
         }
 
@@ -95,6 +157,9 @@ static class ShapeBuilder
             // generated `((T)o).Name` binds to that member, not to the inherited one it hides, so
             // the inherited one is not binding surface through this type. Ordinal, as C# lookup is.
             var hidden = new HashSet<string>(StringComparer.Ordinal);
+            // The names among those that only some models can see taken: whether a private or
+            // protected member hides anything depends on where the generated code sits.
+            var hiddenForSome = new HashSet<string>(StringComparer.Ordinal);
             var current = type;
             while (current != null)
             {
@@ -112,12 +177,27 @@ static class ShapeBuilder
                 {
                     if (!TryGetMemberType(member, out var memberType, out var memberName, out var isStatic))
                     {
-                        if (HidesInherited(compilation, root, current, member))
+                        if (TakesName(member))
                         {
-                            hidden.Add(member.Name);
+                            if (!IsAccessibleToEveryModel(member))
+                            {
+                                hiddenForSome.Add(member.Name);
+                            }
+
+                            if (compilation.IsSymbolAccessibleWithin(member, root, current))
+                            {
+                                hidden.Add(member.Name);
+                            }
                         }
 
                         continue;
+                    }
+
+                    // Only here does the answer above matter: a name nothing inherited answers to
+                    // hides nothing, whoever is asking.
+                    if (hiddenForSome.Contains(memberName))
+                    {
+                        dependsOnRoot = true;
                     }
 
                     if (hidden.Contains(memberName))
@@ -165,6 +245,9 @@ static class ShapeBuilder
                     if (excelsiorConfigure != null &&
                         excelsiorConfigureOwner != null)
                     {
+                        // The call is to the method where the model can reach it and to a forwarder
+                        // named after the model where it cannot.
+                        dependsOnRoot = true;
                         ResolveConfigure(excelsiorConfigureOwner, excelsiorConfigure, root, compilation, out excelsiorConfigureCall, out excelsiorConfigureMissing, out excelsiorConfigureInaccessibleOn, out excelsiorConfigureForwarders);
                     }
 
@@ -208,9 +291,10 @@ static class ShapeBuilder
                         }
                     }
 
+                    var memberTypeFqn = Fqn(memberType);
                     members.Add(new(
                         memberName,
-                        Fqn(memberType),
+                        memberTypeFqn,
                         isExcelsior,
                         isHtml,
                         isMarkdown,
@@ -236,7 +320,7 @@ static class ShapeBuilder
                         !isStatic && HasUsableSetter(member) && IsCreatable(memberType),
                         excelsiorConfigureInaccessibleOn,
                         excelsiorConfigureForwarders));
-                    Enqueue(memberType, visited, queue);
+                    reached.Add(new(memberType, memberTypeFqn));
                 }
 
                 current = current.BaseType;
@@ -822,11 +906,11 @@ static class ShapeBuilder
         return false;
     }
 
-    // Whether a member that yields no accessor still takes its name away from the base types, as
-    // seen from the generated code, which sits in a class nested in the model.
-    static bool HidesInherited(Compilation compilation, INamedTypeSymbol root, ITypeSymbol declaring, ISymbol member)
-    {
-        var named = member switch
+    // Whether a member that yields no accessor still takes its name away from the base types
+    // wherever it can be seen. Seen, that is, from the generated code, which sits in a class nested
+    // in the model.
+    static bool TakesName(ISymbol member) =>
+        member switch
         {
             IPropertySymbol { IsIndexer: false } => true,
             IFieldSymbol { IsImplicitlyDeclared: false } => true,
@@ -835,22 +919,22 @@ static class ShapeBuilder
             IMethodSymbol { MethodKind: MethodKind.Ordinary } => true,
             _ => false
         };
-        return named &&
-               compilation.IsSymbolAccessibleWithin(member, root, declaring);
-    }
 
-    static void Enqueue(ITypeSymbol? type, HashSet<string> visited, Queue<ITypeSymbol> queue)
+    // Whether every model of the compilation gets the same answer when asking if it can access the
+    // member. Public is the same for anyone, and internal is the same for any two types of one
+    // assembly, which the models are. Private and the protected kinds turn on what the model is
+    // nested in or derives from, on the member or on any type around it.
+    static bool IsAccessibleToEveryModel(ISymbol member)
     {
-        if (type == null)
+        for (var current = member; current != null; current = current.ContainingType)
         {
-            return;
+            if (current.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal))
+            {
+                return false;
+            }
         }
 
-        var key = Fqn(type);
-        if (visited.Add(key))
-        {
-            queue.Enqueue(type);
-        }
+        return true;
     }
 
     static bool IsSystemType(ITypeSymbol type)
