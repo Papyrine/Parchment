@@ -102,12 +102,17 @@ jobs:
       - name: Build
         run: dotnet build src --configuration Release ${{ env.VERSION_ARGUMENT }}
 
-      # The cache restored above can hold a Parchment of this same Version, packed by an earlier
-      # run. NuGet reads the global packages folder before any feed, so the integration tests
-      # would build against that one and not the nupkg just built.
-      - name: Drop cached Parchment packages
-        shell: bash
-        run: rm -rf ~/.nuget/packages/parchment ~/.nuget/packages/parchment.*
+      # The restored cache can hold a Parchment package extracted by an earlier run. The version
+      # does not change between builds, so restore would reuse that copy and the integration tests
+      # would compile against a stale package. Removing it makes restore unpack the nupkg just built.
+      - name: Remove cached Parchment package
+        shell: pwsh
+        run: |
+          $cached = Join-Path $HOME '.nuget/packages/parchment'
+          if (Test-Path $cached)
+          {
+              Remove-Item $cached -Recurse -Force
+          }
 
       # Same Version so IntegrationTests' Parchment PackageVersion resolves the nupkg just built.
       - name: Build integration tests
