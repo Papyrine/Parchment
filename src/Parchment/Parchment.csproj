@@ -5,6 +5,12 @@
     <!-- TextEncoder declares two of its four abstract members with char* parameters, so
          MarkdownEncoder cannot subclass it without this. Nothing else in the library is unsafe. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The analyzers only, not IsTrimmable / IsAotCompatible: those would mark the assembly as
+         compatible, and it is not (see "Trimming and NativeAOT" in contributing.md). With these on,
+         a new reflection site outside a RequiresUnreferencedCode / RequiresDynamicCode scope fails
+         this build instead of surfacing in a consumer publish. -->
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <PackageReadmeFile>nuget-readme.md</PackageReadmeFile>
     <UserSecretsId>20028ee9-c2df-4063-9e52-5ce59a647234</UserSecretsId>
   </PropertyGroup>
@@ -30,6 +36,8 @@
     <None Include="nuget-readme.md" Pack="true" PackagePath="\" />
     <!-- buildTransitive as well as build, so a project that reaches Parchment through a project
          reference gets the template item types too. -->
+    <None Include="build\Parchment.props" Pack="true" PackagePath="build\" Visible="false" />
+    <None Include="build\Parchment.props" Pack="true" PackagePath="buildTransitive\" Visible="false" />
     <None Include="build\Parchment.targets" Pack="true" PackagePath="build\" Visible="false" />
     <None Include="build\Parchment.targets" Pack="true" PackagePath="buildTransitive\" Visible="false" />
   </ItemGroup>
@@ -40,7 +48,10 @@
        inside a target rather than as a static <None>: static items are evaluated at project
        load time, before the SG ProjectReference has built, so on a clean VM (e.g. CI) the
        wildcard would match zero files and the analyzers would silently be left out of the
-       nupkg. _GetPackageFiles fires after the SG build, so the wildcard sees real files. -->
+       nupkg. _GetPackageFiles fires after the SG build, so the wildcard sees real files.
+       A roslynX.Y folder name promises that the build inside references a compiler no newer than
+       X.Y, and the generator project pins each target framework to match: read the note on its
+       Microsoft.CodeAnalysis.CSharp references before renaming a folder here. -->
   <Target Name="PackParchmentSourceGenerator" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <None Include="..\Parchment.SourceGenerator\bin\$(Configuration)\netstandard2.0\Parchment.SourceGenerator*.dll"

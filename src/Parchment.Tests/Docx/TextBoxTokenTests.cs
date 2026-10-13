@@ -139,6 +139,139 @@ public partial class TextBoxTokenTests
         await Assert.That(Texts(result)).Contains(" outro");
     }
 
+    // Splicing clones the halves of the host, text boxes included, so the paragraphs inside a box
+    // that was carried over are no longer the ones registered as token hosts.
+    [Test]
+    [Arguments("<b>bold</b>", "{0}before {{ Body }} after")]
+    [Arguments("<b>bold</b>", "before {{ Body }} after{0}")]
+    [Arguments("<b>bold</b>", "{0}before {{ Body }} after{0}")]
+    [Arguments("<p>First</p><p>Second</p>", "{0}before {{ Body }} after")]
+    [Arguments("<p>First</p><p>Second</p>", "before {{ Body }} after{0}")]
+    [Arguments("<p>First</p><p>Second</p>", "{0}before {{ Body }} after{0}")]
+    public async Task TokensInATextBoxAnchoredInASplicedParagraphAreSubstitutedOnce(string html, string layout)
+    {
+        using var template = BuildBody(new Body(new Paragraph(HostXml(layout))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Body = html
+            });
+
+        await AssertBoxesSubstituted(result, layout);
+    }
+
+    [Test]
+    public async Task TokensInATextBoxAfterASplitTokenInsideAnIfBranchAreSubstitutedOnce()
+    {
+        const string layout = "before {{ Body }} after{0}";
+        using var template = BuildBody(
+            new Body(
+                new Paragraph(new Run(Preserved("{% if Show %}"))),
+                new Paragraph(HostXml(layout)),
+                new Paragraph(new Run(Preserved("{% endif %}")))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Show = true,
+                Body = "<p>First</p><p>Second</p>"
+            });
+
+        await AssertBoxesSubstituted(result, layout);
+    }
+
+    [Test]
+    public async Task TokensInATextBoxAfterASplitTokenInsideALoopBodyAreSubstitutedOnce()
+    {
+        using var template = BuildBody(
+            new Body(
+                new Paragraph(new Run(Preserved("{% for tag in Tags %}"))),
+                new Paragraph(HostXml("before {{ Body }} after{0}")),
+                new Paragraph(new Run(Preserved("{% endfor %}")))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Tags = ["one", "two"],
+                Body = "<p>First</p><p>Second</p>"
+            });
+
+        var body = result.MainDocumentPart!.Document!.Body!;
+        var boxes = body.Descendants<TextBoxContent>().Select(_ => _.InnerText).ToList();
+        await Assert.That(boxes).IsEquivalentTo(["box for Al", "box for Al", "box for Al", "box for Al"]);
+        await Assert.That(body.InnerText).DoesNotContain("{{");
+    }
+
+    // A block tag pair inside the box is located through the same anchors as a substitution.
+    [Test]
+    public async Task LoopInATextBoxAfterASplitTokenRepeatsItsBody()
+    {
+        using var template = Build(
+            new(
+                new Run(Preserved("before {{ Body }} after")),
+                new Run(VmlTextBox("{% for tag in Tags %}", "{{ tag }} for {{ Title }}", "{% endfor %}"))));
+
+        using var result = await Render(
+            template,
+            new()
+            {
+                Title = "Al",
+                Tags = ["one", "two"],
+                Body = "<p>First</p><p>Second</p>"
+            });
+
+        await Assert.That(Texts(result)).IsEquivalentTo(["before ", "First", "Second", " after", "one for Al", "two for Al"]);
+    }
+
+    static async Task AssertBoxesSubstituted(WordprocessingDocument result, string layout)
+    {
+        var body = result.MainDocumentPart!.Document!.Body!;
+        var boxes = body.Descendants<TextBoxContent>().Select(_ => _.InnerText).ToList();
+        var expected = Enumerable.Repeat("box for Al", 2 * (layout.Split("{0}").Length - 1)).ToList();
+        await Assert.That(boxes).IsEquivalentTo(expected);
+        await Assert.That(body.InnerText).DoesNotContain("{{");
+
+        var outside = string.Concat(
+            body.Descendants<Text>()
+                .Where(_ => !_.Ancestors<TextBoxContent>().Any())
+                .Select(_ => _.Text));
+        await Assert.That(outside).StartsWith("before ");
+        await Assert.That(outside).EndsWith(" after");
+    }
+
+    // The paragraph xml for a layout such as "before {{ Body }} after{0}", where each {0} is a run
+    // anchoring a text box the way Word writes one: a DrawingML shape with a VML fallback.
+    static string HostXml(string layout)
+    {
+        const string box =
+            """
+            <w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline><wp:extent cx="100" cy="100"/><wp:docPr id="1" name="tb"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:spPr/><wps:txbx><w:txbxContent><w:p><w:r><w:t>box for {{ Title }}</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>box for {{ Title }}</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r>
+            """;
+        var parts = layout.Split("{0}");
+        var builder = new StringBuilder();
+        for (var index = 0; index < parts.Length; index++)
+        {
+            if (index > 0)
+            {
+                builder.Append(box);
+            }
+
+            if (parts[index].Length > 0)
+            {
+                builder.Append($"""<w:r><w:t xml:space="preserve">{parts[index]}</w:t></w:r>""");
+            }
+        }
+
+        return $"""<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml">{builder}</w:p>""";
+    }
+
     static async Task<List<string>> Render(Stream template, string title, bool show = false)
     {
         using var result = await Render(
@@ -181,13 +314,16 @@ public partial class TextBoxTokenTests
             Space = SpaceProcessingModeValues.Preserve
         };
 
-    static MemoryStream Build(Paragraph paragraph)
+    static MemoryStream Build(Paragraph paragraph) =>
+        BuildBody(new Body(paragraph));
+
+    static MemoryStream BuildBody(Body body)
     {
         var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var main = doc.AddMainDocumentPart();
-            main.Document = new(new Body(paragraph));
+            main.Document = new(body);
         }
 
         stream.Position = 0;

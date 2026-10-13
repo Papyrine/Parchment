@@ -24,6 +24,9 @@
     <!-- The shape PARCH100 exists to catch: one file, two item types. -->
     <AdditionalFiles Include="Templates\DualModel.parchment.md" />
     <EmbeddedResource Include="Templates\DualModel.parchment.md" />
+    <!-- Takes a folder out of discovery. Drafts\DiscoveredModel.parchment.md is a namesake of the
+         template in Templates, so a Remove that did nothing would fail the build with PARCH020. -->
+    <ParchmentTemplate Remove="Drafts\**" />
   </ItemGroup>
 
   <!-- DiscoveredModel.parchment.md carries no entry at all: the package's globs are the only thing
