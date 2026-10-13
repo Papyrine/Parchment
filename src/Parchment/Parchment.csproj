@@ -46,7 +46,10 @@
        inside a target rather than as a static <None>: static items are evaluated at project
        load time, before the SG ProjectReference has built, so on a clean VM (e.g. CI) the
        wildcard would match zero files and the analyzers would silently be left out of the
-       nupkg. _GetPackageFiles fires after the SG build, so the wildcard sees real files. -->
+       nupkg. _GetPackageFiles fires after the SG build, so the wildcard sees real files.
+       A roslynX.Y folder name promises that the build inside references a compiler no newer than
+       X.Y, and the generator project pins each target framework to match: read the note on its
+       Microsoft.CodeAnalysis.CSharp references before renaming a folder here. -->
   <Target Name="PackParchmentSourceGenerator" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <None Include="..\Parchment.SourceGenerator\bin\$(Configuration)\netstandard2.0\Parchment.SourceGenerator*.dll"
