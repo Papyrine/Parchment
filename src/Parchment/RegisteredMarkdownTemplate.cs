@@ -39,8 +39,10 @@ class RegisteredMarkdownTemplate(
             {
                 // MarkdownEncoder rather than NullEncoder: a bound value is data, so it is escaped
                 // into the markdown being assembled rather than allowed to become part of its
-                // syntax.
-                await parsedTemplate.RenderAsync(writer, MarkdownEncoder.Default, context).ConfigureAwait(false);
+                // syntax. One per render, over this render's output: how a value is escaped
+                // depends on whether it lands in a link destination.
+                var encoder = new MarkdownEncoder(writer.GetStringBuilder());
+                await parsedTemplate.RenderAsync(writer, encoder, context).ConfigureAwait(false);
             }
             catch (TokenNotRenderableException exception)
             {
