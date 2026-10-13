@@ -26,10 +26,17 @@ namespace Parchment;
 /// ones that opt themselves out.
 /// </para>
 /// </remarks>
-class MarkdownEncoder :
+/// <param name="written">
+/// The markdown the render has produced so far, which is what says where a value lands. Fluid hands
+/// the encoder a value and nothing else, so each render makes an encoder over its own output.
+/// </param>
+class MarkdownEncoder(StringBuilder? written) :
     TextEncoder
 {
-    public static MarkdownEncoder Default { get; } = new();
+    /// <summary>
+    /// For a value escaped away from any output, where there is no position to take into account.
+    /// </summary>
+    public static MarkdownEncoder Default { get; } = new(null);
 
     /// <summary>
     /// A newline becomes inline html rather than being escaped or folded to a space: a line break
@@ -64,6 +71,40 @@ class MarkdownEncoder :
     /// </summary>
     static readonly SearchValues<char> encodable = SearchValues.Create("\r\n" + @"\`*_~^[]()<>&#|{}!+-.=");
 
+    /// <summary>
+    /// What the first character of a value is written as when no backslash can make it literal:
+    /// a character reference, which CommonMark reads as the character and as nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A space or tab, because indentation is block syntax: four columns of it make the line an
+    /// indented code block, and less than that is stripped. A reference cannot stand in for
+    /// structural whitespace, so the value keeps its indent and the line gains none. Only the
+    /// first character needs it — once the line opens with something that is not whitespace, the
+    /// rest of the run is ordinary text.
+    /// </para>
+    /// <para>
+    /// An opening bracket, because <c>[TOC]</c> and <c>[SECTION]</c> are not syntax at all: they
+    /// are plain text that <see cref="TableOfContents"/> and <see cref="SectionBreaks"/> recognise
+    /// after parsing, and an escaped bracket is still the text of a bracket. Both ask for a
+    /// paragraph of nothing but literals, and a reference is parsed into an inline of its own, so
+    /// a paragraph a value opens is never a marker. A bracket further in cannot open one.
+    /// </para>
+    /// <para>
+    /// A later line of the value needs neither: its newline became <see cref="Break"/>, so it
+    /// never starts a line of the source, and the paragraph it is in already holds an inline that
+    /// is not a literal.
+    /// </para>
+    /// </remarks>
+    static string? LeadingReference(char character) =>
+        character switch
+        {
+            ' ' => "&#32;",
+            '\t' => "&#9;",
+            '[' => "&#91;",
+            _ => null
+        };
+
     public override int MaxOutputCharactersPerInputCharacter => Break.Length;
 
     public override bool WillEncode(int unicodeScalar) =>
@@ -72,7 +113,12 @@ class MarkdownEncoder :
 
     public override string Encode(string value)
     {
-        if (value.AsSpan().IndexOfAny(encodable) < 0)
+        if (EndsADestination(value))
+        {
+            return EncodeDestination(value);
+        }
+
+        if (IsUntouched(value))
         {
             return value;
         }
@@ -88,9 +134,14 @@ class MarkdownEncoder :
     public override void Encode(TextWriter output, char[] value, int startIndex, int characterCount) =>
         output.Write(EncodeSpan(value.AsSpan(startIndex, characterCount)));
 
-    static string EncodeSpan(CharSpan value)
+    string EncodeSpan(CharSpan value)
     {
-        if (value.IndexOfAny(encodable) < 0)
+        if (EndsADestination(value))
+        {
+            return EncodeDestination(value);
+        }
+
+        if (IsUntouched(value))
         {
             return value.ToString();
         }
@@ -100,9 +151,151 @@ class MarkdownEncoder :
         return builder.ToString();
     }
 
+    static bool IsUntouched(CharSpan value) =>
+        value.IndexOfAny(encodable) < 0 &&
+        !StartsWithIndent(value);
+
+    // A bracket is in encodable already. Indentation is the one thing that needs work and holds
+    // no character from that set.
+    static bool StartsWithIndent(CharSpan value) =>
+        value.Length > 0 &&
+        value[0] is ' ' or '\t';
+
+    // Only a value holding a space or a control character can end a destination early, and only
+    // then is what has been written so far worth looking at.
+    bool EndsADestination(CharSpan value) =>
+        written != null &&
+        value.IndexOfAnyInRange(char.MinValue, ' ') >= 0 &&
+        InLinkDestination(written);
+
+    static string EncodeDestination(CharSpan value)
+    {
+        var builder = new StringBuilder(value.Length + 16);
+        WriteDestination(builder, value);
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// The longest unbroken run of source looked back over for the <c>](</c> that opens a
+    /// destination. A url written in a template is far shorter; a line with no whitespace at all
+    /// that is longer than this is not one.
+    /// </summary>
+    const int maxDestinationPrefix = 512;
+
+    /// <summary>
+    /// Whether the value about to be written lands in the destination of an inline link or image —
+    /// <c>[text]({{ Url }})</c>, <c>![alt](images/{{ File }})</c> — going by the markdown already
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// Read from the output rather than worked out from the template source, so it holds whatever
+    /// liquid produced the text before the value: a loop, a branch, an earlier value. Not inside a
+    /// <c>capture</c>, which writes somewhere else. A destination
+    /// the template wrote without whitespace is the only kind recognized — one in angle brackets
+    /// that holds a space of its own is not, and does not need to be, since a space is allowed
+    /// there.
+    /// </remarks>
+    static bool InLinkDestination(StringBuilder written)
+    {
+        var start = written.Length;
+        var floor = Math.Max(0, start - maxDestinationPrefix);
+        while (start > floor &&
+               written[start - 1] > ' ')
+        {
+            start--;
+        }
+
+        if (start == floor &&
+            floor > 0)
+        {
+            return false;
+        }
+
+        Span<char> buffer = stackalloc char[written.Length - start];
+        written.CopyTo(start, buffer, buffer.Length);
+        CharSpan prefix = buffer;
+
+        var open = prefix.LastIndexOf("](");
+        if (open < 0 ||
+            EndsWithDanglingEscape(prefix[..open]))
+        {
+            return false;
+        }
+
+        // What is left is the destination so far. It is still open unless something in it closed
+        // it: a > for the angle-bracket form, a ) with no ( of its own to match otherwise.
+        var destination = prefix[(open + 2)..];
+        var angled = destination.StartsWith('<');
+        var depth = 0;
+        for (var index = 0; index < destination.Length; index++)
+        {
+            switch (destination[index])
+            {
+                case '\\':
+                    index++;
+                    break;
+                case '>' when angled:
+                    return false;
+                case '(' when !angled:
+                    depth++;
+                    break;
+                case ')' when !angled:
+                    if (depth == 0)
+                    {
+                        return false;
+                    }
+
+                    depth--;
+                    break;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// <see cref="Write"/> for a value in a link destination, where a space or a control character
+    /// ends the destination and the link with it: the raw markdown printed instead, which for an
+    /// image put the file path into the document. Each is written as a character reference, which
+    /// a destination resolves like the backslash escapes — so the url or path that reaches the
+    /// link is the value exactly as bound.
+    /// </summary>
+    /// <remarks>
+    /// That includes a line break. <see cref="Break"/> is html, and there is no html in a
+    /// destination.
+    /// </remarks>
+    static void WriteDestination(StringBuilder builder, CharSpan value)
+    {
+        foreach (var character in value)
+        {
+            if (character <= ' ')
+            {
+                builder.Append("&#");
+                builder.Append((int) character);
+                builder.Append(';');
+                continue;
+            }
+
+            if (escapable.Contains(character))
+            {
+                builder.Append('\\');
+            }
+
+            builder.Append(character);
+        }
+    }
+
     static void Write(StringBuilder builder, CharSpan value)
     {
-        for (var index = 0; index < value.Length; index++)
+        var start = 0;
+        if (value.Length > 0 &&
+            LeadingReference(value[0]) is { } reference)
+        {
+            builder.Append(reference);
+            start = 1;
+        }
+
+        for (var index = start; index < value.Length; index++)
         {
             var character = value[index];
 
