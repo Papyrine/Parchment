@@ -149,6 +149,8 @@ class LinkInlineRenderer :
         var html = $"<img src=\"{HtmlEscape(url)}\" alt=\"{HtmlEscape(alt)}\" />";
 
         var settings = renderer.ImagePolicies.BuildSettings();
+        // The converter adds the image's relationship to the main part itself.
+        RelationshipIds.Forget(renderer.MainPart);
         var elements = WordHtmlConverter.ToElements(html, renderer.MainPart, settings);
         renderer.MayHoldBookmarks = true;
         foreach (var element in elements)
