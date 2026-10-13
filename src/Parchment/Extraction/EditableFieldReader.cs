@@ -20,7 +20,8 @@ static class EditableFieldReader
             return ReadCheckbox(sdt, entry, raw);
         }
 
-        var isPlaceholder = sdt.SdtProperties?.GetFirstChild<ShowingPlaceholder>() != null;
+        // w:showingPlcHdr is an on/off element: w:val="0" means the placeholder is not showing.
+        var isPlaceholder = OpenXmlHtmlSerializer.IsOn(sdt.SdtProperties?.GetFirstChild<ShowingPlaceholder>());
         return entry.Kind switch
         {
             EditableFieldKind.Text when isPlaceholder || raw.Length == 0 =>
@@ -109,22 +110,37 @@ static class EditableFieldReader
 
     static ExtractedField ReadCheckbox(SdtElement sdt, EditableEntry entry, string raw)
     {
-        var isChecked = sdt.SdtProperties
-            ?.GetFirstChild<W14.SdtContentCheckBox>()
-            ?.GetFirstChild<W14.Checked>()
-            ?.Val;
-        if (isChecked is { HasValue: true })
+        // Without w14:checkbox the control is no longer a checkbox. Its glyph is configurable
+        // display text, so the state is reported as unreadable rather than guessed from it.
+        var checkBox = sdt.SdtProperties?.GetFirstChild<W14.SdtContentCheckBox>();
+        if (checkBox == null)
         {
-            return new(entry.DottedPath, FieldState.Extracted, isChecked.Value == W14.OnOffValues.One, raw);
+            return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
         }
 
-        // Fall back to the rendered glyph when w14:checked is absent.
-        return raw switch
+        // w14:checked is optional; a checkbox without it is unchecked.
+        var state = checkBox.GetFirstChild<W14.Checked>();
+        if (state == null)
         {
-            "☒" => new(entry.DottedPath, FieldState.Extracted, true, raw),
-            "☐" => new(entry.DottedPath, FieldState.Extracted, false, raw),
-            _ => new(entry.DottedPath, FieldState.ParseFailed, null, raw)
-        };
+            return new(entry.DottedPath, FieldState.Extracted, false, raw);
+        }
+
+        // An on/off element with no w14:val is on.
+        var val = state.Val;
+        if (val == null)
+        {
+            return new(entry.DottedPath, FieldState.Extracted, true, raw);
+        }
+
+        // w14:ST_OnOff has two spellings of each state: "1" / "true" and "0" / "false".
+        if (!val.HasValue)
+        {
+            return new(entry.DottedPath, FieldState.ParseFailed, null, raw);
+        }
+
+        var value = val.Value;
+        var isChecked = value == W14.OnOffValues.One || value == W14.OnOffValues.True;
+        return new(entry.DottedPath, FieldState.Extracted, isChecked, raw);
     }
 
     static ExtractedField ReadNumber(EditableEntry entry, string raw, CultureInfo culture)

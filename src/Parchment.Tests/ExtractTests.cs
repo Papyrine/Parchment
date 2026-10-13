@@ -541,6 +541,110 @@ public partial class ExtractTests
         await Assert.That(result.AllExtracted).IsFalse();
     }
 
+    // w14:ST_OnOff spells each state two ways, and a producer other than Parchment may write either.
+    [Test]
+    [Arguments("1", true)]
+    [Arguments("true", true)]
+    [Arguments("0", false)]
+    [Arguments("false", false)]
+    public async Task CheckboxStateAcceptsEverySpelling(string val, bool expected)
+    {
+        var field = await ExtractApproved(!expected, _ => Checked(_).SetAttribute(CheckedVal(val)));
+
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That((bool) field.Value!).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task CheckboxStateWithoutValIsChecked()
+    {
+        var field = await ExtractApproved(false, _ => Checked(_).Val = null);
+
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That((bool) field.Value!).IsTrue();
+    }
+
+    [Test]
+    public async Task CheckboxWithoutCheckedElementIsUnchecked()
+    {
+        var field = await ExtractApproved(true, _ => Checked(_).Remove());
+
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That((bool) field.Value!).IsFalse();
+    }
+
+    // "on" and "True" are legal for w:val but not for w14:val.
+    [Test]
+    [Arguments("on")]
+    [Arguments("True")]
+    [Arguments("")]
+    public async Task CheckboxStateOutsideTheSchemaReportsParseFailed(string val)
+    {
+        var field = await ExtractApproved(true, _ => Checked(_).SetAttribute(CheckedVal(val)));
+
+        await Assert.That(field.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(field.Value).IsNull();
+        await Assert.That(field.RawText).IsEqualTo("☒");
+    }
+
+    // The glyph is display text a template can change, so it is never read as the state.
+    [Test]
+    public async Task ControlThatLostItsCheckboxReportsParseFailed()
+    {
+        var field = await ExtractApproved(true, _ => _.SdtProperties!.RemoveAllChildren<W14.SdtContentCheckBox>());
+
+        await Assert.That(field.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(field.RawText).IsEqualTo("☒");
+    }
+
+    [Test]
+    [Arguments("0")]
+    [Arguments("false")]
+    [Arguments("off")]
+    public async Task PlaceholderFlagSwitchedOffIsNotEmpty(string val)
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(stream, body =>
+        {
+            EditSdtText(body, "PurchaseOrder", "PO-TYPED");
+            FindSdt(body, "PurchaseOrder").SdtProperties!.AppendChild(
+                new ShowingPlaceholder
+                {
+                    Val = new OnOffValue
+                    {
+                        InnerText = val
+                    }
+                });
+        });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        var field = Field(result, "PurchaseOrder");
+
+        await Assert.That(field.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That(field.Value).IsEqualTo("PO-TYPED");
+    }
+
+    static async Task<ExtractedField> ExtractApproved(bool approved, Action<SdtRun> edit)
+    {
+        var order = EditableFieldTests.NewOrder();
+        order.Approved = approved;
+        using var stream = await RenderOrder(order);
+
+        Edit(stream, body => edit(FindSdt(body, "Approved")));
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+        return Field(result, "Approved");
+    }
+
+    static W14.Checked Checked(SdtRun sdt) =>
+        sdt.SdtProperties!
+            .GetFirstChild<W14.SdtContentCheckBox>()!
+            .GetFirstChild<W14.Checked>()!;
+
+    static OpenXmlAttribute CheckedVal(string val) =>
+        new("w14", "val", "http://schemas.microsoft.com/office/word/2010/wordml", val);
+
     [Test]
     [Arguments("09:00")]
     [Arguments("09:00:00+10:00")]
