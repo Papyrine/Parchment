@@ -1471,6 +1471,114 @@ public partial class EditableFieldTests
         await Assert.That(extracted).IsEqualTo("<ul><li>a</li><li>b</li></ul>");
     }
 
+    // Unedited content is a fixed point: the bold a heading is drawn with and the underline a link
+    // is drawn with are implied by the element, not formatting to report on top of it.
+    [Test]
+    public Task HtmlEditableSupportedSubsetRoundTrips() =>
+        AssertHtmlRoundTrips(
+            "<h1>Title</h1>" +
+            "<h2>Sub <em>stressed</em> <u>under</u> <a href=\"https://example.com/h\">link</a></h2>" +
+            "<p>Hello <strong>bold</strong> <em>ital</em> <u>under</u> <s>strike</s> x<sup>2</sup> H<sub>2</sub>O<br>next</p>" +
+            "<p>see <a href=\"https://example.com/a?x=1&amp;y=2\">link</a> and " +
+            "<a href=\"https://example.com/b\"><strong>bold</strong> link</a> and <a href=\"#local\">local</a></p>" +
+            "<ul><li>a <a href=\"https://example.com/c\">c</a><ol><li><strong>b</strong></li></ol></li></ul>" +
+            "<h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6>");
+
+    [Test]
+    public async Task HtmlEditableImpliedFormattingIsNotReported()
+    {
+        var extracted = await ExtractHtml(
+            "<h1><strong>Title</strong></h1><p><a href=\"https://example.com/a\"><u>link</u></a></p>");
+
+        await Assert.That(extracted).IsEqualTo("<h1>Title</h1><p><a href=\"https://example.com/a\">link</a></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkWithUnderlineRemovedRoundTrips()
+    {
+        // Ctrl+U over a link the render wrote drops its direct w:u.
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\">link</a></p>",
+            content =>
+            {
+                foreach (var underline in content.Descendants<Underline>().ToList())
+                {
+                    underline.Remove();
+                }
+            });
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\" style=\"text-decoration:none\">link</a></p>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkWithUnderlineRemovedFromPartRoundTrips()
+    {
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\"><strong>one</strong> two</a></p>",
+            content =>
+                content.Descendants<Hyperlink>().Single()
+                    .Elements<Run>().First()
+                    .RunProperties!.Underline = new()
+                {
+                    Val = UnderlineValues.None
+                });
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\" style=\"text-decoration:none\"><strong>one</strong><u> two</u></a></p>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkInsertedInWordIsUnderlinedByItsStyle()
+    {
+        // Word draws its own links through the Hyperlink character style, with no direct w:u.
+        var extracted = await ExtractHtml(
+            "<p><a href=\"https://example.com/a\">link</a></p>",
+            content =>
+                content.Descendants<Hyperlink>().Single()
+                    .Elements<Run>().Single()
+                    .RunProperties = new(
+                    new RunStyle
+                    {
+                        Val = "Hyperlink"
+                    }));
+
+        await Assert.That(extracted).IsEqualTo("<p><a href=\"https://example.com/a\">link</a></p>");
+    }
+
+    [Test]
+    public async Task HtmlEditableHeadingRunWithBoldSwitchedOffRoundTrips()
+    {
+        var extracted = await ExtractHtml(
+            "<h1>one <em>two</em></h1>",
+            content =>
+                content.Descendants<Run>().Last()
+                    .RunProperties!.Bold = new()
+                {
+                    Val = false
+                });
+
+        await Assert.That(extracted).IsEqualTo("<h1>one <span style=\"font-weight:normal\"><em>two</em></span></h1>");
+        await AssertHtmlRoundTrips(extracted!);
+    }
+
+    [Test]
+    public async Task HtmlEditableParagraphGivenHeadingStyleInWordIsAPlainHeading()
+    {
+        // The style gallery sets w:pStyle and leaves the runs alone, so they carry no w:b.
+        var extracted = await ExtractHtml(
+            "<p>Title <strong>bold</strong></p>",
+            content =>
+                content.Descendants<Paragraph>().Single()
+                    .ParagraphProperties = new(
+                    new ParagraphStyleId
+                    {
+                        Val = "Heading2"
+                    }));
+
+        await Assert.That(extracted).IsEqualTo("<h2>Title bold</h2>");
+    }
+
     [Test]
     [Arguments("mailto:a@b.co?subject=Hi%20there")]
     [Arguments("tel:+61-2-5550-1234")]
@@ -1491,7 +1599,7 @@ public partial class EditableFieldTests
         await Assert.That(extracted).IsEqualTo(html);
     }
 
-    static async Task<string?> ExtractHtml(string html)
+    static async Task<string?> ExtractHtml(string html, Action<OpenXmlElement>? edit = null)
     {
         var model = new EditableArticle
         {
@@ -1499,6 +1607,18 @@ public partial class EditableFieldTests
             Body = html
         };
         using var stream = await RenderModel("{{ Body }}", model);
+
+        if (edit != null)
+        {
+            using (var doc = WordprocessingDocument.Open(stream, true))
+            {
+                var sdt = FindSdtBlock(doc.MainDocumentPart!.Document!.Body!, "Body");
+                edit(sdt.ChildElements.First(_ => _.LocalName == "sdtContent"));
+                doc.Save();
+            }
+
+            stream.Position = 0;
+        }
 
         var result = ParchmentExtractor.Extract<EditableArticle>(stream);
         model.Body = "";
@@ -1546,7 +1666,8 @@ public partial class EditableFieldTests
     static string WordRun(string text) =>
         $"""<w:r><w:t xml:space="preserve">{text}</w:t></w:r>""";
 
-    // Extraction reads a document with every tracked change accepted.
+    // Extraction reads a document with every tracked change accepted. The link run carries the
+    // Hyperlink style, as one inserted in Word does: without it the link reads as not underlined.
     [Test]
     public async Task HtmlEditableKeepsTrackedInsertionsAndDropsDeletions()
     {
@@ -1555,7 +1676,7 @@ public partial class EditableFieldTests
              <w:p>{WordRun("keep ")}<w:ins {revision}>{WordRun("typed")}</w:ins><w:del {revision}><w:r><w:delText> gone</w:delText></w:r></w:del></w:p>
              <w:p><w:pPr><w:rPr><w:ins {revision}/></w:rPr></w:pPr><w:ins {revision}>{WordRun("new paragraph")}</w:ins></w:p>
              <w:p><w:pPr><w:rPr><w:del {revision}/></w:rPr></w:pPr><w:del {revision}><w:r><w:delText>gone paragraph</w:delText></w:r></w:del></w:p>
-             <w:p><w:hyperlink w:anchor="bm"><w:ins {revision}>{WordRun("link")}</w:ins></w:hyperlink></w:p>
+             <w:p><w:hyperlink w:anchor="bm"><w:ins {revision}><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr><w:t>link</w:t></w:r></w:ins></w:hyperlink></w:p>
              """);
 
         await Assert.That(extracted).IsEqualTo("""<p>keep typed</p><p>new paragraph</p><p><a href="#bm">link</a></p>""");
