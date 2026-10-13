@@ -36,4 +36,7 @@
     // [Html]/[Markdown]/[StringSyntax] on a member that is neither a string nor a TokenValue —
     // reported as PARCH029 and excluded from format-map emission, since the conversion reads a
     // string and there is none to read.
-    bool FormatMarkerOnNonString = false);
+    bool FormatMarkerOnNonString = false,
+    // False when an [EditableField] collection is declared as a type that cannot hold the List<T>
+    // or T[] extraction rebuilds - reported as PARCH022 and excluded from emission.
+    bool EditableCollectionAssignable = true);

@@ -178,12 +178,13 @@ static class AccessorEmission
             if (member.IsEditable)
             {
                 // An editable collection (POCO element) → repeating section, registered separately.
-                // Invalid shapes (no setter, element without a parameterless ctor or without
-                // editable members) carry an error diagnostic (PARCH014 / PARCH022) — skip them so
+                // Invalid shapes (no setter, a declared type the rebuilt list cannot be assigned
+                // to, element without a parameterless ctor or without editable members) carry an error diagnostic (PARCH014 / PARCH022) — skip them so
                 // the emitted source stays compilable.
                 if (member.EditableCollectionElementFqn != null)
                 {
                     if (member.HasUsableSetter &&
+                        member.EditableCollectionAssignable &&
                         typesByFqn.TryGetValue(member.EditableCollectionElementFqn, out var elementEntry) &&
                         elementEntry.HasParameterlessCtor &&
                         HasScalarEditableMember(elementEntry))

@@ -149,6 +149,7 @@ static class ShapeBuilder
                     // A collection of a system element type (e.g. List<string>) is not one — it falls
                     // through to the scalar path, where MapEditableKind yields null → PARCH013.
                     string? editableCollectionElementFqn = null;
+                    var editableCollectionAssignable = true;
                     EditableFieldKind? editableKind = null;
                     if (isEditable)
                     {
@@ -157,6 +158,7 @@ static class ShapeBuilder
                             !IsSystemType(collectionElement))
                         {
                             editableCollectionElementFqn = Fqn(collectionElement);
+                            editableCollectionAssignable = AcceptsRebuiltList(memberType);
                         }
                         else
                         {
@@ -187,7 +189,8 @@ static class ShapeBuilder
                         excelsiorConfigureCall,
                         excelsiorConfigureMissing,
                         excelsiorNotTabular,
-                        markerOnNonString));
+                        markerOnNonString,
+                        editableCollectionAssignable));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -196,6 +199,32 @@ static class ShapeBuilder
         }
 
         return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid);
+    }
+
+    // Lockstep with the runtime's ParchmentExtractor.ReconstructCollection, which rebuilds an
+    // editable collection as a T[] for a member declared T[] and as a List<T> for everything else.
+    // The generated setter casts that value to the declared type, so the declared type has to be
+    // one of the two or an interface List<T> implements. Anything else (HashSet<T>, Collection<T>,
+    // an immutable collection, a class deriving from List<T>) is PARCH022.
+    static bool AcceptsRebuiltList(ITypeSymbol type)
+    {
+        if (type is IArrayTypeSymbol array)
+        {
+            return array.IsSZArray;
+        }
+
+        if (type is not INamedTypeSymbol {IsGenericType: true, TypeArguments.Length: 1} named)
+        {
+            return false;
+        }
+
+        return named.ConstructedFrom.ToDisplayString() is
+            "System.Collections.Generic.List<T>" or
+            "System.Collections.Generic.IList<T>" or
+            "System.Collections.Generic.ICollection<T>" or
+            "System.Collections.Generic.IEnumerable<T>" or
+            "System.Collections.Generic.IReadOnlyList<T>" or
+            "System.Collections.Generic.IReadOnlyCollection<T>";
     }
 
     // Lockstep with the runtime's LiquidMembers.Classify, which reads the same four cases off a
