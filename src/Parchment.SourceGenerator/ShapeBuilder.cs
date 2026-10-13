@@ -822,7 +822,7 @@ static class ShapeBuilder
 
         if (methods.Any(_ => compilation.IsSymbolAccessibleWithin(_, root)))
         {
-            call = $"{Fqn(owner)}.{name}";
+            call = $"{Fqn(owner)}.{Identifiers.Escape(name)}";
             return;
         }
 

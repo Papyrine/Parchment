@@ -394,11 +394,11 @@ static class AccessorEmission
                     // Static member: the instance argument is irrelevant. Access via the owner
                     // type directly so the emitted code is legal C# (CS0176 forbids instance-
                     // qualifying a static member).
-                    fields.Append($"(_, _) => {type.TypeFullyQualifiedName}.{member.Name}");
+                    fields.Append($"(_, _) => {type.TypeFullyQualifiedName}.{Identifiers.Escape(member.Name)}");
                 }
                 else
                 {
-                    fields.Append($"(o, _) => (({type.TypeFullyQualifiedName})o).{member.Name}");
+                    fields.Append($"(o, _) => (({type.TypeFullyQualifiedName})o).{Identifiers.Escape(member.Name)}");
                 }
 
                 fields.AppendLine(")),");
@@ -775,7 +775,7 @@ static class AccessorEmission
             builder.Append("((");
             builder.Append(rootFqn);
             builder.Append(")o).");
-            builder.Append(path[0]);
+            builder.Append(Identifiers.Escape(path[0]));
             builder.Append(" = ");
             builder.Append(cast);
             builder.Append("; }");
@@ -787,7 +787,7 @@ static class AccessorEmission
         builder.Append(")o)");
         AppendParentPath(builder, path);
         builder.Append("; if (p != null) { p.");
-        builder.Append(path[^1]);
+        builder.Append(Identifiers.Escape(path[^1]));
         builder.Append(" = ");
         builder.Append(cast);
         builder.Append("; } }");
@@ -831,7 +831,7 @@ static class AccessorEmission
             builder.Append(" = ");
             builder.Append(parent);
             builder.Append(i == 0 ? "." : "?.");
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
             builder.Append("; ");
 
             var typeFqn = creatableParents[i];
@@ -853,7 +853,7 @@ static class AccessorEmission
             builder.Append("))!; ");
             builder.Append(parent);
             builder.Append('.');
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
             builder.Append(" = ");
             builder.Append(current);
             builder.Append("; } ");
@@ -864,7 +864,7 @@ static class AccessorEmission
         builder.Append(" != null) { p");
         builder.Append(creatableParents.Count);
         builder.Append('.');
-        builder.Append(path[^1]);
+        builder.Append(Identifiers.Escape(path[^1]));
         builder.Append(" = ");
         builder.Append(SetterCast(member));
         builder.Append("; } }");
@@ -890,7 +890,7 @@ static class AccessorEmission
         for (var i = 0; i < path.Count - 1; i++)
         {
             builder.Append(i == 0 ? "." : "?.");
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
         }
     }
 
@@ -905,7 +905,7 @@ static class AccessorEmission
             // through TemplateStore.Render, which never passes null). Subsequent segments use `?.`
             // so a null intermediate short-circuits — matching the runtime ChainGetter semantics.
             builder.Append(i == 0 ? "." : "?.");
-            builder.Append(path[i]);
+            builder.Append(Identifiers.Escape(path[i]));
         }
     }
 

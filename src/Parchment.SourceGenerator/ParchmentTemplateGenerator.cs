@@ -85,9 +85,10 @@ public sealed class ParchmentTemplateGenerator :
                 // A shared parchment.dotx is every model's style source in its folder tree, so an
                 // unreadable one is reported against the file once, not once per model.
                 var reportedStyleDocs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var hints = HintNames.Disambiguate(targetInfos.Select(_ => _.Target));
                 foreach (var target in targetInfos)
                 {
-                    Process(productionContext, target, docData, markdownData, dotxData, projectDir, reportedStyleDocs);
+                    Process(productionContext, target, HintNames.Resolve(target.Target, hints), docData, markdownData, dotxData, projectDir, reportedStyleDocs);
                 }
             });
 
@@ -103,9 +104,17 @@ public sealed class ParchmentTemplateGenerator :
             .Select(static (target, _) => target!)
             .WithTrackingName(Stages.Bindables);
 
+        // The hint names depend on the other targets only when two of them flatten to the same
+        // name, so what each target combines with is the (normally empty) list of those that do,
+        // and an edit to one model still leaves every other one cached.
+        var bindableHints = bindables
+            .Collect()
+            .Select(static (array, _) => HintNames.Disambiguate(array.Select(_ => _.Target)))
+            .WithTrackingName(Stages.BindableHints);
+
         context.RegisterSourceOutput(
-            bindables,
-            static (productionContext, target) => ProcessBindable(productionContext, target));
+            bindables.Combine(bindableHints),
+            static (productionContext, pair) => ProcessBindable(productionContext, pair.Left, HintNames.Resolve(pair.Left.Target, pair.Right)));
     }
 
     // Pairs the primitive snapshot with the syntax tree its attribute sits in, so the diagnostics
@@ -135,7 +144,7 @@ public sealed class ParchmentTemplateGenerator :
         return ExtractTarget(context, cancel);
     }
 
-    static void ProcessBindable(SourceProductionContext context, LocatedTarget located)
+    static void ProcessBindable(SourceProductionContext context, LocatedTarget located, string hintName)
     {
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
@@ -153,7 +162,7 @@ public sealed class ParchmentTemplateGenerator :
         ValidateExcelsiorShape(context, target, location);
         ValidateFormatMarkerTypes(context, target, location);
 
-        EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
+        EmitRegistration(context, target, hintName, GenerateBindableRegistration(target), "ParchmentBindable");
     }
 
     // The declarations nothing can be emitted for. Both attributes stop here, skipping validation
@@ -222,7 +231,7 @@ public sealed class ParchmentTemplateGenerator :
 
         var declaringNamespace = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? null
-            : typeSymbol.ContainingNamespace.ToDisplayString();
+            : typeSymbol.ContainingNamespace.ToDisplayString(namespaceFormat);
 
         var enclosingResult = BuildEnclosingChain(typeSymbol);
 
@@ -309,6 +318,11 @@ public sealed class ParchmentTemplateGenerator :
             Accessibility.Public or
             Accessibility.Internal or
             Accessibility.ProtectedOrInternal;
+
+    // Written into a `namespace` declaration, so a segment that is a keyword has to keep its `@`.
+    static readonly SymbolDisplayFormat namespaceFormat = new(
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
 
     static (List<EnclosingType> Chain, string? Error) BuildEnclosingChain(INamedTypeSymbol typeSymbol)
     {
@@ -521,6 +535,7 @@ public sealed class ParchmentTemplateGenerator :
     static void Process(
         SourceProductionContext context,
         LocatedTarget located,
+        string hintName,
         EquatableArray<DocxData> docs,
         EquatableArray<MarkdownData> markdowns,
         EquatableArray<DotxData> dotxes,
@@ -570,16 +585,17 @@ public sealed class ParchmentTemplateGenerator :
 
         if (markdownCandidates.Count == 1)
         {
-            ProcessMarkdown(context, target, location, markdownCandidates[0], dotxes, projectDirectory, reportedStyleDocs);
+            ProcessMarkdown(context, target, hintName, location, markdownCandidates[0], dotxes, projectDirectory, reportedStyleDocs);
             return;
         }
 
-        ProcessDocx(context, target, location, docxCandidates[0], projectDirectory);
+        ProcessDocx(context, target, hintName, location, docxCandidates[0], projectDirectory);
     }
 
     static void ProcessDocx(
         SourceProductionContext context,
         TargetInfo target,
+        string hintName,
         Location location,
         DocxData matched,
         string? projectDirectory)
@@ -628,7 +644,7 @@ public sealed class ParchmentTemplateGenerator :
             ValidateEditableTokens(context, target, templatePath, bodyTokens, location);
         }
 
-        EmitRegistration(context, target, GenerateDocxRegistration(target, matched));
+        EmitRegistration(context, target, hintName, GenerateDocxRegistration(target, matched));
     }
 
     static bool HasEditableMembers(ModelShape shape)
@@ -1307,6 +1323,7 @@ public sealed class ParchmentTemplateGenerator :
     static void ProcessMarkdown(
         SourceProductionContext context,
         TargetInfo target,
+        string hintName,
         Location location,
         MarkdownData matched,
         EquatableArray<DotxData> dotxes,
@@ -1382,29 +1399,15 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
-        EmitRegistration(context, target, GenerateMarkdownRegistration(target, matched, style));
+        EmitRegistration(context, target, hintName, GenerateMarkdownRegistration(target, matched, style));
     }
 
     static readonly FluidParser markdownParser = new MarkdownFluidParser();
 
-    static void EmitRegistration(SourceProductionContext context, TargetInfo target, string source, string suffix = "ParchmentModel")
+    // The hint name comes from HintNames, which keeps it legal and unique across the targets of
+    // one flow; the suffix keeps the two flows apart.
+    static void EmitRegistration(SourceProductionContext context, TargetInfo target, string hintPrefix, string source, string suffix = "ParchmentModel")
     {
-        // The hint name must be unique across all targets in the compilation. Simple name alone
-        // collides when two models share `DeclaringName` (e.g. `Outer1.Info` and `Outer2.Info`),
-        // so include the namespace AND every enclosing-type name as part of the prefix.
-        var builder = new StringBuilder();
-        if (target.DeclaringNamespace != null)
-        {
-            builder.Append(target.DeclaringNamespace).Append('_');
-        }
-
-        foreach (var enclosing in target.EnclosingTypes)
-        {
-            builder.Append(enclosing.Name).Append('_');
-        }
-
-        builder.Append(target.DeclaringName);
-        var hintPrefix = builder.ToString().Replace('.', '_');
         context.AddSource(
             $"{hintPrefix}_{suffix}.g.cs",
             SourceText.From(source, Encoding.UTF8));
@@ -1954,12 +1957,12 @@ public sealed class ParchmentTemplateGenerator :
         var depth = 0;
         foreach (var enclosing in target.EnclosingTypes)
         {
-            builder.Indent(depth).AppendLine($"partial {enclosing.Kind} {enclosing.Name}");
+            builder.Indent(depth).AppendLine($"partial {enclosing.Kind} {Identifiers.EscapeDeclaration(enclosing.Name)}");
             builder.Indent(depth).AppendLine("{");
             depth++;
         }
 
-        builder.Indent(depth).AppendLine($"partial {target.DeclaringKind} {target.DeclaringName}");
+        builder.Indent(depth).AppendLine($"partial {target.DeclaringKind} {Identifiers.EscapeDeclaration(target.DeclaringName)}");
         builder.Indent(depth).AppendLine("{");
 
         // Everything emitted here lives in a nested type of its own rather than directly in the
@@ -2081,5 +2084,6 @@ public sealed class ParchmentTemplateGenerator :
         public const string DotxesCollected = "Parchment_DotxesCollected";
         public const string Combined = "Parchment_Combined";
         public const string Bindables = "Parchment_Bindables";
+        public const string BindableHints = "Parchment_BindableHints";
     }
 }
