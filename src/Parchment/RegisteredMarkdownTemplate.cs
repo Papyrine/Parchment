@@ -217,6 +217,9 @@ class RegisteredMarkdownTemplate(
             await runner.RunAsync(part.Nodes).ConfigureAwait(false);
             runner.ApplyStructural();
             runner.SeparateTables();
+            // None of these parts is the body, so this only ever rejects a marker - the body's own
+            // are finished by SectionBreaks.Apply in Render.
+            runner.ApplySectionBreaks(root);
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based

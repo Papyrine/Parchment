@@ -7,7 +7,7 @@
 /// Word reads two <c>w:tbl</c> siblings with nothing between them as one table: the rows of the
 /// second continue the first, whatever its own columns were. The schema allows the pair and
 /// <c>OpenXmlValidator</c> passes it, so every place that can produce one puts an empty paragraph
-/// between them instead - the same separator <c>ScopeTreeRunner.SeparateProducedTables</c> writes
+/// between them instead - the same separator <c>ScopeTreeRunner.SeparateTables</c> writes
 /// for the docx flow.
 /// </para>
 /// <para>

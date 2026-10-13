@@ -128,5 +128,6 @@ class RegisteredDocxTemplate(
         await runner.RunAsync(part.Nodes).ConfigureAwait(false);
         runner.ApplyStructural();
         runner.SeparateTables();
+        runner.ApplySectionBreaks(root);
     }
 }

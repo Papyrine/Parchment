@@ -20,7 +20,8 @@ class ScopeTreeRunner(
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
-    List<Table>? tables = null)
+    List<Table>? tables = null,
+    List<Paragraph>? sections = null)
 {
     List<StructuralReplacement>? structuralReplacements;
 
@@ -30,6 +31,12 @@ class ScopeTreeRunner(
     // directly after another table is only known once the tag paragraphs around it are gone, so
     // the root runner checks at the end.
     readonly List<Table> tablesToCheck = tables ?? [];
+
+    // Every [SECTION] marker a markdown value wrote, shared the same way. A marker holds only what
+    // it declared, and the section it is derived from is whichever one it ends up inside - which a
+    // loop iteration still sitting in its scratch container cannot say - so the root runner
+    // finishes them at the end as well.
+    readonly List<Paragraph> sectionMarkers = sections ?? [];
 
     // The loop variables open around the nodes this runner walks. A token that starts with one
     // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
@@ -104,6 +111,23 @@ class ScopeTreeRunner(
 
             previous = child;
         }
+    }
+
+    /// <summary>
+    /// Turns each <c>[SECTION]</c> marker a markdown value wrote into a whole section, derived from
+    /// the section of <paramref name="root"/> it landed in — see <see cref="SectionBreaks"/>. Run on
+    /// the root runner once the whole tree has been processed and its replacements applied. Only a
+    /// document body can hold a section break, so a marker anywhere else is rejected here.
+    /// </summary>
+    public void ApplySectionBreaks(OpenXmlCompositeElement root)
+    {
+        if (sectionMarkers.Count == 0)
+        {
+            return;
+        }
+
+        SectionBreaks.ApplyInPart(root, sectionMarkers, templateName, partUri);
+        sectionMarkers.Clear();
     }
 
     // Range markers can sit between two blocks without keeping their tables apart.
@@ -354,7 +378,7 @@ class ScopeTreeRunner(
     /// </summary>
     Paragraph? ApplyNonSoloStructural(DocxTokenSite token, Paragraph host, object value, ref bool splitQueued)
     {
-        var produced = RenderTokenValue(value, host, token);
+        var produced = RenderTokenValue(value, host, token, out var mayHoldSections);
         if (produced.Count == 0)
         {
             // Nothing to render — strip the token text from the host paragraph.
@@ -362,7 +386,14 @@ class ScopeTreeRunner(
             return null;
         }
 
-        if (ParagraphSplicer.IsInlineEquivalent(produced))
+        // A value that is nothing but a [SECTION] marker is a single paragraph too, but the break
+        // is its paragraph properties, which are exactly what an inline splice drops. It takes the
+        // split below instead, as any other block does.
+        var loneMarker = mayHoldSections &&
+                         produced.Count == 1 &&
+                         SectionBreaks.IsMarker(produced[0]);
+        if (!loneMarker &&
+            ParagraphSplicer.IsInlineEquivalent(produced))
         {
             ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
             return null;
@@ -387,6 +418,13 @@ class ScopeTreeRunner(
         // against a paragraph that stays in the document; higher-offset tokens have already been
         // applied and are carried into the after half.
         var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
+        if (mayHoldSections)
+        {
+            // Split hands back copies of what was produced, followed by the after half. The copies
+            // are what reaches the document, and the after half is the host's own paragraph.
+            SectionBreaks.Collect(split.Take(produced.Count), sectionMarkers);
+        }
+
         structuralReplacements ??= [];
         structuralReplacements.Add(new(host, split, KeepHost: true));
         splitQueued = true;
@@ -398,20 +436,29 @@ class ScopeTreeRunner(
         var result = new List<OpenXmlElement>();
         foreach (var (site, value) in tokens)
         {
-            result.AddRange(RenderTokenValue(value, host, site));
+            var produced = RenderTokenValue(value, host, site, out var mayHoldSections);
+            if (mayHoldSections)
+            {
+                SectionBreaks.Collect(produced, sectionMarkers);
+            }
+
+            result.AddRange(produced);
         }
 
         return result;
     }
 
-    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host, DocxTokenSite site)
+    // mayHoldSections is true only for a markdown value, and only when its walk says so: a paragraph
+    // carrying a w:sectPr is a [SECTION] marker there, where one an OpenXmlToken returns is a
+    // section break the caller wrote whole.
+    IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host, DocxTokenSite site, out bool mayHoldSections)
     {
         if (value is MarkdownToken md)
         {
             try
             {
                 // Renumbers its own bookmarks, from the same counter.
-                return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0);
+                return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
             }
             catch (TableColumnLimitException exception)
             {
@@ -425,6 +472,8 @@ class ScopeTreeRunner(
                     site.Source);
             }
         }
+
+        mayHoldSections = false;
 
         IReadOnlyList<OpenXmlElement> produced = value switch
         {
@@ -753,7 +802,8 @@ class ScopeTreeRunner(
             numberingState,
             styles,
             imagePolicies,
-            tablesToCheck)
+            tablesToCheck,
+            sectionMarkers)
         {
             loopVariables = [..loopVariables, loop.LoopVariable]
         };
@@ -886,7 +936,8 @@ class ScopeTreeRunner(
                     numberingState,
                     styles,
                     imagePolicies,
-                    tablesToCheck)
+                    tablesToCheck,
+                    sectionMarkers)
                 {
                     loopVariables = itemLoopVariables
                 };
@@ -1102,7 +1153,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, tablesToCheck)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
         {
             loopVariables = loopVariables
         };
