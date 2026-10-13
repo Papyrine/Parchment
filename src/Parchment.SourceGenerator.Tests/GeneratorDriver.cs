@@ -370,13 +370,21 @@
         return stream.ToArray();
     }
 
+    // The assemblies the stand-in sources declare types of. A compilation that uses the stand-ins
+    // must not see the real ones as well, or every name is declared twice (CS0436).
+    static readonly HashSet<string> stoodInFor = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Parchment.dll",
+        "Fluid.dll"
+    };
+
     static MetadataReference[] BuildReferences(bool realParchment)
     {
         var tpa = (string?) AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "";
         return tpa
             .Split(Path.PathSeparator)
             .Where(_ => !string.IsNullOrEmpty(_))
-            .Where(_ => realParchment || Path.GetFileName(_) != "Parchment.dll")
+            .Where(_ => realParchment || !stoodInFor.Contains(Path.GetFileName(_)))
             .Select(MetadataReference (_) => MetadataReference.CreateFromFile(_))
             .ToArray();
     }
