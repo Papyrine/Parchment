@@ -624,6 +624,8 @@ class ScopeTreeRunner(
                 // paragraph it adds it to already holds the anchor's and maybe the template's -
                 // see BookmarkIds.
                 var existing = BookmarkIds.Markers(target);
+                // And it can add any relationship to any part it reaches from the main part.
+                RelationshipIds.Forget(mainPart);
                 FlushAllRemovals();
                 try
                 {
@@ -822,6 +824,8 @@ class ScopeTreeRunner(
             FlushAllRemovals();
         }
 
+        // A delegate can add any relationship to any part it reaches from the main part.
+        RelationshipIds.Forget(mainPart);
         IReadOnlyList<OpenXmlElement> produced = value switch
         {
             HtmlToken html => numberingState.ConvertHtml(

@@ -117,6 +117,8 @@ sealed class PartRelationships(MainDocumentPart mainPart, OpenXmlPart owner)
             return;
         }
 
+        // The main part is about to lose relationships its link index may hold.
+        RelationshipIds.Forget(mainPart);
         foreach (var id in moved.Keys)
         {
             if (mainPart.TryGetPartById(id, out _))
@@ -192,7 +194,7 @@ sealed class PartRelationships(MainDocumentPart mainPart, OpenXmlPart owner)
         {
             if (link.Id == id)
             {
-                ownerId = AddHyperlink(link);
+                ownerId = RelationshipIds.Hyperlink(owner, link);
                 return true;
             }
         }
@@ -209,31 +211,6 @@ sealed class PartRelationships(MainDocumentPart mainPart, OpenXmlPart owner)
 
         ownerId = null;
         return false;
-    }
-
-    string AddHyperlink(HyperlinkRelationship link)
-    {
-        if (link.IsExternal)
-        {
-            // Already a relationship on the main part, so the target is one a relationship can
-            // hold: it is carried over as it stands, and shared when the owner points there too.
-            foreach (var existing in owner.HyperlinkRelationships)
-            {
-                if (existing.IsExternal &&
-                    string.Equals(existing.Uri.OriginalString, link.Uri.OriginalString, StringComparison.Ordinal))
-                {
-                    return existing.Id;
-                }
-            }
-
-            var externalId = RelationshipIds.Next(owner, "rIdLink");
-            owner.AddHyperlinkRelationship(link.Uri, true, externalId);
-            return externalId;
-        }
-
-        var id = RelationshipIds.Next(owner, "rIdLink");
-        owner.AddHyperlinkRelationship(link.Uri, false, id);
-        return id;
     }
 
     static string Prefix(OpenXmlPart part)

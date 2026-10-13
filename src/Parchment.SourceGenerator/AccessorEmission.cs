@@ -65,6 +65,8 @@ static class AccessorEmission
             fluidBlocks.Add(("_Accessors_" + ToIdentifier(type.TypeFullyQualifiedName), type));
         }
 
+        var reachesMap = TypesReachingMap(typesByFqn);
+
         // Excelsior / Format / StringList walks: dotted-path traversal from the root TModel,
         // collecting attribute-marked properties. Per-branch visited tracking mirrors the runtime
         // walkers, so self-referential models terminate.
@@ -76,6 +78,7 @@ static class AccessorEmission
                 rootFqn
             },
             typesByFqn,
+            reachesMap,
             excelsiorEntries,
             formatEntries,
             stringListEntries,
@@ -102,7 +105,7 @@ static class AccessorEmission
         EmitFormatBlock(fields, registrations, rootFqn, formatEntries);
         EmitStringListBlock(fields, registrations, rootFqn, stringListEntries);
         EmitEditableBlock(fields, registrations, rootFqn, editableEntries);
-        EmitCollectionBlock(fields, registrations, rootFqn, typesByFqn, collectionEntries);
+        EmitCollectionBlock(fields, registrations, rootFqn, typesByFqn, reachesMap, collectionEntries);
 
         fields.TrimTrailingNewlines();
         registrations.TrimTrailingNewlines();
@@ -191,6 +194,7 @@ static class AccessorEmission
         List<string> path,
         HashSet<string> visited,
         Dictionary<string, TypeEntry> typesByFqn,
+        HashSet<string> reachesMap,
         List<(List<string>, string, string?, string?, string?, string?)> excelsior,
         List<(List<string>, FormatMapKind)> formats,
         List<List<string>> stringLists,
@@ -315,14 +319,76 @@ static class AccessorEmission
                 continue;
             }
 
+            // Nothing below adds an entry, and walking it anyway costs every simple path through
+            // the types it leads to: exponential on a densely connected model.
+            if (!reachesMap.Contains(member.TypeFullyQualifiedName))
+            {
+                continue;
+            }
+
             if (!visited.Add(member.TypeFullyQualifiedName))
             {
                 continue;
             }
 
-            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, excelsior, formats, stringLists, editables, collections, throughValueType, valueTypeFqn);
+            WalkForMaps(member.TypeFullyQualifiedName, nextPath, visited, typesByFqn, reachesMap, excelsior, formats, stringLists, editables, collections, throughValueType, valueTypeFqn);
             visited.Remove(member.TypeFullyQualifiedName);
         }
+    }
+
+    /// <summary>
+    /// The types <see cref="WalkForMaps"/> can add an entry from: those declaring a member it
+    /// claims for a map, and those with a member leading to one.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately wider than the walk: a marked member counts whether or not its shape is valid,
+    /// and a type counts however it is reached, where the walk also stops at a type already on the
+    /// path. Too wide only costs a descent that adds nothing; too narrow would drop entries. Grown
+    /// to a fixed point rather than memoised during a depth-first pass, which would settle a type
+    /// inside a cycle as unreachable before the rest of the cycle had been looked at.
+    /// </remarks>
+    static HashSet<string> TypesReachingMap(Dictionary<string, TypeEntry> typesByFqn)
+    {
+        var reaches = new HashSet<string>(StringComparer.Ordinal);
+        bool grew;
+        do
+        {
+            grew = false;
+            foreach (var type in typesByFqn.Values)
+            {
+                if (!reaches.Contains(type.TypeFullyQualifiedName) &&
+                    HasMemberReachingMap(type, reaches))
+                {
+                    reaches.Add(type.TypeFullyQualifiedName);
+                    grew = true;
+                }
+            }
+        } while (grew);
+
+        return reaches;
+    }
+
+    static bool HasMemberReachingMap(TypeEntry type, HashSet<string> reaches)
+    {
+        foreach (var member in type.Members)
+        {
+            if (member.IsStatic)
+            {
+                continue;
+            }
+
+            if (member.IsExcelsiorTable ||
+                member.IsStringList ||
+                member.IsHtml ||
+                member.IsMarkdown ||
+                member.IsEditable ||
+                reaches.Contains(member.TypeFullyQualifiedName))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -338,6 +404,7 @@ static class AccessorEmission
             typesByFqn[type.TypeFullyQualifiedName] = type;
         }
 
+        var reachesMap = TypesReachingMap(typesByFqn);
         var result = new List<(string, MemberEntry, string)>();
         var collections = new List<(List<string> Path, MemberEntry Member)>();
         Walk(shape.RootTypeFullyQualifiedName, collections);
@@ -357,6 +424,7 @@ static class AccessorEmission
                     fqn
                 },
                 typesByFqn,
+                reachesMap,
                 [],
                 [],
                 [],
@@ -676,6 +744,7 @@ static class AccessorEmission
         StringBuilder registrations,
         string rootFqn,
         Dictionary<string, TypeEntry> typesByFqn,
+        HashSet<string> reachesMap,
         List<(List<string> Path, MemberEntry Member)> entries)
     {
         if (entries.Count == 0)
@@ -708,7 +777,7 @@ static class AccessorEmission
             fields.Append(", static () => global::System.Activator.CreateInstance(typeof(");
             fields.Append(elementFqn);
             fields.Append("))!, ");
-            EmitElementFields(fields, elementFqn, typesByFqn);
+            EmitElementFields(fields, elementFqn, typesByFqn, reachesMap);
             fields.Append(", ");
             fields.Append(isArray ? "true" : "false");
             fields.AppendLine("),");
@@ -725,7 +794,7 @@ static class AccessorEmission
 
     // The element type's editable members, getters/setters rooted at an element instance (item-relative
     // dotted paths) — the sub-entries read/written inside each repeated section item.
-    static void EmitElementFields(StringBuilder builder, string elementFqn, Dictionary<string, TypeEntry> typesByFqn)
+    static void EmitElementFields(StringBuilder builder, string elementFqn, Dictionary<string, TypeEntry> typesByFqn, HashSet<string> reachesMap)
     {
         var elementEditables = new List<(List<string> Path, MemberEntry Member)>();
         WalkForMaps(
@@ -736,6 +805,7 @@ static class AccessorEmission
                 elementFqn
             },
             typesByFqn,
+            reachesMap,
             [],
             [],
             [],

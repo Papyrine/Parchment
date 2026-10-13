@@ -9,8 +9,7 @@ class LiteralInlineRenderer :
             return;
         }
 
-        var text = XmlChars.Strip(content).ToString();
-        renderer.AddRun(BuildRun(text));
+        renderer.AddLiteral(inline, XmlChars.Strip(content));
     }
 
     /// <summary>

@@ -66,10 +66,100 @@ public class IncrementalTests
         await Assert.That(diagnostic.Location.SourceTree).IsSameReferenceAs(compilation2.SyntaxTrees[1]);
     }
 
-    // Note: we intentionally do not test "editing the model class in a separate file
-    // re-runs validation" — ForAttributeWithMetadataName only re-fires on syntax changes to
-    // the attributed class itself, so this scenario is a known gap documented in
-    // ParchmentTemplateGenerator.Initialize and ShapeBuilder.
+    // Three models reaching one type declared in a file of its own. Its entry is built once per
+    // compilation and handed to all three (ShapeBuilder.sharedEntries), which must cost neither
+    // guarantee: an edit elsewhere leaves every model cached, and an edit to the shared type
+    // reaches every model.
+    const string sharingModels =
+        """
+        using Parchment;
+
+        namespace Sample;
+
+        [ParchmentModel]
+        public partial class Letter
+        {
+            public Customer Customer { get; set; } = new();
+        }
+
+        [ParchmentBindable]
+        public partial class Invoice
+        {
+            public Customer Customer { get; set; } = new();
+        }
+
+        [ParchmentBindable]
+        public partial class Receipt
+        {
+            public Customer Customer { get; set; } = new();
+        }
+        """;
+
+    static (CSharpGeneratorDriver driver, CSharpCompilation compilation) RunSharingModels()
+    {
+        var setup = GeneratorDriver.CreateDriver(sharingModels, "Hello {{ Customer.Name }}!");
+        var compilation = setup.Compilation.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText("""namespace Sample; public class Customer { public string Name { get; set; } = ""; }"""),
+            CSharpSyntaxTree.ParseText("namespace Unrelated; public class Noise { public int X { get; set; } }"));
+        return ((CSharpGeneratorDriver) setup.Driver.RunGenerators(compilation), compilation);
+    }
+
+    [Test]
+    public async Task SharedTypeLeavesEveryModelCachedWhenAnotherFileEdited()
+    {
+        var (driver, compilation) = RunSharingModels();
+
+        var compilation2 = compilation.ReplaceSyntaxTree(
+            compilation.SyntaxTrees[3],
+            CSharpSyntaxTree.ParseText("namespace Unrelated; public class Noise { public int X { get; set; } public int Y { get; set; } }"));
+        driver = (CSharpGeneratorDriver) driver.RunGenerators(compilation2);
+
+        var runResult = driver.GetRunResult().Results.Single();
+
+        await Assert.That(runResult.GeneratedSources.Length).IsEqualTo(3);
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Targets);
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Bindables);
+        await AssertNotModified(runResult, ParchmentTemplateGenerator.Stages.Combined);
+        await AssertOutputsNotModified(runResult);
+    }
+
+    [Test]
+    public async Task SharedTypeEditRegeneratesEveryModelReachingIt()
+    {
+        var (driver, compilation) = RunSharingModels();
+        foreach (var generated in driver.GetRunResult().Results.Single().GeneratedSources)
+        {
+            await Assert.That(generated.SourceText.ToString()).DoesNotContain("Email");
+        }
+
+        var compilation2 = compilation.ReplaceSyntaxTree(
+            compilation.SyntaxTrees[2],
+            CSharpSyntaxTree.ParseText("""namespace Sample; public class Customer { public string Name { get; set; } = ""; public string Email { get; set; } = ""; }"""));
+        driver = (CSharpGeneratorDriver) driver.RunGenerators(compilation2);
+
+        var runResult = driver.GetRunResult().Results.Single();
+
+        await Assert.That(runResult.GeneratedSources.Length).IsEqualTo(3);
+        foreach (var generated in runResult.GeneratedSources)
+        {
+            await Assert.That(generated.SourceText.ToString()).Contains("\"Email\"");
+        }
+
+        await AssertAllModified(runResult, ParchmentTemplateGenerator.Stages.Targets);
+        await AssertAllModified(runResult, ParchmentTemplateGenerator.Stages.Bindables);
+    }
+
+    static async Task AssertAllModified(GeneratorRunResult runResult, string stageName)
+    {
+        foreach (var step in runResult.TrackedSteps[stageName])
+        {
+            foreach (var output in step.Outputs)
+            {
+                await Assert.That(output.Reason).IsEqualTo(IncrementalStepRunReason.Modified);
+            }
+        }
+    }
+
     [Test]
     public Task PipelineReRunsWhenAttributedClassChanges()
     {

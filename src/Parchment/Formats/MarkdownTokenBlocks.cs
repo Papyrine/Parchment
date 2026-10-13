@@ -282,6 +282,8 @@ static class MarkdownTokenBlocks
 
         // Materialized so the fragment can be renumbered as one: the markdown around it was
         // numbered before this value was converted, and the converter starts again at 1.
+        // A delegate can add any relationship to any part it reaches from the main part.
+        RelationshipIds.Forget(mainPart);
         var produced = Render(token, host, mainPart, numbering, styles, imagePolicies).ToList();
         bookmarks.Renumber(produced);
         foreach (var element in produced)
