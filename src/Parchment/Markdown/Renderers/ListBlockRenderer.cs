@@ -69,6 +69,16 @@ class ListBlockRenderer :
                     numbered = true;
                 }
 
+                if (leaf is HeadingBlock heading)
+                {
+                    // A heading takes the marker and the indent like any other item text, but
+                    // under its own style rather than the list's, so it is still a heading.
+                    properties.ParagraphStyleId = null;
+                    properties.ContextualSpacing = null;
+                    HeadingBlockRenderer.Write(renderer, heading, properties);
+                    continue;
+                }
+
                 renderer.WriteLeafInline(leaf);
                 renderer.FlushParagraph(properties);
             }

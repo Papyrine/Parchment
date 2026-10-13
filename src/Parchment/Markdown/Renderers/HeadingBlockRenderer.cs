@@ -1,16 +1,25 @@
 class HeadingBlockRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, HeadingBlock>
 {
-    protected override void Write(OpenXmlMarkdownRenderer renderer, HeadingBlock block)
+    protected override void Write(OpenXmlMarkdownRenderer renderer, HeadingBlock block) =>
+        Write(renderer, block, new());
+
+    /// <summary>
+    /// Writes a heading into paragraph properties the caller has already given the container's
+    /// share of: a list item's numbering, or a quote's indent.
+    /// </summary>
+    /// <remarks>
+    /// A paragraph has one style, and a heading inside a list item or a quote used to be given the
+    /// container's, which made it body text: absent from the navigation pane and from a table of
+    /// contents. The style is what makes a heading one, so the heading keeps it and the container
+    /// is stated as direct formatting instead.
+    /// </remarks>
+    internal static void Write(OpenXmlMarkdownRenderer renderer, HeadingBlock block, ParagraphProperties properties)
     {
         var level = Math.Clamp(block.Level + renderer.HeadingOffset, 1, 9);
-        var styleId = ResolveStyle(block, level);
-        var properties = new ParagraphProperties
+        properties.ParagraphStyleId = new()
         {
-            ParagraphStyleId = new()
-            {
-                Val = styleId
-            }
+            Val = ResolveStyle(block, level)
         };
 
         // The bookmark wraps the heading text inside the paragraph rather than sitting beside it,
