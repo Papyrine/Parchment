@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <!-- One list of structurally wrong docx templates, run against the runtime there and the
+         generator here. Neither test project can load the other's subject. -->
+    <Compile Include="..\Parchment.Tests\Docx\StructuralLockstepCases.cs" Link="StructuralLockstepCases.cs" />
     <PackageReference Include="TUnit" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Verify.TUnit" />
@@ -21,5 +24,10 @@
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="ProjectFiles" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj" />
+    <!-- Not called by the tests: its assembly, and the ones it brings along, are what generated
+         source is compiled against. See GeneratorDriver.Compile. -->
+    <ProjectReference Include="..\Parchment\Parchment.csproj" />
+    <!-- One list of templates for both markdown validators; the runtime half is MarkdownBlockTagTests. -->
+    <Compile Include="..\Parchment.Tests\Markdown\MarkdownBlockTagCases.cs" Link="MarkdownBlockTagCases.cs" />
   </ItemGroup>
 </Project>

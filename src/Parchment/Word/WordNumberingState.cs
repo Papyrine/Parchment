@@ -11,8 +11,74 @@ class WordNumberingState(MainDocumentPart mainPart)
     bool initialized;
     HtmlNumberingSession? htmlSession;
 
-    internal HtmlNumberingSession GetHtmlSession() =>
-        htmlSession ??= new();
+    // nextNumId when the session was last handed out. It moves with every list numbered here.
+    int htmlSessionNumId;
+
+    // A session carries OpenXmlHtml's next id from one conversion to the next, and it reads the
+    // part again only when the part no longer ends with the element the session left there. That
+    // says where the last definition was written, not whether one was, so it is not left to the
+    // session to notice an id taken here: after one, the next conversion is handed a session that
+    // counts for itself. It keeps the bullet definition, which is all a session knows that the part
+    // does not say. ConvertHtml is the same care taken in the other direction.
+    internal HtmlNumberingSession GetHtmlSession()
+    {
+        if (htmlSession == null)
+        {
+            htmlSession = new();
+        }
+        else if (htmlSessionNumId != nextNumId)
+        {
+            htmlSession = new()
+            {
+                BulletAbstractNumId = htmlSession.BulletAbstractNumId
+            };
+        }
+
+        htmlSessionNumId = nextNumId;
+        return htmlSession;
+    }
+
+    /// <summary>
+    /// Converts html, whose lists are numbered by OpenXmlHtml rather than by this class.
+    /// </summary>
+    /// <remarks>
+    /// OpenXmlHtml finds a free id by reading the numbering part and writes its definitions straight
+    /// into it. The counters here are read from the part once and counted on from there, so they
+    /// know nothing of those: the next markdown list was handed an id an html list already held, and
+    /// Word drew both lists from whichever definition it found first - an html ol with bullets, a
+    /// markdown bullet numbered "3.". So every conversion that can hold a list comes through here,
+    /// and one that wrote a list has the counters read again before the next definition is created.
+    /// Whether it wrote one is told from the last w:num: a list needs an instance of its own, and an
+    /// instance is written after the ones already there. That keeps html holding no list from
+    /// costing a read of the part, and a render that converts no html still reads it once however
+    /// many lists it holds.
+    /// </remarks>
+    public List<OpenXmlElement> ConvertHtml(string html, HtmlConvertSettings settings)
+    {
+        var last = LastInstance();
+        var elements = WordHtmlConverter.ToElements(html, mainPart, settings);
+        if (!ReferenceEquals(last, LastInstance()))
+        {
+            initialized = false;
+        }
+
+        return elements;
+    }
+
+    // The element a new instance follows. All the schema allows after the instances is the
+    // w:numIdMacAtCleanup Word for Mac writes. OpenXmlHtml appends past it, which makes its instance
+    // the last child; one written in schema order would sit before it, so that is looked at too.
+    // Stepping back walks the part, which only a part still ending that way pays for.
+    OpenXmlElement? LastInstance()
+    {
+        var last = mainPart.NumberingDefinitionsPart?.Numbering?.LastChild;
+        if (last is NumberingIdMacAtCleanup)
+        {
+            return last.PreviousSibling();
+        }
+
+        return last;
+    }
 
     public int CreateBulletNumbering()
     {
@@ -20,12 +86,14 @@ class WordNumberingState(MainDocumentPart mainPart)
         var numbering = GetNumbering();
         var abstractId = bulletAbstractNumId ?? CreateBulletAbstract(numbering);
         bulletAbstractNumId = abstractId;
-        return AppendInstance(numbering, abstractId);
+        return AppendInstance(numbering, abstractId, out _);
     }
 
-    // The abstractNum is shared by every list of its format, so a list that starts somewhere other
-    // than 1 says so on its own instance. A list starting at 1 writes no override, which keeps its
-    // instance identical to the one written before the start was honored.
+    // The abstractNum is shared by every list of its format, and Word runs one count per level
+    // through every instance of an abstractNum: a list carries on from the one before it unless its
+    // own instance restarts the level. So every list states its start on its instance, a start of 1
+    // included, on the level its items use. A nested list is an instance of its own, so that one
+    // level is all an instance ever numbers.
     public int CreateOrderedNumbering(NumberFormatValues format, int ilvl = 0, int start = 1)
     {
         EnsureInitialized();
@@ -36,19 +104,16 @@ class WordNumberingState(MainDocumentPart mainPart)
             orderedAbstractNumIds[format] = abstractId;
         }
 
-        var numId = AppendInstance(numbering, abstractId);
-        if (start != 1)
-        {
-            numbering.LastChild!.Append(
-                new LevelOverride
+        var numId = AppendInstance(numbering, abstractId, out var instance);
+        instance.Append(
+            new LevelOverride
+            {
+                LevelIndex = ilvl,
+                StartOverrideNumberingValue = new()
                 {
-                    LevelIndex = ilvl,
-                    StartOverrideNumberingValue = new()
-                    {
-                        Val = start
-                    }
-                });
-        }
+                    Val = start
+                }
+            });
 
         return numId;
     }
@@ -81,21 +146,18 @@ class WordNumberingState(MainDocumentPart mainPart)
             return;
         }
 
-        foreach (var abstractNum in part.Numbering.Elements<AbstractNum>())
+        // One walk for both kinds of id. This runs again for a list that follows an html one - see
+        // ConvertHtml - so a document alternating the two reads the part as often as it has lists.
+        for (var child = part.Numbering.FirstChild; child != null; child = child.NextSibling())
         {
-            var idStr = abstractNum.AbstractNumberId?.Value;
-            if (idStr >= nextAbstractNumId)
+            switch (child)
             {
-                nextAbstractNumId = idStr.Value + 1;
-            }
-        }
-
-        foreach (var numberingInstance in part.Numbering.Elements<NumberingInstance>())
-        {
-            var idStr = numberingInstance.NumberID?.Value;
-            if (idStr >= nextNumId)
-            {
-                nextNumId = idStr.Value + 1;
+                case AbstractNum abstractNum when abstractNum.AbstractNumberId?.Value >= nextAbstractNumId:
+                    nextAbstractNumId = abstractNum.AbstractNumberId.Value + 1;
+                    break;
+                case NumberingInstance numberingInstance when numberingInstance.NumberID?.Value >= nextNumId:
+                    nextNumId = numberingInstance.NumberID.Value + 1;
+                    break;
             }
         }
 
@@ -138,7 +200,7 @@ class WordNumberingState(MainDocumentPart mainPart)
             abstractNum.Append(BuildBulletLevel(ilvl, glyph, font));
         }
 
-        numbering.InsertAt(abstractNum, 0);
+        InsertAbstract(numbering, abstractNum);
         return id;
     }
 
@@ -151,14 +213,29 @@ class WordNumberingState(MainDocumentPart mainPart)
             abstractNum.Append(BuildOrderedLevel(ilvl, format));
         }
 
-        numbering.InsertAt(abstractNum, 0);
+        InsertAbstract(numbering, abstractNum);
         return id;
     }
 
-    int AppendInstance(Numbering numbering, int abstractId)
+    // w:numbering is a sequence: every w:numPicBullet, then every w:abstractNum, then every w:num,
+    // then w:numIdMacAtCleanup. Word refuses to open a document whose numbering part has an
+    // abstractNum ahead of a picture bullet, so a new one follows the last of them.
+    static void InsertAbstract(Numbering numbering, AbstractNum abstractNum)
+    {
+        var pictureBullet = numbering.Elements<NumberingPictureBullet>().LastOrDefault();
+        if (pictureBullet == null)
+        {
+            numbering.InsertAt(abstractNum, 0);
+            return;
+        }
+
+        numbering.InsertAfter(abstractNum, pictureBullet);
+    }
+
+    int AppendInstance(Numbering numbering, int abstractId, out NumberingInstance instance)
     {
         var numId = nextNumId++;
-        var instance = new NumberingInstance
+        instance = new()
         {
             NumberID = numId
         };
@@ -167,6 +244,16 @@ class WordNumberingState(MainDocumentPart mainPart)
             {
                 Val = abstractId
             });
+
+        // The sequence closes with w:numIdMacAtCleanup, which Word for Mac writes after the
+        // instances. A new instance goes in ahead of it, so it is not always the last child - hence
+        // handing it back.
+        if (numbering.LastChild is NumberingIdMacAtCleanup cleanup)
+        {
+            numbering.InsertBefore(instance, cleanup);
+            return numId;
+        }
+
         numbering.Append(instance);
         return numId;
     }
