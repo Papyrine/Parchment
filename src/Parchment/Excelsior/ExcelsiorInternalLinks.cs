@@ -17,7 +17,7 @@ static class ExcelsiorInternalLinks
     // LinkInlineRenderer uses for the same field.
     const string pageReferencePlaceholder = "1";
 
-    public static void Rewrite(Table table, MainDocumentPart mainPart)
+    public static void Rewrite(Table table, MainDocumentPart mainPart, BookmarkNames names)
     {
         // Materialized before mutating: an empty link is replaced by the runs of a field, which
         // edits the tree being walked.
@@ -37,7 +37,7 @@ static class ExcelsiorInternalLinks
                 continue;
             }
 
-            var bookmark = MarkdownBookmark.Sanitize(target[1..]);
+            var bookmark = names.For(target[1..]);
 
             // The relationship goes either way: an anchored hyperlink does not carry one, and a
             // field is not a hyperlink at all. Left behind it is a dangling external reference to

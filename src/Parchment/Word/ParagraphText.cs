@@ -72,7 +72,9 @@ class ParagraphText
     /// Every descendant that belongs to <paramref name="paragraph"/> itself, in document order.
     /// A text box anchored in one of its runs holds paragraphs of its own; those are scanned and
     /// substituted as their own paragraphs, so the walk stops at a nested paragraph — neither it
-    /// nor anything inside it is returned.
+    /// nor anything inside it is returned. Inline wrappers (a hyperlink, a tracked insertion, an
+    /// inline content control, a simple field) are returned and descended through like any other
+    /// element. A <c>w:smartTag</c> needs help first — see <see cref="SmartTags"/>.
     /// </summary>
     public static IEnumerable<OpenXmlElement> Elements(Paragraph paragraph)
     {
@@ -82,6 +84,11 @@ class ParagraphText
             OpenXmlElement? next = null;
             if (current is not Paragraph)
             {
+                if (current is OpenXmlUnknownElement unknown)
+                {
+                    SmartTags.Retype(unknown);
+                }
+
                 yield return current;
                 next = current.FirstChild;
             }
