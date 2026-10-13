@@ -486,6 +486,8 @@ public sealed class ParchmentTemplateGenerator :
                 return new(text.Path, string.Empty, "it has no main document part (word/document.xml), so it is not a Word document or template");
             }
 
+            // Read as a docx template is, so a package the runtime could not open fails here too.
+            DocxArchiveReader.Read(bytes);
             return new(text.Path, Convert.ToBase64String(bytes), null);
         }
         catch (Exception exception)
