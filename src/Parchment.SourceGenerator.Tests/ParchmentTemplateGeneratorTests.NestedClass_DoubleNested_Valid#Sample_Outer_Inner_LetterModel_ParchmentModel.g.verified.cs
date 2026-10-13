@@ -9,6 +9,7 @@ partial class Outer
     partial class LetterModel
     {
       [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+      [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
       internal static class ParchmentGenerated_Sample_Outer_Inner_LetterModel
       {
         static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Outer_Inner_LetterModel =
@@ -27,7 +28,7 @@ partial class Outer
           global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
           global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
             typeof(global::Sample.Outer.Inner.LetterModel),
-            global::System.Convert.FromBase64String("scrubbed"));
+            typeof(ParchmentGenerated_Sample_Outer_Inner_LetterModel));
         }
       }
     }

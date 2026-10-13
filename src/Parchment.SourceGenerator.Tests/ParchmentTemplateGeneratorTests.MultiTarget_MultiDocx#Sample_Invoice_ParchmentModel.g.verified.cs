@@ -5,6 +5,7 @@ namespace Sample;
 partial class Invoice
 {
   [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Invoice
   {
     static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
@@ -18,7 +19,7 @@ partial class Invoice
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Invoice), _Accessors_global__Sample_Invoice);
       global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
         typeof(global::Sample.Invoice),
-        global::System.Convert.FromBase64String("scrubbed"));
+        typeof(ParchmentGenerated_Sample_Invoice));
     }
   }
 }

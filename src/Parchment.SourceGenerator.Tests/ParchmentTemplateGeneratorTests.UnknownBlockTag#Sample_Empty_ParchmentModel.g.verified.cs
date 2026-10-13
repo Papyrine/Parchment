@@ -5,6 +5,7 @@ namespace Sample;
 partial class Empty
 {
   [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Empty
   {
     static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Empty =
@@ -17,7 +18,7 @@ partial class Empty
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Empty), _Accessors_global__Sample_Empty);
       global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
         typeof(global::Sample.Empty),
-        global::System.Convert.FromBase64String("scrubbed"));
+        typeof(ParchmentGenerated_Sample_Empty));
     }
   }
 }

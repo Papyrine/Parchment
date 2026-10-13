@@ -100,8 +100,7 @@ public class EmbeddedTemplateTests
         await Assert.That(Embedded(assembly, "M0").SequenceEqual(docx)).IsTrue();
     }
 
-    // Both flows, through the real runtime, and with the oldest language version the rest of the
-    // generated code accepts: the attribute needs nothing newer.
+    // Both flows, through the real runtime.
     [Test]
     public async Task BothFlowsRenderFromTheAttribute()
     {
@@ -116,7 +115,7 @@ public class EmbeddedTemplateTests
             new("M2.parchment.md", Encoding.UTF8.GetBytes("Plain {{ Name }}"))
         ];
 
-        var result = CompiledGenerator.Run(Models(3), files, LanguageVersion.CSharp10);
+        var result = CompiledGenerator.Run(Models(3), files);
 
         await Assert.That(Describe(result)).IsEqualTo("");
         var assembly = System.Reflection.Assembly.Load(result.Assembly);

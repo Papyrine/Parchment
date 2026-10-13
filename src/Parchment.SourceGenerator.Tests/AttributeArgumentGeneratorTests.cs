@@ -73,9 +73,9 @@ public class AttributeArgumentGeneratorTests
     [Arguments("ProtectionMode.None", ", global::Parchment.ProtectionMode.None);")]
     [Arguments("(ProtectionMode)1", ", global::Parchment.ProtectionMode.None);")]
     [Arguments("ProtectionMode.None | ProtectionMode.WhenEditable", ", global::Parchment.ProtectionMode.None);")]
-    [Arguments("ProtectionMode.WhenEditable", "\"));")]
-    [Arguments("(ProtectionMode)0", "\"));")]
-    [Arguments("default", "\"));")]
+    [Arguments("ProtectionMode.WhenEditable", "typeof(ParchmentGenerated_Sample_Letter));")]
+    [Arguments("(ProtectionMode)0", "typeof(ParchmentGenerated_Sample_Letter));")]
+    [Arguments("default", "typeof(ParchmentGenerated_Sample_Letter));")]
     public async Task DefinedProtection_EmitsByName(string argument, string expectedTail)
     {
         var result = GeneratorDriver.Run(ModelWithProtection(argument), "{{ Name }}");

@@ -232,7 +232,8 @@ public partial class UnusableTemplateTests
         Assert.Throws<ArgumentNullException>(() => store.RegisterDocxTemplate<Model>((string) null!));
         var markdown = Assert.Throws<ArgumentNullException>(() => store.RegisterMarkdownTemplate<Model>(null!));
         await Assert.That(markdown.ParamName).IsEqualTo("markdown");
-        Assert.Throws<ArgumentNullException>(() => GeneratedRegistration.RegisterDocxTemplate(typeof(Model), null!));
+        Assert.Throws<ArgumentNullException>(() => GeneratedRegistration.RegisterDocxTemplate(typeof(Model), (byte[]) null!));
+        Assert.Throws<ArgumentNullException>(() => GeneratedRegistration.RegisterDocxTemplate(typeof(Model), (Type) null!));
         Assert.Throws<ArgumentNullException>(() => GeneratedRegistration.RegisterMarkdownTemplate(typeof(Model), null!));
     }
 

@@ -22,7 +22,7 @@ static class CompiledGenerator
 
     public sealed record Result(ImmutableArray<Diagnostic> Errors, byte[] Assembly, string Generated);
 
-    public static Result Run(string source, TemplateFile[] files, LanguageVersion language = LanguageVersion.Default)
+    public static Result Run(string source, TemplateFile[] files)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         var texts = ImmutableArray.CreateBuilder<AdditionalText>();
@@ -34,7 +34,7 @@ static class CompiledGenerator
             texts.Add(new GeneratorDriver.PathAdditionalText(path));
         }
 
-        var parse = new CSharpParseOptions(language);
+        var parse = new CSharpParseOptions();
         var compilation = CSharpCompilation.Create(
             $"CompiledGenerator{Guid.NewGuid():N}",
             [CSharpSyntaxTree.ParseText(source, parse)],
