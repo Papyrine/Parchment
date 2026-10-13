@@ -72,12 +72,12 @@ static class MarkdownBlankOutputs
                 value is not Tracker tracker ||
                 !ReferenceEquals(tracker.Writer, writer))
             {
-                return await inner.WriteToAsync(writer, encoder, context);
+                return await inner.WriteToAsync(writer, encoder, context).ConfigureAwait(false);
             }
 
             var builder = tracker.Writer.GetStringBuilder();
             var start = builder.Length;
-            var completion = await inner.WriteToAsync(writer, encoder, context);
+            var completion = await inner.WriteToAsync(writer, encoder, context).ConfigureAwait(false);
 
             if (IsBlank(builder, start))
             {
