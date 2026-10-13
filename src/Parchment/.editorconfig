@@ -1,0 +1,5 @@
+# Library code never resumes on the caller's synchronization context: a caller blocking on a render
+# from a single-threaded context (WPF, WinForms, classic ASP.NET) would otherwise deadlock.
+# Kept here because the root .editorconfig is overwritten by ProjectDefaults on every build.
+[*.cs]
+dotnet_diagnostic.CA2007.severity = error
