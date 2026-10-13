@@ -144,10 +144,35 @@ public sealed class ParchmentTemplateGenerator :
         return ExtractTarget(context, cancel);
     }
 
+    // PARCH038: the project compiles as something older than C# 14. Nothing is validated and
+    // nothing is emitted — whatever came out would be compiled at that version too, and the
+    // compiler's complaints about a generated file are no use to anyone. One diagnostic on the
+    // attribute, naming the setting to change, is the whole of it.
+    static bool ReportUnsupportedLanguageVersion(SourceProductionContext context, TargetInfo target, Location location)
+    {
+        if (target.UnsupportedLanguageVersion == null)
+        {
+            return false;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.LanguageVersionUnsupported,
+                location,
+                target.ModelDisplayName,
+                target.UnsupportedLanguageVersion));
+        return true;
+    }
+
     static void ProcessBindable(SourceProductionContext context, LocatedTarget located, string hintName)
     {
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
+
+        if (ReportUnsupportedLanguageVersion(context, target, location))
+        {
+            return;
+        }
 
         if (ReportDeclarationError(context, target, location))
         {
@@ -260,6 +285,15 @@ public sealed class ParchmentTemplateGenerator :
             }
         }
 
+        // Read off the model's own tree: the generated file is compiled with the project's
+        // LangVersion, and every tree of a compilation carries the same parse options. The
+        // effective version is what arrives here — `latest` and `default` are already resolved.
+        string? unsupportedLanguageVersion = null;
+        if (context.TargetNode.SyntaxTree.Options is CSharpParseOptions { LanguageVersion: < LanguageVersion.CSharp14 } parseOptions)
+        {
+            unsupportedLanguageVersion = parseOptions.LanguageVersion.ToDisplayString();
+        }
+
         return new(
             declaringNamespace,
             typeSymbol.Name,
@@ -269,6 +303,7 @@ public sealed class ParchmentTemplateGenerator :
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             protection,
+            unsupportedLanguageVersion,
             EquatableLocation.From(rawLocation),
             shape,
             enclosingResult.Error,
@@ -548,9 +583,28 @@ public sealed class ParchmentTemplateGenerator :
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
 
+        if (ReportUnsupportedLanguageVersion(context, target, location))
+        {
+            return;
+        }
+
         if (ReportDeclarationError(context, target, location))
         {
             return;
+        }
+
+        // PARCH036: a constant the compiler accepts but the enum does not name. Reported before the
+        // template is matched so it does not depend on which flow the model lands in. Validation
+        // carries on, and the registration is still emitted as compilable code — see
+        // ProtectionArgument.
+        if (!IsDefined(target.Protection))
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.ProtectionModeUndefined,
+                    location,
+                    target.ModelDisplayName,
+                    (int)target.Protection));
         }
 
         // Convention: the template is the AdditionalFile named after the type. Nothing matched is
@@ -1939,9 +1993,7 @@ public sealed class ParchmentTemplateGenerator :
         var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
         // Emit the protection argument only when it deviates from the default, so registrations
         // for the common case stay minimal.
-        var protection = target.Protection == ProtectionMode.WhenEditable
-            ? ""
-            : $", global::Parchment.ProtectionMode.{target.Protection}";
+        var protection = ProtectionArgument(target.Protection);
         var statements =
             $$"""
               {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
@@ -1950,6 +2002,28 @@ public sealed class ParchmentTemplateGenerator :
               """;
 
         return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
+    }
+
+    static bool IsDefined(ProtectionMode protection) =>
+        protection is ProtectionMode.WhenEditable or ProtectionMode.None;
+
+    // A defined value is written by name. An undefined one has no name — formatting it yields its
+    // digits, and `ProtectionMode.5` is not an expression — so it is written as the cast the
+    // model's author wrote. PARCH036 has already been reported for it; the cast keeps the
+    // generated file from piling syntax errors of its own on top.
+    static string ProtectionArgument(ProtectionMode protection)
+    {
+        if (protection == ProtectionMode.WhenEditable)
+        {
+            return "";
+        }
+
+        if (IsDefined(protection))
+        {
+            return $", global::Parchment.ProtectionMode.{protection}";
+        }
+
+        return $", (global::Parchment.ProtectionMode)({(int)protection})";
     }
 
     static string GenerateMarkdownRegistration(TargetInfo target, MarkdownData matched, DotxData? style)

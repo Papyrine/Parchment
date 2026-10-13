@@ -2191,6 +2191,8 @@ The source generator is the recommended way to register templates. Decorate the 
 
 **NativeAOT is not supported, and trimming is not guaranteed.** Generated accessors read the model's values, but three places still work from a runtime `Type`: registration checks each template token against the model's member types through reflection, an `[ExcelsiorTable]` member reaches Excelsior through a generic method constructed at runtime (and Excelsior reflects over the element type for its columns), and `ParchmentExtractor` constructs the `List<T>` or array of an editable collection. Published with `PublishAot`, registration throws `Identifier 'Name' is not a member of 'Letter'` for a member that exists, and an `[ExcelsiorTable]` renders with an empty header row and empty cells. A trimmed publish without AOT (`PublishTrimmed`, `TrimMode=full`) of a generated-registration model, a hand-registered `[ParchmentBindable]` model and an `[ExcelsiorTable]` rendered correctly when measured, with trim warning IL2104 reported for Parchment, Excelsior, Fluid and Parlot — an observation for that one consumer, not a guarantee, and the assembly is not marked `IsTrimmable`. The `TemplateStore` registration and render methods carry `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`, and `ParchmentExtractor.Extract` carries `[RequiresDynamicCode]`, so a project that publishes trimmed or AOT is warned (IL2026 / IL3050) at each call. A project that does neither sees no warning.
 
+**C# 14 or later.** The generated code is compiled with the project's own `LangVersion`, and is written for C# 14. A project compiled as anything older gets [`PARCH038`](#parch038--c-14-or-later-is-required) on each model and no generated code. The default for a .NET 10 project is C# 14, so this only matters where `LangVersion` is set by hand or the project targets an older framework.
+
 The model must be `partial` — the generator emits the embedded template and its module initializer onto the same class. Both docx and markdown templates are supported — the generator branches on the matched file's extension (`.docx` → docx flow, `.md` → markdown flow):
 
 <!-- snippet: GeneratorDocxModel -->
@@ -2719,6 +2721,28 @@ See [Nested, generic and file-local models](#nested-generic-and-file-local-model
 ```
 
 A markdown template reports the same mistakes through [`PARCH006`](#parch006--template-file-unreadable), with the Fluid parser's wording.
+
+### `PARCH036` — protection is not a defined ProtectionMode value
+
+`[ParchmentModel(Protection = ...)]` was given a value that `ProtectionMode` does not name. The compiler accepts any integer cast to an enum as an attribute argument, so this is legal C# that means nothing:
+
+```cs
+[ParchmentModel(Protection = (ProtectionMode)5)]   // <-- neither WhenEditable nor None
+public partial class OrderForm
+```
+
+Use `ProtectionMode.WhenEditable` (the default) or `ProtectionMode.None`. Reported for docx and markdown templates alike, although a markdown template ignores the setting. See [Protection is cooperative, not security](#protection-is-cooperative-not-security).
+
+
+### `PARCH038` — C# 14 or later is required
+
+The project is compiled as a C# version older than 14. The code the generator emits is compiled with the project's own `LangVersion`, and is only written for C# 14 and later, so nothing is generated and no other Parchment diagnostic is reported for the model until the version is raised.
+
+```xml
+<LangVersion>12</LangVersion>   <!-- too old -->
+```
+
+Remove the `LangVersion` setting or set it to `14` or above (`latest` and `preview` qualify with a .NET 10 SDK). A project with no setting takes the default for its target framework, which is older than 14 for anything before `net10.0` — set `LangVersion` explicitly there. Reported once for each `[ParchmentModel]` and `[ParchmentBindable]` type.
 
 
 ### `PARCH100` — template carries a second item type

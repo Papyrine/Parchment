@@ -137,7 +137,8 @@
         TemplateFile[] docxes,
         string? modelFileName,
         bool withProjectDir = false,
-        bool realParchment = false)
+        bool realParchment = false,
+        LanguageVersion languageVersion = LanguageVersion.Default)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -154,15 +155,18 @@
             paths.Add(path);
         }
 
+        // What <LangVersion> becomes: the one set of parse options every tree in the project
+        // shares, the generated ones included.
+        var parseOptions = new CSharpParseOptions(languageVersion);
         var modelTree = modelFileName == null
-            ? CSharpSyntaxTree.ParseText(userSource)
-            : CSharpSyntaxTree.ParseText(userSource, path: CreateModelPath(directory, modelFileName));
+            ? CSharpSyntaxTree.ParseText(userSource, parseOptions)
+            : CSharpSyntaxTree.ParseText(userSource, parseOptions, path: CreateModelPath(directory, modelFileName));
 
         // The stand-in attributes and the real assembly declare the same types, so a compilation
         // gets one or the other.
         SyntaxTree[] syntaxTrees = realParchment
             ? [modelTree]
-            : [CSharpSyntaxTree.ParseText(attributeSource), modelTree];
+            : [CSharpSyntaxTree.ParseText(attributeSource, parseOptions), modelTree];
 
         var compilation = CSharpCompilation.Create(
             "GeneratorTest",
@@ -176,7 +180,7 @@
         var driver = CSharpGeneratorDriver.Create(
             generators: [new ParchmentTemplateGenerator().AsSourceGenerator()],
             additionalTexts: additionalTexts,
-            parseOptions: (CSharpParseOptions) syntaxTrees[0].Options,
+            parseOptions: parseOptions,
             optionsProvider: withProjectDir ? new TestOptionsProvider(directory + Path.DirectorySeparatorChar) : null,
             driverOptions: new(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 
