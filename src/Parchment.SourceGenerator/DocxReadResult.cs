@@ -9,10 +9,12 @@
 /// <paramref name="BodyValueControlSpans"/> is a flat list of triples — index into
 /// <paramref name="BodyParagraphs"/>, start offset, end offset — one per stretch of paragraph text
 /// that sits inside a content control holding a single typed value.
+/// <paramref name="HasMainPart"/> is what tells a Word package from any other zip.
 /// </summary>
 readonly record struct DocxReadResult(
     List<string> Paragraphs,
     List<string> BodyParagraphs,
     List<int> ParagraphContainers,
     List<int> BodyValueControlSpans,
-    bool HasRemovePersonalInformation);
+    bool HasRemovePersonalInformation,
+    bool HasMainPart);

@@ -1,3 +1,5 @@
+using Markdig.Extensions.SmartyPants;
+
 class LinkInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, LinkInline>
 {
@@ -31,7 +33,7 @@ class LinkInlineRenderer :
         // page it is on — so an empty internal link becomes a PAGEREF instead.
         if (url[0] == '#')
         {
-            var bookmark = MarkdownBookmark.Sanitize(url[1..]);
+            var bookmark = renderer.BookmarkNames.For(url[1..]);
             if (inline.FirstChild == null)
             {
                 foreach (var run in WordFields.PageReference(bookmark, PageReferencePlaceholder))
@@ -49,7 +51,7 @@ class LinkInlineRenderer :
             return;
         }
 
-        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
+        var relId = RelationshipIds.Hyperlink(renderer.Part, url);
         WriteHyperlink(renderer, inline, new()
         {
             Id = relId
@@ -126,6 +128,9 @@ class LinkInlineRenderer :
         return builder.ToString();
     }
 
+    // Alt text is plain, so each inline gives the text it would have rendered as and none of its
+    // formatting. It is what shows when the image cannot be loaded, so an inline left out here is
+    // text missing from the document the same way one with no renderer is.
     static void Walk(ContainerInline container, StringBuilder builder)
     {
         var child = container.FirstChild;
@@ -135,6 +140,25 @@ class LinkInlineRenderer :
             {
                 case LiteralInline literal:
                     builder.Append(literal.Content);
+                    break;
+                case HtmlEntityInline entity:
+                    builder.Append(XmlChars.Strip(entity.Transcoded.AsSpan()));
+                    break;
+                case SmartyPant pant:
+                    builder.Append(SmartyPantInlineRenderer.Glyph(pant.Type));
+                    break;
+                case CodeInline code:
+                    builder.Append(code.ContentSpan);
+                    break;
+                case AutolinkInline autolink:
+                    builder.Append(autolink.Url);
+                    break;
+                case LineBreakInline:
+                    builder.Append(' ');
+                    break;
+                case DelimiterInline delimiter:
+                    builder.Append(delimiter.ToLiteral());
+                    Walk(delimiter, builder);
                     break;
                 case ContainerInline inner:
                     Walk(inner, builder);
