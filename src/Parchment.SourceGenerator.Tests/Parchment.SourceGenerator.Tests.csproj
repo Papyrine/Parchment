@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <!-- One list of structurally wrong docx templates, run against the runtime there and the
+         generator here. Neither test project can load the other's subject. -->
+    <Compile Include="..\Parchment.Tests\Docx\StructuralLockstepCases.cs" Link="StructuralLockstepCases.cs" />
     <PackageReference Include="TUnit" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Verify.TUnit" />

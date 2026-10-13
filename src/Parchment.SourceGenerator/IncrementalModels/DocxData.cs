@@ -7,6 +7,8 @@ sealed record DocxData(
     // One id per entry of Paragraphs, equal for paragraphs that share a parent element. An int
     // rather than anything that points back into the XDocument, so the record stays equatable.
     EquatableArray<int> ParagraphContainers,
+    // One part index per entry of Paragraphs. The runtime builds a scope tree per part.
+    EquatableArray<int> ParagraphParts,
     // Triples of (BodyParagraphs index, start, end): the text inside a single-value content control.
     EquatableArray<int> BodyValueControlSpans,
     bool HasRemovePersonalInformation,

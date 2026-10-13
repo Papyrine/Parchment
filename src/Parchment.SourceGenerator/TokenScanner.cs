@@ -6,11 +6,13 @@ public static class TokenScanner
     // onto its tokens. Omitted, every token reports container 0. fallbacks runs parallel the same
     // way and says whether each paragraph is in an mc:Fallback. valueControlSpans is the flat
     // triple list DocxArchiveReader produces (paragraph index, start, end).
+    // parts runs parallel too: the index of the part each paragraph came from.
     public static List<Token> Scan(
         IEnumerable<string> paragraphs,
         IReadOnlyList<int>? containers = null,
         IReadOnlyList<bool>? fallbacks = null,
-        IReadOnlyList<int>? valueControlSpans = null)
+        IReadOnlyList<int>? valueControlSpans = null,
+        IReadOnlyList<int>? parts = null)
     {
         var result = new List<Token>();
         var index = -1;
@@ -24,6 +26,9 @@ public static class TokenScanner
             }
 
             var hasOtherContent = TokenScan.HasContentOutsideSites(paragraph, sites);
+            // The runtime rejects a block tag that shares its paragraph with anything: text, a
+            // substitution, or another block tag. Only the first is content outside the sites.
+            var blockHasOtherContent = hasOtherContent || sites.Count > 1;
             var container = 0;
             if (containers != null)
             {
@@ -32,6 +37,12 @@ public static class TokenScanner
 
             var inFallback = fallbacks != null &&
                              fallbacks[index];
+
+            var part = 0;
+            if (parts != null)
+            {
+                part = parts[index];
+            }
 
             foreach (var site in sites)
             {
@@ -46,12 +57,13 @@ public static class TokenScanner
                         {
                             Container = container,
                             InFallback = inFallback,
-                            InValueControl = InSpan(valueControlSpans, index, site.Offset)
+                            InValueControl = InSpan(valueControlSpans, index, site.Offset),
+                            Part = part
                         });
                 }
                 else
                 {
-                    result.Add(ParseBlockTag(source, hasOtherContent) with { Container = container, InFallback = inFallback });
+                    result.Add(ParseBlockTag(source, blockHasOtherContent) with { Container = container, InFallback = inFallback, Part = part });
                 }
             }
         }
@@ -81,9 +93,9 @@ public static class TokenScanner
 
     static Token ParseSubstitution(string source, bool hasOtherContent)
     {
-        if (!parser.TryParse(source, out var template, out _))
+        if (!parser.TryParse(source, out var template, out var error))
         {
-            return new(TokenKind.Substitution, source, [], null, hasOtherContent);
+            return new(TokenKind.Substitution, source, [], null, hasOtherContent, ParseError: error);
         }
 
         var references = IdentifierVisitor.Collect(template);

@@ -25,4 +25,9 @@
     bool InValueControl = false,
     // The token's paragraph is in an mc:Fallback, the VML copy of a text box. Only set by the scan
     // of the body the editable rules run over.
-    bool InFallback = false);
+    bool InFallback = false,
+    // The index of the part the token's paragraph sits in. The runtime builds one scope tree per
+    // part, so block tags only pair within a part.
+    int Part = 0,
+    // Substitution only: the error Fluid gave for a token it could not parse.
+    string? ParseError = null);

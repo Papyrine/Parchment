@@ -7,7 +7,9 @@
 /// <paramref name="BodyParagraphs"/> and is true for a paragraph inside an <c>mc:Fallback</c>, the
 /// second copy of a text box, whose editable tokens do not count towards PARCH017. <paramref name="ParagraphContainers"/> runs parallel to
 /// <paramref name="Paragraphs"/>: two paragraphs carry the same id exactly when they share a parent
-/// element, which is what the block-tag sibling rule (PARCH028) compares.
+/// element, which is what the block-tag sibling rule (PARCH028) compares. <paramref name="ParagraphParts"/>
+/// runs parallel too: the index of the part each paragraph came from, since block tags pair within
+/// one part only (PARCH035).
 /// <paramref name="BodyValueControlSpans"/> is a flat list of triples — index into
 /// <paramref name="BodyParagraphs"/>, start offset, end offset — one per stretch of paragraph text
 /// that sits inside a content control holding a single typed value.
@@ -18,6 +20,7 @@ readonly record struct DocxReadResult(
     List<string> BodyParagraphs,
     List<bool> BodyFallbacks,
     List<int> ParagraphContainers,
+    List<int> ParagraphParts,
     List<int> BodyValueControlSpans,
     bool HasRemovePersonalInformation,
     bool HasMainPart);

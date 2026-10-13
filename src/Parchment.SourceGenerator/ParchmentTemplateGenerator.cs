@@ -461,6 +461,7 @@ public sealed class ParchmentTemplateGenerator :
                 new(result.BodyParagraphs.ToImmutableArray()),
                 new(result.BodyFallbacks.ToImmutableArray()),
                 new(result.ParagraphContainers.ToImmutableArray()),
+                new(result.ParagraphParts.ToImmutableArray()),
                 new(result.BodyValueControlSpans.ToImmutableArray()),
                 result.HasRemovePersonalInformation,
                 Convert.ToBase64String(bytes),
@@ -468,7 +469,7 @@ public sealed class ParchmentTemplateGenerator :
         }
         catch (Exception exception)
         {
-            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<bool>.Empty, EquatableArray<int>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
+            return new(text.Path, EquatableArray<string>.Empty, EquatableArray<string>.Empty, EquatableArray<bool>.Empty, EquatableArray<int>.Empty, EquatableArray<int>.Empty, EquatableArray<int>.Empty, false, string.Empty, exception.Message);
         }
     }
 
@@ -623,9 +624,13 @@ public sealed class ParchmentTemplateGenerator :
                     templatePath));
         }
 
-        var tokens = TokenScanner.Scan(matched.Paragraphs, matched.ParagraphContainers.AsImmutableArray());
+        var tokens = TokenScanner.Scan(
+            matched.Paragraphs,
+            matched.ParagraphContainers.AsImmutableArray(),
+            parts: matched.ParagraphParts.AsImmutableArray());
         ValidateTokens(context, target, templatePath, tokens, location);
         ValidateBlockContainers(context, templatePath, tokens, location);
+        ValidateBlockStructure(context, templatePath, tokens, location);
         ValidateShape(context, target, location, editableFields: true);
 
         // Editable fields are docx-only (like Excelsior / Format dispatch), so the shape rules
@@ -1474,6 +1479,19 @@ public sealed class ParchmentTemplateGenerator :
             switch (token.Kind)
             {
                 case TokenKind.Substitution:
+                    // Lockstep with the runtime TokenScanner.ParseSubstitution, which throws for
+                    // the same token: an empty `{{ }}`, method-call syntax, an unclosed filter.
+                    if (token.ParseError != null)
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                Diagnostics.TemplateReadError,
+                                location,
+                                templatePath,
+                                $"Failed to parse liquid token: {token.ParseError} [token: {token.Source}]"));
+                        break;
+                    }
+
                     ValidateReferences(context, target, templatePath, location, token.References, scope, token.Source);
                     ValidateExcelsiorToken(context, target, templatePath, location, token, scope);
                     ValidateFormatToken(context, target, templatePath, location, token, scope);
@@ -1672,6 +1690,57 @@ public sealed class ParchmentTemplateGenerator :
                 case TokenKind.IfClose:
                     CloseBlock(context, templatePath, location, open, TokenKind.IfOpen, token);
                     break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// PARCH035: block tags must balance within each part. Lockstep with the throws in the
+    /// runtime <c>ScopeTreeBuilder</c>, whose wording the diagnostic carries.
+    /// </summary>
+    /// <remarks>
+    /// One report per part, the first, as at runtime: past an unbalanced tag, which tag closes
+    /// which block is a guess. A part with an unsupported tag is skipped for the same reason.
+    /// </remarks>
+    static void ValidateBlockStructure(
+        SourceProductionContext context,
+        string templatePath,
+        IReadOnlyList<Token> tokens,
+        Location location)
+    {
+        var tags = new List<Token>();
+        var index = 0;
+        while (index < tokens.Count)
+        {
+            var part = tokens[index].Part;
+            var hasUnknown = false;
+            tags.Clear();
+            for (; index < tokens.Count && tokens[index].Part == part; index++)
+            {
+                var token = tokens[index];
+                if (token.Kind == TokenKind.Substitution)
+                {
+                    continue;
+                }
+
+                hasUnknown |= token.Kind == TokenKind.UnknownBlock;
+                tags.Add(token);
+            }
+
+            if (hasUnknown)
+            {
+                continue;
+            }
+
+            var error = BlockStructure.FindError(tags);
+            if (error != null)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.UnbalancedBlockTags,
+                        location,
+                        templatePath,
+                        error));
             }
         }
     }

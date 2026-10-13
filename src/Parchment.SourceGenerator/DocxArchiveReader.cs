@@ -49,7 +49,9 @@ static class DocxArchiveReader
         var bodyFallbacks = new List<bool>();
         var containers = new List<int>();
         var valueControlSpans = new List<int>();
+        var parts = new List<int>();
         var containerCount = 0;
+        var partCount = 0;
         var hasRemovePersonalInformation = false;
         var builder = new StringBuilder();
         using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
@@ -106,7 +108,7 @@ static class DocxArchiveReader
             break;
         }
 
-        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, valueControlSpans, hasRemovePersonalInformation, true);
+        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, parts, valueControlSpans, hasRemovePersonalInformation, true);
 
         void ReadPart(ZipArchiveEntry entry, bool isBody)
         {
@@ -135,6 +137,7 @@ static class DocxArchiveReader
             // Numbered in order of first appearance and never reset between parts, so the ids are
             // stable for a given document and a header paragraph never shares one with the body.
             var containerIds = new Dictionary<XElement, int>();
+            var part = partCount++;
 
             // The runs of each FORMTEXT field the runtime rewrites into a token, keyed to the token
             // for the run that opens the field and to null for the rest. Most templates have none.
@@ -167,6 +170,7 @@ static class DocxArchiveReader
                     var text = builder.ToString();
                     paragraphs.Add(text);
                     containers.Add(ContainerId(paragraph, containerIds, ref containerCount));
+                    parts.Add(part);
                     if (isBody)
                     {
                         bodyParagraphs.Add(text);
