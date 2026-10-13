@@ -17,6 +17,7 @@ class ScopeTreeRunner(
     EditableMap editables,
     EditableState editableState,
     BookmarkIds bookmarks,
+    CloneIds? cloneIds,
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
@@ -400,7 +401,7 @@ class ScopeTreeRunner(
         if (!loneMarker &&
             ParagraphSplicer.IsInlineEquivalent(produced))
         {
-            ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0]);
+            ParagraphSplicer.SpliceInline(host, token.Offset, token.Length, (Paragraph)produced[0], cloneIds);
             return null;
         }
 
@@ -422,7 +423,7 @@ class ScopeTreeRunner(
         // becomes the before half, so the lower-offset tokens still to be applied keep running
         // against a paragraph that stays in the document; higher-offset tokens have already been
         // applied and are carried into the after half.
-        var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced);
+        var split = ParagraphSplicer.Split(host, token.Offset, token.Length, produced, cloneIds);
         if (mayHoldSections)
         {
             // Split hands back copies of what was produced, followed by the after half. The copies
@@ -777,6 +778,7 @@ class ScopeTreeRunner(
         }
 
         OpenXmlElement insertAnchor = open;
+        var bodyIds = BodyIds(bodyElements);
 
         var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         var pendingMoves = new List<OpenXmlElement>();
@@ -804,6 +806,7 @@ class ScopeTreeRunner(
             EditableMap.Empty,
             editableState,
             bookmarks,
+            bodyIds,
             numberingState,
             styles,
             imagePolicies,
@@ -813,6 +816,7 @@ class ScopeTreeRunner(
             loopVariables = [..loopVariables, loop.LoopVariable]
         };
 
+        var first = true;
         foreach (var item in items)
         {
             // Each iteration gets its own non-bubbling child scope so the loop variable binding
@@ -837,9 +841,18 @@ class ScopeTreeRunner(
                 foreach (var element in bodyElements)
                 {
                     var clone = element.CloneNode(true);
+                    // The first copy keeps the ids the template gave the body; each later one
+                    // needs its own - see CloneIds.
+                    if (!first)
+                    {
+                        bodyIds?.Renumber(clone);
+                    }
+
                     scratch.AppendChild(clone);
                     CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
+
+                first = false;
 
                 // Reuse the original scope tree directly. cloneAnchors is keyed on the same anchor
                 // names the registration-time tree references, so no per-iteration tree rebuild
@@ -909,7 +922,9 @@ class ScopeTreeRunner(
         var cloneAnchors = new Dictionary<string, Paragraph>(StringComparer.Ordinal);
         var repeatedItems = new List<SdtBlock>();
         IReadOnlyList<string> itemLoopVariables = [..loopVariables, loop.LoopVariable];
+        var bodyIds = BodyIds(bodyElements);
 
+        var first = true;
         foreach (var fluidItem in effectiveItems)
         {
             var rawItem = isBlank ? null : fluidItem.ToObjectValue();
@@ -921,9 +936,17 @@ class ScopeTreeRunner(
                 foreach (var element in bodyElements)
                 {
                     var clone = element.CloneNode(true);
+                    // As in an ordinary loop: the template's ids go to the first item only.
+                    if (!first)
+                    {
+                        bodyIds?.Renumber(clone);
+                    }
+
                     scratch.AppendChild(clone);
                     CollectAnchors(clone, cloneAnchors, loop.NestedAnchors);
                 }
+
+                first = false;
 
                 var itemRunner = new ScopeTreeRunner(
                     templateName,
@@ -938,6 +961,7 @@ class ScopeTreeRunner(
                     entry.ElementMap.ScopedToItem(loop.LoopVariable, rawItem),
                     editableState,
                     bookmarks,
+                    bodyIds,
                     numberingState,
                     styles,
                     imagePolicies,
@@ -969,6 +993,23 @@ class ScopeTreeRunner(
         {
             anchor = parent.InsertAfter(produced, anchor);
         }
+    }
+
+    /// <summary>
+    /// The allocator the copies of a loop body are renumbered through, or null when the body holds
+    /// no id a second copy would repeat. Asked once of the body rather than of every copy. What
+    /// the body does not hold, nothing nested in it holds either, so the runner for its iterations
+    /// is handed the same answer and its own loops and splits have nothing to walk.
+    /// </summary>
+    CloneIds? BodyIds(List<OpenXmlElement> bodyElements)
+    {
+        if (cloneIds != null &&
+            CloneIds.Holds(bodyElements))
+        {
+            return cloneIds;
+        }
+
+        return null;
     }
 
     static List<OpenXmlElement> CaptureBetween(OpenXmlElement start, OpenXmlElement end)
@@ -1158,7 +1199,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
         {
             loopVariables = loopVariables
         };

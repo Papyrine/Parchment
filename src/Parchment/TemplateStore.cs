@@ -67,6 +67,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = clone;
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        var templateIds = new TemplateIds();
         var noteReferences = NoteReferences.None;
         bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
@@ -105,6 +106,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // After the scan, so the anchors it added are counted, and across every part: a
                 // render numbers what it produces from above this - see BookmarkIds.
                 maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
+
+                // Every part for the same reason: what a loop copies is numbered clear of these.
+                templateIds.Read(root);
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -153,7 +157,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences, templateIds);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
@@ -201,7 +205,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         MarkdownReferenceValidator.Validate(template, model, name);
         template = MarkdownNumberText.Rewrite(template);
 
-        var (prepared, parts, maxBookmarkId) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
+        var (prepared, parts, maxBookmarkId, templateIds) = PrepareStyleSource(model, styleSource ?? BlankDocxTemplate, name);
         var (styleSourceBytes, compatibilityBaked) = BakeStyleSource(prepared);
 
         var registered = new RegisteredMarkdownTemplate(
@@ -215,6 +219,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             excelsiorTables,
             tablePlaceholders,
             maxBookmarkId,
+            templateIds,
             compatibilityBaked);
         templates[model] = registered;
         logger.LogInformation("Registered markdown template for {ModelType}", model.Name);
@@ -244,11 +249,12 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     /// serialized.
     /// </remarks>
     [RequiresUnreferencedCode(Unsupported.Trimming)]
-    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId) PrepareStyleSource(Type model, byte[] bytes, string name)
+    static (byte[] Bytes, IReadOnlyList<PartScopeTree> Parts, int MaxBookmarkId, TemplateIds Ids) PrepareStyleSource(Type model, byte[] bytes, string name)
     {
         using var stream = DocxCloner.ToWritableStream(bytes);
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        var templateIds = new TemplateIds();
         bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
@@ -274,6 +280,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 // The body is skipped above because the markdown replaces it, so its bookmarks never
                 // reach the output. Every other part's do, anchors included - see BookmarkIds.
                 maxBookmarkId = Math.Max(maxBookmarkId, Anchors.MaxBookmarkId(root));
+
+                // The same parts, for the ids a header or footer loop gives its copies.
+                templateIds.Read(root);
                 if (classifications.Count == 0)
                 {
                     continue;
@@ -289,7 +298,14 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 !retyped &&
                 !stripped)
             {
-                return (bytes, [], maxBookmarkId);
+                if (!retyped)
+                {
+                    return (bytes, [], maxBookmarkId, templateIds);
+                }
+
+                // Retyping alone leaves no token to bind, so no part is listed, as when nothing
+                // was rewritten at all.
+                parts.Clear();
             }
 
             doc.Save();
@@ -300,7 +316,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             MacroParts.RemoveContentTypeDefaults(stream);
         }
 
-        return (stream.ToArray(), parts, maxBookmarkId);
+        return (stream.ToArray(), parts, maxBookmarkId, templateIds);
     }
 
     /// <summary>
