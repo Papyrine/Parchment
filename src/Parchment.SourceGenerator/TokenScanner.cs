@@ -29,7 +29,10 @@ public static class TokenScanner
                 var source = paragraph.Substring(site.Offset, site.Length);
                 if (site.Kind == TokenSiteKind.Substitution)
                 {
-                    result.Add(ParseSubstitution(source, hasOtherContent) with { Container = container });
+                    // A sibling token is other content to a substitution: the runtime asks the
+                    // same TokenScan.IsSolo before it swaps a paragraph for a token's output.
+                    var solo = TokenScan.IsSolo(paragraph, sites.Count, site.Offset, site.Length);
+                    result.Add(ParseSubstitution(source, !solo) with { Container = container });
                 }
                 else
                 {
@@ -99,24 +102,39 @@ public static class TokenScanner
                 return BuildForTag(source, expression, hasOtherContent);
 
             case "endfor":
-                return new(TokenKind.ForClose, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.ForClose, "endfor", source, expression, hasOtherContent);
 
             case "if":
                 return BuildConditional(TokenKind.IfOpen, source, expression, hasOtherContent);
 
             case "elsif":
-            case "elseif":
                 return BuildConditional(TokenKind.ElsIf, source, expression, hasOtherContent);
 
             case "else":
-                return new(TokenKind.Else, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.Else, "else", source, expression, hasOtherContent);
 
             case "endif":
-                return new(TokenKind.IfClose, source, [], null, hasOtherContent);
+                return BuildArgumentless(TokenKind.IfClose, "endif", source, expression, hasOtherContent);
+
+            case "elseif":
+                return BuildArgumentless(TokenKind.UnknownBlock, "elseif", source, expression, hasOtherContent);
 
             default:
                 return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent);
         }
+    }
+
+    // Lockstep with the runtime TokenScanner.RequireNoArguments: `{% else if Flag %}` is not an
+    // `else`, and `elseif` is not a liquid tag at all.
+    static Token BuildArgumentless(TokenKind kind, string tag, string source, string? expression, bool hasOtherContent)
+    {
+        var problem = BlockTagArguments.Problem(tag, expression);
+        if (problem == null)
+        {
+            return new(kind, source, [], null, hasOtherContent);
+        }
+
+        return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent, Problem: problem);
     }
 
     static Token BuildForTag(string source, string? expression, bool hasOtherContent)
