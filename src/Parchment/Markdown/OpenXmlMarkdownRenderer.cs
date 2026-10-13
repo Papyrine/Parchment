@@ -8,9 +8,11 @@ class OpenXmlMarkdownRenderer :
     int currentIndent;
     int nextBookmarkId;
 
-    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, WordNumberingState numbering, ImagePolicies imagePolicies, int headingOffset = 0)
+    public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, OpenXmlPart part, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkNames bookmarkNames, int headingOffset = 0)
     {
         MainPart = mainPart;
+        Part = part;
+        BookmarkNames = bookmarkNames;
         HeadingOffset = headingOffset;
         Numbering = numbering;
         ImagePolicies = imagePolicies;
@@ -42,7 +44,15 @@ class OpenXmlMarkdownRenderer :
     }
 
     public MainDocumentPart MainPart { get; }
+
+    // The part the rendered elements land in, which is where a link's relationship has to be
+    // added: a relationship id resolves against the part holding the element that carries it.
+    // MainPart is still what OpenXmlHtml is handed, since that is all it takes - the relationships
+    // it leaves there are moved by PartRelationships.
+    public OpenXmlPart Part { get; }
     public int HeadingOffset { get; }
+
+    public BookmarkNames BookmarkNames { get; }
     public WordNumberingState Numbering { get; }
     public ImagePolicies ImagePolicies { get; }
 
@@ -231,7 +241,20 @@ class OpenXmlMarkdownRenderer :
     internal void AddBlock(OpenXmlElement block)
     {
         FlushParagraph();
-        stack.Peek().Blocks.Add(block);
+        var blocks = stack.Peek().Blocks;
+
+        // Word merges two w:tbl siblings into one table, so a table that would directly follow
+        // another gets an empty paragraph first. Every table passes through here - a pipe or grid
+        // table, and each one an html block converts to - and a list item or block quote writes
+        // into the container around it, so this one check covers the body, both of those and a
+        // grid-table cell, which is a container of its own.
+        if (block is Table &&
+            AdjacentTables.EndsWithTable(blocks))
+        {
+            blocks.Add(new Paragraph());
+        }
+
+        blocks.Add(block);
     }
 
     internal int CurrentIndent => currentIndent;

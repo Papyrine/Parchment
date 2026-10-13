@@ -131,8 +131,10 @@ public class InlineCoverageTests
         var mainPart = RendererHarness.BuildRenderer().MainPart;
         var renderer = new OpenXmlMarkdownRenderer(
             mainPart,
+            mainPart,
             new(mainPart),
-            new(OpenXmlHtml.ImagePolicy.Deny(), OpenXmlHtml.ImagePolicy.Deny()));
+            new(OpenXmlHtml.ImagePolicy.Deny(), OpenXmlHtml.ImagePolicy.Deny()),
+            new());
 
         renderer.Render(image);
 
