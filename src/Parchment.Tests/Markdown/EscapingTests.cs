@@ -923,6 +923,141 @@ public partial class EscapingTests
         await Assert.That(body.InnerText).IsEqualTo("a|b **not bold**");
     }
 
+    // Markdown has no empty emphasis: the delimiters would print, and a line holding only `****`
+    // or `___` is a thematic break. A blank value takes the emphasis written around it with it.
+    [Test]
+    [Arguments("**{{ Title }}**", "")]
+    [Arguments("__{{ Title }}__", "")]
+    [Arguments("*{{ Title }}*", "")]
+    [Arguments("_{{ Title }}_", "")]
+    [Arguments("~~{{ Title }}~~", "")]
+    [Arguments("`{{ Title }}`", "")]
+    [Arguments("***{{ Title }}***", "")]
+    [Arguments("~~**{{ Title }}**~~", "")]
+    [Arguments("**{{ Title }}{{ Details }}**", "")]
+    [Arguments("**{{ Title }} {{ Details }}**", "")]
+    [Arguments("**{{ Title }}**", " ")]
+    [Arguments("**{{ Title }}**", " \t ")]
+    [Arguments("_{{ Title | upcase }}_", "")]
+    [Arguments("**{{ Title | markdown }}**", "")]
+    public async Task EmphasisAroundABlankValuePrintsNothing(string emphasis, string value)
+    {
+        var body = await Render(
+            $"before {emphasis} after\n\n{emphasis}\n\nlast",
+            new()
+            {
+                Title = value,
+                Details = value
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Select(_ => string.Join(' ', _.InnerText.Split(' ', StringSplitOptions.RemoveEmptyEntries))))
+            .IsEquivalentTo(["before after", "last"]);
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundABlankValueInALoop()
+    {
+        var body = await Render(
+            "{% assign nothing = nil %}{% for item in Items %}**{{ item }}** __{{ nothing }}__\n\n{% endfor %}last",
+            new()
+            {
+                Items = ["", "kept", " "]
+            });
+
+        await Assert.That(body.InnerText.Replace(" ", "")).IsEqualTo("keptlast");
+        await Assert.That(body.Descendants<Bold>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("kept");
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundABlankValueInsideOtherBlocks()
+    {
+        var body = await Render(
+            """
+            # **{{ Title }}**
+
+            - **{{ Title }}** item
+            - _{{ Title }}_
+
+            | A | B |
+            | --- | --- |
+            | **{{ Title }}** | ~~{{ Title }}~~ after |
+            """,
+            new());
+
+        await Assert.That(body.InnerText).IsEqualTo("itemABafter");
+        await Assert.That(body.Descendants<Strike>().Any()).IsFalse();
+        await Assert.That(body.Descendants<Italic>().Any()).IsFalse();
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundAValueIsKept()
+    {
+        var body = await Render(
+            "**{{ Title }}** and _{{ Details }}_",
+            new()
+            {
+                Title = "bold",
+                Details = "italic"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("bold and italic");
+        await Assert.That(body.Descendants<Bold>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("bold");
+        await Assert.That(body.Descendants<Italic>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("italic");
+    }
+
+    // The runs either side of the token here close one emphasis and open another. Neither is
+    // around the token, so both stay.
+    [Test]
+    [Arguments("**a**{{ Title }}*b*")]
+    [Arguments("**a** {{ Title }} *b*")]
+    public async Task NeighbouringEmphasisSurvivesABlankValue(string template)
+    {
+        var body = await Render(template, new());
+
+        await Assert.That(body.InnerText.Replace(" ", "")).IsEqualTo("ab");
+        await Assert.That(body.Descendants<Bold>().First().Ancestors<Run>().Single().InnerText).IsEqualTo("a");
+    }
+
+    // Only delimiters around a token are dropped. Ones the author typed with nothing between them,
+    // in the template or in a value that is markdown source, print as they always did.
+    [Test]
+    public async Task EmptyEmphasisWithoutATokenIsLeftAlone()
+    {
+        var body = await Render(
+            "a **** b {{ Title }}\n\n{{ Details | markdown }}",
+            new()
+            {
+                Details = "c **** d"
+            });
+
+        await Assert.That(body.Elements<Paragraph>().Select(_ => _.InnerText.Trim())).IsEquivalentTo(["a **** b", "c **** d"]);
+    }
+
+    [Test]
+    public async Task EscapedDelimitersAroundABlankValueStillPrint()
+    {
+        var body = await Render(@"a \*{{ Title }}\* b", new());
+
+        await Assert.That(body.InnerText).IsEqualTo("a ** b");
+    }
+
+    [Test]
+    public async Task DocxMarkdownValueKeepsItsEmptyEmphasis()
+    {
+        var body = await RenderDocx(
+            "{{ Details | markdown }}",
+            new()
+            {
+                Details = "a **** b"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("a **** b");
+    }
+
     [Test]
     public async Task EncoderEscapesEveryStructuralCharacter()
     {

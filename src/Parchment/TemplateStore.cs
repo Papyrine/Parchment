@@ -213,7 +213,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             model,
             styleSourceBytes,
             parts,
-            template,
+            // After validation, which reads the statements as the author wrote them.
+            MarkdownBlankOutputs.Instrument(template),
             Policies,
             PageNumbers,
             excelsiorTables,

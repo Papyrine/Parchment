@@ -1525,6 +1525,8 @@ Quotes and dashes are deliberately *not* escaped, so [smarty pants](#smarty-pant
 
 A url written in the template with a bound tail — `https://example.com/orders/{{ Id }}`, bare or as `<https://example.com/orders/{{ Id }}>` — is the other place escapes are read verbatim, and there they are removed again, so the link's text and target carry the value as it is. The value is still not syntax: the link ends where a url typed out in full would end — at a space, a `<` or a line break, and before trailing punctuation such as a final `.` — and whatever follows is escaped text. A `file:` url is the exception, left exactly as written because a backslash is a path separator there.
 
+Emphasis written around a token goes with a blank value. Markdown has no empty emphasis — `****` prints as four asterisks, and alone on a line it is a horizontal rule — so when the value between the delimiters is null, empty or only spaces, `**{{ Name }}**`, `_{{ Name }}_`, `~~{{ Name }}~~` and `` `{{ Name }}` `` leave what the bare token would: nothing. Only delimiters directly around a token are affected; empty emphasis typed into the template, or arriving in a value that is markdown source, prints as written.
+
 The docx flow needs none of this. It substitutes into Word runs rather than into source, so a value there was always the text it is.
 
 #### Line breaks
