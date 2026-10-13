@@ -10,6 +10,7 @@ class ScopeTreeRunner(
     Dictionary<string, Paragraph> anchorMap,
     TemplateContext context,
     MainDocumentPart mainPart,
+    PartRelationships relationships,
     object rootModel,
     ExcelsiorTableMap excelsiorTables,
     FormatMap formats,
@@ -328,12 +329,17 @@ class ScopeTreeRunner(
             // In the order the tokens were reached: the last one in the paragraph first.
             foreach (var (mutate, target) in mutations)
             {
-                var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, target);
+                var ctx = new OpenXmlContextImpl(mainPart, relationships.Owner, numberingState, styles.Value, target);
+                // As for a produced fragment, see RenderTokenValue - but the target also holds what
+                // the template put there, which refers to this part and is not to be repointed.
+                var held = relationships.Snapshot();
+                var before = held == null ? null : target.Descendants().ToHashSet();
                 // The caller numbers a bookmark it adds without sight of the document, and the
                 // paragraph it adds it to already holds the anchor's and maybe the template's -
                 // see BookmarkIds.
                 var existing = BookmarkIds.Markers(target);
                 mutate.Apply(target, ctx);
+                relationships.Claim(target, before, held);
                 bookmarks.RenumberAdded(target, existing);
             }
         }
@@ -459,12 +465,22 @@ class ScopeTreeRunner(
     // section break the caller wrote whole.
     IReadOnlyList<OpenXmlElement> RenderTokenValue(object value, Paragraph host, DocxTokenSite site, out bool mayHoldSections)
     {
+        // In a header, footer or note, what the html converter, Excelsior or a delegate adds to
+        // the main part for this content belongs to the part the content lands in.
+        var held = relationships.Snapshot();
+        var produced = Produce(value, host, site, out mayHoldSections);
+        relationships.Claim(produced, held);
+        return produced;
+    }
+
+    IReadOnlyList<OpenXmlElement> Produce(object value, Paragraph host, DocxTokenSite site, out bool mayHoldSections)
+    {
         if (value is MarkdownToken md)
         {
             try
             {
                 // Renumbers its own bookmarks, from the same counter.
-                return MarkdownRendering.Render(md.Source, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+                return MarkdownRendering.Render(md.Source, mainPart, relationships.Owner, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
             }
             catch (TableColumnLimitException exception)
             {
@@ -489,7 +505,7 @@ class ScopeTreeRunner(
                 imagePolicies.BuildSettings(numberingSession: numberingState.GetHtmlSession())),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             OpenXmlToken raw => raw
-                .Render(new OpenXmlContextImpl(mainPart, numberingState, styles.Value, host))
+                .Render(new OpenXmlContextImpl(mainPart, relationships.Owner, numberingState, styles.Value, host))
                 .ToList(),
             _ => []
         };
@@ -807,6 +823,7 @@ class ScopeTreeRunner(
             cloneAnchors,
             context,
             mainPart,
+            relationships,
             rootModel,
             excelsiorTables,
             formats,
@@ -962,6 +979,7 @@ class ScopeTreeRunner(
                     cloneAnchors,
                     context,
                     mainPart,
+                    relationships,
                     rootModel,
                     excelsiorTables,
                     formats,
@@ -1207,7 +1225,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers)
         {
             loopVariables = loopVariables
         };

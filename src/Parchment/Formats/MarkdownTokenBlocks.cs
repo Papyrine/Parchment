@@ -309,7 +309,7 @@ static class MarkdownTokenBlocks
             // The host is handed over as well as the part: a token that only wants to know what it
             // is replacing - its style, its indentation - gets the same answer it would in the docx
             // flow, even though the paragraph here was built by Markdig rather than by a template.
-            OpenXmlToken raw => raw.Render(new OpenXmlContextImpl(mainPart, numbering, styles.Value, host)),
+            OpenXmlToken raw => raw.Render(new OpenXmlContextImpl(mainPart, mainPart, numbering, styles.Value, host)),
             _ => []
         };
 

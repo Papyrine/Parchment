@@ -78,7 +78,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             EnsureDocumentType(doc, out macros);
 
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var (uri, _, root) in DocxCloner.EnumerateParts(doc))
             {
                 if (uri == bodyUri)
                 {
@@ -263,7 +263,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             var found = false;
             var stripped = false;
-            foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
+            foreach (var (uri, _, root) in DocxCloner.EnumerateParts(doc))
             {
                 if (uri == bodyUri)
                 {

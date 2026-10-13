@@ -1,5 +1,6 @@
 class OpenXmlContextImpl(
     MainDocumentPart mainPart,
+    OpenXmlPart part,
     WordNumberingState numbering,
     StyleSet styles,
     Paragraph? hostParagraph = null) :
@@ -12,10 +13,22 @@ class OpenXmlContextImpl(
     public string AddImagePart(byte[] bytes, string contentType)
     {
         var partType = ImageContentTypes.Resolve(contentType);
-        var imagePart = MainPart.AddImagePart(partType, RelationshipIds.Next(MainPart, "rIdImage"));
+
+        // To the part the token sits in, not always the main one: the id handed back is only good
+        // in the part that ends up holding the drawing.
+        var id = RelationshipIds.Next(part, "rIdImage");
+        var imagePart = part switch
+        {
+            MainDocumentPart main => main.AddImagePart(partType, id),
+            HeaderPart header => header.AddImagePart(partType, id),
+            FooterPart footer => footer.AddImagePart(partType, id),
+            FootnotesPart footnotes => footnotes.AddImagePart(partType, id),
+            EndnotesPart endnotes => endnotes.AddImagePart(partType, id),
+            _ => throw new InvalidOperationException($"A token cannot add an image to a {part.GetType().Name}.")
+        };
         using var stream = new MemoryStream(bytes);
         imagePart.FeedData(stream);
-        return MainPart.GetIdOfPart(imagePart);
+        return id;
     }
 
     public bool TryGetStyle(string styleId, out StyleType styleType) =>

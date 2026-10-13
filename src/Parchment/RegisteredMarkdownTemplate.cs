@@ -77,7 +77,7 @@ class RegisteredMarkdownTemplate(
             bool mayHoldSections;
             try
             {
-                elements = MarkdownRendering.Render(markdownText, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+                elements = MarkdownRendering.Render(markdownText, mainPart, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
             }
             catch (SectionMarkerException exception)
             {
@@ -182,10 +182,10 @@ class RegisteredMarkdownTemplate(
             return;
         }
 
-        var partRoots = new Dictionary<string, OpenXmlCompositeElement>(StringComparer.Ordinal);
-        foreach (var (uri, root) in DocxCloner.EnumerateParts(doc, tokenParts))
+        var partRoots = new Dictionary<string, (OpenXmlPart part, OpenXmlCompositeElement root)>(StringComparer.Ordinal);
+        foreach (var (uri, part, root) in DocxCloner.EnumerateParts(doc, tokenParts))
         {
-            partRoots[uri] = root;
+            partRoots[uri] = (part, root);
         }
 
         var context = SharedFluid.CreateContext(model, SharedFluid.Options);
@@ -196,17 +196,22 @@ class RegisteredMarkdownTemplate(
         foreach (var part in nonBodyParts)
         {
             cancel.ThrowIfCancellationRequested();
-            if (!partRoots.TryGetValue(part.PartUri, out var root))
+            if (!partRoots.TryGetValue(part.PartUri, out var target))
             {
                 continue;
             }
 
+            var root = target.root;
+            // The `| markdown` and `| html` filters still bind here, and a link either produces
+            // has to hang off this part rather than the main one.
+            var relationships = new PartRelationships(mainPart, target.part);
             var runner = new ScopeTreeRunner(
                 Name,
                 part.PartUri,
                 Anchors.BuildMap(root),
                 context,
                 mainPart,
+                relationships,
                 model,
                 ExcelsiorTableMap.Empty,
                 FormatMap.Empty,
@@ -224,6 +229,7 @@ class RegisteredMarkdownTemplate(
             // None of these parts is the body, so this only ever rejects a marker - the body's own
             // are finished by SectionBreaks.Apply in Render.
             runner.ApplySectionBreaks(root);
+            relationships.Complete();
 
             Anchors.StripAll(root);
             // A header or footer is a docx part, so its substitutions go through the text-based
