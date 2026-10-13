@@ -233,7 +233,7 @@ public class FormFieldGeneratorTests
         var setup = GeneratorDriver.CreateDriverWithDocxes(
             source,
             new TemplateFile("Letter.parchment.docx", GeneratorDriver.BuildDocxBytesFromBlocks(blocks)));
-        return DocxArchiveReader.Read(setup.DocxPath).Paragraphs;
+        return DocxArchiveReader.Read(File.ReadAllBytes(setup.DocxPath)).Paragraphs;
     }
 
     static Run TextRun(string text) =>

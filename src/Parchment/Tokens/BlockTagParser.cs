@@ -2,6 +2,8 @@
 /// Parses a block-tag source string of the form <c>{% tag expr %}</c> into its two components.
 /// Replaces the equivalent regex (<c>^\{%\s*(?&lt;tag&gt;\w+)(?:\s+(?&lt;expr&gt;.*?))?\s*%\}$</c>)
 /// with a span-based hand-roll — same semantics, zero allocations, no Regex engine startup.
+/// Compiled into the source generator as well (linked, like <c>TokenScan</c>), so the build-time
+/// validator reads a tag exactly as registration does. Keep it free of runtime-only dependencies.
 /// </summary>
 static class BlockTagParser
 {
