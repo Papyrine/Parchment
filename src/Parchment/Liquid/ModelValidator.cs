@@ -357,6 +357,7 @@ static class ModelValidator
 
         if (type.HasElementType)
         {
+            // ReSharper disable once TailRecursiveCall
             return ContainsPointer(type.GetElementType()!);
         }
 

@@ -42,16 +42,19 @@ static class SharedFluid
             // Fluid defaults this to TimeZoneInfo.Local and uses it to read a string or a unix
             // timestamp handed to the `date` filter, so the same template and model printed a
             // different time on a machine in another zone.
-            TimeZone = TimeZoneInfo.Utc
+            TimeZone = TimeZoneInfo.Utc,
+            MemberAccessStrategy =
+            {
+                // A token names a model member without regard to case. Every validator resolves it that
+                // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
+                // ordinally unless told otherwise, and that left a token registration had accepted reading
+                // nothing at render. It has to be set here, ahead of the first registered accessor: the
+                // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
+                // the map was last built with.
+                IgnoreCasing = true
+            }
         };
 
-        // A token names a model member without regard to case. Every validator resolves it that
-        // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
-        // ordinally unless told otherwise, and that left a token registration had accepted reading
-        // nothing at render. It has to be set here, ahead of the first registered accessor: the
-        // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
-        // the map was last built with.
-        options.MemberAccessStrategy.IgnoreCasing = true;
         Filters.Register(options.Filters);
         // A DateTime of Kind Unspecified names no zone. Fluid stores every date as a
         // DateTimeOffset and gets there through the implicit conversion, which reads an
@@ -107,7 +110,7 @@ static class SharedFluid
                     return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
                 }
 
-                if (value is TimeOnly time)
+                if (value is Time time)
                 {
                     return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
                 }

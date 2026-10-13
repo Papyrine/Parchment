@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// Formatting reaches a run from whichever inline closes first, so the order the properties arrive
 /// in follows the nesting. <c>w:rPr</c> is a strict sequence and holds each of these once, whatever

@@ -52,8 +52,11 @@ class MarkdownReferenceValidator :
             Visit(forStatement.Limit);
         }
 
-        if (forStatement.Offset != null &&
-            !forStatement.OffsetIsContinue)
+        if (forStatement is
+            {
+                Offset: not null,
+                OffsetIsContinue: false
+            })
         {
             Visit(forStatement.Offset);
         }

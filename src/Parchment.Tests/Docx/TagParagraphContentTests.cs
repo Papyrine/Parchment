@@ -1,4 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
 using V = DocumentFormat.OpenXml.Vml;
 
 // A block tag paragraph is removed and the host of a solo structural token is replaced, and both
@@ -699,7 +698,7 @@ public partial class TagParagraphContentTests
     public async Task FootnoteMarkBesideASoloTokenInAFootnoteIsKept()
     {
         using var template = Build(new Paragraph(TextRun("body"), NoteReferenceRun()));
-        AddFootnote(template, new Paragraph(new Run(new FootnoteReferenceMark()), TextRun("{{ Html }}")));
+        AddFootnote(template, new(new Run(new FootnoteReferenceMark()), TextRun("{{ Html }}")));
 
         using var doc = await Render(
             template,

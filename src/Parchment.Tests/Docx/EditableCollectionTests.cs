@@ -192,7 +192,7 @@ public partial class EditableCollectionTests
         await Assert.That(styles.Count).IsEqualTo(1);
         await Assert.That(styles[0].Val!.Value).IsEqualTo("PlaceholderText");
 
-        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
         var errors = validator.Validate(rendered)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();
@@ -205,7 +205,7 @@ public partial class EditableCollectionTests
         using var stream = await Render(template, NewPlan());
 
         using var doc = WordprocessingDocument.Open(stream, false);
-        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
         var errors = validator.Validate(doc)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();
@@ -474,7 +474,7 @@ public partial class EditableCollectionTests
 
         using (var doc = WordprocessingDocument.Open(stream, false))
         {
-            var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+            var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
             var errors = validator.Validate(doc)
                 .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
                 .ToList();

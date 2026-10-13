@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using Parchment.Generated;
 
 // Input that cannot be a template fails at registration, as a ParchmentRegistrationException naming
@@ -79,7 +78,7 @@ public partial class UnusableTemplateTests
     static byte[] Spreadsheet()
     {
         using var stream = new MemoryStream();
-        using (var sheet = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Create(stream, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+        using (var sheet = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
         {
             sheet.AddWorkbookPart().Workbook = new();
         }

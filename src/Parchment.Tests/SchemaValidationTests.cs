@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// Holds every checked-in .docx snapshot to the schema Word enforces.
 /// </summary>

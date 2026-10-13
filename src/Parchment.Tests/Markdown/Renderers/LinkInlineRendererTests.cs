@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 public class LinkInlineRendererTests
 {
     [Test]

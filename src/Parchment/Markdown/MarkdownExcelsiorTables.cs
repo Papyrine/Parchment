@@ -92,8 +92,7 @@ static class MarkdownExcelsiorTables
     /// </summary>
     static void AppendMarker(StringBuilder builder, string marker, MarkdownOutputToken token)
     {
-        if (!token.TrimLeft &&
-            !token.TrimRight)
+        if (token is { TrimLeft: false, TrimRight: false })
         {
             builder.Append(marker);
             return;

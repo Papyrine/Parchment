@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// <c>w:settings</c> is a strict sequence with <c>w:compat</c> in the middle of it, so the
 /// compatibility block a template lacks has to be created between whatever the settings already

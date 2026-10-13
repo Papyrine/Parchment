@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// An entity is the character it names. Nothing rendered one before, and a leaf inline with no
 /// renderer writes nothing at all, so <c>AT&amp;amp;T</c> reached the document as "ATT".

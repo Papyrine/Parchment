@@ -38,7 +38,7 @@ public partial class DeterminismTests
 
     static async Task AssertPinnedTimestamps(MemoryStream stream)
     {
-        await using var archive = new System.IO.Compression.ZipArchive(stream);
+        await using var archive = new ZipArchive(stream);
         await Assert.That(archive.Entries.Count).IsGreaterThan(0);
         foreach (var entry in archive.Entries)
         {
@@ -557,7 +557,7 @@ public partial class DeterminismTests
         var stylesPart = mainPart.StyleDefinitionsPart!;
         await Assert.That(mainPart.GetIdOfPart(stylesPart)).IsEqualTo(expected);
         await Assert.That(stylesPart.Styles!.Elements<Style>().Any(_ => _.StyleId == "TableGrid")).IsTrue();
-        await Assert.That(new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365).Validate(document)).IsEmpty();
+        await Assert.That(new OpenXmlValidator(FileFormatVersions.Microsoft365).Validate(document)).IsEmpty();
     }
 
     [Test]

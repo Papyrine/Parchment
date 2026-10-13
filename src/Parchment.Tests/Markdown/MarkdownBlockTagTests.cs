@@ -119,7 +119,7 @@ public partial class MarkdownBlockTagTests
         await Assert.That(body.Elements<Paragraph>().Select(_ => _.InnerText).Where(_ => _.Length > 0))
             .IsEquivalentTo(["before", "after"]);
 
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
             .Validate(document)
             .Select(_ => _.Description)
             .ToList();

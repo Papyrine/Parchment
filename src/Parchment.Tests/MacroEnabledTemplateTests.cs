@@ -1,7 +1,4 @@
 // ReSharper disable PartialTypeWithSinglePart
-using System.IO.Compression;
-using System.Xml.Linq;
-using DocumentFormat.OpenXml.Validation;
 
 // A macro-enabled template (.docm/.dotm) is retyped to a plain document like any other, so the VBA
 // project it carries has to go with the type. Left in, the output is a .docx-typed package holding

@@ -48,17 +48,18 @@ public partial class EnumerableModelTests
     }
 
     static Order BuildOrder() =>
+    [
+
         new()
         {
-            new()
-            {
-                Name = "one"
-            },
-            new()
-            {
-                Name = "two"
-            }
-        };
+            Name = "one"
+        },
+
+        new()
+        {
+            Name = "two"
+        }
+    ];
 
     static Order BuildModel()
     {

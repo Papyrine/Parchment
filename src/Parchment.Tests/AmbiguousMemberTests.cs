@@ -164,13 +164,14 @@ public partial class AmbiguousMemberTests
     public async Task MissingMemberIsARegistrationError(string path, string missing)
     {
         using var template = DocxTemplateBuilder.Build($"{{{{ {path} }}}}");
+        var store = new TemplateStore();
         var docx = Assert.Throws<ParchmentRegistrationException>(
-            () => new TemplateStore().RegisterDocxTemplate<Doc>(template));
+            () => store.RegisterDocxTemplate<Doc>(template));
         await Assert.That(docx.Message).Contains($"'{missing}'");
 
         using var styleSource = DocxTemplateBuilder.Build();
         var markdown = Assert.Throws<ParchmentRegistrationException>(
-            () => new TemplateStore().RegisterMarkdownTemplate<Doc>($"{{{{ {path} }}}}", styleSource));
+            () => store.RegisterMarkdownTemplate<Doc>($"{{{{ {path} }}}}", styleSource));
         await Assert.That(markdown.Message).Contains($"'{missing}'");
     }
 

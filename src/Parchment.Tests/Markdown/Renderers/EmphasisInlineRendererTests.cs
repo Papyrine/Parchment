@@ -129,7 +129,7 @@ public class EmphasisInlineRendererTests
     static Paragraph RenderParagraph(string markdown)
     {
         var paragraph = (Paragraph)RendererHarness.RenderMarkdown(markdown).Single();
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013)
+        var errors = new OpenXmlValidator(FileFormatVersions.Office2013)
             .Validate(paragraph)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();

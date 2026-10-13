@@ -427,7 +427,7 @@ public partial class NumberingStateSharingTests
 
         await Assert.That(restarts).IsEquivalentTo(Enumerable.Repeat("0:1", expectedInstanceCount));
 
-        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var validator = new OpenXmlValidator(FileFormatVersions.Microsoft365);
         var errors = validator
             .Validate(doc)
             .Select(_ => $"{_.Path?.XPath}: {_.Description}")

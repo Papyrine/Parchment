@@ -11,8 +11,7 @@ public partial class ImageContentTypeTests
     [Test]
     public async Task EverySdkImagePartTypeIsMapped()
     {
-        const System.Reflection.BindingFlags flags =
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
         var type = typeof(ImagePartType);
         var sdkTypes = type
             .GetProperties(flags)

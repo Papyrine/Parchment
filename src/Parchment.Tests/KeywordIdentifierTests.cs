@@ -275,7 +275,12 @@ namespace GeneratedNames
             var store = new TemplateStore();
             store.RegisterDocxTemplate<@checked.@unchecked>(template);
 
-            var text = await RenderText(store, new @checked.@unchecked { @this = "nested" });
+            var text = await RenderText(
+                store,
+                new @checked.@unchecked
+                {
+                    @this = "nested"
+                });
 
             await Assert.That(text).IsEqualTo("nested");
         }

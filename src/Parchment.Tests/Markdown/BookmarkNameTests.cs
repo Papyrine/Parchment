@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using DocumentFormat.OpenXml.Validation;
 
 // ReSharper disable PartialTypeWithSinglePart
 /// <summary>

@@ -183,11 +183,11 @@ public partial class BakedStyleSourceTests
         }
     }
 
-    static async Task<byte[]> Render(byte[] styleSource)
+    static Task<byte[]> Render(byte[] styleSource)
     {
         var store = new TemplateStore();
         store.RegisterMarkdownTemplate<Doc>(markdown, new MemoryStream(styleSource));
-        return await Render(store);
+        return Render(store);
     }
 
     static async Task<byte[]> Render(TemplateStore store)
@@ -199,7 +199,7 @@ public partial class BakedStyleSourceTests
 
     static List<string> EntryNames(byte[] bytes)
     {
-        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(bytes));
+        using var archive = new ZipArchive(new MemoryStream(bytes));
         return archive.Entries.Select(_ => _.FullName).ToList();
     }
 

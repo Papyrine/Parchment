@@ -1,5 +1,4 @@
-using System.IO.Compression;
-using DocumentFormat.OpenXml.Validation;
+
 
 // Templates the source generator has to agree with the runtime on: a main part that is not named
 // word/document.xml, and a document saved as Strict Open XML. Both register and render, so the

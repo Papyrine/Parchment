@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 
 // A Word paragraph has one style and markdown containers nest, so a block inside a container has

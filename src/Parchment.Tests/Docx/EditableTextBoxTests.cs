@@ -199,7 +199,7 @@ public partial class EditableTextBoxTests
         element.Ancestors<AlternateContentFallback>().Any();
 
     static List<string> Errors(WordprocessingDocument doc) =>
-        new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
+        new OpenXmlValidator(FileFormatVersions.Microsoft365)
             .Validate(doc)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();

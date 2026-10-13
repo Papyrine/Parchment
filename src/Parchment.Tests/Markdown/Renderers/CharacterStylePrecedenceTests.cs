@@ -1,5 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// A run carries one <c>w:rStyle</c>, and a link, emphasis, a classed span and inline code can each
 /// ask for one. Which wins goes by what asked - emphasis, then the span, then the code, then the

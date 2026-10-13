@@ -233,9 +233,7 @@ public partial class TokenValueTextTests
         await Assert.That(Texts(docx)).IsEqualTo("one|two|Note: first|Note: second|Joined: one, two");
 
         var markdown = await RenderMarkdown(
-            """
-            {% for item in Items %}{{ item }}, {% endfor %}{% for line in Lines %}{{ line.Note }}, {% endfor %}{{ Items | join: '+' }}
-            """,
+            "{% for item in Items %}{{ item }}, {% endfor %}{% for line in Lines %}{{ line.Note }}, {% endfor %}{{ Items | join: '+' }}",
             model);
         await Assert.That(markdown.InnerText.Trim()).IsEqualTo("one, two, first, second, one+two");
     }

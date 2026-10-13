@@ -345,7 +345,7 @@ public partial class ReferenceValidatorTests
             set => Kept = value;
         }
 
-        public new ReadOnlySpan<char> BySpan => Kept.AsSpan();
+        public new CharSpan BySpan => Kept.AsSpan();
     }
 
     // Every member here is legal C#, and several are ones no accessor can be written for. That this
@@ -359,7 +359,7 @@ public partial class ReferenceValidatorTests
 
         public ref int Count => ref count;
 
-        public ReadOnlySpan<char> Chars => Name.AsSpan();
+        public CharSpan Chars => Name.AsSpan();
 
         public Span<int> Numbers => default;
 

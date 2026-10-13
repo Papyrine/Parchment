@@ -1,7 +1,5 @@
 // ReSharper disable PartialTypeWithSinglePart
 
-using DocumentFormat.OpenXml.Validation;
-
 /// <summary>
 /// Text written as markdown reaches the document as the text a reader expects — an entity as its
 /// character, a bracket that never closed as a bracket, angle quotes as angle quotes — in a markdown

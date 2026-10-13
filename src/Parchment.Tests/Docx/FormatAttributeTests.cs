@@ -1008,7 +1008,7 @@ public partial class FormatAttributeTests
 
         using var doc = WordprocessingDocument.Open(stream, false);
         // Named in full: a using directive would move every readme snippet this file supplies.
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
             .Validate(doc)
             .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
             .ToList();

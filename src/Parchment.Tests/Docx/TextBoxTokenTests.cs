@@ -150,7 +150,7 @@ public partial class TextBoxTokenTests
     [Arguments("<p>First</p><p>Second</p>", "{0}before {{ Body }} after{0}")]
     public async Task TokensInATextBoxAnchoredInASplicedParagraphAreSubstitutedOnce(string html, string layout)
     {
-        using var template = BuildBody(new Body(new Paragraph(HostXml(layout))));
+        using var template = BuildBody(new(new Paragraph(HostXml(layout))));
 
         using var result = await Render(
             template,
@@ -168,7 +168,7 @@ public partial class TextBoxTokenTests
     {
         const string layout = "before {{ Body }} after{0}";
         using var template = BuildBody(
-            new Body(
+            new(
                 new Paragraph(new Run(Preserved("{% if Show %}"))),
                 new Paragraph(HostXml(layout)),
                 new Paragraph(new Run(Preserved("{% endif %}")))));
@@ -189,7 +189,7 @@ public partial class TextBoxTokenTests
     public async Task TokensInATextBoxAfterASplitTokenInsideALoopBodyAreSubstitutedOnce()
     {
         using var template = BuildBody(
-            new Body(
+            new(
                 new Paragraph(new Run(Preserved("{% for tag in Tags %}"))),
                 new Paragraph(HostXml("before {{ Body }} after{0}")),
                 new Paragraph(new Run(Preserved("{% endfor %}")))));
@@ -315,7 +315,7 @@ public partial class TextBoxTokenTests
         };
 
     static MemoryStream Build(Paragraph paragraph) =>
-        BuildBody(new Body(paragraph));
+        BuildBody(new(paragraph));
 
     static MemoryStream BuildBody(Body body)
     {

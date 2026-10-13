@@ -1113,7 +1113,7 @@ public enum OrderStatus
     Accepted
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L14-L39' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L13-L38' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The template ([input.docx](/src/Parchment.Tests/Scenarios/editable-fields/input.docx)):
@@ -1142,7 +1142,7 @@ var model = new OrderForm
 using var stream = new MemoryStream();
 await store.Render(model, stream);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L44-L61' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsUsage' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L43-L60' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsUsage' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The rendered output — editable fields as content controls, everything else read-only:
@@ -1158,7 +1158,7 @@ var result = ParchmentExtractor.Extract<OrderForm>(stream);
 
 result.ApplyTo(model);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L104-L108' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L103-L107' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableFieldsExtract' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 `ExtractResult.Fields` reports a per-field outcome — `Extracted`, `Empty` (placeholder showing), `Missing` (control deleted, or the document wasn't produced from a template bound to this model), `ParseFailed` (with the raw text for diagnostics), `Duplicate`, or `Unreachable` (a value inside an [editable collection](#editable-collections) row that had no object to be stored on) — and `AllExtracted` is true when every field read cleanly. `ApplyTo` assigns `Extracted` values and applies `Empty` as null to nullable members only — an `Empty` field targeting a non-nullable member is skipped, preserving whatever value the caller-supplied model already holds (a cleared control can't overwrite a non-nullable member with a default, because there's no null to assign). It validates that every intermediate object on nested paths is non-null *before* mutating anything (throwing `ParchmentExtractionException` otherwise). Extraction needs no `TemplateStore` — controls are matched by tag, so a service that only receives filled-in documents never has to register the template. A document that cannot be read (not a docx package, no main body, a part that is not well-formed XML, a Strict Open XML save) throws `ParchmentExtractionException` with the underlying error as `InnerException`; a null or disposed stream and a missing file keep their own exception types.
@@ -1205,7 +1205,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1693-L1703' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1692-L1702' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. A heading is bold and a link is underlined by default, so neither is reported as `<strong>` or `<u>` and an unedited field extracts to the HTML it was rendered from. A departure from the default is reported as an inline style: `<span style="font-weight:normal">` for heading text whose bold was switched off, and `style="text-decoration:none"` on a link that is not underlined throughout. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1230,7 +1230,7 @@ Protection is applied at registration whenever the model declares at least one `
 ```cs
 store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L710-L712' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L709-L711' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:

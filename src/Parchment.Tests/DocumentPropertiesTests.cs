@@ -394,7 +394,7 @@ public partial class DocumentPropertiesTests
 
     static async Task AssertValid(WordprocessingDocument doc)
     {
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
+        var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
             .Validate(doc)
             .Select(_ => $"{_.Part?.Uri}: {_.Description}")
             .ToList();

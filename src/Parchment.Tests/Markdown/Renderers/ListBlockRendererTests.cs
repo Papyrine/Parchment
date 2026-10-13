@@ -1,5 +1,4 @@
 // ReSharper disable PartialTypeWithSinglePart
-using DocumentFormat.OpenXml.Validation;
 
 public partial class ListBlockRendererTests
 {

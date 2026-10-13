@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 
 public partial class PageNumberResolverTests

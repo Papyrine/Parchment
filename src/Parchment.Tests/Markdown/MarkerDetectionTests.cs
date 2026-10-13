@@ -140,12 +140,12 @@ public partial class MarkerDetectionTests
     public async Task MarkerInsideAConditionalFollowsTheCondition(bool show, int sections, int toc)
     {
         var result = await Inspect(
-            $$$"""
+            $$"""
                Intro
 
                {% if Show %}
 
-               {{{landscape}}}
+               {{landscape}}
 
                [TOC]
 

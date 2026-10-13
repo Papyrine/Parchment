@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 
 // A table cell is the one container the markdown flow writes below the body, and a table of

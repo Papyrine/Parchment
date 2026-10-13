@@ -1,4 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 // ReSharper disable PartialTypeWithSinglePart

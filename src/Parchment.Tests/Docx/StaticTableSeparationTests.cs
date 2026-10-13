@@ -1,5 +1,4 @@
 // ReSharper disable PartialTypeWithSinglePart
-using DocumentFormat.OpenXml.Validation;
 
 /// <summary>
 /// Word merges two <c>w:tbl</c> siblings into one table. Tables that are part of the template are

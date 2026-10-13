@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml.Validation;
+
 
 // ReSharper disable PartialTypeWithSinglePart
 /// <summary>
@@ -184,7 +184,11 @@ public partial class MarkdownValueSectionBreakTests
             template,
             new()
             {
-                Items = [aroundLandscape, $"tall\n\n[SECTION]{{orientation=portrait}}\n\nafter"]
+                Items =
+                [
+                    aroundLandscape,
+                    "tall\n\n[SECTION]{orientation=portrait}\n\nafter"
+                ]
             });
 
         var sections = Sections(doc);
@@ -253,19 +257,18 @@ public partial class MarkdownValueSectionBreakTests
             template,
             new()
             {
-                Raw = new(
-                    _ =>
-                    [
-                        new Paragraph(
-                            new ParagraphProperties(
-                                new SectionProperties(
-                                    new PageSize
-                                    {
-                                        Width = 4000,
-                                        Height = 3000,
-                                        Orient = PageOrientationValues.Landscape
-                                    })))
-                    ])
+                Raw = new(_ =>
+                [
+                    new Paragraph(
+                        new ParagraphProperties(
+                            new SectionProperties(
+                                new PageSize
+                                {
+                                    Width = 4000,
+                                    Height = 3000,
+                                    Orient = PageOrientationValues.Landscape
+                                })))
+                ])
             });
 
         await Assert.That(DescribeAll(Sections(doc))).IsEqualTo("4000x3000 landscape | 6500x8000");
@@ -278,16 +281,15 @@ public partial class MarkdownValueSectionBreakTests
     {
         using var template = DocxTemplateBuilder.BuildWithTable("Label", "{{ Body }}");
 
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () =>
-            {
-                using var doc = await Render(
-                    template,
-                    new()
-                    {
-                        Body = aroundLandscape
-                    });
-            });
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(async () =>
+        {
+            using var doc = await Render(
+                template,
+                new()
+                {
+                    Body = aroundLandscape
+                });
+        });
 
         await Assert.That(exception!.Message).Contains("[SECTION]");
         await Assert.That(exception.Message).Contains("top level");
@@ -300,16 +302,15 @@ public partial class MarkdownValueSectionBreakTests
     {
         using var template = Template("Intro\n\n{{ Body }}\n\nOutro");
 
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () =>
-            {
-                using var doc = await Render(
-                    template,
-                    new()
-                    {
-                        Body = $"+-----+\n| {landscape} |\n+-----+\n"
-                    });
-            });
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(async () =>
+        {
+            using var doc = await Render(
+                template,
+                new()
+                {
+                    Body = $"+-----+\n| {landscape} |\n+-----+\n"
+                });
+        });
 
         await Assert.That(exception!.Message).Contains("top level");
     }
@@ -319,16 +320,15 @@ public partial class MarkdownValueSectionBreakTests
     {
         using var template = Template("Intro", headerText: "{{ Token }}");
 
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () =>
-            {
-                using var doc = await Render(
-                    template,
-                    new()
-                    {
-                        Token = new(aroundLandscape)
-                    });
-            });
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(async () =>
+        {
+            using var doc = await Render(
+                template,
+                new()
+                {
+                    Token = new(aroundLandscape)
+                });
+        });
 
         await Assert.That(exception!.Message).Contains("[SECTION]");
         await Assert.That(exception.PartUri).IsEqualTo("/word/header1.xml");
@@ -349,16 +349,15 @@ public partial class MarkdownValueSectionBreakTests
                     });
             });
 
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () =>
-            {
-                using var doc = await Render(
-                    template,
-                    new()
-                    {
-                        Token = new(aroundLandscape)
-                    });
-            });
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(async () =>
+        {
+            using var doc = await Render(
+                template,
+                new()
+                {
+                    Token = new(aroundLandscape)
+                });
+        });
 
         await Assert.That(exception!.Message).Contains("[SECTION]");
         await Assert.That(exception.PartUri).IsEqualTo("/word/footnotes.xml");
@@ -374,13 +373,12 @@ public partial class MarkdownValueSectionBreakTests
         store.RegisterMarkdownTemplate<Model>("# Title", styleSource);
 
         using var stream = new MemoryStream();
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            () => store.Render(
-                new Model
-                {
-                    Token = new(aroundLandscape)
-                },
-                stream));
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(() => store.Render(
+            new Model
+            {
+                Token = new(aroundLandscape)
+            },
+            stream));
 
         await Assert.That(exception!.Message).Contains("[SECTION]");
         await Assert.That(exception.PartUri).IsEqualTo("/word/header1.xml");
@@ -394,16 +392,15 @@ public partial class MarkdownValueSectionBreakTests
             "Intro\n\n{{ Body }}\n\nOutro",
             mainPart => mainPart.Document!.Body!.Elements<SectionProperties>().Single().Remove());
 
-        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () =>
-            {
-                using var doc = await Render(
-                    template,
-                    new()
-                    {
-                        Body = aroundLandscape
-                    });
-            });
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(async () =>
+        {
+            using var doc = await Render(
+                template,
+                new()
+                {
+                    Body = aroundLandscape
+                });
+        });
 
         await Assert.That(exception!.Message).Contains("[SECTION]");
         await Assert.That(exception.Message).Contains("w:sectPr");

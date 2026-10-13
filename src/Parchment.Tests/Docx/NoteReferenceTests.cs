@@ -1,4 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
 using TUnit.Assertions.Enums;
 
 // ReSharper disable PartialTypeWithSinglePart
@@ -322,7 +321,7 @@ public partial class NoteReferenceTests
             ],
             footnotes:
             [
-                new Footnote(
+                new(
                     Paragraph("{% if Flag %}"),
                     Paragraph("hidden"),
                     Paragraph("{% else %}"),

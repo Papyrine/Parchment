@@ -1,4 +1,3 @@
-using DocumentFormat.OpenXml.Validation;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 
 // ReSharper disable PartialTypeWithSinglePart

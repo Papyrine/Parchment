@@ -1,4 +1,4 @@
-using DocumentFormat.OpenXml.Validation;
+
 // ReSharper disable PartialTypeWithSinglePart
 
 // The page number of a built entry hangs off a right tab at the text width, and the text width is a

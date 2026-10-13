@@ -1,6 +1,4 @@
-using System.IO.Compression;
 using System.Globalization;
-using DocumentFormat.OpenXml.Validation;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 // ReSharper disable PartialTypeWithSinglePart
 
@@ -158,7 +156,7 @@ public partial class ExtractTests
     [Arguments("""<w:smartTag w:uri="urn:x" w:element="place"><w:r><w:t>Paris</w:t></w:r></w:smartTag><w:fldSimple w:instr=" DATE "><w:r><w:t xml:space="preserve"> 2026</w:t></w:r></w:fldSimple>""", "Paris 2026")]
     [Arguments("""<w:r><w:t xml:space="preserve">a </w:t></w:r><w:sdt><w:sdtPr><w:tag w:val="inner"/></w:sdtPr><w:sdtContent><w:hyperlink w:anchor="bm"><w:r><w:t>b</w:t></w:r></w:hyperlink></w:sdtContent></w:sdt>""", "a b")]
     [Arguments("""<mc:AlternateContent><mc:Choice Requires="w14"><w:r><w:t>new</w:t></w:r></mc:Choice><mc:Fallback><w:r><w:t>old</w:t></w:r></mc:Fallback></mc:AlternateContent>""", "new")]
-    [Arguments("""<w:r><w:t>x</w:t></w:r><m:oMath><m:r><m:t>=1</m:t></m:r></m:oMath>""", "x=1")]
+    [Arguments("<w:r><w:t>x</w:t></w:r><m:oMath><m:r><m:t>=1</m:t></m:r></m:oMath>", "x=1")]
     public async Task PlainFieldReadsThroughWhatWordWrapsRunsIn(string contentXml, string expected)
     {
         using var stream = await RenderOrder(EditableFieldTests.NewOrder());
@@ -794,7 +792,7 @@ public partial class ExtractTests
             FindSdt(body, "PurchaseOrder").SdtProperties!.AppendChild(
                 new ShowingPlaceholder
                 {
-                    Val = new OnOffValue
+                    Val = new()
                     {
                         InnerText = val
                     }
