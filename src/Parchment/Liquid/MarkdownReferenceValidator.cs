@@ -11,6 +11,7 @@
 /// <see cref="ReferenceValidator"/> already does for the docx flow and what the source generator
 /// does for markdown at compile time.
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 class MarkdownReferenceValidator :
     AstVisitor
 {
@@ -43,6 +44,20 @@ class MarkdownReferenceValidator :
         // before the loop variable is introduced.
         Visit(forStatement.Source);
 
+        // So are `limit:` and `offset:`, which liquid evaluates before the first iteration: a name
+        // that does not resolve there is nil, and the loop renders nothing or everything. `offset:
+        // continue` is liquid's own keyword, which Fluid parses as a member path.
+        if (forStatement.Limit != null)
+        {
+            Visit(forStatement.Limit);
+        }
+
+        if (forStatement.Offset != null &&
+            !forStatement.OffsetIsContinue)
+        {
+            Visit(forStatement.Offset);
+        }
+
         var resolved = TryResolveElementType(forStatement.Source, forStatement.Identifier, out var elementType);
 
         var hadScope = scope.TryGetValue(forStatement.Identifier, out var previousScope);
@@ -67,17 +82,6 @@ class MarkdownReferenceValidator :
             Visit(statement);
         }
 
-        // The else branch runs when the source is empty. Overriding VisitForStatement means base is
-        // never called, so without this the whole branch goes unvisited and a typo inside it throws
-        // nothing — the same silent skip this class was written to remove.
-        if (forStatement.Else != null)
-        {
-            foreach (var statement in forStatement.Else.Statements)
-            {
-                Visit(statement);
-            }
-        }
-
         // Restore, so a name bound by one loop does not leak into a sibling or an enclosing scope.
         scope.Remove(forStatement.Identifier);
         untyped.Remove(forStatement.Identifier);
@@ -96,7 +100,77 @@ class MarkdownReferenceValidator :
             untyped.Remove("forloop");
         }
 
+        // The else branch runs when the source is empty. Overriding VisitForStatement means base is
+        // never called, so without this the whole branch goes unvisited and a typo inside it throws
+        // nothing — the same silent skip this class was written to remove. Nothing was iterated, so
+        // neither the loop variable nor `forloop` is bound in it: it is visited in the enclosing
+        // scope, after the restore.
+        if (forStatement.Else != null)
+        {
+            foreach (var statement in forStatement.Else.Statements)
+            {
+                Visit(statement);
+            }
+        }
+
         return forStatement;
+    }
+
+    // `tablerow` is a loop like `for`, with three differences: it has no else branch, the object
+    // liquid introduces for the body is `tablerowloop` rather than `forloop`, and its arguments are
+    // visited. Left to the base visitor the body was walked with nothing bound, so every use of the
+    // loop variable was reported as an unknown member of the model.
+    protected override Statement VisitTableRowStatement(TableRowStatement tableRowStatement)
+    {
+        var identifier = tableRowStatement.Identifier;
+
+        // The source and the arguments are evaluated before the first cell, so they validate
+        // against the enclosing scope: `limit: row.Count` does not see the row.
+        Visit(tableRowStatement.Source);
+        Visit(tableRowStatement.Limit);
+        Visit(tableRowStatement.Offset);
+        Visit(tableRowStatement.Cols);
+
+        var resolved = TryResolveElementType(tableRowStatement.Source, identifier, out var elementType);
+
+        var hadScope = scope.TryGetValue(identifier, out var previousScope);
+        var hadUntyped = untyped.Contains(identifier);
+        var addedTableRowLoop = untyped.Add("tablerowloop");
+
+        if (resolved)
+        {
+            untyped.Remove(identifier);
+            scope[identifier] = elementType!;
+        }
+        else
+        {
+            scope.Remove(identifier);
+            untyped.Add(identifier);
+        }
+
+        foreach (var statement in tableRowStatement.Statements)
+        {
+            Visit(statement);
+        }
+
+        scope.Remove(identifier);
+        untyped.Remove(identifier);
+        if (hadScope)
+        {
+            scope[identifier] = previousScope!;
+        }
+
+        if (hadUntyped)
+        {
+            untyped.Add(identifier);
+        }
+
+        if (addedTableRowLoop)
+        {
+            untyped.Remove("tablerowloop");
+        }
+
+        return tableRowStatement;
     }
 
     // `assign` and `capture` introduce a variable Fluid holds as a plain string identifier, not a
@@ -119,6 +193,38 @@ class MarkdownReferenceValidator :
         untyped.Add(captureStatement.Identifier);
         return captureStatement;
     }
+
+    // `html` is the one filter that produces a token in this flow: it parks its value and writes a
+    // placeholder, which a filter after it would be handed in place of the value. The scan of a
+    // style source's headers and footers applies the docx form of the rule — see TokenScanner.
+    // PARCH037 in the source generator.
+    protected override Expression VisitFilterExpression(FilterExpression expression)
+    {
+        if (TokenFilterOrder.TryFind(expression, markdownFlow: true, out var tokenFilter, out var following))
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                TokenFilterOrder.Message(tokenFilter, following),
+                null,
+                TokenFilterOrder.Describe(expression));
+        }
+
+        return base.VisitFilterExpression(expression);
+    }
+
+    // Both tags parse, and both load another template through `TemplateOptions.FileProvider`. A
+    // markdown template is registered as one piece of text and no provider is ever set, so Fluid's
+    // null provider answers every name with a FileNotFoundException, at render.
+    protected override Statement VisitIncludeStatement(IncludeStatement includeStatement) =>
+        throw UnsupportedPartial("include");
+
+    protected override Statement VisitRenderStatement(RenderStatement renderStatement) =>
+        throw UnsupportedPartial("render");
+
+    ParchmentRegistrationException UnsupportedPartial(string tag) =>
+        new(
+            templateName,
+            $"Unsupported tag '{tag}'. A markdown template is a single file: there is nothing to load a partial from, so '{{% render %}}' and '{{% include %}}' cannot work.");
 
     protected override Expression VisitMemberExpression(MemberExpression expression)
     {
@@ -195,7 +301,7 @@ class MarkdownReferenceValidator :
         }
 
         if (!scope.TryGetValue(path.Root, out var current) &&
-            !ModelValidator.TryResolveMember(modelType, path.Root, out current))
+            !ModelValidator.TryResolveRootMember(modelType, path.Root, out current))
         {
             return false;
         }
