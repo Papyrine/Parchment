@@ -107,10 +107,13 @@ class OpenXmlMarkdownRenderer :
             return;
         }
 
+        // Appended rather than assigned to ParagraphProperties: the paragraph is empty, so first is
+        // where w:pPr belongs, and the typed setter pays for a schema lookup to arrive at the same
+        // place (see "Typed child-element setters" in contributing.md).
         var paragraph = new Paragraph();
         if (properties != null)
         {
-            paragraph.ParagraphProperties = properties;
+            paragraph.Append(properties);
         }
 
         // Markdig hands adjacent text out as separate inlines whenever anything interrupts the

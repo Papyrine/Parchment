@@ -426,7 +426,8 @@ class TableRenderer :
                 });
         }
 
-        tableCell.TableCellProperties = properties;
+        // The cell has no tcPr yet, and first is where one belongs.
+        tableCell.PrependChild(properties);
     }
 
     static void ApplyCellFormatting(
@@ -447,14 +448,21 @@ class TableRenderer :
         }
     }
 
-    // Both go through the typed properties rather than Append. A cell built by the general path
-    // arrives with whatever its inlines and blocks already wrote - emphasis, a link's rStyle, a
-    // heading's pStyle - and Append would put the new element last whatever the schema sequence
-    // says, or add a second w:b beside the one a bold header already carries.
+    // Both go through the typed properties where the run or paragraph already has properties. A
+    // cell built by the general path arrives with whatever its inlines and blocks already wrote -
+    // emphasis, a link's rStyle, a heading's pStyle - and Append would put the new element last
+    // whatever the schema sequence says, or add a second w:b beside the one a bold header already
+    // carries. With no properties yet, which is every cell of plain text, they are built holding
+    // the one element.
     static void ApplyBold(Run run)
     {
-        run.RunProperties ??= new();
-        run.RunProperties.Bold ??= new();
+        if (run.GetFirstChild<RunProperties>() is { } properties)
+        {
+            properties.Bold ??= new();
+            return;
+        }
+
+        run.PrependChild(new RunProperties(new Bold()));
     }
 
     static void ApplyJustification(
@@ -468,11 +476,21 @@ class TableRenderer :
             return;
         }
 
-        paragraph.ParagraphProperties ??= new();
-        paragraph.ParagraphProperties.Justification = new()
+        if (paragraph.GetFirstChild<ParagraphProperties>() is { } properties)
         {
-            Val = justification
-        };
+            properties.Justification = new()
+            {
+                Val = justification
+            };
+            return;
+        }
+
+        paragraph.PrependChild(
+            new ParagraphProperties(
+                new Justification
+                {
+                    Val = justification
+                }));
     }
 
     static JustificationValues? ResolveJustification(
