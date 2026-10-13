@@ -1,24 +1,25 @@
 /// <summary>
-/// Writes a character reference (<c>&amp;amp;</c>, <c>&amp;#32;</c>) as the character it names.
+/// Writes an entity as the character it names.
 /// </summary>
 /// <remarks>
-/// Markdig keeps a reference as its own inline rather than folding it into the literal around it,
-/// and an inline with no renderer is skipped — so without this the character goes missing from the
-/// document. <see cref="MarkdownEncoder"/> depends on it: a reference is how the leading space or
-/// tab of a bound value is carried past the block parser.
+/// Markdig lifts an entity out of the literal around it into a node of its own, and writes nothing
+/// for a leaf inline that no renderer claims — so with none registered <c>AT&amp;amp;T</c> reached
+/// the document as "ATT", with no error to say so. The decoded text takes the literal's route from
+/// there, which is what drops a character xml cannot carry (<c>&amp;#1;</c>) and makes a tab
+/// (<c>&amp;#9;</c>) a real Word tab. <see cref="MarkdownEncoder"/> depends on it: a reference is how the
+/// leading space or tab of a bound value is carried past the block parser.
 /// </remarks>
 class HtmlEntityInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, HtmlEntityInline>
 {
     protected override void Write(OpenXmlMarkdownRenderer renderer, HtmlEntityInline inline)
     {
-        var content = inline.Transcoded.AsSpan();
-        if (content.Length == 0)
+        var text = XmlChars.Strip(inline.Transcoded.AsSpan()).ToString();
+        if (text.Length == 0)
         {
             return;
         }
 
-        var text = XmlChars.Strip(content).ToString();
         renderer.AddRun(LiteralInlineRenderer.BuildRun(text));
     }
 }
