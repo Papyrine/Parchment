@@ -329,6 +329,52 @@ public partial class BoundAutolinkTests
         await Assert.That(targets).IsEmpty();
     }
 
+    // Markdig checks a host and an address character by character, and the escapes around a value
+    // are not characters either may hold, so the bare form stays text when the value supplies one.
+    [Test]
+    [Arguments("See https://{{ Id }}/orders for details.", "portal.example.com", "See https://portal.example.com/orders for details.")]
+    [Arguments("See www.{{ Id }}/orders for details.", "example.com", "See www.example.com/orders for details.")]
+    [Arguments("Write to mailto:{{ Id }} for details.", "first.last@example.com", "Write to mailto:first.last@example.com for details.")]
+    [Arguments("Write to <{{ Id }}> for details.", "first.last@example.com", "Write to <first.last@example.com> for details.")]
+    public async Task BoundHostOrAddressIsNotLinked(string template, string value, string text)
+    {
+        var (body, targets) = await Render(template, value);
+
+        await Assert.That(body.InnerText).IsEqualTo(text);
+        await Assert.That(targets).IsEmpty();
+    }
+
+    // An inline link is how a bound host or address is linked.
+    [Test]
+    [Arguments("[mail](mailto:{{ Id }})", "first.last@example.com", "mailto:first.last@example.com")]
+    [Arguments("[site](https://{{ Id }}/orders)", "portal.example.com", "https://portal.example.com/orders")]
+    public async Task InlineLinkWithBoundHostOrAddress(string template, string value, string target)
+    {
+        var (_, targets) = await Render(template, value);
+
+        await Assert.That(targets).IsEquivalentTo([target]);
+    }
+
+    // What the template itself spells out: an address is a link behind mailto: or in angle
+    // brackets, and text on its own.
+    [Test]
+    [Arguments("mail mailto:user@example.com now", true)]
+    [Arguments("mail <user@example.com> now", true)]
+    [Arguments("mail user@example.com now", false)]
+    public async Task LiteralEmailAddress(string template, bool linked)
+    {
+        var (body, targets) = await Render(template, "");
+
+        if (!linked)
+        {
+            await Assert.That(targets).IsEmpty();
+            return;
+        }
+
+        await Assert.That(targets).IsEquivalentTo(["mailto:user@example.com"]);
+        await Assert.That(body.Descendants<Hyperlink>().Single().InnerText).IsEqualTo("user@example.com");
+    }
+
     static async Task AssertNoMarkup(Body body)
     {
         await Assert.That(body.Descendants<Italic>().Any()).IsFalse();

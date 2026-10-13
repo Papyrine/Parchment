@@ -112,12 +112,12 @@ public class EmphasisInlineRendererTests
     }
 
     [Test]
-    public async Task StyleOnEmphasisAroundLinkLeavesTheHyperlinkStyle()
+    public async Task StyleOnEmphasisAroundLinkReplacesTheHyperlinkStyle()
     {
         var paragraph = RenderParagraph("**see [text](https://example.com)**{.Lead}");
         var runs = paragraph.Descendants<Run>().ToList();
         await Assert.That(runs[0].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Lead");
-        await Assert.That(runs[1].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Hyperlink");
+        await Assert.That(runs[1].RunProperties!.RunStyle!.Val?.Value).IsEqualTo("Lead");
         await Assert.That(runs[1].RunProperties!.Bold).IsNotNull();
     }
 

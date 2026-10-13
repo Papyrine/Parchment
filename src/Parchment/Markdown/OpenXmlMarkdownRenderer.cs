@@ -172,16 +172,34 @@ class OpenXmlMarkdownRenderer :
 
     internal void AddRun(OpenXmlElement run)
     {
-        if (run is Run typed && activeInlineHtml.Count > 0)
+        if (run is Run typed)
         {
-            typed.RunProperties ??= new();
-            foreach (var (_, apply) in activeInlineHtml)
-            {
-                apply(typed.RunProperties);
-            }
+            ApplyInlineHtmlFormats(typed);
         }
 
         stack.Peek().CurrentRuns.Add(run);
+    }
+
+    /// <summary>
+    /// Gives <paramref name="run"/> the formatting of every inline html tag open around it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AddRun"/> does this for a run added directly. A renderer that adds its runs
+    /// already wrapped - an autolink arrives as one <c>Hyperlink</c> - calls it for the runs inside,
+    /// which <see cref="AddRun"/> does not look for.
+    /// </remarks>
+    internal void ApplyInlineHtmlFormats(Run run)
+    {
+        if (activeInlineHtml.Count == 0)
+        {
+            return;
+        }
+
+        var properties = run.RunProperties ??= new();
+        foreach (var (_, apply) in activeInlineHtml)
+        {
+            apply(properties);
+        }
     }
 
     /// <summary>
