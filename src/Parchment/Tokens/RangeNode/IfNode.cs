@@ -9,5 +9,7 @@ sealed record IfNode(
     string CloseAnchorName,
     IReadOnlyList<IfBranch> Branches,
     string? ElseAnchorName,
-    IReadOnlyList<RangeNode> ElseBody) :
+    IReadOnlyList<RangeNode> ElseBody,
+    // As LoopNode.NestedAnchors, for a paragraph in any of the branches.
+    bool NestedAnchors) :
     RangeNode;

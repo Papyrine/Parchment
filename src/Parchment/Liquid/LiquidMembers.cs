@@ -19,6 +19,7 @@
 /// model. An enum resolves no member at all.
 /// </para>
 /// </remarks>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class LiquidMembers
 {
     public static LiquidKind Classify(Type type)

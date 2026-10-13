@@ -21,12 +21,24 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Parchment\Tokens\BlockTagParser.cs" Link="BlockTagParser.cs" />
     <Compile Include="..\Parchment\Tokens\TokenScan.cs" Link="TokenScan.cs" />
     <Compile Include="..\Parchment\Tokens\TokenSite.cs" Link="TokenSite.cs" />
     <Compile Include="..\Parchment\Tokens\TokenSiteKind.cs" Link="TokenSiteKind.cs" />
     <PackageReference Include="Polyfill" PrivateAssets="all" />
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <!-- Each build is compiled against the compiler its package folder names, not the central
+         version: Parchment.csproj packs netstandard2.0 into analyzers/dotnet/roslyn5.0 and net10.0
+         into roslyn5.3, and the SDK hands a compiler the newest folder that is not newer than
+         itself. A compiler refuses an analyzer that references a newer Microsoft.CodeAnalysis than
+         its own, with a warning (CS9057) rather than an error: the generator is skipped, the build
+         still succeeds, and every model fails at first render. Do NOT bump either version along
+         with the rest of Directory.Packages.props. Raising one means renaming its folder to match,
+         which drops every compiler older than the new name; roslyn5.0 is the compiler of the first
+         .NET 10 SDK. AnalyzerPackagingTests in IntegrationTests reads the references of the packed
+         assemblies and fails when one is newer than its folder. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" VersionOverride="5.0.0" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" VersionOverride="5.3.0" Condition="'$(TargetFramework)' == 'net10.0'" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
     <PackageReference Include="PackageShader.MsBuild" PrivateAssets="all" />
     <PackageReference Include="Fluid.Core" Shade="true" PrivateAssets="all" />
