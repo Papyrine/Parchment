@@ -763,6 +763,200 @@ public partial class EditableCollectionTests
         await Assert.That(result.Fields.Count).IsEqualTo(0);
     }
 
+    const string checklistTemplate =
+        """
+        {% for i in Items %}
+
+        {{ i.Label }}: {{ i.Done }}
+
+        {% endfor %}
+        """;
+
+    static Checklist NewChecklist() =>
+        new()
+        {
+            Items =
+            [
+                new()
+                {
+                    Label = "First",
+                    Done = true
+                },
+                new()
+                {
+                    Label = "Second"
+                }
+            ]
+        };
+
+    [Test]
+    public async Task UntouchedAddedRowExtractsNothing()
+    {
+        using var stream = await Render(checklistTemplate, NewChecklist());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            AddRowAsWord(RepeatingSection(doc.MainDocumentPart!.Document!.Body!, "Items"));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var extracted = new Checklist();
+        ParchmentExtractor.Extract<Checklist>(stream).ApplyTo(extracted);
+
+        // The added row holds nothing but the placeholders Word reset it to and a box that cannot
+        // be anything but unchecked, so it is no entry. The rendered "Second" row, whose box is
+        // just as unchecked, is.
+        await Assert.That(extracted.Items.Count).IsEqualTo(2);
+        await Assert.That(extracted.Items[0].Label).IsEqualTo("First");
+        await Assert.That(extracted.Items[1].Label).IsEqualTo("Second");
+        await Assert.That(extracted.Items[1].Done).IsFalse();
+    }
+
+    [Test]
+    public async Task UntouchedAddedRowInArrayExtractsNothing()
+    {
+        using var stream = await Render(
+            checklistTemplate,
+            new ChecklistArray
+            {
+                Items = NewChecklist().Items.ToArray()
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            AddRowAsWord(RepeatingSection(doc.MainDocumentPart!.Document!.Body!, "Items"));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var extracted = new ChecklistArray();
+        ParchmentExtractor.Extract<ChecklistArray>(stream).ApplyTo(extracted);
+
+        await Assert.That(extracted.Items.Length).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task AddedRowWithOnlyTextExtractsOneItem()
+    {
+        using var stream = await Render(checklistTemplate, NewChecklist());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var added = AddRowAsWord(RepeatingSection(doc.MainDocumentPart!.Document!.Body!, "Items"));
+            SetText(Control(added, "Label"), "Third");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var extracted = new Checklist();
+        ParchmentExtractor.Extract<Checklist>(stream).ApplyTo(extracted);
+
+        await Assert.That(extracted.Items.Count).IsEqualTo(3);
+        await Assert.That(extracted.Items[2].Label).IsEqualTo("Third");
+        await Assert.That(extracted.Items[2].Done).IsFalse();
+    }
+
+    [Test]
+    public async Task AddedRowWithOnlyCheckedBoxExtractsOneItem()
+    {
+        using var stream = await Render(checklistTemplate, NewChecklist());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var added = AddRowAsWord(RepeatingSection(doc.MainDocumentPart!.Document!.Body!, "Items"));
+            Control(added, "Done").SdtProperties!
+                .GetFirstChild<W14.SdtContentCheckBox>()!
+                .GetFirstChild<W14.Checked>()!
+                .Val = W14.OnOffValues.One;
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var extracted = new Checklist();
+        ParchmentExtractor.Extract<Checklist>(stream).ApplyTo(extracted);
+
+        await Assert.That(extracted.Items.Count).IsEqualTo(3);
+        await Assert.That(extracted.Items[2].Done).IsTrue();
+    }
+
+    [Test]
+    public async Task RenderedItemHoldingOnlyFalseRoundTrips()
+    {
+        // Every control but the box shows a placeholder here too, but it is the one the render
+        // wrote, not one Word reset the control to, so the row is a rendered item and is kept.
+        using var stream = await Render(
+            checklistTemplate,
+            new Checklist
+            {
+                Items =
+                [
+                    new()
+                    {
+                        Label = "First",
+                        Done = true
+                    },
+                    new()
+                ]
+            });
+
+        var extracted = new Checklist();
+        ParchmentExtractor.Extract<Checklist>(stream).ApplyTo(extracted);
+
+        await Assert.That(extracted.Items.Count).IsEqualTo(2);
+        await Assert.That(extracted.Items[1].Done).IsFalse();
+    }
+
+    [ParchmentBindable]
+    public partial class ChecklistArray
+    {
+        [EditableField]
+        public ChecklistItem[] Items { get; set; } = [];
+    }
+
+    // What Word's "+" does to a repeating section whose rows hold values: the last row is copied,
+    // every control in the copy that held a value is reset to a placeholder of five spaces, and
+    // every checkbox is unchecked. The copy keeps the tags of the row it came from.
+    static SdtBlock AddRowAsWord(SdtBlock container)
+    {
+        var last = container.Descendants<SdtBlock>().Last(IsItem);
+        var added = (SdtBlock)last.CloneNode(true);
+        foreach (var control in added.Descendants<SdtElement>())
+        {
+            var properties = control.SdtProperties!;
+            var checkBox = properties.GetFirstChild<W14.SdtContentCheckBox>();
+            if (checkBox != null)
+            {
+                checkBox.GetFirstChild<W14.Checked>()!.Val = W14.OnOffValues.Zero;
+                control.Descendants<Text>().Single().Text = "☐";
+                continue;
+            }
+
+            if (properties.GetFirstChild<ShowingPlaceholder>() != null)
+            {
+                continue;
+            }
+
+            properties.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Lock>()!.InsertAfterSelf(new ShowingPlaceholder());
+            SetPlaceholderText(control, "     ");
+        }
+
+        last.InsertAfterSelf(added);
+        return added;
+    }
+
+    static void SetPlaceholderText(SdtElement sdt, string text)
+    {
+        var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+        content.RemoveAllChildren();
+        content.AppendChild(
+            new Run(
+                new Text(text)
+                {
+                    Space = SpaceProcessingModeValues.Preserve
+                }));
+    }
+
     public class Depot
     {
         [EditableField]
