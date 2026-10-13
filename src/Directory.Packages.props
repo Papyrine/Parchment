@@ -36,6 +36,9 @@
     <PackageVersion Include="Morph" Version="1.22.0" />
     <PackageVersion Include="Morph.Skia" Version="1.22.0" />
     <PackageVersion Include="Verify.SourceGenerators" Version="2.5.0" />
+    <!-- The compiler the generator tests host the generator in, so free to follow the SDK. The
+         generator itself overrides this with the older versions its package folders name, and
+         those must stay put: see the note in Parchment.SourceGenerator.csproj. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
     <PackageVersion Include="MarkdownSnippets.MsBuild" Version="28.5.0" />
