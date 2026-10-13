@@ -37,6 +37,18 @@ public partial class ReferenceValidatorTests
         await Assert.That(exception!.Message).Contains("Missing");
     }
 
+    // The docx flow has its own list of block tags, and liquid's `liquid` tag is not on it.
+    [Test]
+    public async Task LiquidTag_FailsRegistration()
+    {
+        using var template = DocxTemplateBuilder.Build("{% liquid echo Name %}");
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<Doc>(template))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("Unsupported block tag 'liquid'");
+    }
+
     [Test]
     public async Task UnknownNestedMember_FailsRegistration()
     {

@@ -76,6 +76,104 @@ public partial class FilterTests
         await Assert.That(text).IsEqualTo("&LT;X&GT;HI &AMP; BYE&LT;/X&GT;");
     }
 
+    // markdown, html, bullet_list and numbered_list hand back a token rather than text, so the filter
+    // after one was given the token object and stringified it: `{{ Body | markdown | upcase }}`
+    // rendered PARCHMENT.MARKDOWNTOKEN, the type name upper-cased.
+    [Test]
+    [Arguments("{{ Body | markdown | upcase }}", "markdown", "upcase")]
+    [Arguments("{{ Body | html | upcase }}", "html", "upcase")]
+    [Arguments("{{ Items | bullet_list | upcase }}", "bullet_list", "upcase")]
+    [Arguments("{{ Items | numbered_list | append: 'x' }}", "numbered_list", "append")]
+    [Arguments("{{ Body | markdown | raw }}", "markdown", "raw")]
+    [Arguments("{{ Body | markdown | html }}", "markdown", "html")]
+    [Arguments("{{ Body | upcase | markdown | downcase | strip }}", "markdown", "downcase")]
+    public async Task FilterAfterTokenFilter_FailsRegistration(string token, string tokenFilter, string following)
+    {
+        using var template = DocxTemplateBuilder.Build($"Before {token} after");
+        var store = new TemplateStore();
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterDocxTemplate<Doc>(template));
+
+        await Assert.That(exception.Message).Contains($"Filter '{following}' is applied after '{tokenFilter}'");
+        await Assert.That(exception.Message).Contains($"Move '{following}' before '{tokenFilter}'");
+        await Assert.That(exception.TokenSource).IsEqualTo(token);
+    }
+
+    // The order the message asks for: what works on the text goes first, and the filter that says
+    // what the text is goes last.
+    [Test]
+    public async Task FiltersBeforeMarkdownFilter_BothApplied()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ Body | append: ' text' | upcase | markdown }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new Doc
+            {
+                Body = "**bold**",
+                Items = []
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    [Test]
+    public async Task FiltersBeforeHtmlFilter_BothApplied()
+    {
+        using var template = DocxTemplateBuilder.Build("{{ Body | upcase | html }}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new Doc
+            {
+                Body = "<b>bold</b> text",
+                Items = []
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    [Test]
+    [Arguments("bullet_list")]
+    [Arguments("numbered_list")]
+    public async Task FiltersBeforeListFilter_BothApplied(string listFilter)
+    {
+        using var template = DocxTemplateBuilder.Build($"{{{{ Items | sort | {listFilter} }}}}");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<Doc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new Doc
+            {
+                Body = "",
+                Items = ["b", "a"]
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var items = doc.MainDocumentPart!.Document!.Body!.Descendants<Paragraph>()
+            .Where(_ => _.ParagraphProperties?.NumberingProperties != null)
+            .Select(_ => _.InnerText);
+        await Assert.That(string.Join(',', items)).IsEqualTo("a,b");
+    }
+
     [Test]
     public async Task BulletListFilter_EmptyEnumerable_ProducesNoListParagraphs()
     {
