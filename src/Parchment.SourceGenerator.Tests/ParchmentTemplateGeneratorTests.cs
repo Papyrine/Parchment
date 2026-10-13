@@ -1052,6 +1052,125 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(result.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH025")).IsFalse();
     }
 
+    // A marker on a member that is not a string. The conversion reads a string, so the value used
+    // to render as nothing at all.
+    const string markerOnNonStringModel =
+        """
+        using System.Diagnostics.CodeAnalysis;
+        using Parchment;
+
+        namespace Sample;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class MarkdownAttribute : System.Attribute { }
+
+        public class Rich
+        {
+            public string Text { get; set; } = "";
+        }
+
+        public class Section
+        {
+            [Markdown]
+            public System.DateTime When { get; set; }
+        }
+
+        [ParchmentModel]
+        public partial class Doc
+        {
+            [Html]
+            public int Count { get; set; }
+
+            [Html]
+            public Rich Rich { get; set; } = new();
+
+            [Markdown]
+            public object Body { get; set; } = 42;
+
+            [Html]
+            public decimal? Price { get; set; }
+
+            [StringSyntax("html")]
+            public System.Uri? Link { get; set; }
+
+            public Section Section { get; set; } = new();
+
+            [Html]
+            public string? Fine { get; set; }
+        }
+        """;
+
+    static readonly string[] nonStringMembers =
+    [
+        "Doc.Count",
+        "Doc.Rich",
+        "Doc.Body",
+        "Doc.Price",
+        "Doc.Link",
+        "Section.When"
+    ];
+
+    static async Task AssertParch029(GeneratorDriverRunResult result)
+    {
+        var messages = result.Results.Single().Diagnostics
+            .Where(_ => _.Id == "PARCH029")
+            .Select(_ => _.GetMessage())
+            .ToList();
+
+        await Assert.That(messages.Count).IsEqualTo(nonStringMembers.Length);
+        foreach (var member in nonStringMembers)
+        {
+            await Assert.That(messages.Any(_ => _.Contains($"'Sample.{member}'"))).IsTrue().Because(member);
+        }
+    }
+
+    [Test]
+    public async Task FormatMarkerOnNonString_ReportsParch029() =>
+        await AssertParch029(GeneratorDriver.Run(markerOnNonStringModel, "{{ Count }}"));
+
+    // A markdown template reads the marker too: it rewrites the token to carry the filter.
+    [Test]
+    public async Task FormatMarkerOnNonString_ReportsParch029_Markdown() =>
+        await AssertParch029(GeneratorDriver.RunMarkdown(markerOnNonStringModel, "{{ Count }}"));
+
+    [Test]
+    public async Task FormatMarkerOnNonString_ReportsParch029_Bindable()
+    {
+        var setup = GeneratorDriver.CreateDriverWithFiles(markerOnNonStringModel.Replace("[ParchmentModel]", "[ParchmentBindable]"));
+
+        await AssertParch029(setup.Driver.RunGenerators(setup.Compilation).GetRunResult());
+    }
+
+    // Only the string member reaches the format map, so nothing reads the others as a string
+    // while the build is failing over them.
+    [Test]
+    public async Task FormatMarkerOnNonString_EmitsNoFormatEntry()
+    {
+        var emitted = Emitted(GeneratorDriver.Run(markerOnNonStringModel, "{{ Count }}"));
+
+        await Assert.That(emitted).Contains("new(\"Fine\", global::Parchment.Generated.FormatMapKind.Html");
+        await Assert.That(emitted).DoesNotContain("FormatMapKind.Markdown");
+        foreach (var name in new[] {"Count", "Rich", "Price", "Link"})
+        {
+            await Assert.That(emitted).DoesNotContain($"new(\"{name}\", global::Parchment.Generated.FormatMapKind");
+        }
+    }
+
+    // A nullable string is still a string, and a token type is PARCH025's to report.
+    [Test]
+    public async Task MarkerOnStringOrToken_NoParch029()
+    {
+        var nullable = markerOnTokenModel.Replace("public HtmlToken Body => new(\"\");", "public string? Body => null;");
+        var onString = GeneratorDriver.Run(nullable, "{{ Body }}");
+        var onToken = GeneratorDriver.Run(markerOnTokenModel, "{{ Body }}");
+
+        await Assert.That(onString.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH029")).IsFalse();
+        await Assert.That(onToken.Results.Single().Diagnostics.Any(_ => _.Id == "PARCH029")).IsFalse();
+    }
+
     [Test]
     public async Task FormatToken_MixedInline_NoDiagnostic()
     {

@@ -730,7 +730,15 @@ class ScopeTreeRunner(
             return null;
         }
 
+        // A marker on a non-string is a compile-time error (PARCH029), so the map holds strings
+        // only. Should anything else arrive, it renders as an unmarked member would instead of as
+        // nothing.
         var value = entry.Getter(rootModel);
+        if (value is not (null or string))
+        {
+            return null;
+        }
+
         var text = value as string ?? string.Empty;
         return entry.Kind switch
         {

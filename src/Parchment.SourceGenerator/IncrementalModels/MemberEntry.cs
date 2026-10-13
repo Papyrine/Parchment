@@ -32,4 +32,8 @@
     bool ExcelsiorConfigureMissing = false,
     // [ExcelsiorTable] on a member whose type is not a sequence of a type with columns to show —
     // reported as PARCH034 and excluded from Excelsior-map emission.
-    bool ExcelsiorNotTabular = false);
+    bool ExcelsiorNotTabular = false,
+    // [Html]/[Markdown]/[StringSyntax] on a member that is neither a string nor a TokenValue —
+    // reported as PARCH029 and excluded from format-map emission, since the conversion reads a
+    // string and there is none to read.
+    bool FormatMarkerOnNonString = false);

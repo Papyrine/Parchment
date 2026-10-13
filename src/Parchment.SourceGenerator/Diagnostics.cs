@@ -228,6 +228,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
 
+    // The conversion reads the member as a string. Anything else used to reach it as no string at
+    // all and render as nothing, in a document that otherwise looked complete.
+    public static readonly DiagnosticDescriptor FormatMarkerOnNonString = new(
+        id: "PARCH029",
+        title: "Format marker on a member that is not a string",
+        messageFormat: "Model '{0}' member '{1}' is typed '{2}' and carries [Html]/[Markdown]/[StringSyntax]. The marker converts a string, and this member has none to convert. Type the member as a string, or remove the marker.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch029--format-marker-on-a-member-that-is-not-a-string");
+
     // The generated code calls the method directly, so an unresolvable name would otherwise
     // surface as a compile error inside a .g.cs file - correct, but pointing at code nobody wrote.
     // This reports it on the member that named it instead, and suppresses the emission so the

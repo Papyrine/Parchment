@@ -161,14 +161,15 @@ static class AccessorEmission
 
             // A member that is also [EditableField] is claimed by the editable map (rich-content
             // control that extracts back to HTML), not the read-only format path. A conflicted
-            // member (PARCH023) is emitted as neither — the diagnostic fails the build.
-            if (member is {IsHtml: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false})
+            // member (PARCH023) is emitted as neither — the diagnostic fails the build. Nor is a
+            // marker on a member that is not a string (PARCH029).
+            if (member is {IsHtml: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false, FormatMarkerOnNonString: false})
             {
                 formats.Add((nextPath, FormatMapKind.Html));
                 continue;
             }
 
-            if (member is {IsMarkdown: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false})
+            if (member is {IsMarkdown: true, IsEditable: false, HasFormatConflict: false, FormatMarkerOnTokenValue: false, FormatMarkerOnNonString: false})
             {
                 formats.Add((nextPath, FormatMapKind.Markdown));
                 continue;

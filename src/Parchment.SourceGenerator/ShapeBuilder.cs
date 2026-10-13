@@ -123,6 +123,12 @@ static class ShapeBuilder
                     // Decided here and carried on the entry, so the diagnostic (PARCH034) and
                     // the emission-side skip in AccessorEmission.WalkForMaps read one answer.
                     var excelsiorNotTabular = isExcelsior && !IsTabular(memberType);
+                    // The conversion reads a string, so a marker on anything else has nothing to
+                    // convert. An unresolved type is left to the compiler's own error. See PARCH029.
+                    var markerOnNonString = (isHtml || isMarkdown) &&
+                                            !markerOnToken &&
+                                            memberType.SpecialType != SpecialType.System_String &&
+                                            memberType.TypeKind != TypeKind.Error;
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -169,7 +175,8 @@ static class ShapeBuilder
                         editableCollectionElementFqn,
                         excelsiorConfigureCall,
                         excelsiorConfigureMissing,
-                        excelsiorNotTabular));
+                        excelsiorNotTabular,
+                        markerOnNonString));
                     Enqueue(memberType, visited, queue);
                 }
 

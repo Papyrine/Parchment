@@ -1113,4 +1113,44 @@ public partial class FormatAttributeTests
             File.Delete(pngPath);
         }
     }
+
+    [ParchmentBindable]
+    public partial class NonStringFormatDoc
+    {
+        public int Count;
+        public decimal? Price;
+        public string? Note;
+    }
+
+    // The generator refuses a marker on a non-string (PARCH029), so the entries are registered by
+    // hand here: a value that is not a string must print as an unmarked member does, not vanish.
+    [Test]
+    public async Task NonStringFormatEntryRendersTheValue()
+    {
+        Parchment.Generated.GeneratedRegistration.RegisterFormat(
+            typeof(NonStringFormatDoc),
+            [
+                new("Count", Parchment.Generated.FormatMapKind.Html, _ => ((NonStringFormatDoc)_).Count),
+                new("Price", Parchment.Generated.FormatMapKind.Markdown, _ => ((NonStringFormatDoc)_).Price),
+                new("Note", Parchment.Generated.FormatMapKind.Html, _ => ((NonStringFormatDoc)_).Note)
+            ]);
+
+        using var template = DocxTemplateBuilder.Build("Count={{ Count }}|\nPrice={{ Price }}|\nNote={{ Note }}|");
+        var store = new TemplateStore();
+        store.RegisterDocxTemplate<NonStringFormatDoc>(template);
+
+        using var stream = new MemoryStream();
+        await store.Render(
+            new NonStringFormatDoc
+            {
+                Count = 5,
+                Price = 9.5m
+            },
+            stream);
+        stream.Position = 0;
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var text = string.Join('\n', doc.MainDocumentPart!.Document!.Body!.Elements<Paragraph>().Select(_ => _.InnerText));
+        await Assert.That(text).IsEqualTo("Count=5|\nPrice=9.5|\nNote=|");
+    }
 }
