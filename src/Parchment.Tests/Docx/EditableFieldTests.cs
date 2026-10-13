@@ -1471,6 +1471,19 @@ public partial class EditableFieldTests
         await Assert.That(extracted).IsEqualTo("<ul><li>a</li><li>b</li></ul>");
     }
 
+    [Test]
+    [Arguments("mailto:a@b.co?subject=Hi%20there")]
+    [Arguments("tel:+61-2-5550-1234")]
+    [Arguments("https://example.com")]
+    [Arguments("https://example.com/a%20b?q=%C3%A9#frag")]
+    public async Task HtmlEditableLinkKeepsItsHref(string href)
+    {
+        // The relationship target is read back as written. Uri.ToString() unescapes it, turning
+        // %20 into a space, and adds the slash an authority-only url did not have.
+        var extracted = await ExtractHtml($"<p><a href=\"{href}\">text</a></p>");
+        await Assert.That(extracted).Contains($"<a href=\"{href}\">");
+    }
+
     static async Task AssertHtmlRoundTrips(string html)
     {
         var extracted = await ExtractHtml(html);
