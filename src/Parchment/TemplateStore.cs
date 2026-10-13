@@ -67,6 +67,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         using var stream = clone;
         var parts = new List<PartScopeTree>();
         var maxBookmarkId = 0;
+        var noteReferences = NoteReferences.None;
         bool macros;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
@@ -78,6 +79,13 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             var bodyUri = doc.MainDocumentPart?.Uri.ToString();
             foreach (var (uri, root) in DocxCloner.EnumerateParts(doc))
             {
+                if (uri == bodyUri)
+                {
+                    // Which notes the body refers to before any render repeats or removes a
+                    // reference - see NoteReferences.
+                    noteReferences = NoteReferences.Read(doc.MainDocumentPart!, root);
+                }
+
                 // A template authored as a Word form carries its placeholders as FORMTEXT fields
                 // rather than tokens. Rewrite them first so the rest of registration sees a normal
                 // docx template — the mutation is baked into the registration snapshot below.
@@ -145,7 +153,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         }
 
         var canonicalBytes = stream.ToArray();
-        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId);
+        var registered = new RegisteredDocxTemplate(name, modelType, canonicalBytes, parts, excelsiorMap, formatMap, stringListMap, editableMap, Policies, maxBookmarkId, noteReferences);
         templates[modelType] = registered;
         logger.LogInformation("Registered docx template for {ModelType}", modelType.Name);
     }
