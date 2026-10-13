@@ -2420,18 +2420,18 @@ public partial class EditableFieldTests
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             var mainPart = doc.MainDocumentPart!;
-            var hyperlink = FindSdtBlock(mainPart.Document!.Body!, "Body")
+            var link = FindSdtBlock(mainPart.Document!.Body!, "Body")
                 .Descendants<Hyperlink>()
                 .Single();
-            mainPart.DeleteReferenceRelationship(hyperlink.Id!.Value!);
-            hyperlink.Id = null;
+            mainPart.DeleteReferenceRelationship(link.Id!.Value!);
+            link.Id = null;
             if (target != null)
             {
                 mainPart.AddHyperlinkRelationship(new(target, UriKind.Absolute), true, "rIdWord1");
-                hyperlink.Id = "rIdWord1";
+                link.Id = "rIdWord1";
             }
 
-            edit(hyperlink);
+            edit(link);
             doc.Save();
         }
 

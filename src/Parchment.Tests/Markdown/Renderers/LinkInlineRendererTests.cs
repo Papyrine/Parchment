@@ -68,7 +68,10 @@ public class LinkInlineRendererTests
     [Test]
     public async Task LinkWithNoChildrenProducesEmptyHyperlink()
     {
-        var link = new LinkInline { Url = "https://example.com" };
+        var link = new LinkInline
+        {
+            Url = "https://example.com"
+        };
         var renderer = RendererHarness.BuildRenderer();
 
         renderer.Render(link);

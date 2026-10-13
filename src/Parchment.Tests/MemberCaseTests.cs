@@ -341,8 +341,8 @@ public partial class MemberCaseTests
     [Arguments("{{ rows }}", "{{ Rows }}", "NameQuantityone1two2")]
     public async Task AttributedMemberInDocx(string token, string declared, string text)
     {
-        var expected = await RenderDocxBody<Doc>(declared, BuildModel());
-        var actual = await RenderDocxBody<Doc>(token, BuildModel());
+        var expected = await RenderDocxBody(declared, BuildModel());
+        var actual = await RenderDocxBody(token, BuildModel());
 
         await Assert.That(expected.InnerText).IsEqualTo(text);
         await Assert.That(actual.OuterXml).IsEqualTo(expected.OuterXml);
@@ -372,8 +372,8 @@ public partial class MemberCaseTests
     [Arguments("{{ summary }}", "{{ Summary }}", "a rich summary")]
     public async Task EditableField(string token, string declared, string text)
     {
-        var expected = await RenderDocxBody<Form>(declared, BuildForm());
-        var actual = await RenderDocxBody<Form>(token, BuildForm());
+        var expected = await RenderDocxBody(declared, BuildForm());
+        var actual = await RenderDocxBody(token, BuildForm());
 
         await Assert.That(expected.Descendants<SdtElement>().Count()).IsEqualTo(1);
         await Assert.That(expected.InnerText).IsEqualTo(text);
@@ -403,8 +403,8 @@ public partial class MemberCaseTests
             {% endfor %}
             """;
 
-        var expected = await RenderDocxBody<Form>(declared, BuildForm());
-        var actual = await RenderDocxBody<Form>(template, BuildForm());
+        var expected = await RenderDocxBody(declared, BuildForm());
+        var actual = await RenderDocxBody(template, BuildForm());
 
         await Assert.That(expected.InnerText).IsEqualTo("bid 2026: 10bid 2027: 20");
         await Assert.That(actual.OuterXml).IsEqualTo(expected.OuterXml);
@@ -464,7 +464,7 @@ public partial class MemberCaseTests
     }
 
     static async Task<string> RenderDocx(string content) =>
-        (await RenderDocxBody<Doc>(content, BuildModel())).InnerText;
+        (await RenderDocxBody(content, BuildModel())).InnerText;
 
     static async Task<string> RenderMarkdown(string markdown) =>
         (await RenderMarkdownBody(markdown)).InnerText;

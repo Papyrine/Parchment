@@ -76,10 +76,10 @@ static class WordFieldResolution
         foreach (var field in WordFieldRegion.Scan(body).Where(_ => _.IsTableOfContents))
         {
             var resolved = true;
-            foreach (var hyperlink in EntriesOf(field))
+            foreach (var link in EntriesOf(field))
             {
-                var anchor = hyperlink.Anchor?.Value;
-                var number = hyperlink.Elements<Run>().LastOrDefault()?.GetFirstChild<Text>();
+                var anchor = link.Anchor?.Value;
+                var number = link.Elements<Run>().LastOrDefault()?.GetFirstChild<Text>();
                 if (anchor == null || number == null)
                 {
                     continue;

@@ -8,10 +8,10 @@ public class AutolinkInlineRendererTests
 
         renderer.Render(inline);
 
-        var hyperlink = (Hyperlink)renderer.Top.CurrentRuns.Single();
-        await Assert.That(string.IsNullOrEmpty(hyperlink.Id?.Value)).IsFalse();
+        var link = (Hyperlink)renderer.Top.CurrentRuns.Single();
+        await Assert.That(string.IsNullOrEmpty(link.Id?.Value)).IsFalse();
 
-        var run = hyperlink.GetFirstChild<Run>()!;
+        var run = link.GetFirstChild<Run>()!;
         await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
         await Assert.That(run.GetFirstChild<Text>()!.Text).IsEqualTo("https://example.com");
 

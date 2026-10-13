@@ -193,8 +193,8 @@ public class StyleAttributeTests
     {
         var renderer = RendererHarness.BuildRenderer();
         renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>("[text](http://x)"));
-        var hyperlink = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
-        var run = hyperlink.Elements<Run>().First();
+        var link = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
+        var run = link.Elements<Run>().First();
 
         await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Hyperlink");
     }
@@ -204,8 +204,8 @@ public class StyleAttributeTests
     {
         var renderer = RendererHarness.BuildRenderer();
         renderer.Render(RendererHarness.FirstBlock<ParagraphBlock>("<http://x>{.Reference}"));
-        var hyperlink = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
-        var run = hyperlink.Elements<Run>().First();
+        var link = ((Paragraph) renderer.Drain()[0]).Descendants<Hyperlink>().Single();
+        var run = link.Elements<Run>().First();
 
         await Assert.That(run.RunProperties!.GetFirstChild<RunStyle>()!.Val?.Value).IsEqualTo("Reference");
     }

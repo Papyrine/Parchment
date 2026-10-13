@@ -111,8 +111,11 @@ public partial class FormFieldTests
     [Test]
     public async Task FormFieldInsideAHyperlinkBindsLikeAToken()
     {
-        var hyperlink = new Hyperlink(FormField("Title")) {Anchor = "target"};
-        using var template = Build(new Paragraph(hyperlink));
+        var link = new Hyperlink(FormField("Title"))
+        {
+            Anchor = "target"
+        };
+        using var template = Build(new Paragraph(link));
 
         using var result = await RenderDocument(template);
         var body = result.MainDocumentPart!.Document!.Body!;
@@ -154,8 +157,11 @@ public partial class FormFieldTests
     [Test]
     public async Task FormFieldSplitAcrossAWrapperBoundaryIsReplacedWhole()
     {
-        var hyperlink = new Hyperlink(FieldStart("Title")) {Anchor = "target"};
-        using var template = Build(new Paragraph(hyperlink, TextRun("ph"), FieldEnd(), TextRun(" after")));
+        var link = new Hyperlink(FieldStart("Title"))
+        {
+            Anchor = "target"
+        };
+        using var template = Build(new Paragraph(link, TextRun("ph"), FieldEnd(), TextRun(" after")));
 
         using var result = await RenderDocument(template);
         var body = result.MainDocumentPart!.Document!.Body!;

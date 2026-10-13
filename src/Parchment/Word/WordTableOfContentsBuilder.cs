@@ -93,20 +93,20 @@ static partial class WordTableOfContentsBuilder
                     Position = tabStop
                 }));
 
-        var hyperlink = new Hyperlink
+        var link = new Hyperlink
         {
             Anchor = bookmark
         };
-        hyperlink.Append(
+        link.Append(
             new Run(
                 new Text(text)
                 {
                     Space = SpaceProcessingModeValues.Preserve
                 }));
-        hyperlink.Append(new Run(new TabChar()));
-        hyperlink.Append(new Run(new Text(PagePlaceholder)));
+        link.Append(new Run(new TabChar()));
+        link.Append(new Run(new Text(PagePlaceholder)));
 
-        return new(properties, hyperlink);
+        return new(properties, link);
     }
 
     static List<(Paragraph Paragraph, int Level, string Text)> CollectHeadings(Body body, int maxLevel)

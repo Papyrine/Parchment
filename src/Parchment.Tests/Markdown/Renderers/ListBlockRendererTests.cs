@@ -172,7 +172,7 @@ public partial class ListBlockRendererTests
             .ToList();
         await Assert.That(starts).IsEquivalentTo([5, 1]);
 
-        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2013);
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2013);
         var errors = validator
             .Validate(document)
             .Select(_ => $"{_.Path?.XPath}: {_.Description}")
@@ -478,7 +478,7 @@ public partial class ListBlockRendererTests
 
     static async Task AssertSchemaValid(WordprocessingDocument document)
     {
-        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365);
+        var validator = new OpenXmlValidator(FileFormatVersions.Microsoft365);
         var errors = validator
             .Validate(document)
             .Select(_ => $"{_.Path?.XPath}: {_.Description}")

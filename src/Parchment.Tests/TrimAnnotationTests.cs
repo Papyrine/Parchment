@@ -1,5 +1,3 @@
-using System.Reflection;
-
 // Parchment reflects over the model at registration and constructs generic types at render and
 // extraction, so NativeAOT is unsupported. These attributes are what tells a consumer that at
 // publish time; without them the failure is a wrong exception or an empty table at runtime.
@@ -10,7 +8,8 @@ public class TrimAnnotationTests
     {
         var methods = typeof(TemplateStore)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Where(_ => _.Name.StartsWith("Register") || _.Name.StartsWith("Render"))
+            .Where(_ => _.Name.StartsWith("Register") ||
+                        _.Name.StartsWith("Render"))
             .ToList();
 
         await Assert.That(methods.Count).IsEqualTo(7);

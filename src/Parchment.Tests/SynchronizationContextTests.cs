@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 public partial class SynchronizationContextTests
 {
     [ParchmentBindable]

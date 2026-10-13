@@ -14,8 +14,8 @@ public partial class SystemTypeMemberTests
         public string Name { get; init; } = "Alice";
         public DateTime When { get; init; } = new(2024, 3, 5, 10, 30, 0);
         public DateTimeOffset Stamp { get; init; } = new(2024, 3, 5, 10, 30, 0, TimeSpan.FromHours(2));
-        public DateOnly Date { get; init; } = new(2024, 3, 5);
-        public TimeOnly Time { get; init; } = new(10, 30);
+        public Date Date { get; init; } = new(2024, 3, 5);
+        public Time Time { get; init; } = new(10, 30);
         public TimeSpan Span { get; init; } = TimeSpan.FromDays(2);
         public Guid Id { get; init; } = new("0f8fad5b-d9cb-469f-a165-70867728950e");
         public Uri Link { get; init; } = new("https://example.com/path");

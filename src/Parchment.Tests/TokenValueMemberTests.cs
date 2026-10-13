@@ -64,15 +64,15 @@ public partial class TokenValueMemberTests
     }
 
     [Test]
-    public async Task PathIntoALoopVariableThatIsATokenFailsRegistration() =>
-        await AssertRejected(
+    public Task PathIntoALoopVariableThatIsATokenFailsRegistration() =>
+        AssertRejected(
             "{% for token in Tokens %}\n\n{{ token.Source }}\n\n{% endfor %}",
             "{% for token in Tokens %}{{ token.Source }}{% endfor %}",
             "Source");
 
     [Test]
-    public async Task PathIntoATokenInAConditionFailsRegistration() =>
-        await AssertRejected(
+    public Task PathIntoATokenInAConditionFailsRegistration() =>
+        AssertRejected(
             "{% if Html.Source %}\n\nsome\n\n{% endif %}",
             "{% if Html.Source %}some{% endif %}",
             "Source");

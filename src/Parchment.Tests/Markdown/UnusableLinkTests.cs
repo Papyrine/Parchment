@@ -102,9 +102,9 @@ public partial class UnusableLinkTests
         var renderer = RendererHarness.BuildRenderer();
         renderer.Render(RendererHarness.FirstInline<LinkInline>($"[page]({url})"));
 
-        var hyperlink = (Hyperlink)renderer.Top.CurrentRuns.Single();
+        var link = (Hyperlink)renderer.Top.CurrentRuns.Single();
         var relationship = renderer.MainPart.HyperlinkRelationships.Single();
-        await Assert.That(hyperlink.Id?.Value).IsEqualTo("rIdLink1");
+        await Assert.That(link.Id?.Value).IsEqualTo("rIdLink1");
         await Assert.That(relationship.Id).IsEqualTo("rIdLink1");
         await Assert.That(relationship.Uri.OriginalString).IsEqualTo(url);
     }

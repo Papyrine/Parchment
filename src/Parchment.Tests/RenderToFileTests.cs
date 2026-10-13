@@ -153,7 +153,7 @@ public partial class RenderToFileTests
         {
             var path = Path.Combine(directory, "report.docx");
             await File.WriteAllBytesAsync(path, original);
-            using var source = new CancellationTokenSource();
+            using var source = new CancelSource();
             await source.CancelAsync();
 
             var exception = await Catch(() => Store().RenderToFile(new Report(), path, source.Token));
