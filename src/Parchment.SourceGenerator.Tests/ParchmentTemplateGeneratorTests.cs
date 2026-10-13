@@ -2202,6 +2202,141 @@ public class ParchmentTemplateGeneratorTests
         await Assert.That(diagnostics.Any(_ => _.Id == "PARCH019")).IsFalse();
     }
 
+    // One member per shape rule that does not depend on the template kind. {0} is the attribute
+    // list of the model.
+    const string shapeRulesModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public sealed class HtmlAttribute : System.Attribute { }
+
+        public sealed class MarkdownAttribute : System.Attribute { }
+
+        public class Line
+        {
+            public string Description { get; set; } = "";
+        }
+
+        [{0}]
+        public partial class Report
+        {
+            [Html, Markdown]
+            public string Conflict { get; set; } = "";
+
+            [Html]
+            public HtmlToken TokenWithMarker => new("");
+
+            [Html]
+            public static string StaticHtml { get; set; } = "";
+
+            [ExcelsiorTable(Configure = "NoSuchMethod")]
+            public List<Line> Lines { get; set; } = new();
+
+            public string Title { get; set; } = "";
+        }
+        """;
+
+    static readonly string[] shapeRuleIds = ["PARCH019", "PARCH023", "PARCH025", "PARCH026"];
+
+    static List<string> ShapeRuleIds(GeneratorDriverRunResult result) =>
+        result.Results.Single()
+            .Diagnostics
+            .Select(_ => _.Id)
+            .OrderBy(_ => _, StringComparer.Ordinal)
+            .ToList();
+
+    // The rules describe what the accessor emission does with a member, and that emission is the
+    // same for every flow — so each flow reports all of them, once.
+    [Test]
+    public async Task ShapeRules_ReportedForDocx()
+    {
+        var result = GeneratorDriver.Run(shapeRulesModel.Replace("{0}", "ParchmentModel"), "{{ Title }}");
+
+        await Assert.That(ShapeRuleIds(result)).IsEquivalentTo(shapeRuleIds);
+    }
+
+    [Test]
+    public async Task ShapeRules_ReportedForMarkdown()
+    {
+        var result = GeneratorDriver.RunMarkdown(shapeRulesModel.Replace("{0}", "ParchmentModel"), "{{ Title }}");
+
+        await Assert.That(ShapeRuleIds(result)).IsEquivalentTo(shapeRuleIds);
+    }
+
+    [Test]
+    public async Task ShapeRules_ReportedForBindable()
+    {
+        var setup = GeneratorDriver.CreateDriverWithFiles(shapeRulesModel.Replace("{0}", "ParchmentBindable"));
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+
+        await Assert.That(ShapeRuleIds(result)).IsEquivalentTo(shapeRuleIds);
+    }
+
+    // [ParchmentModel] wins over [ParchmentBindable] on the same type, so the rules run once.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ShapeRules_ReportedOnceForModelThatIsAlsoBindable(bool markdown)
+    {
+        var source = shapeRulesModel.Replace("{0}", "ParchmentModel, ParchmentBindable");
+        var result = Run();
+
+        await Assert.That(ShapeRuleIds(result)).IsEquivalentTo(shapeRuleIds);
+
+        GeneratorDriverRunResult Run()
+        {
+            if (markdown)
+            {
+                return GeneratorDriver.RunMarkdown(source, "{{ Title }}");
+            }
+
+            return GeneratorDriver.Run(source, "{{ Title }}");
+        }
+    }
+
+    // A Configure name that resolves to a method the generated call could not use is the same
+    // mistake as a name that resolves to nothing.
+    [Test]
+    [Arguments("void NoSuchMethod(object builder) { }")]
+    [Arguments("static void NoSuchMethod(object builder, int extra) { }")]
+    public async Task Markdown_ExcelsiorConfigureUnusable_ReportsParch026(string method)
+    {
+        var source = shapeRulesModel
+            .Replace("{0}", "ParchmentModel")
+            .Replace("public string Title { get; set; } = \"\";", $"public string Title {{ get; set; }} = \"\";\n\n    {method}");
+        var result = GeneratorDriver.RunMarkdown(source, "{{ Title }}");
+
+        await Assert.That(ShapeRuleIds(result)).Contains("PARCH026");
+    }
+
+    // Editable fields are ignored by a markdown template, so a static one is no more worth a
+    // warning there than an instance one.
+    [Test]
+    public async Task Markdown_StaticEditableMember_NotReported()
+    {
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            [ParchmentModel]
+            public partial class Report
+            {
+                [EditableField]
+                public static string Banner { get; set; } = "";
+
+                public string Title { get; set; } = "";
+            }
+            """;
+        var result = GeneratorDriver.RunMarkdown(source, "{{ Title }}");
+
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
+    }
+
     const string pagedModel =
         """
         using System.Collections.Generic;
