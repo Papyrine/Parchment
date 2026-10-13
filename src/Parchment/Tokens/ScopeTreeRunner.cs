@@ -25,7 +25,8 @@ class ScopeTreeRunner(
     Cancel cancel,
     List<Table>? tables = null,
     List<Paragraph>? sections = null,
-    List<Paragraph>? carriedSections = null)
+    List<Paragraph>? carriedSections = null,
+    HashSet<OpenXmlElement>? pendingRemovals = null)
 {
     List<StructuralReplacement>? structuralReplacements;
 
@@ -47,6 +48,18 @@ class ScopeTreeRunner(
     // once everything around it has been removed, repeated and replaced — see SettleSectionBreaks.
     readonly List<Paragraph> sectionBreaks = carriedSections ?? [];
 
+    // The blocks Remove has taken out of the render and FlushRemovals has yet to take out of the
+    // document. OpenXML links siblings forwards only, so removing one element walks every sibling
+    // ahead of it, and a long body of block tags would pay the length of the body for each
+    // paragraph it drops. They are unlinked in one pass over each parent instead. An if-branch
+    // runner works in place among its outer runner's blocks, so it shares that runner's set and
+    // leaves the flush to it; a loop runner owns the scratch body its iterations are built in.
+    readonly HashSet<OpenXmlElement> removals = pendingRemovals ?? [];
+    readonly bool ownsRemovals = pendingRemovals == null;
+
+    // The runner that created this one, whose removals may be waiting as well.
+    ScopeTreeRunner? outer;
+
     // The loop variables open around the nodes this runner walks. A token that starts with one
     // reads the loop item, so the root-keyed maps do not apply to it — see LoopScope.
     IReadOnlyList<string> loopVariables = [];
@@ -56,6 +69,11 @@ class ScopeTreeRunner(
 
     public void ApplyStructural()
     {
+        if (ownsRemovals)
+        {
+            FlushRemovals();
+        }
+
         if (structuralReplacements == null)
         {
             return;
@@ -164,7 +182,7 @@ class ScopeTreeRunner(
     {
         var cursor = element.NextSibling();
         while (cursor != null &&
-               IsRangeMarker(cursor))
+               (IsRangeMarker(cursor) || removals.Contains(cursor)))
         {
             cursor = cursor.NextSibling();
         }
@@ -178,13 +196,80 @@ class ScopeTreeRunner(
     /// <summary>
     /// Takes a block out of the document. Every removal of a tag paragraph, of a branch that was
     /// not chosen or of a loop body goes through here, since any of them can be all that kept two
-    /// tables apart.
+    /// tables apart. The element stays linked until <see cref="FlushRemovals"/>, so anything that
+    /// reads the siblings of a block before then has to flush first or skip what is in
+    /// <see cref="removals"/>, as <see cref="RecordTableAfter"/> does.
     /// </summary>
     void Remove(OpenXmlElement element)
     {
         RecordTableAfter(element);
-        element.Remove();
+        removals.Add(element);
     }
+
+    void FlushRemovals()
+    {
+        if (removals.Count == 0)
+        {
+            return;
+        }
+
+        // A few cost less taken out one by one than in a pass over every child of their parent,
+        // and a few is all an ordinary template or one iteration of a loop has.
+        if (removals.Count <= 8)
+        {
+            foreach (var element in removals)
+            {
+                element.Remove();
+            }
+
+            removals.Clear();
+            return;
+        }
+
+        foreach (var element in removals)
+        {
+            // Null once the pass over its parent has taken it out along with the others.
+            if (element.Parent is { } parent)
+            {
+                RemoveFrom(parent);
+            }
+        }
+
+        removals.Clear();
+    }
+
+    // Removing the first child and appending a child cost the same however many children there
+    // are, so they are taken off the front one at a time and the ones that stay are put back on
+    // the end, which leaves them in the order they were in.
+    void RemoveFrom(OpenXmlElement parent)
+    {
+        var last = parent.LastChild;
+        OpenXmlElement child;
+        do
+        {
+            child = parent.FirstChild!;
+            child.Remove();
+            if (!removals.Contains(child))
+            {
+                parent.AppendChild(child);
+            }
+        } while (child != last);
+    }
+
+    // Before anything outside the runner is handed a part of the document: a caller's delegate can
+    // read whatever is around the paragraph it is given, and reach the rest through the main part.
+    void FlushAllRemovals()
+    {
+        for (var runner = this; runner != null; runner = runner.outer)
+        {
+            runner.FlushRemovals();
+        }
+    }
+
+    // Out of the document, or as good as: see Remove.
+    bool IsRemoved(OpenXmlElement element) =>
+        element.Parent == null ||
+        removals.Contains(element);
 
     /// <summary>
     /// A <c>w:sectPr</c> sits on the last paragraph of its section, so the paragraph a removed tag
@@ -218,11 +303,12 @@ class ScopeTreeRunner(
     void ApplyOne(StructuralReplacement replacement)
     {
         var host = replacement.Host;
-        var parent = host.Parent;
-        if (parent == null)
+        if (IsRemoved(host))
         {
             return;
         }
+
+        var parent = host.Parent!;
 
         if (replacement.KeepHost)
         {
@@ -540,6 +626,7 @@ class ScopeTreeRunner(
                 var existing = BookmarkIds.Markers(target);
                 // And it can add any relationship to any part it reaches from the main part.
                 RelationshipIds.Forget(mainPart);
+                FlushAllRemovals();
                 try
                 {
                     mutate.Apply(target, ctx);
@@ -579,6 +666,8 @@ class ScopeTreeRunner(
                 token.Source);
         }
 
+        // Whether the host is all its table cell holds decides the shape of the control.
+        FlushAllRemovals();
         var html = editable.Value as string;
         IReadOnlyList<OpenXmlElement> content = string.IsNullOrWhiteSpace(html)
             ? []
@@ -730,6 +819,10 @@ class ScopeTreeRunner(
         }
 
         mayHoldSections = false;
+        if (value is OpenXmlToken)
+        {
+            FlushAllRemovals();
+        }
 
         // A delegate can add any relationship to any part it reaches from the main part.
         RelationshipIds.Forget(mainPart);
@@ -1003,15 +1096,14 @@ class ScopeTreeRunner(
             return;
         }
 
-        var parent = open.Parent;
-        if (parent == null)
+        if (IsRemoved(open))
         {
             return;
         }
 
         try
         {
-            await ProcessLoopAsync(loop, open, close, parent).ConfigureAwait(false);
+            await ProcessLoopAsync(loop, open, close, open.Parent!).ConfigureAwait(false);
         }
         catch (Exception exception) when (RenderFailure.ShouldWrap(exception))
         {
@@ -1090,7 +1182,8 @@ class ScopeTreeRunner(
             sectionMarkers,
             sectionBreaks)
         {
-            loopVariables = [..loopVariables, loop.LoopVariable]
+            loopVariables = [..loopVariables, loop.LoopVariable],
+            outer = this
         };
 
         var first = true;
@@ -1292,7 +1385,8 @@ class ScopeTreeRunner(
                     sectionMarkers,
                     sectionBreaks)
                 {
-                    loopVariables = itemLoopVariables
+                    loopVariables = itemLoopVariables,
+                    outer = this
                 };
                 await itemRunner.RunAsync(loop.Body).ConfigureAwait(false);
                 itemRunner.ApplyStructural();
@@ -1481,7 +1575,7 @@ class ScopeTreeRunner(
             return;
         }
 
-        if (open.Parent == null)
+        if (IsRemoved(open))
         {
             return;
         }
@@ -1554,9 +1648,10 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, cancel, tablesToCheck, sectionMarkers, sectionBreaks)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, cancel, tablesToCheck, sectionMarkers, sectionBreaks, removals)
         {
-            loopVariables = loopVariables
+            loopVariables = loopVariables,
+            outer = this
         };
         await innerRunner.RunAsync(chosen).ConfigureAwait(false);
         innerRunner.ApplyStructural();
