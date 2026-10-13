@@ -9,6 +9,39 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
 
+    // PARCH001 again, worded for the one unknown member that is plainly there in the C#. Told only
+    // that a constant is "not a member", the reader checks the spelling.
+    public static readonly DiagnosticDescriptor EnumHasNoMembers = new(
+        id: "PARCH001",
+        title: "Template references an unknown model member",
+        messageFormat: "Template '{0}' token '{1}' references '{2}', but '{3}' is an enum. A template sees an enum as the text it renders as, " +
+                       "so its constants cannot be named: compare against that text instead.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
+
+    /// <summary>
+    /// PARCH001 for a path <see cref="ShapeResolver.TryResolve"/> turned down, in whichever of its
+    /// two wordings fits.
+    /// </summary>
+    public static Diagnostic UnknownMember(
+        TargetInfo target,
+        string templatePath,
+        Location location,
+        string tokenSource,
+        IReadOnlyList<string> path,
+        IReadOnlyDictionary<string, string> scope)
+    {
+        var reference = string.Join('.', path);
+        if (ShapeResolver.StopsAtEnum(target.Shape, path, scope, out var enumPath))
+        {
+            return Diagnostic.Create(EnumHasNoMembers, location, templatePath, tokenSource, reference, enumPath);
+        }
+
+        return Diagnostic.Create(MissingMember, location, templatePath, tokenSource, reference, target.ModelDisplayName);
+    }
+
     public static readonly DiagnosticDescriptor LoopSourceNotEnumerable = new(
         id: "PARCH002",
         title: "Loop source is not enumerable",
@@ -18,10 +51,16 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch002--loop-source-is-not-enumerable");
 
+    // The reason is an argument because the two flows differ in it: a docx template supports a
+    // fixed list of block tags, a markdown one everything liquid parses except the partial tags.
+    public const string DocxBlockTags = "supported: for, endfor, if, elsif, else, endif";
+
+    public const string MarkdownPartialTag = "a markdown template is a single file with nothing to load a partial from";
+
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
         title: "Unsupported block tag",
-        messageFormat: "Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif)",
+        messageFormat: "Template '{0}' uses unsupported block tag '{1}' ({2})",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -222,6 +261,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
 
+    // The conversion reads the member as a string. Anything else used to reach it as no string at
+    // all and render as nothing, in a document that otherwise looked complete.
+    public static readonly DiagnosticDescriptor FormatMarkerOnNonString = new(
+        id: "PARCH029",
+        title: "Format marker on a member that is not a string",
+        messageFormat: "Model '{0}' member '{1}' is typed '{2}' and carries [Html]/[Markdown]/[StringSyntax]. The marker converts a string, and this member has none to convert. Type the member as a string, or remove the marker.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch029--format-marker-on-a-member-that-is-not-a-string");
+
     // The generated code calls the method directly, so an unresolvable name would otherwise
     // surface as a compile error inside a .g.cs file - correct, but pointing at code nobody wrote.
     // This reports it on the member that named it instead, and suppresses the emission so the
@@ -234,6 +284,17 @@
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
+
+    // Nothing was reported for this before: the attribute was dropped and the token printed whatever
+    // the plain value prints, where the author expected a table.
+    public static readonly DiagnosticDescriptor ExcelsiorNotTabular = new(
+        id: "PARCH034",
+        title: "[ExcelsiorTable] member is not a collection of rows",
+        messageFormat: "Model '{0}' member '{1}' is marked [ExcelsiorTable] but its type '{2}' is not a collection of a type with properties to show as columns. Excelsior renders one row per element and one column per public property of the element type, so the member must be an array, a list or another IEnumerable<T> of such a type. Change the member's type, or remove the attribute.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch034--excelsiortable-member-is-not-a-collection-of-rows");
 
     // Extraction is replace-all: the rows in the document become the collection. A window or a
     // reversal on the loop that rendered them would therefore be written back as data.
