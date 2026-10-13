@@ -195,6 +195,180 @@ public class BindableGeneratorTests
         await Assert.That(generated).Contains("\"Name\"");
     }
 
+    // Legal members no accessor can be written for: a ref struct or a pointer cannot become an
+    // object (CS0029), and a static abstract interface member is reachable through a type parameter
+    // only (CS8926). The compile itself is checked where the real Parchment is referenced, by the
+    // Awkward model in Parchment.Tests' ReferenceValidatorTests.
+    [Test]
+    public async Task UnbindableMemberType_EmitsNoAccessor()
+    {
+        var source =
+            """
+            using System;
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public interface IThing
+            {
+                static abstract string Kind { get; }
+
+                static virtual string Fallback => "";
+
+                static string Default => "";
+
+                string Label { get; }
+            }
+
+            public ref struct Cursor
+            {
+                public int Position;
+            }
+
+            [ParchmentBindable]
+            public unsafe partial class Letter
+            {
+                int count;
+
+                public string Name { get; set; } = "";
+
+                public ref int Count => ref count;
+
+                public ReadOnlySpan<char> Chars => Name.AsSpan();
+
+                public Cursor Cursor => default;
+
+                public int* Pointer;
+
+                public delegate*<int, int> Function;
+
+                public int*[] Pointers { get; set; } = [];
+
+                public List<int*[]> PointerLists { get; set; } = [];
+
+                public IThing? Thing { get; set; }
+            }
+            """;
+        var generated = Generate(source);
+
+        foreach (var name in new[] { "Chars", "Cursor", "Pointer", "Function", "Pointers", "PointerLists", "Kind", "Fallback" })
+        {
+            await Assert.That(generated).DoesNotContain($"\"{name}\"");
+        }
+
+        foreach (var name in new[] { "Name", "Count", "Thing", "Default", "Label" })
+        {
+            await Assert.That(generated).Contains($"\"{name}\"");
+        }
+    }
+
+    // `dynamic` is not a legal operand of typeof (CS1962), and is `object` to the runtime, so that
+    // is how every emitted type name spells it. A member or a tuple element that is merely *named*
+    // dynamic is left alone.
+    [Test]
+    public async Task DynamicInAMemberType_IsWrittenAsObject()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Wrapper<T>
+            {
+                public T Value { get; set; } = default!;
+            }
+
+            [ParchmentBindable]
+            public partial class Letter
+            {
+                public dynamic? Dyn { get; set; }
+
+                public string dynamic { get; set; } = "";
+
+                public Dictionary<string, dynamic> Map { get; set; } = new();
+
+                public Wrapper<dynamic[]> Wrapped { get; set; } = new();
+
+                public Wrapper<(int dynamic, dynamic B)> Pair { get; set; } = new();
+            }
+            """;
+        var generated = Generate(source);
+
+        await Assert.That(generated).DoesNotContain("<dynamic");
+        await Assert.That(generated).DoesNotContain("dynamic>");
+        await Assert.That(generated).DoesNotContain("typeof(dynamic)");
+        await Assert.That(generated).Contains("typeof(global::System.Collections.Generic.KeyValuePair<string, object>)");
+        await Assert.That(generated).Contains("typeof(global::Sample.Wrapper<object[]>)");
+        await Assert.That(generated).Contains("typeof(global::Sample.Wrapper<(int dynamic, object B)>)");
+        await Assert.That(generated).Contains("""new("dynamic", """);
+    }
+
+    // A name a derived type reuses for something that is not a readable property is what
+    // `((Derived)o).Name` then binds to - a method group (CS8974), an event, a type - so the
+    // inherited property is not reachable through the derived type. One hidden by a member the
+    // generated code cannot see (protected) still is.
+    [Test]
+    public async Task MemberHiddenInADerivedType_EmitsNoAccessor()
+    {
+        var source =
+            """
+            using System;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Base
+            {
+                public string Kept { get; set; } = "";
+                public string ByMethod { get; set; } = "";
+                public string ByEvent { get; set; } = "";
+                public string ByType { get; set; } = "";
+                public string ByWriteOnly { get; set; } = "";
+                public string BySpan { get; set; } = "";
+                public string ByProtected { get; set; } = "";
+                public string bycase { get; set; } = "";
+            }
+
+            public class Mid : Base
+            {
+                public new void ByMethod() { }
+                public new event Action ByEvent { add { } remove { } }
+                public new class ByType { }
+                public new string ByWriteOnly { set { } }
+                public new ReadOnlySpan<char> BySpan => default;
+                protected new void ByProtected() { }
+                public void ByCase() { }
+            }
+
+            [ParchmentBindable]
+            public partial class Letter
+            {
+                public Mid Mid { get; set; } = new();
+            }
+            """;
+        var generated = Generate(source);
+
+        foreach (var name in new[] { "ByMethod", "ByEvent", "ByType", "ByWriteOnly", "BySpan" })
+        {
+            await Assert.That(generated).DoesNotContain($"\"{name}\"");
+        }
+
+        foreach (var name in new[] { "Kept", "ByProtected", "bycase" })
+        {
+            await Assert.That(generated).Contains($"\"{name}\"");
+        }
+    }
+
+    static string Generate(string source)
+    {
+        var setup = GeneratorDriver.CreateDriverWithFiles(source);
+        var result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
+        return string.Concat(result.GeneratedTrees.Select(_ => _.GetText().ToString()));
+    }
+
     // A base and a derived model can both be bindable — the type name is folded into the module
     // initializer's name so the derived one does not hide the base one (CS0108).
     [Test]
