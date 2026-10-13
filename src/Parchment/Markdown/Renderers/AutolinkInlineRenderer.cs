@@ -10,27 +10,33 @@ class AutolinkInlineRenderer :
             url = $"mailto:{text}";
         }
 
-        var relId = RelationshipIds.Hyperlink(renderer.MainPart, url);
-        var run = new Run(
-            new RunProperties(
-                new RunStyle
+        // A url no relationship can point at stays the text it was written as.
+        if (RelationshipIds.TryHyperlink(renderer.Part, url, out var relId))
+        {
+            var run = new Run(
+                new RunProperties(
+                    new RunStyle
+                    {
+                        Val = MarkdownStyle.Resolve(inline) ?? "Hyperlink"
+                    }),
+                new Text(text)
                 {
-                    Val = MarkdownStyle.Resolve(inline) ?? "Hyperlink"
-                }),
-            new Text(text)
-            {
-                Space = SpaceProcessingModeValues.Preserve
-            });
-
-        // The run goes in already wrapped, so the inline html open around it ("<b><url></b>") is
-        // applied here: AddRun formats a Run, and what it is handed is the Hyperlink. A classed span
-        // replaces the link's style, as it does for the runs of a "[text](url)".
-        renderer.ApplyInlineHtmlFormats(run);
-        renderer.AddRun(
-            new Hyperlink(run)
-            {
-                Id = relId
-            });
+                    Space = SpaceProcessingModeValues.Preserve
+                });
+            // The run goes in already wrapped, so the inline html open around it ("<b><url></b>") is
+            // applied here: AddRun formats a Run, and what it is handed is the Hyperlink. A classed span
+            // replaces the link's style, as it does for the runs of a "[text](url)".
+            renderer.ApplyInlineHtmlFormats(run);
+            renderer.AddRun(
+                new Hyperlink(run)
+                {
+                    Id = relId
+                });
+        }
+        else
+        {
+            renderer.AddRun(LiteralInlineRenderer.BuildRun(text));
+        }
 
         // The > that closed the autolink belonged to the value, so it is text the value is owed
         // rather than syntax to swallow.
@@ -47,7 +53,7 @@ class AutolinkInlineRenderer :
     static string Unescape(string url, out bool closedByValue)
     {
         closedByValue = false;
-        if (!url.Contains('\\') ||
+        if (url.AsSpan().IndexOfAny('\\', '&') < 0 ||
             url.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
             return url;

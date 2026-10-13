@@ -388,6 +388,7 @@ public partial class MarkdownFlowTests
     {
         public required IReadOnlyList<Row> Rows { get; init; }
         public int Count { get; init; }
+        public bool Flag { get; init; }
     }
 
     public class Row
@@ -400,6 +401,26 @@ public partial class MarkdownFlowTests
         using var styleSource = DocxTemplateBuilder.Build();
         new TemplateStore().RegisterMarkdownTemplate<LoopModel>(markdown, styleSource);
     }
+
+    // Liquid has no `else if`, and `else` / `endif` / `endfor` take no arguments. The docx flow
+    // scans its own tags and has to agree with what Fluid rejects here.
+    [Test]
+    [Arguments("{% if Flag %}a{% else if Flag %}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{%- else if Flag -%}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{% elseif Flag %}b{% endif %}", "elsif")]
+    [Arguments("{% if Flag %}a{% else Flag %}b{% endif %}", "'{% else %}' takes no arguments")]
+    [Arguments("{% if Flag %}a{% endif extra %}", "'{% endif %}' takes no arguments")]
+    [Arguments("{% for row in Rows %}a{% endfor extra %}", "'{% endfor %}' takes no arguments")]
+    public async Task BlockTagWithArgumentsFailsRegistration(string markdown, string expected)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register(markdown));
+        await Assert.That(exception.Message).Contains(expected);
+    }
+
+    [Test]
+    public void WhitespaceControlOnArgumentlessTagsIsAccepted() =>
+        Register("{%- for row in Rows -%}a{%- endfor -%}{%- if Flag -%}a{%- else -%}b{%-endif-%}");
 
     // Leading whitespace control is exactly what a markdown template needs, since markdown ends an
     // html block at the first blank line. The old text scan looked for a literal "{% for row in "
@@ -497,7 +518,7 @@ public partial class MarkdownFlowTests
     [Test]
     public async Task NonEnumerableLoopSourceFailsRegistration()
     {
-        // Row is a POCO. A string would not do here — it is IEnumerable<char>, so it resolves.
+        // Row is a POCO. A string is rejected the same way; see LoopSourceValidationTests.
         var exception = Assert.Throws<ParchmentRegistrationException>(
             () => Register("{% for row in Rows %}{% for inner in row %}{{ inner }}{% endfor %}{% endfor %}"));
         await Assert.That(exception.Message).Contains("enumerable");
@@ -507,6 +528,65 @@ public partial class MarkdownFlowTests
     [Test]
     public void RangeLoopSourceIsAccepted() =>
         Register("{% for i in (1..5) %}{{ i }}{% endfor %}");
+
+    // A partial is loaded through a file provider, and a template is registered as one piece of
+    // text with none. Both tags parse, so without a check the first sign of trouble was a
+    // FileNotFoundException out of Fluid at render.
+    [Test]
+    [Arguments("{% render 'part' %}", "render")]
+    [Arguments("{% include 'part' %}", "include")]
+    [Arguments("{%- render 'part', row: Rows -%}", "render")]
+    [Arguments("{% include Rows %}", "include")]
+    [Arguments("{% for row in Rows %}{% render 'part' %}{% endfor %}", "render")]
+    [Arguments("{% for row in Rows %}{% else %}{% include 'part' %}{% endfor %}", "include")]
+    [Arguments("{% if Count > 1 %}{% else %}{% include 'part' %}{% endif %}", "include")]
+    [Arguments("{% unless Count > 1 %}{% render 'part' %}{% endunless %}", "render")]
+    [Arguments("{% case Count %}{% when 1 %}{% include 'part' %}{% endcase %}", "include")]
+    [Arguments("{% capture text %}{% render 'part' %}{% endcapture %}", "render")]
+    public async Task PartialTagFailsRegistration(string markdown, string tag)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register(markdown));
+        await Assert.That(exception.Message).Contains($"Unsupported tag '{tag}'");
+    }
+
+    // Fluid registers the liquid tag and does not run it: one statement parses to nothing and takes
+    // the rest of the template with it, so `[{% liquid echo Count %}]` rendered `[` and a typo
+    // inside was never seen. More than one statement was a parse error naming a line of the body.
+    [Test]
+    [Arguments("{% liquid echo Count %}")]
+    [Arguments("{% liquid echo Missing %}")]
+    [Arguments("[{%- liquid echo Count -%}]")]
+    [Arguments("{% liquid %}")]
+    [Arguments("{% liquid\nassign n = Count\necho n\n%}")]
+    [Arguments("{% liquid\r\nfor row in Rows\r\necho row.Name\r\nendfor\r\n%}")]
+    [Arguments("{% for row in Rows %}{% liquid echo row.Name %}{% endfor %}")]
+    [Arguments("{% for row in Rows %}{% else %}{% liquid echo Count %}{% endfor %}")]
+    [Arguments("{% if Count > 1 %}{% else %}{% liquid echo Count %}{% endif %}")]
+    [Arguments("{% unless Count > 1 %}{% liquid echo Count %}{% endunless %}")]
+    [Arguments("{% case Count %}{% when 1 %}{% liquid echo Count %}{% endcase %}")]
+    [Arguments("{% capture text %}{% liquid echo Count %}{% endcapture %}")]
+    public async Task LiquidTagFailsRegistration(string markdown)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register(markdown));
+        await Assert.That(exception.Message).Contains("Unsupported tag 'liquid'");
+    }
+
+    // Inside raw and comment the text is not liquid, and a tag that only starts with the word is
+    // some other tag.
+    [Test]
+    [Arguments("{% raw %}{% liquid echo Count %}{% endraw %}")]
+    [Arguments("{% comment %}{% liquid echo Count %}{% endcomment %}")]
+    public void LiquidTagAsTextIsAccepted(string markdown) =>
+        Register(markdown);
+
+    // The statement a liquid tag would hold works as a tag of its own, and is validated as one.
+    [Test]
+    public async Task EchoTagIsValidated()
+    {
+        Register("{% echo Count %}");
+        var exception = Assert.Throws<ParchmentRegistrationException>(() => Register("{% echo Missing %}"));
+        await Assert.That(exception.Message).Contains("Missing");
+    }
 
     // A member used as a bound does not make the range a member path. Count is an int, and taking
     // it for the loop source rejected the loop as iterating something that is not enumerable.
