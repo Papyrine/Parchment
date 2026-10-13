@@ -24,7 +24,7 @@ dotnet run --project src/Parchment.Tests --configuration Release -p:IsPackable=f
 
 Other test projects: `src/Parchment.SourceGenerator.Tests`, `IntegrationTests/IntegrationTests` (the latter requires `src` to be packed first).
 
-Work often spans the sibling repos `../OpenXmlHtml` and `../Excelsior`. Both run **NUnit under VSTest**, so `dotnet test` with `--filter` is correct there — the TUnit guidance above is Parchment-only. Each has its own `CLAUDE.md`; read it rather than assuming this one applies.
+Work often spans the sibling repos `../OpenXmlHtml` and `../Excelsior`. Both also run **TUnit** on Microsoft.Testing.Platform, so `--filter` matches nothing there either: narrow with `--treenode-filter`. Unlike here, their `global.json` selects the Microsoft.Testing.Platform runner, so `dotnet test` works (`dotnet test OpenXmlHtml.slnx`, `dotnet test --project src/Excelsior.Tests`). Each has its own `CLAUDE.md`; read it for the rest, but its `--filter` examples are stale.
 
 ## Scan log
 
