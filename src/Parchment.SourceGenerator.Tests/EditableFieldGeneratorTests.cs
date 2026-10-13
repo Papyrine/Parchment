@@ -143,6 +143,86 @@ public class EditableFieldGeneratorTests
     }
 
     [Test]
+    public async Task FlagsEnum_ReportsParch013()
+    {
+        // A dropdown holds one item, so a combined value (Read | Write) has no item to select.
+        // The nullable member and the member of a collection element take the same path.
+        var source =
+            """
+            using System;
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            [Flags]
+            public enum Access
+            {
+                None = 0,
+                Read = 1,
+                Write = 2
+            }
+
+            public class Grant
+            {
+                [EditableField]
+                public Access Access { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public Access Access { get; set; }
+
+                [EditableField]
+                public Access? Optional { get; set; }
+
+                [EditableField]
+                public List<Grant> Grants { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var diagnostics = result.Results.Single().Diagnostics.Where(_ => _.Id == "PARCH013").ToList();
+        await Assert.That(diagnostics.Count).IsEqualTo(3);
+        await Assert.That(diagnostics[0].GetMessage()).Contains("[Flags]");
+    }
+
+    [Test]
+    public async Task EnumWithoutFlags_IsADropDown()
+    {
+        // Only the attribute decides: an enum that names a combination without [Flags] still
+        // offers each named constant as one dropdown item.
+        var source =
+            """
+            using Parchment;
+
+            namespace Sample;
+
+            public enum Level
+            {
+                Low = 1,
+                High = 2,
+                Both = Low | High
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public Level Level { get; set; }
+
+                [EditableField]
+                public Level? Optional { get; set; }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Level }} {{ Optional }}");
+        await Assert.That(ParchIds(result)).IsEmpty();
+        var generated = result.Results.Single().GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).Contains("EditableFieldKind.DropDown");
+    }
+
+    [Test]
     public async Task CollectionElementWithoutEditableMembers_ReportsParch022()
     {
         var source =

@@ -618,7 +618,8 @@ static class ShapeBuilder
 
     /// <summary>
     /// The runtime lockstep is <c>EditableMap.MapKind</c> + the bool? guard: null means
-    /// PARCH013 (unsupported type — including <c>bool?</c>, which a checkbox cannot represent).
+    /// PARCH013 (unsupported type — including <c>bool?</c>, which a checkbox cannot represent, and
+    /// a <c>[Flags]</c> enum, which a dropdown cannot).
     /// </summary>
     static EditableFieldKind? MapEditableKind(ITypeSymbol type)
     {
@@ -658,6 +659,14 @@ static class ShapeBuilder
 
         if (type.TypeKind == TypeKind.Enum)
         {
+            // A dropdown selects one item, and a [Flags] value is a combination: Read | Write
+            // matches no item, so the control would show text that is not in its list and
+            // extraction could not read it back. The attribute decides, not the constants.
+            if (IsFlagsEnum(type))
+            {
+                return null;
+            }
+
             return EditableFieldKind.DropDown;
         }
 
@@ -672,6 +681,19 @@ static class ShapeBuilder
             "global::System.TimeOnly" => EditableFieldKind.Time,
             _ => null
         };
+    }
+
+    static bool IsFlagsEnum(ITypeSymbol type)
+    {
+        foreach (var attribute in type.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "FlagsAttribute", ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true } })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool IsNullableMember(ITypeSymbol type) =>

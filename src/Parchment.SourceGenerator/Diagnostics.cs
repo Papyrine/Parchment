@@ -149,7 +149,7 @@
     public static readonly DiagnosticDescriptor EditableUnsupportedType = new(
         id: "PARCH013",
         title: "[EditableField] member has an unsupported type",
-        messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
+        messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums without [Flags], and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,

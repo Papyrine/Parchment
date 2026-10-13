@@ -1168,7 +1168,7 @@ result.ApplyTo(model);
 | `DateOnly` / `DateTime` | date picker (`DateFormat` option, default `yyyy-MM-dd`) | canonical `w:fullDate`, maintained by Word's picker |
 | `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
 | `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
-| enums | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
+| enums (not `[Flags]`) | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
 | numeric types | plain text (invariant format) | the text, parsed without group separators (see [Culture](#culture)) |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
@@ -2446,7 +2446,7 @@ public partial class Outer  // <-- partial
 
 ### `PARCH013` — `[EditableField]` member has an unsupported type
 
-**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null).
+**Docx only.** Supported types: `string`, `bool`, `DateOnly`, `DateTime`, `DateTimeOffset`, `TimeOnly`, enums, and the numeric primitives / `decimal` — plus nullable variants, except `bool?` (a checkbox cannot represent null). A `[Flags]` enum is rejected: a dropdown selects one item, so a combined value such as `Read | Write` has no item to show or to read back. An enum without the attribute is a dropdown of its named members, including any member that names a combination.
 
 ```cs
 public partial class Order
