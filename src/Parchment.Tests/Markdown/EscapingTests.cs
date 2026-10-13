@@ -396,6 +396,73 @@ public partial class EscapingTests
         await Assert.That(paragraph.Descendants<Bold>().Any()).IsFalse();
     }
 
+    const string entitiesAndDelimiters = "AT&T &amp; &copy; &#169; <Research> a < b [open ![image <<x>> \"Labs\" it's";
+
+    // The renderer turns an entity in the template into its character and prints a bracket that
+    // never closed. Neither is to reach into a value: one holding "&amp;" holds five characters,
+    // and they print as five - once, not decoded, and not decoded twice.
+    [Test]
+    [Arguments("{0}", "{0}")]
+    [Arguments("**{0}**", "{0}")]
+    [Arguments("# {0}", "{0}")]
+    [Arguments("- {0}", "{0}")]
+    [Arguments("| Head |\n| --- |\n| {0} |", "Head{0}")]
+    [Arguments("[{0}](https://example.com)", "{0}")]
+    [Arguments("<u>{0}</u>", "{0}")]
+    public async Task EntitiesAndDelimitersInAValuePrintAsThemselves(string container, string expected)
+    {
+        // Quotes are left to smarty pants by design, so they are kept out of this one.
+        var value = entitiesAndDelimiters.Replace("\"Labs\" it's", "end");
+        var body = await Render(
+            string.Format(container, "{{ Title }}"),
+            new()
+            {
+                Title = value
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo(string.Format(expected, value));
+    }
+
+    // escape_xml opts out of the encoder and writes entities in its place, so in running text it is
+    // the renderer that turns them back - a value through it used to lose every character the
+    // filter had touched. What the filter leaves alone is markdown source, which is where the open
+    // bracket comes from; it prints too.
+    [Test]
+    [Arguments("{0}", "{0}")]
+    [Arguments("Company: {0}.", "Company: {0}.")]
+    [Arguments("**{0}**", "{0}")]
+    [Arguments("# {0}", "{0}")]
+    [Arguments("- {0}", "{0}")]
+    [Arguments("| Head |\n| --- |\n| {0} |", "Head{0}")]
+    [Arguments("<u>{0}</u>", "{0}")]
+    public async Task EscapeXmlValuePrintsAsItself(string container, string expected)
+    {
+        // Angle quotes need two angle brackets in the source, and the filter has made entities of
+        // them, so those print as typed as well.
+        var body = await Render(
+            string.Format(container, "{{ Title | escape_xml }}"),
+            new()
+            {
+                Title = entitiesAndDelimiters
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo(string.Format(expected, entitiesAndDelimiters));
+    }
+
+    // The docx flow puts the value in a run and never parses it, so there is nothing to decode.
+    [Test]
+    public async Task DocxSubstitutionKeepsEntitiesAndDelimiters()
+    {
+        var body = await RenderDocx(
+            "{{ Title }}",
+            new()
+            {
+                Title = entitiesAndDelimiters
+            });
+
+        await Assert.That(body.Elements<Paragraph>().First().InnerText).IsEqualTo(entitiesAndDelimiters);
+    }
+
     [Test]
     public async Task NewlineBecomesABreak()
     {
@@ -672,6 +739,79 @@ public partial class EscapingTests
         await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
     }
 
+    // Here `html` parks its value and writes a placeholder, so a filter after it was handed the
+    // placeholder rather than the value: `{{ Details | html | upcase }}` printed PARCHMENT-TOKEN-0,
+    // and `append` left the placeholder sharing its block, which failed the render with a message
+    // about a block the template never wrote.
+    [Test]
+    [Arguments("{{ Details | html | upcase }}", "upcase", "Details | html | upcase")]
+    [Arguments("{{ Details | html | append: ' tail' }}", "append", "Details | html | append")]
+    [Arguments("{{ Details | upcase | html | downcase | strip }}", "downcase", "Details | upcase | html | downcase | strip")]
+    [Arguments("{% assign shout = Details | html | upcase %}{{ shout }}", "upcase", "Details | html | upcase")]
+    [Arguments("{% capture held %}{{ Details | html | upcase }}{% endcapture %}{{ held }}", "upcase", "Details | html | upcase")]
+    [Arguments("{% for item in Items %}{{ item | html | upcase }}{% endfor %}", "upcase", "item | html | upcase")]
+    [Arguments("{% if Title %}x{% else %}{{ Details | html | upcase }}{% endif %}", "upcase", "Details | html | upcase")]
+    public async Task FilterAfterHtmlFilterFailsRegistration(string template, string following, string chain)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<EscapeModel>(template, styleSource));
+
+        await Assert.That(exception.Message).Contains($"Filter '{following}' is applied after 'html'");
+        await Assert.That(exception.Message).Contains($"Move '{following}' before 'html'");
+        await Assert.That(exception.TokenSource).IsEqualTo(chain);
+    }
+
+    [Test]
+    public async Task FilterBeforeHtmlFilterIsApplied()
+    {
+        var body = await Render(
+            "{{ Details | upcase | html }}",
+            new()
+            {
+                Details = "<b>bold</b> text"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    // The other three are not token filters in this flow: each writes markdown source, and source is
+    // text a later filter can still work on. The docx flow refuses these same chains, because there
+    // the value has already become Word content.
+    [Test]
+    public async Task FilterAfterMarkdownFilterTransformsItsSource()
+    {
+        var body = await Render(
+            "{{ Details | markdown | upcase }}",
+            new()
+            {
+                Details = "**bold** text"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    [Test]
+    [Arguments("bullet_list")]
+    [Arguments("numbered_list")]
+    public async Task FilterAfterListFilterTransformsItsSource(string listFilter)
+    {
+        var body = await Render(
+            $"{{{{ Items | {listFilter} | upcase }}}}",
+            new()
+            {
+                Items = ["one", "two"]
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(string.Join(',', paragraphs.Select(_ => _.InnerText))).IsEqualTo("ONE,TWO");
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+    }
+
     // The annotation says once, at the model, what the filter says at every site. It reached the
     // docx flow already; a markdown template ignored it, which stopped being invisible the moment
     // an unannotated value started being escaped.
@@ -940,6 +1080,141 @@ public partial class EscapingTests
             });
 
         await Assert.That(body.InnerText).IsEqualTo("a|b **not bold**");
+    }
+
+    // Markdown has no empty emphasis: the delimiters would print, and a line holding only `****`
+    // or `___` is a thematic break. A blank value takes the emphasis written around it with it.
+    [Test]
+    [Arguments("**{{ Title }}**", "")]
+    [Arguments("__{{ Title }}__", "")]
+    [Arguments("*{{ Title }}*", "")]
+    [Arguments("_{{ Title }}_", "")]
+    [Arguments("~~{{ Title }}~~", "")]
+    [Arguments("`{{ Title }}`", "")]
+    [Arguments("***{{ Title }}***", "")]
+    [Arguments("~~**{{ Title }}**~~", "")]
+    [Arguments("**{{ Title }}{{ Details }}**", "")]
+    [Arguments("**{{ Title }} {{ Details }}**", "")]
+    [Arguments("**{{ Title }}**", " ")]
+    [Arguments("**{{ Title }}**", " \t ")]
+    [Arguments("_{{ Title | upcase }}_", "")]
+    [Arguments("**{{ Title | markdown }}**", "")]
+    public async Task EmphasisAroundABlankValuePrintsNothing(string emphasis, string value)
+    {
+        var body = await Render(
+            $"before {emphasis} after\n\n{emphasis}\n\nlast",
+            new()
+            {
+                Title = value,
+                Details = value
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(paragraphs.Select(_ => string.Join(' ', _.InnerText.Split(' ', StringSplitOptions.RemoveEmptyEntries))))
+            .IsEquivalentTo(["before after", "last"]);
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundABlankValueInALoop()
+    {
+        var body = await Render(
+            "{% assign nothing = nil %}{% for item in Items %}**{{ item }}** __{{ nothing }}__\n\n{% endfor %}last",
+            new()
+            {
+                Items = ["", "kept", " "]
+            });
+
+        await Assert.That(body.InnerText.Replace(" ", "")).IsEqualTo("keptlast");
+        await Assert.That(body.Descendants<Bold>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("kept");
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundABlankValueInsideOtherBlocks()
+    {
+        var body = await Render(
+            """
+            # **{{ Title }}**
+
+            - **{{ Title }}** item
+            - _{{ Title }}_
+
+            | A | B |
+            | --- | --- |
+            | **{{ Title }}** | ~~{{ Title }}~~ after |
+            """,
+            new());
+
+        await Assert.That(body.InnerText).IsEqualTo("itemABafter");
+        await Assert.That(body.Descendants<Strike>().Any()).IsFalse();
+        await Assert.That(body.Descendants<Italic>().Any()).IsFalse();
+        await Assert.That(body.Descendants<ParagraphBorders>().Any()).IsFalse();
+    }
+
+    [Test]
+    public async Task EmphasisAroundAValueIsKept()
+    {
+        var body = await Render(
+            "**{{ Title }}** and _{{ Details }}_",
+            new()
+            {
+                Title = "bold",
+                Details = "italic"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("bold and italic");
+        await Assert.That(body.Descendants<Bold>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("bold");
+        await Assert.That(body.Descendants<Italic>().Single().Ancestors<Run>().Single().InnerText).IsEqualTo("italic");
+    }
+
+    // The runs either side of the token here close one emphasis and open another. Neither is
+    // around the token, so both stay.
+    [Test]
+    [Arguments("**a**{{ Title }}*b*")]
+    [Arguments("**a** {{ Title }} *b*")]
+    public async Task NeighbouringEmphasisSurvivesABlankValue(string template)
+    {
+        var body = await Render(template, new());
+
+        await Assert.That(body.InnerText.Replace(" ", "")).IsEqualTo("ab");
+        await Assert.That(body.Descendants<Bold>().First().Ancestors<Run>().Single().InnerText).IsEqualTo("a");
+    }
+
+    // Only delimiters around a token are dropped. Ones the author typed with nothing between them,
+    // in the template or in a value that is markdown source, print as they always did.
+    [Test]
+    public async Task EmptyEmphasisWithoutATokenIsLeftAlone()
+    {
+        var body = await Render(
+            "a **** b {{ Title }}\n\n{{ Details | markdown }}",
+            new()
+            {
+                Details = "c **** d"
+            });
+
+        await Assert.That(body.Elements<Paragraph>().Select(_ => _.InnerText.Trim())).IsEquivalentTo(["a **** b", "c **** d"]);
+    }
+
+    [Test]
+    public async Task EscapedDelimitersAroundABlankValueStillPrint()
+    {
+        var body = await Render(@"a \*{{ Title }}\* b", new());
+
+        await Assert.That(body.InnerText).IsEqualTo("a ** b");
+    }
+
+    [Test]
+    public async Task DocxMarkdownValueKeepsItsEmptyEmphasis()
+    {
+        var body = await RenderDocx(
+            "{{ Details | markdown }}",
+            new()
+            {
+                Details = "a **** b"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("a **** b");
     }
 
     [Test]
