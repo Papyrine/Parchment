@@ -21,5 +21,7 @@
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="ProjectFiles" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj" />
+    <!-- One list of templates for both markdown validators; the runtime half is MarkdownBlockTagTests. -->
+    <Compile Include="..\Parchment.Tests\Markdown\MarkdownBlockTagCases.cs" Link="MarkdownBlockTagCases.cs" />
   </ItemGroup>
 </Project>
