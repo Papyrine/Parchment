@@ -367,6 +367,245 @@ public class EditableFieldGeneratorTests
         await Assert.That(generated).Contains("_EditableCollections");
     }
 
+    // A setter through a struct assigns to a copy, so nothing the generator could emit writes the
+    // value back. Reported at the member; what would not compile is not emitted.
+    [Test]
+    [Arguments("struct")]
+    [Arguments("record struct")]
+    public async Task EditableMemberInStruct_ReportsParch032(string kind)
+    {
+        var source =
+            $$"""
+            using Parchment;
+
+            namespace Sample;
+
+            public {{kind}} Address
+            {
+                [EditableField]
+                public string City { get; set; }
+
+                [EditableField]
+                public int Floor;
+
+                public string Country { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public string Number { get; set; } = "";
+
+                public Address Address { get; set; }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "{{ Address.Country }}");
+        var runResult = result.Results.Single();
+        var messages = runResult.Diagnostics
+            .Where(_ => _.Id.StartsWith("PARCH", StringComparison.Ordinal))
+            .Select(_ => $"{_.Id}: {_.GetMessage()}")
+            .ToList();
+        await Assert.That(messages.Count).IsEqualTo(2);
+        await Assert.That(messages.All(_ => _.StartsWith("PARCH032", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(messages.Any(_ => _.Contains("'Sample.Address.City'") && _.Contains("the struct 'Sample.Address'"))).IsTrue();
+        await Assert.That(messages.Any(_ => _.Contains("'Sample.Address.Floor'"))).IsTrue();
+
+        // The member beside it on the class keeps its entry, and the struct's members still bind.
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).Contains("new(\"Number\", ");
+        await Assert.That(generated).DoesNotContain("\"Address.City\"");
+        await Assert.That(generated).DoesNotContain("\"Address.Floor\"");
+        await Assert.That(generated).Contains("((global::Sample.Address)o).City");
+    }
+
+    [Test]
+    public async Task EditableMemberInClassBelowStruct_ReportsParch032()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+            }
+
+            public class Contact
+            {
+                [EditableField]
+                public string Email { get; set; } = "";
+
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+
+            public struct Party
+            {
+                public Contact Contact { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                public Party Buyer { get; set; }
+
+                public Party Seller { get; set; }
+            }
+            """;
+        var result = GeneratorDriver.Run(source, "x");
+        var runResult = result.Results.Single();
+        var messages = runResult.Diagnostics
+            .Where(_ => _.Id.StartsWith("PARCH", StringComparison.Ordinal))
+            .Select(_ => $"{_.Id}: {_.GetMessage()}")
+            .ToList();
+
+        // Once per member, though two paths reach each.
+        await Assert.That(messages.Count).IsEqualTo(2);
+        await Assert.That(messages.Any(_ => _.StartsWith("PARCH032", StringComparison.Ordinal) && _.Contains("'Sample.Contact.Email'") && _.Contains("the struct 'Sample.Party'"))).IsTrue();
+        await Assert.That(messages.Any(_ => _.StartsWith("PARCH032", StringComparison.Ordinal) && _.Contains("'Sample.Contact.Lines'"))).IsTrue();
+
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).DoesNotContain("_Editables");
+        await Assert.That(generated).DoesNotContain("_EditableCollections");
+    }
+
+    [Test]
+    [Arguments("List<Row>")]
+    [Arguments("Row[]")]
+    public async Task StructCollectionElement_ReportsParch022(string collection)
+    {
+        var source =
+            $$"""
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public struct Row
+            {
+                [EditableField]
+                public int Year { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public {{collection}} Rows { get; set; } = [];
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for row in Rows %}",
+            "{{ row.Year }}",
+            "{% endfor %}");
+        var runResult = result.Results.Single();
+        var errors = runResult.Diagnostics
+            .Where(_ => _.Severity == DiagnosticSeverity.Error)
+            .ToList();
+        await Assert.That(errors.Count).IsEqualTo(1);
+        await Assert.That(errors[0].Id).IsEqualTo("PARCH022");
+        await Assert.That(errors[0].GetMessage()).Contains("'Sample.Order.Rows'");
+        await Assert.That(errors[0].GetMessage()).Contains("'Sample.Row' is a struct");
+
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).DoesNotContain("_EditableCollections");
+    }
+
+    [Test]
+    public async Task EditableMemberInStructInsideCollectionElement_ReportsParch032()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public struct Money
+            {
+                [EditableField]
+                public decimal Amount { get; set; }
+            }
+
+            public class Line
+            {
+                [EditableField]
+                public string Note { get; set; } = "";
+
+                public Money Price { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                [EditableField]
+                public List<Line> Lines { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{% for line in Lines %}",
+            "{{ line.Note }}",
+            "{% endfor %}");
+        var runResult = result.Results.Single();
+        var errors = runResult.Diagnostics
+            .Where(_ => _.Severity == DiagnosticSeverity.Error)
+            .ToList();
+        await Assert.That(errors.Count).IsEqualTo(1);
+        await Assert.That(errors[0].Id).IsEqualTo("PARCH032");
+        await Assert.That(errors[0].GetMessage()).Contains("'Sample.Money.Amount'");
+
+        // The collection and its other member are still emitted.
+        var generated = runResult.GeneratedSources.Single().SourceText.ToString();
+        await Assert.That(generated).Contains("_EditableCollections");
+        await Assert.That(generated).Contains("new(\"Note\", ");
+        await Assert.That(generated).DoesNotContain("\"Price.Amount\"");
+    }
+
+    [Test]
+    public async Task StructMembersWithoutEditableField_NoDiagnostics()
+    {
+        var source =
+            """
+            using System.Collections.Generic;
+            using Parchment;
+
+            namespace Sample;
+
+            public struct Address
+            {
+                public string City { get; set; }
+            }
+
+            public struct Row
+            {
+                public int Year { get; set; }
+            }
+
+            [ParchmentModel]
+            public partial class Order
+            {
+                public Address Address { get; set; }
+
+                public List<Row> Rows { get; set; } = new();
+            }
+            """;
+        var result = GeneratorDriver.Run(
+            source,
+            "{{ Address.City }}",
+            "{% for row in Rows %}",
+            "{{ row.Year }}",
+            "{% endfor %}");
+        var ids = result.Results.Single().Diagnostics.Select(_ => _.Id).ToList();
+        await Assert.That(ids.Any(_ => _.StartsWith("PARCH", StringComparison.Ordinal))).IsFalse();
+    }
+
     static string CollectionTypeModel(string type) =>
         $$"""
           #nullable enable

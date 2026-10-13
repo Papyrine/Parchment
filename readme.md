@@ -1299,6 +1299,7 @@ A date or time typed in a form other than the rendered one is parsed with the ex
 - **No structural mixing.** An editable token cannot share a paragraph with an `[ExcelsiorTable]` / `[Html]` / `[Markdown]` token — structural replacement clones paragraph halves and would corrupt the editable range. Rejected at registration.
 - `[EditableField]` combined with `[ExcelsiorTable]` or `[Markdown]` on the same member is rejected (`PARCH015`); `[Html]` (or `[StringSyntax("html")]`) instead selects the rich-text kind (see [Rich text (HTML)](#rich-text-html)). Unsupported member types are rejected (`PARCH013`); a missing setter is rejected (`PARCH014`). All fail fast at runtime registration.
 - **Static members are skipped**, matching the other per-template maps — see [Model binding limitations](#model-binding-limitations).
+- **No structs on the way to an editable member.** Extraction writes each value back along the member path, and a write through a struct lands on a copy. An `[EditableField]` member declared in a struct, or in a class held by one, is rejected ([`PARCH032`](#parch032--editablefield-member-is-reached-through-a-struct)). A struct member without `[EditableField]` still binds and renders.
 
 ### Editable collections
 
@@ -1355,7 +1356,7 @@ result.ApplyTo(model);
 - **Item tokens follow the field rules.** Directly inside the loop, a token through the loop variable (`{{ b.Year }}`) is a control: plain member access only (`PARCH016` — a filter such as `{{ b.Year | plus: 1 }}` is rejected, since the control is built from the member and the filtered text could not be read back) and one token per member within the loop (`PARCH017`). A loop nested inside it, and a root editable member used inside it, render read-only (`PARCH018`), where filters and repeats are fine.
 - **An empty collection renders one blank row** so Word has a template to clone. Its controls show placeholder text rather than default values, so an empty collection that comes back untouched extracts as empty; filling in any control of the row yields one item, with the members left blank keeping the element's defaults. An all-blank row extracts as nothing, so clearing a row deletes it, and a row added in Word and left untouched adds nothing. A checkbox is always either checked or not, so an unchecked box alone makes an entry only in a row rendered from an item.
 - **Row fields are reported like any other.** `ExtractResult.Fields` carries one entry per member of each extracted row, with the row in the path — `Budgets[1].Amount` — where the index is the item's position in the rebuilt list (a dropped row is not counted and reports nothing). A value that does not parse (`abc` in a number, a dropdown value that is not a member name) is `ParseFailed` with its raw text, and a control deleted from the row is `Missing`; either makes `AllExtracted` false. `ApplyTo` still assigns the rebuilt list, in which such a member holds the element type's default, so check `AllExtracted` or the row entries before trusting it. A row whose only content is unparseable text is kept, not dropped as cleared.
-- **The element type must be reconstructable**: a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member declared as `List<T>`, `T[]`, or an interface `List<T>` implements ([`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape)). One nesting level — an element type cannot itself hold an editable collection.
+- **The element type must be reconstructable**: a class with a public parameterless constructor and settable `[EditableField]` members, plus a settable collection member declared as `List<T>`, `T[]`, or an interface `List<T>` implements ([`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape)). A struct element type is rejected as well. One nesting level — an element type cannot itself hold an editable collection.
 - **Members on a nested object** (`{{ b.Owner.Name }}`) round-trip: extraction builds each item from nothing, so it creates the objects on the way to an extracted value. That needs a settable member whose type is a concrete class with a public parameterless constructor, unless the element initializes the object itself. Where neither holds the value cannot be stored: the rebuilt item is left without it, the row's entry for that member in `Fields` is `Unreachable` (`Budgets[1].Owner.Name`), and `AllExtracted` is false.
 - **Scalar collections** (`string[]`, `List<int>`) are modelled by wrapping the value in a single-field element type, so every repeating section carries named, item-relative control tags.
 - **Protection stays `readOnly`.** The repeating section sits inside a `permStart`/`permEnd` range, so add/remove works under the same lock-down as every other control. `readOnly` (rather than fill-in-forms protection) is deliberate: it keeps the locked text selectable and copyable, which forms protection blocks.
@@ -2544,7 +2545,7 @@ More than one `.dotx` `AdditionalFiles` entry is named after the model type — 
 
 ### `PARCH022` — `[EditableField]` collection has an unsupported shape
 
-**Docx only.** An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must have a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The rebuilt collection is a `List<T>`, or a `T[]` for an array member, so the member must be declared as `List<T>`, `T[]`, or an interface `List<T>` implements (`IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`); a `HashSet<T>`, `Collection<T>`, `ObservableCollection<T>`, immutable collection or class deriving from `List<T>` is rejected. The message names which constraint failed.
+**Docx only.** An `[EditableField]` collection renders as a repeating section and extraction rebuilds the list from the repeated items, so the element type must be a class with a public parameterless constructor, must carry at least one `[EditableField]` member, and must not itself contain an editable collection (one level only). The rebuilt collection is a `List<T>`, or a `T[]` for an array member, so the member must be declared as `List<T>`, `T[]`, or an interface `List<T>` implements (`IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`); a `HashSet<T>`, `Collection<T>`, `ObservableCollection<T>`, immutable collection or class deriving from `List<T>` is rejected. The message names which constraint failed.
 
 
 ### `PARCH023` — member carries conflicting format markers
@@ -2662,6 +2663,25 @@ Put the filters that work on the text first, and the format filter last:
 ```
 
 The runtime throws `ParchmentRegistrationException` for the same token at registration.
+
+### `PARCH032` — `[EditableField]` member is reached through a struct
+
+**Docx only.** Extraction writes a value back by walking the member path from the model and assigning at the end of it. A struct on that path is copied when it is read, so the assignment would change the copy and the model would keep its old value. The member is rejected where it is declared: in the struct itself, or in a class the struct holds.
+
+```cs
+public struct Address
+{
+    [EditableField]
+    public string City { get; set; }   // PARCH032: written through a copy of Address
+}
+
+public partial class Order
+{
+    public Address Address { get; set; }
+}
+```
+
+Make the struct a class, or drop `[EditableField]` to render the member read-only. A struct as the element type of an editable collection is [`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape).
 
 
 ### `PARCH100` — template carries a second item type

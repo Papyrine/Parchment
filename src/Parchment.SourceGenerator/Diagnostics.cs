@@ -332,6 +332,18 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch028--block-tags-in-different-containers");
 
+    // The setter the generator would emit assigns on a copy of the struct (or, for a boxed one,
+    // does not compile), so the member is reported where it is declared instead of surfacing as a
+    // compile error inside a .g.cs file.
+    public static readonly DiagnosticDescriptor EditableThroughValueType = new(
+        id: "PARCH032",
+        title: "[EditableField] member is reached through a struct",
+        messageFormat: "Model '{0}' member '{1}' is [EditableField] but is reached through the struct '{2}'. Extraction writes values back onto the model, and a write through a struct lands on a copy. Make '{2}' a class, or drop [EditableField] from the member to render it read-only.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch032--editablefield-member-is-reached-through-a-struct");
+
     // The wording after the token is TokenFilterOrder.Message, so the build and the runtime's
     // registration exception explain the mistake in the same words. Which filters produce a token
     // depends on the flow — see TokenFilterOrder.
