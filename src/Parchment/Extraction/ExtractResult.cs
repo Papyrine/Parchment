@@ -26,13 +26,14 @@ public sealed class ExtractResult<TModel>
     /// missing members appended. An editable collection adds one entry per member of each
     /// extracted row, after the others, with the row in the path — <c>Budgets[1].Amount</c> — where
     /// the index is the item's position in the rebuilt list.
+    /// A row member whose value could not be stored is <see cref="FieldState.Unreachable"/>.
     /// </summary>
     public IReadOnlyList<ExtractedField> Fields { get; }
 
     /// <summary>
     /// True when every field read cleanly (<see cref="FieldState.Extracted"/> or
-    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, or duplicates,
-    /// in the rows of an editable collection included.
+    /// <see cref="FieldState.Empty"/>) — no missing controls, parse failures, duplicates, or
+    /// unreachable members, in the rows of an editable collection included.
     /// </summary>
     public bool AllExtracted { get; }
 

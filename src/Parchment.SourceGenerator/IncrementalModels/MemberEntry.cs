@@ -39,4 +39,7 @@
     bool FormatMarkerOnNonString = false,
     // False when an [EditableField] collection is declared as a type that cannot hold the List<T>
     // or T[] extraction rebuilds - reported as PARCH022 and excluded from emission.
-    bool EditableCollectionAssignable = true);
+    bool EditableCollectionAssignable = true,
+    // Whether extraction can put a new object here when it rebuilds a collection item: the member
+    // is assignable and its type is a concrete class with a public parameterless constructor.
+    bool CanCreateValue = false);

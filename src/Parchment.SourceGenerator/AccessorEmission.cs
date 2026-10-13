@@ -447,7 +447,57 @@ static class AccessorEmission
         registrations.AppendLine($"  global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof({rootFqn}), _Editables);");
     }
 
-    static void EmitEditableEntry(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member)
+    // For each object between an element and one of its editable members, the type extraction can
+    // create there, or null where it cannot (no setter, an abstract type, no parameterless
+    // constructor). Null overall when nothing on the path can be created, which leaves the plain
+    // parent-routed setter in place.
+    static List<string?>? CreatableParents(string elementFqn, List<string> path, Dictionary<string, TypeEntry> typesByFqn)
+    {
+        var parents = new List<string?>();
+        var any = false;
+        var currentFqn = elementFqn;
+        for (var i = 0; i < path.Count - 1; i++)
+        {
+            MemberEntry? hop = null;
+            if (typesByFqn.TryGetValue(currentFqn, out var current))
+            {
+                foreach (var candidate in current.Members)
+                {
+                    if (candidate.Name == path[i])
+                    {
+                        hop = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (hop == null)
+            {
+                return null;
+            }
+
+            if (hop.CanCreateValue)
+            {
+                parents.Add(hop.TypeFullyQualifiedName);
+                any = true;
+            }
+            else
+            {
+                parents.Add(null);
+            }
+
+            currentFqn = hop.TypeFullyQualifiedName;
+        }
+
+        if (any)
+        {
+            return parents;
+        }
+
+        return null;
+    }
+
+    static void EmitEditableEntry(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member, List<string?>? creatableParents = null)
     {
         builder.Append("new(\"");
         builder.AppendJoin('.', path);
@@ -460,7 +510,15 @@ static class AccessorEmission
         builder.Append(", ");
         EmitGetter(builder, rootFqn, path);
         builder.Append(", ");
-        EmitSetter(builder, rootFqn, path, member);
+        if (creatableParents == null)
+        {
+            EmitSetter(builder, rootFqn, path, member);
+        }
+        else
+        {
+            EmitCreatingSetter(builder, rootFqn, path, member, creatableParents);
+        }
+
         builder.Append(", ");
         EmitCanReach(builder, rootFqn, path);
         builder.Append(", ");
@@ -544,7 +602,7 @@ static class AccessorEmission
         builder.Append("new global::Parchment.Generated.EditableFieldMapEntry[] { ");
         foreach (var (path, member) in elementEditables)
         {
-            EmitEditableEntry(builder, elementFqn, path, member);
+            EmitEditableEntry(builder, elementFqn, path, member, CreatableParents(elementFqn, path, typesByFqn));
             builder.Append(", ");
         }
 
@@ -571,14 +629,7 @@ static class AccessorEmission
     /// </summary>
     static void EmitSetter(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member)
     {
-        var castFqn = member.TypeFullyQualifiedName;
-        if (member.EditableIsNullable &&
-            castFqn[^1] != '?')
-        {
-            castFqn += "?";
-        }
-
-        var cast = member.EditableIsNullable ? $"({castFqn})v" : $"({castFqn})v!";
+        var cast = SetterCast(member);
 
         builder.Append("(o, v) => { ");
         if (path.Count == 1)
@@ -601,6 +652,83 @@ static class AccessorEmission
         builder.Append(path[^1]);
         builder.Append(" = ");
         builder.Append(cast);
+        builder.Append("; } }");
+    }
+
+    static string SetterCast(MemberEntry member)
+    {
+        var castFqn = member.TypeFullyQualifiedName;
+        if (member.EditableIsNullable &&
+            castFqn[^1] != '?')
+        {
+            castFqn += "?";
+        }
+
+        if (member.EditableIsNullable)
+        {
+            return $"({castFqn})v";
+        }
+
+        return $"({castFqn})v!";
+    }
+
+    /// <summary>
+    /// The setter for a member of an editable collection's element. Extraction builds each item
+    /// from nothing, so an object on the way to the member is usually null: this walks the same
+    /// parent path as <see cref="EmitSetter"/> but fills a null hop it can construct. A hop it
+    /// cannot construct stays null and ends the walk, which the entry's CanReach then reports.
+    /// Activator rather than `new`, for the reason the element factory uses it.
+    /// </summary>
+    static void EmitCreatingSetter(StringBuilder builder, string rootFqn, List<string> path, MemberEntry member, List<string?> creatableParents)
+    {
+        builder.Append("(o, v) => { var p0 = (");
+        builder.Append(rootFqn);
+        builder.Append(")o; ");
+        for (var i = 0; i < creatableParents.Count; i++)
+        {
+            var parent = $"p{i}";
+            var current = $"p{i + 1}";
+            builder.Append("var ");
+            builder.Append(current);
+            builder.Append(" = ");
+            builder.Append(parent);
+            builder.Append(i == 0 ? "." : "?.");
+            builder.Append(path[i]);
+            builder.Append("; ");
+
+            var typeFqn = creatableParents[i];
+            if (typeFqn == null)
+            {
+                continue;
+            }
+
+            builder.Append("if (");
+            builder.Append(parent);
+            builder.Append(" != null && ");
+            builder.Append(current);
+            builder.Append(" == null) { ");
+            builder.Append(current);
+            builder.Append(" = (");
+            builder.Append(typeFqn);
+            builder.Append(")global::System.Activator.CreateInstance(typeof(");
+            builder.Append(typeFqn);
+            builder.Append("))!; ");
+            builder.Append(parent);
+            builder.Append('.');
+            builder.Append(path[i]);
+            builder.Append(" = ");
+            builder.Append(current);
+            builder.Append("; } ");
+        }
+
+        builder.Append("if (p");
+        builder.Append(creatableParents.Count);
+        builder.Append(" != null) { p");
+        builder.Append(creatableParents.Count);
+        builder.Append('.');
+        builder.Append(path[^1]);
+        builder.Append(" = ");
+        builder.Append(SetterCast(member));
         builder.Append("; } }");
     }
 

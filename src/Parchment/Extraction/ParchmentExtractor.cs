@@ -179,7 +179,6 @@ public static class ParchmentExtractor
                 }
 
                 var field = EditableFieldReader.Read(control, elementEntry, culture, mainPart);
-                itemFields.Add(field);
 
                 // Text that does not parse is still something the user entered: the row is kept
                 // and the failure reported, with the member left at the element's default.
@@ -188,21 +187,37 @@ public static class ParchmentExtractor
                     anyValue = true;
                 }
 
-                if (field.State == FieldState.Extracted &&
-                    elementEntry.CanReach(item))
+                if (field.State != FieldState.Extracted)
                 {
-                    elementEntry.Setter(item, field.Value);
-
-                    // A checkbox cannot be rendered empty, so in the blank item of an empty
-                    // collection an unchecked box is still the untouched state, not an entry.
-                    if (isBlank &&
-                        field.Value is false)
-                    {
-                        continue;
-                    }
-
-                    anyValue = true;
+                    itemFields.Add(field);
+                    continue;
                 }
+
+                // The item is new, so an object between it and the member is null unless the
+                // element initializes it. The setter creates the ones it can.
+                elementEntry.Setter(item, field.Value);
+
+                // Where an object on the way could not be created the value has nowhere to go,
+                // and the row's entry says so instead of the value being dropped.
+                if (!elementEntry.CanReach(item))
+                {
+                    field = field with
+                    {
+                        State = FieldState.Unreachable
+                    };
+                }
+
+                itemFields.Add(field);
+
+                // A checkbox cannot be rendered empty, so in the blank item of an empty
+                // collection an unchecked box is still the untouched state, not an entry.
+                if (isBlank &&
+                    field.Value is false)
+                {
+                    continue;
+                }
+
+                anyValue = true;
             }
 
             // Drop all-empty items: the blank clone template Word needs, or a row the user cleared.
