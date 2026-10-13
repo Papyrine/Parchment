@@ -174,7 +174,10 @@ class RegisteredMarkdownTemplate(
             }
 
             cancel.ThrowIfCancellationRequested();
-            doc.Save();
+
+            // No doc.Save() here: disposing the package is what serialises it, and a save ahead of
+            // that wrote every loaded part twice. The measuring below starts after the dispose.
+            // See "A package is saved by its Dispose" in contributing.md.
         }
 
         // The document is complete, so it can be measured: whatever can paginate it reports where
