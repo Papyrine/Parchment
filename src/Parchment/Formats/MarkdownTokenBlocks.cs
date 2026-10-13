@@ -283,6 +283,12 @@ static class MarkdownTokenBlocks
         // Materialized so the fragment can be renumbered as one: the markdown around it was
         // numbered before this value was converted, and the converter starts again at 1.
         var produced = Render(token, host, mainPart, numbering, styles, imagePolicies).ToList();
+        if (marks)
+        {
+            // The token was handed the main part - see WordNumberingState.ForgetHtmlIds.
+            numbering.ForgetHtmlIds();
+        }
+
         bookmarks.Renumber(produced);
         foreach (var element in produced)
         {
@@ -304,7 +310,7 @@ static class MarkdownTokenBlocks
         ImagePolicies imagePolicies) =>
         token switch
         {
-            HtmlToken html => numbering.ConvertHtml(html.Source, imagePolicies.BuildSettings()),
+            HtmlToken html => numbering.ConvertHtml(html.Source, imagePolicies),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             // The host is handed over as well as the part: a token that only wants to know what it
             // is replacing - its style, its indentation - gets the same answer it would in the docx

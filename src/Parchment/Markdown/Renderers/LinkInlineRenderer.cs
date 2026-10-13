@@ -130,8 +130,7 @@ class LinkInlineRenderer :
         var alt = ExtractAlt(inline);
         var html = $"<img src=\"{HtmlEscape(url)}\" alt=\"{HtmlEscape(alt)}\" />";
 
-        var settings = renderer.ImagePolicies.BuildSettings();
-        var elements = WordHtmlConverter.ToElements(html, renderer.MainPart, settings);
+        var elements = renderer.Numbering.ConvertHtml(html, renderer.ImagePolicies);
         renderer.MayHoldBookmarks = true;
         foreach (var element in elements)
         {

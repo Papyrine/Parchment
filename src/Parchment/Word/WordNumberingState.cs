@@ -65,6 +65,46 @@ class WordNumberingState(MainDocumentPart mainPart)
         return elements;
     }
 
+    /// <summary>
+    /// Converts html met on the markdown side: an html block, an image, a token value in a markdown
+    /// template.
+    /// </summary>
+    /// <remarks>
+    /// Without a session OpenXmlHtml reads every definition and instance in the part to find a free
+    /// id, on every conversion, so a document of N html blocks read 1 + 2 + ... + N of them. The
+    /// session carries the id across. It would also carry the bullet definition, which these
+    /// conversions have never shared - each html block holding a ul writes one of its own - so that
+    /// is withheld for the call and put back after it, leaving the part as it was written before
+    /// the session was passed and the docx flow's own html tokens still sharing theirs.
+    /// </remarks>
+    public List<OpenXmlElement> ConvertHtml(string html, ImagePolicies imagePolicies, int headingOffset = 0)
+    {
+        var session = GetHtmlSession();
+        var bullet = session.BulletAbstractNumId;
+        session.BulletAbstractNumId = null;
+        try
+        {
+            return ConvertHtml(html, imagePolicies.BuildSettings(headingOffset, session));
+        }
+        finally
+        {
+            session.BulletAbstractNumId = bullet;
+        }
+    }
+
+    // Caller code has been handed the main part and can have written definitions anywhere in the
+    // numbering part, which a session only notices at its end. The next conversion counts again.
+    internal void ForgetHtmlIds()
+    {
+        if (htmlSession != null)
+        {
+            htmlSession = new()
+            {
+                BulletAbstractNumId = htmlSession.BulletAbstractNumId
+            };
+        }
+    }
+
     // The element a new instance follows. All the schema allows after the instances is the
     // w:numIdMacAtCleanup Word for Mac writes. OpenXmlHtml appends past it, which makes its instance
     // the last child; one written in schema order would sit before it, so that is looked at too.
