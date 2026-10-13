@@ -7,13 +7,16 @@
 /// Rather than reject an id that html would accept, every other character is folded to an underscore
 /// and the result truncated, so markdown written for both html and Word keeps working — the same
 /// leniency <see cref="MarkdownStyle"/> applies to the rest of the generic-attribute syntax.
+/// Folding maps different ids to one name, so nothing but <see cref="BookmarkNames"/> calls
+/// <see cref="Sanitize"/>: it keeps the names apart and is where a link asks for its target's.
 /// </remarks>
 static class MarkdownBookmark
 {
     // Word's documented ceiling for a bookmark name.
-    const int MaxLength = 40;
+    public const int MaxLength = 40;
 
-    public static string? Resolve(IMarkdownObject node)
+    // Null when the node carries no id, or an id an earlier block already took.
+    public static string? Resolve(IMarkdownObject node, BookmarkNames names)
     {
         var id = node.TryGetAttributes()?.Id;
         if (string.IsNullOrEmpty(id))
@@ -21,7 +24,7 @@ static class MarkdownBookmark
             return null;
         }
 
-        return Sanitize(id);
+        return names.Define(id);
     }
 
     public static string Sanitize(string id)
