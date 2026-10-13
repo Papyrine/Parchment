@@ -47,8 +47,9 @@ class IdentifierVisitor :
     // (`Customer.Name`) — Fluid resolves both the same way at render time. Extracting the literal
     // here closes the validation gap where `Customer['NoSuchMember']` would silently render empty
     // because IdentifierVisitor only walked `IdentifierSegment`s and stopped at the indexer.
-    // Non-literal indexers (variable, numeric, expression) still terminate the path — those are
-    // either dictionary/array access (legitimate, unvalidatable statically) or typos we can't catch.
+    // Any other indexer (numeric, variable, expression) picks an element at render. It stays in
+    // the path as IdentifierPath.Index rather than ending it: cut off there, `Tags[0]` reads as
+    // `Tags` and the token is taken for the member it indexes into.
     internal static string? TryGetStaticName(MemberSegment segment) =>
         segment switch
         {
@@ -63,6 +64,7 @@ class IdentifierVisitor :
                     } value
                 }
             } => value.ToStringValue(),
+            IndexerSegment => IdentifierPath.Index,
             _ => null
         };
 }
