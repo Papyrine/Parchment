@@ -5,5 +5,6 @@ enum LiquidKind
     None,
     String,
     Array,
-    Dictionary
+    Dictionary,
+    Enum
 }

@@ -15,15 +15,8 @@ static class TokenScanner
             var classification = ClassifyParagraph(paragraph, templateName, partUri);
             if (classification.Kind == ParagraphKind.Static)
             {
-                // A token-free paragraph is reported only when the template arrived with an anchor
-                // already on it. It becomes an inert StaticNode, which keeps its part in the
-                // registered list so the render visits the part and strips the anchor.
-                var existing = Anchors.FindOn(paragraph);
-                if (existing != null)
-                {
-                    results.Add(classification with { AnchorName = existing });
-                }
-
+                // A token-free paragraph gets no anchor and no node. One the template arrived with
+                // is already gone: registration runs Anchors.StripArrived before this scan.
                 continue;
             }
 
@@ -128,16 +121,26 @@ static class TokenScanner
             case "for":
                 return BuildForTag(source, expr, templateName, partUri);
             case "endfor":
+                RequireNoArguments("endfor", source, expr, templateName, partUri);
                 return new(BlockTagKind.EndFor, source, null, null, null);
             case "if":
                 return BuildIfTag(source, expr, templateName, partUri);
             case "elsif":
-            case "elseif":
                 return BuildElsifTag(source, expr, templateName, partUri);
             case "else":
+                RequireNoArguments("else", source, expr, templateName, partUri);
                 return new(BlockTagKind.Else, source, null, null, null);
             case "endif":
+                RequireNoArguments("endif", source, expr, templateName, partUri);
                 return new(BlockTagKind.EndIf, source, null, null, null);
+            case "elseif":
+                // Never a liquid tag: Fluid rejects it in a markdown template, while this scanner
+                // used to read it as `elsif`.
+                throw new ParchmentRegistrationException(
+                    templateName,
+                    BlockTagArguments.Problem("elseif", expr)!,
+                    partUri,
+                    source);
             default:
                 throw new ParchmentRegistrationException(
                     templateName,
@@ -145,6 +148,23 @@ static class TokenScanner
                     partUri,
                     source);
         }
+    }
+
+    // Everything after the name used to be dropped, so `{% else if Flag %}` registered as a plain
+    // `{% else %}` and its branch rendered whenever the first condition was false.
+    static void RequireNoArguments(string tag, string source, string? expression, string templateName, string partUri)
+    {
+        var problem = BlockTagArguments.Problem(tag, expression);
+        if (problem == null)
+        {
+            return;
+        }
+
+        throw new ParchmentRegistrationException(
+            templateName,
+            problem,
+            partUri,
+            source);
     }
 
     static BlockMarker BuildForTag(string source, string? expression, string templateName, string partUri)

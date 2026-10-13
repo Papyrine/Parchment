@@ -75,10 +75,15 @@ static class ShapeResolver
 
     // Lockstep with the runtime's LiquidMembers.TryResolve: Fluid answers member access on these
     // values itself, with `size` on all three and `first` / `last` on a string or an array, and
-    // compares the name ordinally. None of the type's CLR members bind.
+    // compares the name ordinally. None of the type's CLR members bind. An enum resolves nothing.
     static bool TryResolveLiquidMember(TypeEntry entry, string name, [NotNullWhen(true)] out string? typeFqn)
     {
         typeFqn = null;
+        if (entry.Liquid == LiquidKind.Enum)
+        {
+            return false;
+        }
+
         if (name == "size")
         {
             typeFqn = "int";
@@ -100,6 +105,40 @@ static class ShapeResolver
         // A non-generic enumerable has an element, but nothing is known about it.
         typeFqn = entry.ElementTypeFullyQualifiedName ?? "object";
         return true;
+    }
+
+    /// <summary>
+    /// Whether a path <see cref="TryResolve"/> turned down stopped at an enum, and which part of
+    /// the path that enum is. Asked only to word the diagnostic, so it resolves again instead of
+    /// widening what every successful resolve returns.
+    /// </summary>
+    public static bool StopsAtEnum(
+        ModelShape shape,
+        IReadOnlyList<string> segments,
+        IReadOnlyDictionary<string, string> scope,
+        [NotNullWhen(true)] out string? enumPath)
+    {
+        enumPath = null;
+
+        // The longest part of the path that resolves is where the walk stopped.
+        for (var length = segments.Count - 1; length > 0; length--)
+        {
+            var resolved = segments.Take(length).ToList();
+            if (!TryResolve(shape, resolved, scope, out var typeFqn))
+            {
+                continue;
+            }
+
+            if (FindType(shape, typeFqn)?.Liquid != LiquidKind.Enum)
+            {
+                return false;
+            }
+
+            enumPath = string.Join('.', resolved);
+            return true;
+        }
+
+        return false;
     }
 
     public static bool TryGetElementType(ModelShape shape, string typeFqn, [NotNullWhen(true)] out string? elementFqn)

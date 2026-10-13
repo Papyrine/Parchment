@@ -40,6 +40,22 @@ public class MarkdownValidatorTests
         }
         """;
 
+    // Fluid refuses these on its own, naming the tag it expected instead; the diagnostic leads
+    // with the tag that is wrong, in the words the docx flow uses.
+    [Test]
+    [Arguments("{% if Lines %}a{% else if Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% if Lines %}a{% elseif Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
+    [Arguments("{% if Lines %}a{% else Lines %}b{% endif %}", "'{% else %}' takes no arguments.")]
+    [Arguments("{% if Lines %}a{% endif extra %}", "'{% endif %}' takes no arguments.")]
+    [Arguments("{% for line in Lines %}a{% endfor extra %}", "'{% endfor %}' takes no arguments.")]
+    public async Task BlockTagWithArguments(string markdown, string expected)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH006");
+        await Assert.That(diagnostic.GetMessage()).Contains(expected);
+    }
+
     [Test]
     public async Task NestedLoopsShadowSameVariable()
     {
@@ -209,6 +225,24 @@ public class MarkdownValidatorTests
             """);
         var diagnostics = result.Results.Single().Diagnostics;
         await Assert.That(diagnostics).IsEmpty();
+    }
+
+    // Runtime registration rejects both tags: a partial needs a file provider, and there is none.
+    [Test]
+    [Arguments("{% render 'part' %}", "{% render ... %}")]
+    [Arguments("{% include 'part' %}", "{% include ... %}")]
+    [Arguments("{% for line in Lines %}{% render 'part' %}{% endfor %}", "{% render ... %}")]
+    [Arguments("{% for line in Lines %}{% else %}{% include 'part' %}{% endfor %}", "{% include ... %}")]
+    [Arguments("{% unless Lines.size > 1 %}{% render 'part' %}{% endunless %}", "{% render ... %}")]
+    [Arguments("{% case Lines.size %}{% when 1 %}{% include 'part' %}{% endcase %}", "{% include ... %}")]
+    [Arguments("{% capture text %}{% render 'part' %}{% endcapture %}", "{% render ... %}")]
+    public async Task PartialTagIsUnsupported(string markdown, string tag)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH003");
+        await Assert.That(diagnostic.GetMessage()).Contains($"unsupported block tag '{tag}'");
+        await Assert.That(diagnostic.GetMessage()).DoesNotContain("endfor");
     }
 
     [Test]
