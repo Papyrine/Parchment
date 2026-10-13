@@ -140,6 +140,15 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch011--enclosing-type-of-parchmentmodel-target-must-be-partial");
 
+    public static readonly DiagnosticDescriptor UnsupportedModelDeclaration = new(
+        id: "PARCH031",
+        title: "Model declaration cannot be registered by the source generator",
+        messageFormat: "Model '{0}' cannot be registered: {1}",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch031--model-declaration-cannot-be-registered");
+
     public static readonly DiagnosticDescriptor MissingRemovePersonalInformation = new(
         id: "PARCH012",
         title: "Template missing 'Remove personal information on save' setting",

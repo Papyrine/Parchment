@@ -2683,6 +2683,23 @@ public partial class Order
 
 Make the struct a class, or drop `[EditableField]` to render the member read-only. A struct as the element type of an editable collection is [`PARCH022`](#parch022--editablefield-collection-has-an-unsupported-shape).
 
+### `PARCH031` — model declaration cannot be registered
+
+The `[ParchmentModel]` or `[ParchmentBindable]` type is declared in a way no generated partial can register, so nothing is emitted for it. The message names which:
+
+ * **Generic**, or nested inside a generic type. A template binds to one closed type, and the module initializer that registers the model cannot sit inside a generic type. Declare a closed, non-generic model and give it the members the template needs.
+ * **File-local** (`file partial class`), or nested inside a file-local type. The generated partial lives in another file, where the same name declares a different type. Drop the `file` modifier; `internal` or a `private` nested model keeps the type out of the public surface.
+
+```cs
+[ParchmentModel]
+public partial class Report<T>  // PARCH031: generic
+{
+    public T? Value { get; set; }
+}
+```
+
+See [Nested, generic and file-local models](#nested-generic-and-file-local-models).
+
 
 ### `PARCH100` — template carries a second item type
 
@@ -2702,6 +2719,10 @@ Parchment binds tokens by reflecting on the model type. Public properties and pu
 ### Interfaces as the binding model
 
 `RegisterDocxTemplate<IFoo>(...)` / `RegisterMarkdownTemplate<IFoo>(...)` is rejected at registration time with a `ParchmentRegistrationException` ("Model type 'IFoo' is an interface. Parchment binds against a concrete type's properties via reflection — register against a class, record, or struct instead."). Reflection on an interface returns only members declared directly on that interface, missing inherited base-interface members. The source-generator path is blocked at the language level — `[ParchmentModel]` is declared with `AttributeUsage(AttributeTargets.Class)`, so applying it to an interface is a CS0592 compile error. Abstract classes **are** supported and work as a polymorphic binding surface: register against the abstract type and pass any concrete subclass to `Render`.
+
+### Nested, generic and file-local models
+
+A model can be nested inside a class, record, struct, record struct or interface, at any depth and with any accessibility — including `private` and `protected` — provided every enclosing type is `partial` ([PARCH011](#parch011--enclosing-type-of-parchmentmodel-target-must-be-partial)). A generic model, a model nested inside a generic type, and a file-local model cannot be registered and are reported as [PARCH031](#parch031--model-declaration-cannot-be-registered).
 
 ### A collection as the binding model
 

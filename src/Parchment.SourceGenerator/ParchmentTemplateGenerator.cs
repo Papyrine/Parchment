@@ -140,14 +140,8 @@ public sealed class ParchmentTemplateGenerator :
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
 
-        if (target.ExtractError != null)
+        if (ReportDeclarationError(context, target, location))
         {
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.EnclosingTypeNotPartial,
-                    location,
-                    target.DeclaringName,
-                    target.ExtractError));
             return;
         }
 
@@ -162,20 +156,48 @@ public sealed class ParchmentTemplateGenerator :
         EmitRegistration(context, target, GenerateBindableRegistration(target), "ParchmentBindable");
     }
 
+    // The declarations nothing can be emitted for. Both attributes stop here, skipping validation
+    // as well as registration: template tokens may still be valid, but reporting on a model that
+    // will never be registered only buries the one diagnostic that matters.
+    static bool ReportDeclarationError(SourceProductionContext context, TargetInfo target, Location location)
+    {
+        if (target.UnsupportedDeclaration != null)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.UnsupportedModelDeclaration,
+                    location,
+                    target.ModelDisplayName,
+                    target.UnsupportedDeclaration));
+            return true;
+        }
+
+        if (target.ExtractError != null)
+        {
+            // PARCH011: an enclosing type isn't partial. Emitting the registration helper into a
+            // namespace-scope partial would land it in the wrong type.
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.EnclosingTypeNotPartial,
+                    location,
+                    target.DeclaringName,
+                    target.ExtractError));
+            return true;
+        }
+
+        return false;
+    }
+
     static string GenerateBindableRegistration(TargetInfo target)
     {
         var (fieldsBlock, registrationsBlock) = PrepareAccessors(target);
         // The type name is folded into the method name so a base and a derived model can both be
         // [ParchmentBindable] without the derived initializer hiding the base one (CS0108).
-        var body =
-            $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentBindable{{target.DeclaringName}}()
-              {
-              {{registrationsBlock}}}
-              """;
-
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(
+            target,
+            fieldsBlock,
+            $"InitializeParchmentBindable{target.DeclaringName}",
+            registrationsBlock);
     }
 
     static TargetInfo? ExtractTarget(GeneratorAttributeSyntaxContext context, Cancel cancel)
@@ -233,14 +255,60 @@ public sealed class ParchmentTemplateGenerator :
             declaringNamespace,
             typeSymbol.Name,
             GetTypeKindKeyword(typeSymbol),
+            IsModuleAccessible(typeSymbol),
             new(enclosingResult.Chain.ToImmutableArray()),
             typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             displayName,
             protection,
             EquatableLocation.From(rawLocation),
             shape,
-            enclosingResult.Error);
+            enclosingResult.Error,
+            FindUnsupportedDeclaration(typeSymbol));
     }
+
+    // The declarations no partial emitted from another file can register. A generic model has no
+    // closed type to bind a template to, and a module initializer cannot sit inside a generic type
+    // (CS8816), so neither it nor anything nested in one can register itself. A file-local type
+    // cannot be extended at all: the generated partial is in another file, where the same name
+    // declares a different type.
+    static string? FindUnsupportedDeclaration(INamedTypeSymbol typeSymbol)
+    {
+        for (var current = typeSymbol; current != null; current = current.ContainingType)
+        {
+            var nested = !SymbolEqualityComparer.Default.Equals(current, typeSymbol);
+            if (current.IsFileLocal)
+            {
+                if (nested)
+                {
+                    return $"it is nested inside the file-local type '{current.Name}', which a generated file cannot extend";
+                }
+
+                return "it is file-local, and a generated file cannot extend a file-local type";
+            }
+
+            if (current.TypeParameters.Length == 0)
+            {
+                continue;
+            }
+
+            if (nested)
+            {
+                return $"it is nested inside the generic type '{current.Name}', where a module initializer cannot be emitted";
+            }
+
+            return "it is generic, and a template binds to one closed type";
+        }
+
+        return null;
+    }
+
+    // Whether the declaration can be named from anywhere in the module. A module initializer has
+    // to be (CS8814), along with every type it sits in.
+    static bool IsModuleAccessible(INamedTypeSymbol typeSymbol) =>
+        typeSymbol.DeclaredAccessibility is
+            Accessibility.Public or
+            Accessibility.Internal or
+            Accessibility.ProtectedOrInternal;
 
     static (List<EnclosingType> Chain, string? Error) BuildEnclosingChain(INamedTypeSymbol typeSymbol)
     {
@@ -255,7 +323,7 @@ public sealed class ParchmentTemplateGenerator :
                 return (stack, current.Name);
             }
 
-            stack.Add(new(current.Name, GetTypeKindKeyword(current)));
+            stack.Add(new(current.Name, GetTypeKindKeyword(current), IsModuleAccessible(current)));
         }
 
         // ContainingType walks innermost → outermost; flip so emission can write outermost first.
@@ -292,6 +360,11 @@ public sealed class ParchmentTemplateGenerator :
         if (type.TypeKind == TypeKind.Struct)
         {
             return "struct";
+        }
+
+        if (type.TypeKind == TypeKind.Interface)
+        {
+            return "interface";
         }
 
         return "class";
@@ -453,17 +526,8 @@ public sealed class ParchmentTemplateGenerator :
         var target = located.Target;
         var location = target.Location.ToLocation(located.Tree);
 
-        if (target.ExtractError != null)
+        if (ReportDeclarationError(context, target, location))
         {
-            // PARCH011: an enclosing type isn't partial. Skip both validation and registration —
-            // template tokens may still be valid, but emitting the registration helper into a
-            // namespace-scope partial would land it in the wrong type.
-            context.ReportDiagnostic(
-                Diagnostic.Create(
-                    Diagnostics.EnclosingTypeNotPartial,
-                    location,
-                    target.DeclaringName,
-                    target.ExtractError));
             return;
         }
 
@@ -1780,18 +1844,14 @@ public sealed class ParchmentTemplateGenerator :
         var protection = target.Protection == ProtectionMode.WhenEditable
             ? ""
             : $", global::Parchment.ProtectionMode.{target.Protection}";
-        var body =
+        var statements =
             $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentTemplate()
-              {
               {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
                   typeof({{target.ModelFullyQualifiedName}}),
                   global::System.Convert.FromBase64String("{{matched.ContentBase64}}"){{protection}});
-              }
               """;
 
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
     }
 
     static string GenerateMarkdownRegistration(TargetInfo target, MarkdownData matched, DotxData? style)
@@ -1801,25 +1861,50 @@ public sealed class ParchmentTemplateGenerator :
         var styleArgument = style == null
             ? ""
             : $",\n    global::System.Convert.FromBase64String(\"{style.ContentBase64}\")";
-        var body =
+        var statements =
             $$"""
-              {{fieldsBlock}}[global::System.Runtime.CompilerServices.ModuleInitializer]
-              internal static void InitializeParchmentTemplate()
-              {
               {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
                   typeof({{target.ModelFullyQualifiedName}}),
                   {{markdown}}{{styleArgument}});
-              }
               """;
 
-        return BuildPartialSource(target, body);
+        return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
     }
 
-    // Wraps `body` in `partial {kind} {name} { ... }` declarations: namespace (if any), then
-    // each enclosing type outermost-first, then the target itself. Indentation isn't strictly
+    const string templateInitializer = "InitializeParchmentTemplate";
+    const string moduleInitializerAttribute = "[global::System.Runtime.CompilerServices.ModuleInitializer]";
+    const string excludeFromCoverageAttribute = "[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]";
+
+    // Wraps the initializer in `partial {kind} {name} { ... }` declarations: namespace (if any),
+    // then each enclosing type outermost-first, then the target itself. Indentation isn't strictly
     // necessary for correctness but keeps the generated source readable in obj/.../generated.
-    static string BuildPartialSource(TargetInfo target, string body)
+    static string BuildPartialSource(TargetInfo target, string fieldsBlock, string initializer, string statements)
     {
+        // A private or protected nested model, or a model inside one, cannot carry the module
+        // initializer itself (CS8814). The registration still has to live in the model, where the
+        // model's own private members are in reach, so the attribute moves out to a forwarding
+        // method in the nearest enclosing type the module can see — see AppendForwarder.
+        var reachable = target.IsModuleAccessible;
+        foreach (var enclosing in target.EnclosingTypes)
+        {
+            reachable &= enclosing.IsModuleAccessible;
+        }
+
+        var bodyBuilder = new StringBuilder(fieldsBlock);
+        if (reachable)
+        {
+            bodyBuilder.Append(moduleInitializerAttribute).Append('\n');
+        }
+
+        bodyBuilder.Append($"internal static void {initializer}()\n{{\n");
+        if (statements.Length > 0)
+        {
+            bodyBuilder.Append(statements.TrimEnd('\r', '\n')).Append('\n');
+        }
+
+        bodyBuilder.Append('}');
+        var body = bodyBuilder.ToString();
+
         var builder = new StringBuilder(
             """
             // <auto-generated />
@@ -1866,7 +1951,7 @@ public sealed class ParchmentTemplateGenerator :
         // derive from one of the same name in another namespace. Internal rather than private
         // because a module initializer has to be reachable from the module, which a private nested
         // type is not.
-        builder.Indent(depth + 1).AppendLine("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
+        builder.Indent(depth + 1).AppendLine(excludeFromCoverageAttribute);
         builder.Indent(depth + 1).AppendLine($"internal static class {NestedTypeName(target)}");
         builder.Indent(depth + 1).AppendLine("{");
         foreach (var line in body.Split('\n'))
@@ -1885,12 +1970,67 @@ public sealed class ParchmentTemplateGenerator :
         builder.Indent(depth + 1).AppendLine("}");
         builder.Indent(depth).AppendLine("}");
 
+        // How the initializer is named from inside the enclosing type being closed.
+        var entry = $"{target.DeclaringName}.{NestedTypeName(target)}.{initializer}";
+        var childAccessible = target.IsModuleAccessible;
         for (var i = depth - 1; i >= 0; i--)
         {
+            if (!childAccessible)
+            {
+                entry = AppendForwarder(builder, target, i, initializer, entry);
+            }
+
             builder.Indent(i).AppendLine("}");
+            childAccessible = target.EnclosingTypes[i].IsModuleAccessible;
+            entry = $"{target.EnclosingTypes[i].Name}.{entry}";
         }
 
         return builder.ToString();
+    }
+
+    // Emits, into the enclosing type at `index`, a method that calls the initializer one level
+    // down, and returns how that method is named from inside the same enclosing type. One is
+    // needed at every level whose nested type the module cannot see: a private type is only
+    // nameable from inside the type that declares it, so each such level is stepped over from
+    // directly above. The outermost of them is the one the module can reach, and carries the
+    // attribute.
+    static string AppendForwarder(StringBuilder builder, TargetInfo target, int index, string initializer, string entry)
+    {
+        var outermost = true;
+        var name = new StringBuilder("ParchmentGenerated");
+        for (var i = 0; i < target.EnclosingTypes.Count; i++)
+        {
+            // The path down to the model is folded into the name so two models under one
+            // enclosing type do not declare the same forwarder.
+            if (i > index)
+            {
+                name.Append(target.EnclosingTypes[i].Name).Append('_');
+                continue;
+            }
+
+            // Index 0 is declared at namespace scope, which is never private.
+            if (i > 0 &&
+                !target.EnclosingTypes[i].IsModuleAccessible)
+            {
+                outermost = false;
+            }
+        }
+
+        name.Append(target.DeclaringName).Append("Initializer");
+
+        var depth = index + 1;
+        builder.Indent(depth).AppendLine(excludeFromCoverageAttribute);
+        builder.Indent(depth).AppendLine($"internal static class {name}");
+        builder.Indent(depth).AppendLine("{");
+        if (outermost)
+        {
+            builder.Indent(depth + 1).AppendLine(moduleInitializerAttribute);
+        }
+
+        builder.Indent(depth + 1).AppendLine($"internal static void {initializer}() =>");
+        builder.Indent(depth + 2).AppendLine($"{entry}();");
+        builder.Indent(depth).AppendLine("}");
+        return $"{name}.{initializer}";
     }
 
     static string NestedTypeName(TargetInfo target)
