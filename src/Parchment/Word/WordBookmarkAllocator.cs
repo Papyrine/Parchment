@@ -19,8 +19,16 @@ class WordBookmarkAllocator(BookmarkIds ids)
             return existing;
         }
 
-        var id = ids.Next();
-        var name = $"_Toc{id}";
+        // An author can write {#_Toc7} too, so a generated name is claimed like any other and the
+        // next id tried when it is taken.
+        string id;
+        string name;
+        do
+        {
+            id = ids.Next();
+            name = $"_Toc{id}";
+        } while (!ids.Names.Reserve(name));
+
         var start = new BookmarkStart
         {
             Id = id,

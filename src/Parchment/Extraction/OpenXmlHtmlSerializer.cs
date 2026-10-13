@@ -7,42 +7,30 @@ namespace Parchment;
 /// <c>rPr</c> emphasis, hyperlinks), so it inverts both the original render and any edits Word
 /// itself wrote. Supported subset: paragraphs, headings, bold/italic/underline/strike,
 /// superscript/subscript, hyperlinks, line breaks, and bullet/ordered lists (with nesting).
-/// Anything outside the subset degrades to its text content.
+/// Anything outside the subset degrades to its text content; <see cref="EditableContent"/> decides
+/// which paragraphs and runs the control holds.
 /// </summary>
 static class OpenXmlHtmlSerializer
 {
     public static string ToHtml(OpenXmlElement content, MainDocumentPart mainPart)
     {
         var numbering = mainPart.NumberingDefinitionsPart?.Numbering;
-        var blocks = content.Elements().Where(_ => _ is not SdtProperties).ToList();
+        // Every paragraph the control holds, however deeply Word wrapped it. A table has no HTML
+        // round-trip in this subset, so it arrives here as its cell paragraphs and no text is
+        // dropped.
+        var blocks = EditableContent.Paragraphs(content).ToList<OpenXmlElement>();
         var builder = new StringBuilder();
 
         for (var i = 0; i < blocks.Count;)
         {
-            var block = blocks[i];
-            if (block is Paragraph paragraph)
+            var paragraph = (Paragraph) blocks[i];
+            if (IsListItem(paragraph, out _, out _))
             {
-                if (IsListItem(paragraph, out _, out _))
-                {
-                    i = EmitList(builder, blocks, i, numbering, mainPart);
-                    continue;
-                }
-
-                EmitParagraph(builder, paragraph, mainPart);
-                i++;
+                i = EmitList(builder, blocks, i, numbering, mainPart);
                 continue;
             }
 
-            if (block is Table table)
-            {
-                // No HTML-table round-trip in this subset — degrade a table to its paragraphs so
-                // no text is dropped.
-                foreach (var cellParagraph in table.Descendants<Paragraph>())
-                {
-                    EmitParagraph(builder, cellParagraph, mainPart);
-                }
-            }
-
+            EmitParagraph(builder, paragraph, mainPart);
             i++;
         }
 
@@ -115,7 +103,7 @@ static class OpenXmlHtmlSerializer
 
     static void EmitInline(StringBuilder builder, OpenXmlElement container, MainDocumentPart mainPart)
     {
-        foreach (var child in container.Elements())
+        foreach (var child in EditableContent.Inline(container))
         {
             switch (child)
             {
@@ -124,6 +112,10 @@ static class OpenXmlHtmlSerializer
                     break;
                 case Hyperlink hyperlink:
                     EmitHyperlink(builder, hyperlink, mainPart);
+                    break;
+                default:
+                    // Math has no HTML form in this subset: keep what it says.
+                    builder.Append(Escape(child.InnerText));
                     break;
             }
         }
@@ -137,10 +129,7 @@ static class OpenXmlHtmlSerializer
             builder.Append("<a href=\"").Append(EscapeAttribute(href)).Append("\">");
         }
 
-        foreach (var run in hyperlink.Elements<Run>())
-        {
-            EmitRun(builder, run);
-        }
+        EmitInline(builder, hyperlink, mainPart);
 
         if (href != null)
         {

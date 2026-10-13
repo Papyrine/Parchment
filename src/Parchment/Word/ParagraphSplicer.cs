@@ -16,7 +16,8 @@
 /// <c>Split</c> — the produced output is multiple block elements, or contains a non-paragraph
 /// block (a table). The host paragraph is split at the token offset: the host is trimmed to the
 /// text before the token, the produced block elements are inserted after it, and text after the
-/// token becomes another paragraph (cloning the host's <c>pPr</c>).
+/// token becomes another paragraph (cloning the host's <c>pPr</c>, apart from the properties
+/// that belong to one end of the paragraph — see <see cref="DivideProperties"/>).
 /// </item>
 /// </list>
 ///
@@ -37,10 +38,13 @@ static class ParagraphSplicer
     /// <c>[host's children before token] + [produced paragraph's children, minus pPr] + [host's children after token]</c>.
     /// Mutates host in place; no other paragraphs are added or removed.
     /// </summary>
-    public static void SpliceInline(Paragraph host, int offset, int length, Paragraph producedParagraph)
+    public static void SpliceInline(Paragraph host, int offset, int length, Paragraph producedParagraph, CloneIds? cloneIds)
     {
         var beforeChildren = TrimmedHead(host, offset);
         var afterChildren = TrimmedTail(host, offset, offset + length);
+
+        // Both are copies of the host, so a wrapper the token sat inside is in each of them.
+        cloneIds?.RenumberShared(beforeChildren, afterChildren);
         var producedChildren = ContentChildren(producedParagraph);
 
         var pPr = host.ParagraphProperties;
@@ -78,10 +82,16 @@ static class ParagraphSplicer
         Paragraph host,
         int offset,
         int length,
-        IReadOnlyList<OpenXmlElement> produced)
+        IReadOnlyList<OpenXmlElement> produced,
+        CloneIds? cloneIds)
     {
         var after = BuildShellWithChildren(host, TrimmedTail(host, offset, offset + length));
         TrimToHead(host, offset);
+        DivideProperties(host, after);
+
+        // The after half is a copy of the host: its paragraph properties, and any wrapper the
+        // token sat inside, are now in both.
+        cloneIds?.RenumberShared([host], [after]);
 
         var result = new List<OpenXmlElement>(produced.Count + 1);
         foreach (var element in produced)
@@ -91,6 +101,60 @@ static class ParagraphSplicer
 
         result.Add(after);
         return result;
+    }
+
+    /// <summary>
+    /// Both halves of a split start out with the host's paragraph properties. That is right for
+    /// formatting and wrong for the properties that mark one end of the paragraph, which have to
+    /// survive on one half only. A section break closes its section after the paragraph that
+    /// carries it, so it goes to the trailing half: that one is emitted even when empty, which
+    /// also gives the break a paragraph to sit on when the produced content ends with a table. A
+    /// page break before and a list number open the paragraph, so they stay on the leading half.
+    /// Only what the paragraph states itself is divided; the same settings inherited from its
+    /// style still reach both halves.
+    /// </summary>
+    static void DivideProperties(Paragraph before, Paragraph after)
+    {
+        if (before.ParagraphProperties is { } leading)
+        {
+            Drop(leading, leading.SectionProperties);
+        }
+
+        if (after.ParagraphProperties is not { } trailing)
+        {
+            return;
+        }
+
+        // Number 0 is "not numbered". Removing the element instead would hand the paragraph
+        // back to whatever numbering its style carries.
+        if (trailing.NumberingProperties is { } numbering)
+        {
+            numbering.NumberingId = new()
+            {
+                Val = 0
+            };
+        }
+
+        // Written as off, the element cancels a break the style asks for, and still has to.
+        if (trailing.PageBreakBefore is { } pageBreak &&
+            (pageBreak.Val?.Value ?? true))
+        {
+            Drop(trailing, pageBreak);
+        }
+    }
+
+    static void Drop(ParagraphProperties properties, OpenXmlElement? element)
+    {
+        if (element == null)
+        {
+            return;
+        }
+
+        element.Remove();
+        if (!properties.HasChildren)
+        {
+            properties.Remove();
+        }
     }
 
     /// <summary>
@@ -149,7 +213,8 @@ static class ParagraphSplicer
     /// Mutates the paragraph: for every Text descendant whose character range falls fully or
     /// partly past <paramref name="upToOffset"/>, removes or trims it. Run content that carries
     /// no text (a tab, a break, a drawing, a field char) is positioned by the text preceding it
-    /// and removed when it sits past the offset. Emptied runs are then removed.
+    /// and removed when it sits past the offset, and so is either end of a comment range. Emptied
+    /// runs are then removed.
     /// </summary>
     static void TrimToHead(Paragraph paragraph, int upToOffset)
     {
@@ -160,7 +225,7 @@ static class ParagraphSplicer
         {
             if (element is not Text text)
             {
-                if (IsRunContent(element) &&
+                if (IsPlaced(element) &&
                     consumed > upToOffset)
                 {
                     toRemove.Add(element);
@@ -196,10 +261,10 @@ static class ParagraphSplicer
 
     /// <summary>
     /// Mutates the paragraph: for every Text descendant whose character range ends at or before
-    /// <paramref name="fromOffset"/>, removes or trims it. Run content that carries no text is
-    /// removed when it sits at or before <paramref name="tokenOffset"/> — exactly the content
-    /// <see cref="TrimToHead"/> keeps, so each such element survives in one half only. Emptied
-    /// runs are then removed.
+    /// <paramref name="fromOffset"/>, removes or trims it. Run content that carries no text, or
+    /// either end of a comment range, is removed when it sits at or before
+    /// <paramref name="tokenOffset"/> — exactly the content <see cref="TrimToHead"/> keeps, so each
+    /// such element survives in one half only. Emptied runs are then removed.
     /// </summary>
     static void TrimToTail(Paragraph paragraph, int tokenOffset, int fromOffset)
     {
@@ -210,7 +275,7 @@ static class ParagraphSplicer
         {
             if (element is not Text text)
             {
-                if (IsRunContent(element) &&
+                if (IsPlaced(element) &&
                     consumed <= tokenOffset)
                 {
                     toRemove.Add(element);
@@ -252,6 +317,16 @@ static class ParagraphSplicer
     static bool IsRunContent(OpenXmlElement element) =>
         element.Parent is Run &&
         element is not RunProperties;
+
+    /// <summary>
+    /// True for what goes to one half only, by where it sits: run content, and either end of a
+    /// comment range. A comment has one range, so unlike a bookmark its ends cannot be left in
+    /// both halves — the start stays with the text before the token and the end with the text
+    /// after it, which keeps what the token produced inside the range the author drew.
+    /// </summary>
+    static bool IsPlaced(OpenXmlElement element) =>
+        IsRunContent(element) ||
+        element is CommentRangeStart or CommentRangeEnd;
 
     static void RemoveContentAndEmptyRuns(IReadOnlyList<OpenXmlElement> elements)
     {

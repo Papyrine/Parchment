@@ -10,7 +10,8 @@ static class ScopeTreeBuilder
         string partUri)
     {
         var queue = new Queue<ParagraphClassification>(classifications);
-        var nodes = BuildBlock(queue, null, templateName, partUri);
+        var textBoxHosts = TextBoxHosts(classifications);
+        var nodes = BuildBlock(queue, null, textBoxHosts, templateName, partUri);
         if (queue.Count == 0)
         {
             return nodes;
@@ -27,6 +28,7 @@ static class ScopeTreeBuilder
     static List<RangeNode> BuildBlock(
         Queue<ParagraphClassification> queue,
         BlockTagKind? closer,
+        HashSet<Paragraph> textBoxHosts,
         string templateName,
         string partUri)
     {
@@ -46,11 +48,11 @@ static class ScopeTreeBuilder
                 {
                     case BlockTagKind.For:
                         queue.Dequeue();
-                        result.Add(BuildFor(next, queue, templateName, partUri));
+                        result.Add(BuildFor(next, queue, textBoxHosts, templateName, partUri));
                         break;
                     case BlockTagKind.If:
                         queue.Dequeue();
-                        result.Add(BuildIf(next, queue, templateName, partUri));
+                        result.Add(BuildIf(next, queue, textBoxHosts, templateName, partUri));
                         break;
                     case BlockTagKind.EndFor:
                     case BlockTagKind.EndIf:
@@ -91,10 +93,11 @@ static class ScopeTreeBuilder
     static LoopNode BuildFor(
         ParagraphClassification opening,
         Queue<ParagraphClassification> queue,
+        HashSet<Paragraph> textBoxHosts,
         string templateName,
         string partUri)
     {
-        var body = BuildBlock(queue, BlockTagKind.EndFor, templateName, partUri);
+        var body = BuildBlock(queue, BlockTagKind.EndFor, textBoxHosts, templateName, partUri);
         if (queue.Count == 0 ||
             queue.Peek().Block?.Kind != BlockTagKind.EndFor)
         {
@@ -122,12 +125,14 @@ static class ScopeTreeBuilder
             opening.Block.LoopLimit,
             opening.Block.LoopOffset,
             opening.Block.LoopReversed,
+            HoldsTextBoxHost(opening, closing, textBoxHosts),
             body);
     }
 
     static IfNode BuildIf(
         ParagraphClassification opening,
         Queue<ParagraphClassification> queue,
+        HashSet<Paragraph> textBoxHosts,
         string templateName,
         string partUri)
     {
@@ -140,7 +145,7 @@ static class ScopeTreeBuilder
         string? elseAnchorName = null;
 
         // First branch is the if itself
-        var firstBody = BuildBlock(queue, BlockTagKind.EndIf, templateName, partUri);
+        var firstBody = BuildBlock(queue, BlockTagKind.EndIf, textBoxHosts, templateName, partUri);
         branches.Add(new(opening.Block!.Condition!, opening.AnchorName, firstBody));
 
         // Collect elsif / else branches until endif
@@ -162,7 +167,7 @@ static class ScopeTreeBuilder
                     branchOpening.Block!.Source);
             }
 
-            var branchBody = BuildBlock(queue, BlockTagKind.EndIf, templateName, partUri);
+            var branchBody = BuildBlock(queue, BlockTagKind.EndIf, textBoxHosts, templateName, partUri);
             if (branchOpening.Block!.Kind == BlockTagKind.ElsIf)
             {
                 branches.Add(new(branchOpening.Block!.Condition!, branchOpening.AnchorName, branchBody));
@@ -192,7 +197,52 @@ static class ScopeTreeBuilder
             closing.AnchorName,
             branches,
             elseAnchorName,
-            elseBody);
+            elseBody,
+            HoldsTextBoxHost(opening, closing, textBoxHosts));
+    }
+
+    // Every paragraph with an anchored paragraph somewhere below it, which is to say every
+    // paragraph anchoring a text box that holds a token. Empty for a part without one, and then
+    // no block is searched.
+    static HashSet<Paragraph> TextBoxHosts(IReadOnlyList<ParagraphClassification> classifications)
+    {
+        var hosts = new HashSet<Paragraph>();
+        foreach (var classification in classifications)
+        {
+            foreach (var ancestor in classification.Paragraph.Ancestors<Paragraph>())
+            {
+                hosts.Add(ancestor);
+            }
+        }
+
+        return hosts;
+    }
+
+    // Whether one of the block's elements, the siblings between its tags that the runner clones
+    // or keeps, is such a paragraph. The runner indexes a paragraph by its direct children and
+    // every other element by all the paragraphs below it (ScopeTreeRunner.CollectAnchors), so
+    // only a paragraph can hide an anchor from it. Called once the tags are known to be siblings.
+    static bool HoldsTextBoxHost(ParagraphClassification opening, ParagraphClassification closing, HashSet<Paragraph> textBoxHosts)
+    {
+        if (textBoxHosts.Count == 0)
+        {
+            return false;
+        }
+
+        var cursor = opening.Paragraph.NextSibling();
+        while (cursor != null &&
+               cursor != closing.Paragraph)
+        {
+            if (cursor is Paragraph paragraph &&
+                textBoxHosts.Contains(paragraph))
+            {
+                return true;
+            }
+
+            cursor = cursor.NextSibling();
+        }
+
+        return false;
     }
 
     // Tags are paired by document order, but the runner reaches a block's content by walking
