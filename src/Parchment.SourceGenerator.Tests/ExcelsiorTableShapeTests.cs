@@ -50,7 +50,7 @@ public class ExcelsiorTableShapeTests
     [Arguments("public List<int?> Maybe { get; set; } = new();", "List<int?>")]
     [Arguments("public List<Kind> Kinds { get; set; } = new();", "Sample.Kind>")]
     [Arguments("public List<object> Things { get; set; } = new();", "List<object>")]
-    [Arguments("public List<dynamic> Dyn { get; set; } = new();", "List<dynamic>")]
+    [Arguments("public List<dynamic> Dyn { get; set; } = new();", "List<object>")]
     [Arguments("public System.Collections.IEnumerable Untyped { get; set; } = new List<Line>();", "IEnumerable")]
     [Arguments("public Line[,] Grid { get; set; } = new Line[0, 0];", "Sample.Line[,]")]
     public async Task NotTabular_ReportsInEveryFlow(string member, string typeDisplay)
