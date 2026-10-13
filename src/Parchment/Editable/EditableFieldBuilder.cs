@@ -11,6 +11,7 @@ using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 /// (<c>w14:checked</c>, <c>w:fullDate</c>, <c>w:listItem/@w:value</c>) so extraction does not
 /// depend on parsing display text.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class EditableFieldBuilder
 {
     // Kind-appropriate placeholder text: a dropdown showing "Enter text" reads as a broken text field,
