@@ -25,8 +25,8 @@ public enum FieldState
 
     /// <summary>
     /// The control's content could not be parsed as the member's type (see
-    /// <c>ExtractedField.RawText</c>). Typically a culture mismatch or free-typed text in a
-    /// numeric / date field.
+    /// <c>ExtractedField.RawText</c>). Typically free-typed text in a numeric / date field: a
+    /// number with group separators, or a decimal separator the extraction culture does not use.
     /// </summary>
     ParseFailed,
 

@@ -9,11 +9,11 @@
 /// Idempotent: does nothing when a compatibilityMode setting is already present (e.g. a Word-authored
 /// template), so a mode the author deliberately chose is never overwritten.
 ///
-/// CT_Settings is a strict xsd:sequence and <c>w:compat</c> sits near its end, so a freshly created
-/// element is inserted before the first child that must follow it (<c>w:rsids</c>, <c>m:mathPr</c>, …)
-/// and otherwise appended. In practice Parchment only creates the element when the settings part holds
-/// at most <c>w:documentProtection</c> (which precedes <c>w:compat</c>), so the append path is the
-/// common case; the following-set is a guard for richer settings parts.
+/// CT_Settings is a strict xsd:sequence and <c>w:compat</c> sits in the middle of it: some twenty
+/// members follow it (<c>w:docVars</c>, <c>w:rsids</c>, <c>m:mathPr</c>, <c>w:shapeDefaults</c>, the
+/// <c>w14:</c> / <c>w15:</c> extension elements, …). A freshly created element is therefore placed
+/// using the SDK's own knowledge of the sequence rather than a hand-kept list of the members that
+/// follow.
 /// </summary>
 static class SettingsCompatibility
 {
@@ -21,21 +21,6 @@ static class SettingsCompatibility
 
     // Shared with SettingsProtection, which creates the same part at registration.
     internal const string RelationshipId = "rIdSettings";
-
-    // CT_Settings members that FOLLOW w:compat, in schema order (ECMA-376 §17.15.1.78). A newly
-    // created w:compat must land before the first of these. rsids and mathPr are the elements Word
-    // almost always emits immediately after compat, so covering them handles real Word-authored
-    // templates; the append fallback is correct whenever no post-compat sibling is present (the only
-    // shape Parchment itself produces).
-    static readonly HashSet<Type> following =
-    [
-        typeof(Rsids),
-        typeof(DocumentFormat.OpenXml.Math.MathProperties),
-        typeof(ThemeFontLanguages),
-        typeof(ColorSchemeMapping),
-        typeof(DecimalSymbol),
-        typeof(ListSeparator)
-    ];
 
     public static void Apply(MainDocumentPart mainPart)
     {
@@ -53,15 +38,7 @@ static class SettingsCompatibility
         if (compat == null)
         {
             compat = new();
-            var before = settings.ChildElements.FirstOrDefault(_ => following.Contains(_.GetType()));
-            if (before == null)
-            {
-                settings.AppendChild(compat);
-            }
-            else
-            {
-                settings.InsertBefore(compat, before);
-            }
+            Insert(settings, compat);
         }
         else if (HasCompatibilityMode(compat))
         {
@@ -77,6 +54,36 @@ static class SettingsCompatibility
                 Uri = wordUri,
                 Val = "15"
             });
+    }
+
+    // The SDK knows the CT_Settings sequence, and AddChild inserts a child at its place in it, but
+    // only reliably among children it has a class for: with an unknown element present it can put
+    // the new child first or last. One member has no class (w:smartTagType), nor do extension
+    // elements newer than the SDK. So the place is found in a scratch element holding empty copies
+    // of the known children alone, and w:compat then goes straight after the last known child ahead
+    // of it. That leaves every unknown element behind it, which is where the sequence has them:
+    // w:smartTagType follows w:compat, and extension elements trail the whole sequence.
+    static void Insert(Settings settings, Compatibility compat)
+    {
+        var known = settings.ChildElements
+            .Where(_ => _ is not (OpenXmlUnknownElement or OpenXmlMiscNode or AlternateContent))
+            .ToList();
+        var scratch = new Settings();
+        foreach (var child in known)
+        {
+            scratch.AppendChild(child.CloneNode(false));
+        }
+
+        var marker = new Compatibility();
+        scratch.AddChild(marker);
+        var ahead = scratch.ChildElements.TakeWhile(_ => _ != marker).Count();
+        if (ahead == 0)
+        {
+            settings.PrependChild(compat);
+            return;
+        }
+
+        settings.InsertAfter(compat, known[ahead - 1]);
     }
 
     // Read the name via InnerText: the SDK doesn't surface a strongly-typed enum member for every
