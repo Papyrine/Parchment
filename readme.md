@@ -2122,6 +2122,8 @@ If `HasVariations` is not a member of the element type, registration throws. Lef
 
 A collection or a string reaches a template as liquid's own array or string rather than as the CLR object, so the members that bind on one are liquid's: `size`, `first` and `last`, in lower case. `first` and `last` are typed as the element, so `{{ Lines.first.Name }}` is checked like any other path. CLR members such as `Count` and `Length`, and the properties of a model's own collection class, do not bind and are rejected at registration, since `{% if Lines.Count > 0 %}` would otherwise be false for every model; the form that works is `{% if Lines.size > 0 %}`. On a dictionary only `size` is accepted. A loop over a dictionary with string keys binds its variable to the entry, in the dictionary's own order: `{% for kv in Lookup %}{{ kv.Key }}: {{ kv.Value }}{% endfor %}`, with `kv.Value.Name` checked against the value type. `kv[0]` and `kv[1]` read the same two halves.
 
+An enum reaches a template as the text it prints as, so nothing can be read off it and its constants cannot be named. `{{ Status.Final }}` and `{% if Status == Status.Final %}` are rejected at registration, since the first would print nothing and the second would be false for every model. The form that works compares against the text `{{ Status }}` prints: `{% if Status == "Final" %}`.
+
 **Markdown templates only:** identifiers that liquid itself introduces are accepted without being model members: `forloop` inside a loop body, and the targets of `{% assign %}` and `{% capture %}`. Members off those are not checked, since the type is not knowable at registration. The *value* of an `{% assign %}` still is — `{% assign total = NoSuchThing %}` throws. Docx templates support none of the three: they iterate through Parchment's own scope tree rather than liquid's `{% for %}`, so `forloop` is never populated, and `assign` / `capture` are not among the supported block tags (`for`, `endfor`, `if`, `elsif`, `else`, `endif`). Registration says so in both cases rather than rendering a blank.
 
 The other liquid tags a markdown template can hold are walked the same way: the condition and both branches of `{% unless %}`, the value, every `{% when %}` option and every branch of `{% case %}`, the values and the group of `{% cycle %}`, and the body of `{% capture %}` and `{% ifchanged %}`. A variable assigned inside any of them is known after it. A counter is not a variable: liquid keeps `{% increment n %}` and `{% decrement n %}` apart from `{% assign %}`, so a later `{{ n }}` renders blank and is rejected as an unknown member.
@@ -2264,6 +2266,8 @@ public class Customer
 // Template paragraph — "Missing" does not exist on Customer
 {{ Customer.Missing }}
 ```
+
+A constant of an enum is reported the same way, with a message naming the enum: `{{ Status.Final }}` reads a member off a value that reaches the template as text. See [Registration-time validation](#registration-time-validation).
 
 
 ### `PARCH002` — loop source is not enumerable

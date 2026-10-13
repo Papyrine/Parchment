@@ -44,6 +44,14 @@ static class ShapeBuilder
         var liquid = LiquidKindFor(type);
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
 
+        // An enum's constants are public static fields, which is all a member needs to be here. But
+        // a template never holds the enum: it is handed the text the value prints as, so a constant
+        // recorded as a member validates `{{ Status.Final }}` and then renders nothing.
+        if (liquid == LiquidKind.Enum)
+        {
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
+        }
+
         // An array's CLR members (Length, IsFixedSize, Array.MaxLength…) are not binding surface,
         // and emitting accessors for them produces illegal casts like `string[].MaxLength`.
         if (type is IArrayTypeSymbol)
@@ -190,13 +198,18 @@ static class ShapeBuilder
         return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid);
     }
 
-    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same three cases off a
+    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same four cases off a
     // System.Type. The order is Fluid's: a dictionary is enumerable too, and is tested for first.
     static LiquidKind LiquidKindFor(ITypeSymbol type)
     {
         if (type.SpecialType == SpecialType.System_String)
         {
             return LiquidKind.String;
+        }
+
+        if (IsEnum(type))
+        {
+            return LiquidKind.Enum;
         }
 
         if (type is IArrayTypeSymbol)
@@ -229,6 +242,17 @@ static class ShapeBuilder
         }
 
         return LiquidKind.None;
+    }
+
+    // A nullable enum is boxed on its way to Fluid, so what arrives is the enum or nothing.
+    static bool IsEnum(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+        {
+            type = nullable.TypeArguments[0];
+        }
+
+        return type.TypeKind == TypeKind.Enum;
     }
 
     static bool IsDictionary(ITypeSymbol type) =>

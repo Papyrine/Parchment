@@ -20,11 +20,6 @@ partial class Order
       new("Instructions", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Instructions)),
       new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Customer)),
     };
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Status =
-    {
-      new("Draft", new global::Fluid.Accessors.DelegateAccessor((_, _) => global::Sample.Status.Draft)),
-      new("Final", new global::Fluid.Accessors.DelegateAccessor((_, _) => global::Sample.Status.Final)),
-    };
     static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
     {
       new("Email", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Email)),
@@ -46,7 +41,6 @@ partial class Order
     internal static void InitializeParchmentTemplate()
     {
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Order), _Accessors_global__Sample_Order);
-      global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Status), _Accessors_global__Sample_Status);
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
       global::Parchment.Generated.GeneratedRegistration.RegisterEditable(typeof(global::Sample.Order), _Editables);
       global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(

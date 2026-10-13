@@ -9,6 +9,39 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
 
+    // PARCH001 again, worded for the one unknown member that is plainly there in the C#. Told only
+    // that a constant is "not a member", the reader checks the spelling.
+    public static readonly DiagnosticDescriptor EnumHasNoMembers = new(
+        id: "PARCH001",
+        title: "Template references an unknown model member",
+        messageFormat: "Template '{0}' token '{1}' references '{2}', but '{3}' is an enum. A template sees an enum as the text it renders as, " +
+                       "so its constants cannot be named: compare against that text instead.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
+
+    /// <summary>
+    /// PARCH001 for a path <see cref="ShapeResolver.TryResolve"/> turned down, in whichever of its
+    /// two wordings fits.
+    /// </summary>
+    public static Diagnostic UnknownMember(
+        TargetInfo target,
+        string templatePath,
+        Location location,
+        string tokenSource,
+        IReadOnlyList<string> path,
+        IReadOnlyDictionary<string, string> scope)
+    {
+        var reference = string.Join('.', path);
+        if (ShapeResolver.StopsAtEnum(target.Shape, path, scope, out var enumPath))
+        {
+            return Diagnostic.Create(EnumHasNoMembers, location, templatePath, tokenSource, reference, enumPath);
+        }
+
+        return Diagnostic.Create(MissingMember, location, templatePath, tokenSource, reference, target.ModelDisplayName);
+    }
+
     public static readonly DiagnosticDescriptor LoopSourceNotEnumerable = new(
         id: "PARCH002",
         title: "Loop source is not enumerable",
