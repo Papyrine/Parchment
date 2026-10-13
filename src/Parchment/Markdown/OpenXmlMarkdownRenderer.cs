@@ -28,10 +28,14 @@ class OpenXmlMarkdownRenderer :
         ObjectRenderers.Add(new ThematicBreakRenderer());
         ObjectRenderers.Add(new HtmlBlockRenderer());
 
-        // Inline renderers
+        // Inline renderers. One for every inline MarkdigPipeline can produce: RendererBase writes
+        // nothing for a leaf inline none of these claims, and raises nothing either, so a missing
+        // one is text missing from the document. InlineCoverageTests holds the list to the pipeline.
         ObjectRenderers.Add(new LiteralInlineRenderer());
+        ObjectRenderers.Add(new HtmlEntityInlineRenderer());
         ObjectRenderers.Add(new EmphasisInlineRenderer());
         ObjectRenderers.Add(new LinkInlineRenderer());
+        ObjectRenderers.Add(new DelimiterInlineRenderer());
         ObjectRenderers.Add(new AutolinkInlineRenderer());
         ObjectRenderers.Add(new CodeInlineRenderer());
         ObjectRenderers.Add(new LineBreakInlineRenderer());
