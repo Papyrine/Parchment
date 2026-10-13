@@ -136,7 +136,8 @@
         string userSource,
         TemplateFile[] docxes,
         string? modelFileName,
-        bool withProjectDir = false)
+        bool withProjectDir = false,
+        bool realParchment = false)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -153,18 +154,20 @@
             paths.Add(path);
         }
 
-        var syntaxTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(attributeSource),
-            modelFileName == null
-                ? CSharpSyntaxTree.ParseText(userSource)
-                : CSharpSyntaxTree.ParseText(userSource, path: CreateModelPath(directory, modelFileName))
-        };
+        var modelTree = modelFileName == null
+            ? CSharpSyntaxTree.ParseText(userSource)
+            : CSharpSyntaxTree.ParseText(userSource, path: CreateModelPath(directory, modelFileName));
+
+        // The stand-in attributes and the real assembly declare the same types, so a compilation
+        // gets one or the other.
+        SyntaxTree[] syntaxTrees = realParchment
+            ? [modelTree]
+            : [CSharpSyntaxTree.ParseText(attributeSource), modelTree];
 
         var compilation = CSharpCompilation.Create(
             "GeneratorTest",
             syntaxTrees,
-            BuildReferences(),
+            BuildReferences(realParchment),
             // Nullable context on so `string?` members carry NullableAnnotation.Annotated —
             // ShapeBuilder reads it to decide editable-field nullability.
             new(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
@@ -179,6 +182,44 @@
 
         return new(driver, compilation, additionalTexts, paths.ToImmutable());
     }
+
+    /// <summary>
+    /// Runs the generator and then compiles what it emitted, together with the model, against the
+    /// real Parchment, Fluid and Excelsior assemblies. <see cref="Run"/> stops at the generator, so
+    /// generated source that does not compile, or that warns, goes unnoticed there.
+    /// </summary>
+    public static CompileResult Compile(string userSource, params TemplateFile[] files)
+    {
+        var setup = CreateDriverWithDocxes(userSource, files, modelFileName: null, realParchment: true);
+        var driver = setup.Driver.RunGeneratorsAndUpdateCompilation(setup.Compilation, out var output, out _);
+        var result = driver.GetRunResult();
+        var diagnostics = output.GetDiagnostics()
+            .Where(_ => _.Severity >= DiagnosticSeverity.Warning &&
+                        IsGenerated(_.Location.SourceTree))
+            .ToImmutableArray();
+        return new(
+            result.Diagnostics,
+            diagnostics,
+            output,
+            string.Join('\n', output.SyntaxTrees.Where(IsGenerated).Select(_ => _.ToString())));
+    }
+
+    public static bool IsGenerated(SyntaxTree? tree) =>
+        tree != null &&
+        tree.FilePath.EndsWith(".g.cs", StringComparison.Ordinal);
+
+    /// <param name="Generator">What the generator itself reported.</param>
+    /// <param name="Generated">
+    /// What the compiler reported, warnings included, inside the generated files. The model's own
+    /// source is left out: declaring a member of a deprecated type warns there by design.
+    /// </param>
+    /// <param name="Output">The compilation with the generated files added.</param>
+    /// <param name="Source">The generated files, concatenated.</param>
+    public sealed record CompileResult(
+        ImmutableArray<Diagnostic> Generator,
+        ImmutableArray<Diagnostic> Generated,
+        Compilation Output,
+        string Source);
 
     static string CreateModelPath(string directory, string modelFileName)
     {
@@ -325,12 +366,21 @@
         return stream.ToArray();
     }
 
-    static MetadataReference[] BuildReferences()
+    // The assemblies the stand-in sources declare types of. A compilation that uses the stand-ins
+    // must not see the real ones as well, or every name is declared twice (CS0436).
+    static readonly HashSet<string> stoodInFor = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Parchment.dll",
+        "Fluid.dll"
+    };
+
+    static MetadataReference[] BuildReferences(bool realParchment)
     {
         var tpa = (string?) AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "";
         return tpa
             .Split(Path.PathSeparator)
             .Where(_ => !string.IsNullOrEmpty(_))
+            .Where(_ => realParchment || !stoodInFor.Contains(Path.GetFileName(_)))
             .Select(MetadataReference (_) => MetadataReference.CreateFromFile(_))
             .ToArray();
     }

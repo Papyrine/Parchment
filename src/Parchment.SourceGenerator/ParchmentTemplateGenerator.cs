@@ -1796,6 +1796,16 @@ public sealed class ParchmentTemplateGenerator :
 
             """);
 
+        // The accessors below name every bindable member, deprecated and experimental ones
+        // included, and the consumer cannot edit this file to silence what that raises. Emitted
+        // only when the model has such a member.
+        if (target.Shape.SuppressedDiagnostics.Count > 0)
+        {
+            builder.Append("#pragma warning disable ");
+            builder.AppendJoin(", ", target.Shape.SuppressedDiagnostics);
+            builder.AppendLine();
+        }
+
         if (target.DeclaringNamespace != null)
         {
             builder.AppendLine($"namespace {target.DeclaringNamespace};");

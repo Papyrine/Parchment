@@ -2695,6 +2695,17 @@ A property declared with a body on an interface — e.g. `interface IDocument { 
 
 Extension properties compile to static methods on the extension container class, not as instance properties of the target type. `typeof(Customer).GetProperties(...)` does not return them, and `ITypeSymbol.GetMembers()` on the target returns only members declared on the type symbol. Neither the runtime walkers nor `ShapeBuilder` see them. Workaround: declare the property on the model class itself — the model already pays the partial-class / Parchment-reference cost, so helper / computed properties belong there.
 
+### Obsolete and experimental members
+
+The source generator writes an accessor for every bindable member, so the generated file names members the consumer has marked as deprecated or experimental. What happens depends on whether the compiler allows the reference at all:
+
+- **`[Obsolete]` as a warning** (the default): the member stays bindable. The generated file disables `CS0612` and `CS0618` for itself, or the attribute's own `DiagnosticId` when one is set, so a deprecated member does not warn from generated code or break a build that treats warnings as errors. The same applies to a member whose type is obsolete.
+- **`[Obsolete(..., error: true)]`**: no reference to the member compiles and the error cannot be suppressed, so the generator leaves it out, along with any member whose type is obsolete as an error. A token naming it is `PARCH001`. Runtime registration without the generator binds by reflection and is unaffected.
+- **`[Experimental("ID")]`** on a member, its type, a base class it is inherited from, or the declaring assembly: the member stays bindable and the generated file disables that id.
+- **`[RequiresUnreferencedCode]`, `[RequiresDynamicCode]`, `[RequiresAssemblyFiles]`** on a property accessor: the member stays bindable and the generated file disables `IL2026`, `IL3050` or `IL3002`.
+
+The `#pragma warning disable` line is only emitted for a model that has such a member, lists only the ids that model needs, and covers the generated file alone.
+
 ### Members of system types
 
 Accessors are generated for the types a model is built from, not for a type in the `System` namespace or one beneath it, so the CLR members of such a type are not bound: `{{ When.Year }}` on a `DateTime`, `{{ Maybe.Value }}` and `{{ Maybe.HasValue }}` on an `int?`, `{{ Pair.Item1 }}` on a tuple. A nullable struct is a `Nullable<T>` as well, so the members of the struct are not reached through it. The value itself binds as usual (`{{ When }}`, `{{ Maybe }}`). The exceptions are liquid's own `size`, `first` and `last` on a string or a collection (see [Registration-time validation](#registration-time-validation)), and `Key` and `Value` on a `KeyValuePair`. Workaround: expose the value as a computed property on the model, such as `public int Year => When.Year;`.

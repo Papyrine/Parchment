@@ -21,6 +21,9 @@
     <PackageReference Include="ProjectDefaults" PrivateAssets="all" />
     <PackageReference Include="ProjectFiles" PrivateAssets="all" />
     <ProjectReference Include="..\Parchment.SourceGenerator\Parchment.SourceGenerator.csproj" />
+    <!-- Not called by the tests: its assembly, and the ones it brings along, are what generated
+         source is compiled against. See GeneratorDriver.Compile. -->
+    <ProjectReference Include="..\Parchment\Parchment.csproj" />
     <!-- One list of templates for both markdown validators; the runtime half is MarkdownBlockTagTests. -->
     <Compile Include="..\Parchment.Tests\Markdown\MarkdownBlockTagCases.cs" Link="MarkdownBlockTagCases.cs" />
   </ItemGroup>
