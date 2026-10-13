@@ -1035,9 +1035,10 @@ public sealed class ParchmentTemplateGenerator :
     /// </summary>
     /// <remarks>
     /// An Excelsior token is rewritten to a marker before the source is parsed, so what disqualifies
-    /// one is a property of the line it sits on rather than of the Fluid AST — whether the token is
-    /// the whole line, and whether the expression is a bare path. Both are read off the source here,
-    /// the same way <c>MarkdownExcelsiorTables</c> reads them at registration.
+    /// one is a property of where it sits in the source rather than of the template's AST — whether
+    /// the token is alone on its line, and whether its expression is a bare path. Both are read off
+    /// the source here, the same way <c>MarkdownExcelsiorTables</c> reads them at registration,
+    /// through a copy of the same <c>MarkdownOutputTokens</c>.
     ///
     /// Without this the mistake still gets caught, but not until the store materializes the template
     /// on the model's first render — a runtime failure for something the build can see.
@@ -1050,61 +1051,43 @@ public sealed class ParchmentTemplateGenerator :
         string markdown)
     {
         var loops = MarkdownLoopScope.Scan(markdown);
-
-        // Where the trimmed line starts in the source, which is what a loop's extent is measured in.
-        var rawLineStart = 0;
-        foreach (var rawLine in markdown.Split('\n'))
+        foreach (var token in MarkdownOutputTokens.Scan(markdown, markdownParser))
         {
-            var line = rawLine.Trim();
-            var lineStart = rawLineStart + rawLine.Length - rawLine.TrimStart().Length;
-            rawLineStart += rawLine.Length + 1;
-            foreach (Match match in markdownToken.Matches(line))
+            // Root paths only, matching the map the render looks the table up in: a loop
+            // variable's members are not reachable from the root and fall through to Fluid,
+            // including when the loop variable happens to spell a root path.
+            if (token.Path == null ||
+                loops.Shadows(token.Start, token.Path) ||
+                !ShapeResolver.IsExcelsiorTableMember(target.Shape, token.Path.Split('.'), EmptyScope))
             {
-                var body = match.Groups["body"].Value.Trim();
-                var end = body.IndexOfAny([' ', '|', '=', '<', '>', '!', '+', '-', '*', '/', '[', '(']);
-                var path = (end < 0 ? body : body[..end]).Replace(" ", "").Replace("\t", "");
-                if (path.Length == 0)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                // Root paths only, matching the map the render looks the table up in: a loop
-                // variable's members are not reachable from the root and fall through to Fluid,
-                // including when the loop variable happens to spell a root path.
-                if (loops.Shadows(lineStart + match.Index, path) ||
-                    !ShapeResolver.IsExcelsiorTableMember(target.Shape, path.Split('.'), EmptyScope))
-                {
-                    continue;
-                }
+            var source = markdown.Substring(token.Start, token.End - token.Start);
+            if (!MarkdownOutputTokens.IsAlone(markdown, token, out _, out _))
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorTokenNotAlone,
+                        location,
+                        templatePath,
+                        source));
+                continue;
+            }
 
-                if (match.Value != line)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.ExcelsiorTokenNotAlone,
-                            location,
-                            templatePath,
-                            match.Value));
-                    continue;
-                }
-
-                if (body != path)
-                {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diagnostics.ExcelsiorTokenNotPlainIdentifier,
-                            location,
-                            templatePath,
-                            match.Value));
-                }
+            if (!token.IsPlain)
+            {
+                context.ReportDiagnostic(
+                    Diagnostic.Create(
+                        Diagnostics.ExcelsiorTokenNotPlainIdentifier,
+                        location,
+                        templatePath,
+                        source));
             }
         }
     }
 
     static readonly Dictionary<string, string> EmptyScope = new();
-
-    static readonly Regex markdownToken = new(@"\{\{(?<body>[^{}]*)\}\}", RegexOptions.Compiled);
-
     static void ProcessMarkdown(
         SourceProductionContext context,
         TargetInfo target,
