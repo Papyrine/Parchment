@@ -11,7 +11,7 @@ class AutolinkInlineRenderer :
         }
 
         // A url no relationship can point at stays the text it was written as.
-        if (RelationshipIds.TryHyperlink(renderer.MainPart, url, out var relId))
+        if (RelationshipIds.TryHyperlink(renderer.Part, url, out var relId))
         {
             var run = new Run(
                 new RunProperties(
@@ -49,7 +49,7 @@ class AutolinkInlineRenderer :
     static string Unescape(string url, out bool closedByValue)
     {
         closedByValue = false;
-        if (!url.Contains('\\') ||
+        if (url.AsSpan().IndexOfAny('\\', '&') < 0 ||
             url.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
         {
             return url;
