@@ -1167,7 +1167,7 @@ result.ApplyTo(model);
 | `DateTimeOffset` | plain text (round-trippable ISO, default `yyyy-MM-ddTHH:mm:sszzz`) | the ISO text, parsed offset-preserving |
 | `TimeOnly` | plain text (default `HH:mm:ss`) | the text |
 | enums | dropdown, one item per member (friendly label shown, member name stored) | `w:listItem` value |
-| numeric types | plain text | text parsed with the extraction culture |
+| numeric types | plain text (invariant format) | the text, parsed without group separators (see [Culture](#culture)) |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
 Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`, which `ApplyTo` writes back as null on a nullable member and skips on a non-nullable one (leaving its existing value). A member reached through a null parent object renders the same way; a checkbox, having no placeholder, renders unchecked and extracts as `false`. Members must have a public non-init setter so extraction can write back.
@@ -1175,7 +1175,7 @@ Nullable variants are supported except `bool?` — a checkbox cannot represent n
 **Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
 
 - A `DateTime` comes back with `DateTimeKind.Unspecified` (`w:fullDate` carries no zone) — re-stamp the `Kind` where a specific one is required. Its time-of-day survives in `w:fullDate` even though the default `yyyy-MM-dd` format hides it; a time-bearing `DateFormat` (e.g. `"yyyy-MM-dd HH:mm"`) makes the time visible and editable as text.
-- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. Because these parse display text, the extraction culture must match the render culture (as with numerics).
+- The `DateTimeOffset` / `TimeOnly` defaults keep seconds but not sub-second precision; a `DateFormat` such as `"o"` preserves it. These parse display text: the rendered form is read first, then the extraction culture (see [Culture](#culture)).
 
 **Friendly enum labels.** A dropdown shows a friendly label but stores the member name. The label comes from the same [Excelsior](https://github.com/Papyrine/Excelsior) rendering used for inline `{{ enum }}` substitutions and Excelsior table cells: a `[Display(Name = …)]` / `[Description]` attribute or a global `ValueRenderer.ForEnums` override if configured, otherwise the humanized member name (`NotYetCommenced` → `Not yet commenced`). Only the *display* is affected — each `w:listItem` keeps the member name as its `w:val`, so extraction reads the enum back from that regardless of the label, and no `[Display]` attribute or culture setting can break the round-trip.
 
@@ -1264,7 +1264,16 @@ So the boundary is enforced on extraction, not in Word. Whatever a user pastes i
 
 ### Culture
 
-Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Only free-text *numerics* are culture-sensitive: they render via the Fluid template culture (invariant by default) and parse back with `Extract`'s `culture` parameter — which defaults to `CultureInfo.InvariantCulture` to match. If renders are configured for another culture, pass the same culture to `Extract`.
+Checkbox, date, and dropdown values round-trip through canonical control state and never depend on display text. String content is taken verbatim. Numerics, `DateTimeOffset` and `TimeOnly` are read from display text, and that text is always rendered with the invariant culture — the render culture is not configurable. Extraction therefore reads the invariant form first, so a document nobody edited extracts the rendered values whatever `culture` is passed to `Extract`. The `culture` parameter (default `CultureInfo.InvariantCulture`) describes what a person may type instead; it never needs to match the render.
+
+Rules for a typed number:
+
+- A `.` is always the decimal point, as rendered. The extraction culture adds its own decimal separator: `12,5` extracts as 12.5 under `de-DE` and is `ParseFailed` under the invariant culture.
+- Group separators are never accepted, for any numeric type or culture. `1,000`, `1.234,56` and `1 234` are `ParseFailed` instead of a guess, since one culture's group separator is another's decimal separator.
+- Integer types take digits and a leading sign only.
+- Currency and percent symbols are `ParseFailed`.
+
+A date or time typed in a form other than the rendered one is parsed with the extraction culture.
 
 ### Rules and limitations
 
