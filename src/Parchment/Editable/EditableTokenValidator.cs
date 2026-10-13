@@ -16,6 +16,10 @@
 /// <item>a body loop over an <c>[EditableField]</c> collection may not carry <c>limit:</c> /
 /// <c>offset:</c> / <c>reversed</c> — extraction replaces the whole collection with the rows the
 /// document holds, so a windowed or reordered render would write that subset or order back.</item>
+/// <item>an <c>[EditableField]</c> collection may be bound once: one loop holds the tokens for the
+/// item's editable members, each of them once — extraction reads one repeating section per
+/// collection and one control per member in a row, so the edits made in a second would be
+/// discarded. A loop that holds none of them renders read-only and is not a binding.</item>
 /// <item>a token that renders as a content control may not sit inside a content control of the
 /// author's that holds a single typed value (plain text, date picker, drop-down list, combo box,
 /// checkbox, picture) — <see cref="EditableSplicer"/> puts the field where the token is, and Word
@@ -50,6 +54,11 @@ static class EditableTokenValidator
         EditableMap? itemEditables = null;
         HashSet<string>? itemSeen = null;
 
+        // The collection whose top-level loop is open, and the collections an earlier loop has
+        // already bound.
+        CollectionEntry? collectionLoop = null;
+        var boundCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         var loopVariables = new List<string>();
         foreach (var classification in classifications)
         {
@@ -63,6 +72,7 @@ static class EditableTokenValidator
                 RejectModifiersOnCollectionLoop(block, collection, templateName, partUri);
                 itemEditables = collection.ElementMap.ScopedToItem(block.LoopVariable!, null);
                 itemSeen = new(StringComparer.OrdinalIgnoreCase);
+                collectionLoop = collection;
             }
 
             LoopScope.Track(loopVariables, classification);
@@ -70,6 +80,7 @@ static class EditableTokenValidator
             {
                 itemEditables = null;
                 itemSeen = null;
+                collectionLoop = null;
             }
 
             if (classification.Kind != ParagraphKind.Substitution)
@@ -122,6 +133,19 @@ static class EditableTokenValidator
 
                 if (activeSeen.Add(token.References[0].Dotted))
                 {
+                    // The first control of a loop is what makes it a binding of the collection.
+                    if (collectionLoop != null &&
+                        loopVariables.Count > 0 &&
+                        activeSeen.Count == 1 &&
+                        !boundCollections.Add(collectionLoop.DottedPath))
+                    {
+                        throw new ParchmentRegistrationException(
+                            templateName,
+                            $"[EditableField] token '{token.Source}' binds the collection '{collectionLoop.DottedPath}' in a second loop, so the collection's editable members appear more than once in the document body. Each such loop renders as a repeating section and extraction reads only one — keep the item's editable members in one loop. A loop that prints only members that are not [EditableField] renders read-only and is fine.",
+                            partUri,
+                            token.Source);
+                    }
+
                     continue;
                 }
 

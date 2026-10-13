@@ -977,9 +977,13 @@ class ScopeTreeRunner(
         // EditableMap.Empty, so HasCollections is false there and the loop stays read-only.
         // loop.SourceReference is precomputed at tree-build time, so the common (no editable
         // collections) case costs a single bool check and never touches the AST.
+        // A loop that holds no token for an editable member of the item has no control to put in a
+        // row and nothing to extract, so it stays an ordinary read-only loop: the collection can be
+        // listed again beside the loop that binds it (EditableTokenValidator allows one of those).
         if (editables.HasCollections &&
             loop.SourceReference is { } sourceReference &&
-            editables.TryGetCollection(sourceReference, out var collectionEntry))
+            editables.TryGetCollection(sourceReference, out var collectionEntry) &&
+            HasItemControl(loop.Body, collectionEntry, loop.LoopVariable))
         {
             await RenderEditableCollection(loop, collectionEntry, open, parent, bodyElements, items.ToList()).ConfigureAwait(false);
             foreach (var element in bodyElements)
@@ -1109,6 +1113,47 @@ class ScopeTreeRunner(
 
         RemoveTag(open);
         RemoveTag(close);
+    }
+
+    // Lockstep with EditableTokenValidator.Validate: the loop's own tokens, through any
+    // conditional, but not those of a nested loop, which runs with an empty editable map.
+    static bool HasItemControl(IReadOnlyList<RangeNode> nodes, CollectionEntry entry, string loopVariable)
+    {
+        foreach (var node in nodes)
+        {
+            switch (node)
+            {
+                case SubstitutionNode substitution:
+                    foreach (var token in substitution.Tokens)
+                    {
+                        if (token.References.Count > 0 &&
+                            entry.TryGetItemEntry(loopVariable, token.References[0].Dotted, out _))
+                        {
+                            return true;
+                        }
+                    }
+
+                    break;
+
+                case IfNode conditional:
+                    foreach (var branch in conditional.Branches)
+                    {
+                        if (HasItemControl(branch.Body, entry, loopVariable))
+                        {
+                            return true;
+                        }
+                    }
+
+                    if (HasItemControl(conditional.ElseBody, entry, loopVariable))
+                    {
+                        return true;
+                    }
+
+                    break;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

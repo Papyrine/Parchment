@@ -763,6 +763,217 @@ public partial class EditableCollectionTests
         await Assert.That(result.Fields.Count).IsEqualTo(0);
     }
 
+    public class Entry
+    {
+        [EditableField]
+        public string? Name { get; set; }
+
+        public string? Code { get; set; }
+    }
+
+    [ParchmentBindable]
+    public partial class EntryList
+    {
+        [EditableField]
+        public string? Name { get; set; }
+
+        [EditableField]
+        public List<Entry> Entries { get; set; } = [];
+    }
+
+    const string entryTemplate =
+        """
+        {% for e in Entries %}
+
+        Name: {{ e.Name }}
+
+        {% endfor %}
+        """;
+
+    static EntryList NewEntries() =>
+        new()
+        {
+            Name = "root",
+            Entries =
+            [
+                new()
+                {
+                    Name = "first",
+                    Code = "A"
+                },
+                new()
+                {
+                    Name = "second",
+                    Code = "B"
+                }
+            ]
+        };
+
+    // Extraction reads one repeating section per collection, so the rows edited in a second one
+    // would be discarded.
+    [Test]
+    [Arguments("Name: {{ other.Name }}")]
+    [Arguments("{% if other.Code %}\n\nName: {{ other.Name }}\n\n{% endif %}")]
+    public async Task SecondLoopBindingTheCollectionIsRejected(string secondBody)
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            entryTemplate + "\n\nAgain\n\n{% for other in Entries %}\n\n" + secondBody + "\n\n{% endfor %}");
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<EntryList>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("more than once");
+    }
+
+    // The member name is the control's tag within a row, and extraction reads the first.
+    [Test]
+    [Arguments("{{ e.Name }} and {{ e.Name }}")]
+    [Arguments("{{ e.Name }}\n\n{% if e.Code %}\n\n{{ e.Name }}\n\n{% endif %}")]
+    public async Task MemberBoundTwiceInOneLoopIsRejected(string body)
+    {
+        using var docx = DocxTemplateBuilder.Build("{% for e in Entries %}\n\n" + body + "\n\n{% endfor %}");
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<EntryList>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("more than once");
+    }
+
+    // A loop that puts no control in its rows has nothing to extract, so it renders as an ordinary
+    // read-only loop wherever it sits, and the one loop holding the controls is the one read back.
+    [Test]
+    public async Task LoopsWithoutControlsRenderReadOnlyBesideTheBoundLoop()
+    {
+        using var stream = await Render(
+            """
+            Root: {{ Name }}
+
+            {% for e in Entries %}
+
+            Code {{ e.Code }}
+
+            {% endfor %}
+
+            {% if Entries.size > 0 %}
+
+            Has entries
+
+            {% endif %}
+
+            {% for e in Entries %}
+
+            Name: {{ e.Name }}
+
+            {% endfor %}
+
+            {% for e in Entries %}
+
+            {% for inner in Entries %}
+
+            Pair {{ e.Code }}{{ inner.Name }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """,
+            NewEntries());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var sections = body.Descendants<SdtBlock>()
+                .Where(_ => _.SdtProperties?.GetFirstChild<W15.SdtRepeatedSection>() != null)
+                .ToList();
+            await Assert.That(sections.Count).IsEqualTo(1);
+
+            var text = body.Descendants<Paragraph>().Select(_ => _.InnerText).ToList();
+            await Assert.That(text).Contains("Code A");
+            await Assert.That(text).Contains("Code B");
+            await Assert.That(text).Contains("Has entries");
+            await Assert.That(text).Contains("Pair Bfirst");
+
+            var items = sections[0].Descendants<SdtBlock>().Where(IsItem).ToList();
+            SetText(Control(items[1], "Name"), "edited");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var model = new EntryList();
+        var result = ParchmentExtractor.Extract<EntryList>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(model.Name).IsEqualTo("root");
+        await Assert.That(string.Join(",", model.Entries.Select(_ => _.Name))).IsEqualTo("first,edited");
+    }
+
+    // With no control to read back, the collection is absent from the document rather than empty.
+    [Test]
+    public async Task LoopWithoutControlsLeavesTheCollectionAlone()
+    {
+        using var stream = await Render("{% for e in Entries %}\n\nCode {{ e.Code }}\n\n{% endfor %}", NewEntries());
+
+        var model = NewEntries();
+        var result = ParchmentExtractor.Extract<EntryList>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(model.Entries.Count).IsEqualTo(2);
+    }
+
+    // A document can hold a section no registration produced - one pasted in Word, or rendered by
+    // an older version. Its row controls are tagged with the bare member name, which a root member
+    // can share.
+    [Test]
+    public async Task RootFieldDoesNotReadAControlInsideARow()
+    {
+        using var stream = await Render(entryTemplate, NewEntries());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var section = RepeatingSection(body, "Entries");
+            section.InsertAfterSelf(section.CloneNode(true));
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var model = new EntryList
+        {
+            Name = "untouched"
+        };
+        var result = ParchmentExtractor.Extract<EntryList>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(result.Fields.Single(_ => _.Path == "Name").State).IsEqualTo(FieldState.Missing);
+        await Assert.That(model.Name).IsEqualTo("untouched");
+        await Assert.That(string.Join(",", model.Entries.Select(_ => _.Name))).IsEqualTo("first,second");
+    }
+
+    [Test]
+    public async Task RowFieldDoesNotReadAControlOfANestedRow()
+    {
+        using var stream = await Render(entryTemplate, NewEntries());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+            var section = RepeatingSection(body, "Entries");
+            var nested = section.CloneNode(true);
+            var first = section.Descendants<SdtBlock>().First(IsItem);
+            var control = Control(first, "Name");
+            var host = control.Ancestors<Paragraph>().First();
+            control.Remove();
+            host.InsertAfterSelf(nested);
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var model = new EntryList();
+        ParchmentExtractor.Extract<EntryList>(stream).ApplyTo(model);
+
+        await Assert.That(string.Join(",", model.Entries.Select(_ => _.Name))).IsEqualTo("second");
+    }
+
     const string checklistTemplate =
         """
         {% for i in Items %}

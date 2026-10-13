@@ -1006,6 +1006,86 @@ public class EditableFieldGeneratorTests
         await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH017"]);
     }
 
+    const string entryModel =
+        """
+        using System.Collections.Generic;
+        using Parchment;
+
+        namespace Sample;
+
+        public class Line
+        {
+            [EditableField]
+            public string Note { get; set; } = "";
+
+            public string Code { get; set; } = "";
+        }
+
+        [ParchmentModel]
+        public partial class Order
+        {
+            [EditableField]
+            public string Note { get; set; } = "";
+
+            [EditableField]
+            public List<Line> Lines { get; set; } = new();
+        }
+        """;
+
+    // Extraction reads one repeating section per collection, and the first control per member in
+    // a row, so a second binding of either is an edit that would be discarded.
+    [Test]
+    public async Task EditableCollection_SecondBindingLoop_ReportsParch017()
+    {
+        var result = GeneratorDriver.Run(
+            entryModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }}",
+            "{% endfor %}",
+            "{% for other in Lines %}",
+            "{% if other.Code %}",
+            "{{ other.Note }}",
+            "{% endif %}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH017"]);
+    }
+
+    [Test]
+    public async Task EditableCollection_MemberTwiceInLoop_ReportsParch017()
+    {
+        var result = GeneratorDriver.Run(
+            entryModel,
+            "{% for line in Lines %}",
+            "{{ line.Note }} and {{ line.Note }}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).IsEquivalentTo(["PARCH017"]);
+    }
+
+    // A loop that binds no control renders read-only, and the root member that shares a row
+    // member's name is a different control.
+    [Test]
+    public async Task EditableCollection_LoopsWithoutControls_NoParch017()
+    {
+        var result = GeneratorDriver.Run(
+            entryModel,
+            "{{ Note }}",
+            "{% for line in Lines %}",
+            "{{ line.Code }}",
+            "{% endfor %}",
+            "{% if Lines.size > 0 %}",
+            "some",
+            "{% endif %}",
+            "{% for line in Lines %}",
+            "{{ line.Note }}",
+            "{% endfor %}",
+            "{% for line in Lines %}",
+            "{% for inner in Lines %}",
+            "{{ line.Code }}{{ inner.Code }}",
+            "{% endfor %}",
+            "{% endfor %}");
+        await Assert.That(ParchIds(result)).DoesNotContain("PARCH017");
+    }
+
     // A loop nested in the repeating section renders read-only, so a filter or a repeat there is
     // applied and only the read-only warning is due.
     [Test]

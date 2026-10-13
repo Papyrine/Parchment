@@ -908,12 +908,15 @@ public sealed class ParchmentTemplateGenerator :
         Location location)
     {
         var scope = new Dictionary<string, string>(StringComparer.Ordinal);
-        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection)>();
+        var loopStack = new Stack<(string? Name, string? PriorBinding, bool IsEditableCollection, string? BoundCollection)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // The item paths bound so far in the open repeating-section loop. Tags are item-relative,
         // so each top-level loop starts its own set.
         var itemSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The collections some earlier loop already bound.
+        var boundCollections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var token in tokens)
         {
@@ -968,13 +971,22 @@ public sealed class ParchmentTemplateGenerator :
                                 string.Join('.', token.References[0])));
                     }
 
-                    loopStack.Push((bound, prior, isEditableCollectionLoop));
+                    // Likewise only a top-level loop can bind the collection's controls.
+                    string? boundCollection = null;
+                    if (isEditableCollectionLoop &&
+                        bound != null &&
+                        loopStack.Count == 0)
+                    {
+                        boundCollection = string.Join('.', token.References[0]);
+                    }
+
+                    loopStack.Push((bound, prior, isEditableCollectionLoop, boundCollection));
                     break;
 
                 case TokenKind.ForClose:
                     if (loopStack.Count > 0)
                     {
-                        var (name, priorBinding, _) = loopStack.Pop();
+                        var (name, priorBinding, _, _) = loopStack.Pop();
                         if (name != null)
                         {
                             if (priorBinding == null)
@@ -1020,6 +1032,24 @@ public sealed class ParchmentTemplateGenerator :
                             context.ReportDiagnostic(
                                 Diagnostic.Create(
                                     Diagnostics.EditableTokenInLoop,
+                                    location,
+                                    templatePath,
+                                    token.Source));
+                            break;
+                        }
+
+                        // The first control of a loop is what makes it a binding of the collection.
+                        // Extraction reads one repeating section per collection, so a second loop
+                        // binding any member is an edit that would be discarded. Lockstep with the
+                        // runtime's EditableTokenValidator.
+                        if (itemSeen.Count == 0 &&
+                            frame.BoundCollection is { } boundPath &&
+                            !boundCollections.Add(boundPath))
+                        {
+                            itemSeen.Add(string.Join('.', token.References[0]));
+                            context.ReportDiagnostic(
+                                Diagnostic.Create(
+                                    Diagnostics.EditableTokenDuplicated,
                                     location,
                                     templatePath,
                                     token.Source));

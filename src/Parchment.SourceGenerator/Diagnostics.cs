@@ -196,7 +196,7 @@
     public static readonly DiagnosticDescriptor EditableTokenDuplicated = new(
         id: "PARCH017",
         title: "[EditableField] member referenced more than once in the document body",
-        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body; the dotted path is the content control's tag and must be unique for extraction",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body, or binds an [EditableField] collection that another loop already binds; the dotted path is the content control's tag and must be unique for extraction",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
