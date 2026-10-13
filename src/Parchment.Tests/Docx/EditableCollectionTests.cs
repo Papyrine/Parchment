@@ -726,6 +726,84 @@ public partial class EditableCollectionTests
         await Assert.That(nested).IsEquivalentTo(["first=2026", "first=2026"]);
     }
 
+    // An item member reached through the loop variable is a control like a root member, and the
+    // control is built from the member, not from the expression: a filter would be dropped and the
+    // filtered text could not be read back.
+    [Test]
+    [Arguments("{{ b.Year | append: '!' }}")]
+    [Arguments("{{ b.Amount | plus: 1 }}")]
+    public async Task FilterOnItemMemberFailsRegistration(string token)
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            $$$"""
+               {% for b in Budgets %}
+
+               {{{token}}}
+
+               {% endfor %}
+               """);
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("plain member-access");
+    }
+
+    // The member's path is the control's tag inside each repeated item; extraction reads one.
+    [Test]
+    public async Task ItemMemberBoundTwiceFailsRegistration()
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            """
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }}
+
+            Again: {{ b.Year }}
+
+            {% endfor %}
+            """);
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("more than once");
+    }
+
+    // A loop nested in the repeating section renders read-only through Fluid, so the rules for a
+    // control do not reach it; neither do they reach the collection's own token.
+    [Test]
+    public async Task ReadOnlyOccurrencesTakeAFilter()
+    {
+        using var stream = await Render(
+            """
+            count={{ Budgets | size }}
+
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }}
+
+            {% for other in Budgets limit:1 %}
+
+            again={{ b.Year | append: '!' }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """,
+            NewPlan());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var text = body.Descendants<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.StartsWith("again=", StringComparison.Ordinal) ||
+                        _.StartsWith("count=", StringComparison.Ordinal))
+            .ToList();
+        await Assert.That(text).IsEquivalentTo(["count=2", "again=2026!", "again=2027!"]);
+        await Assert.That(body.Descendants<SdtRun>().Count(_ => Tag(_) == "Year")).IsEqualTo(2);
+    }
+
     static bool IsItem(OpenXmlElement element) =>
         element is SdtBlock sdt &&
         sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null;
