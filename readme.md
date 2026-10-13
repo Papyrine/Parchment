@@ -1172,6 +1172,8 @@ result.ApplyTo(model);
 | numeric types | plain text (invariant format) | the text, parsed without group separators (see [Culture](#culture)) |
 | `string` marked `[Html]` | rich-text block control (block `w:sdt`) holding editable formatted content | HTML serialized back from the block |
 
+Dropdown labels are unique. Enum names that share a value each get an item labelled from that name's own `[Display]` attribute or humanized name, and such a value selects its first declared name. A label already used by an earlier item is suffixed with the member name, as in `Same (Second)`.
+
 Nullable variants are supported except `bool?` — a checkbox cannot represent null. Null values render as the control's grey placeholder — kind-appropriate text (`Choose an item` for a dropdown, `Enter a date` for a date picker, `Enter text` for text, `Enter rich text` for an `[Html]` block) — and extract as `Empty`, which `ApplyTo` writes back as null on a nullable member and skips on a non-nullable one (leaving its existing value). A member reached through a null parent object renders the same way; a checkbox, having no placeholder, renders unchecked and extracts as `false`. Members must have a public non-init setter so extraction can write back.
 
 **Why the temporal split.** `DateOnly` and `DateTime` use Word's native date picker, whose `w:fullDate` is a canonical value the picker maintains — so those never depend on parsing display text. `DateTimeOffset` and `TimeOnly` get **plain-text** controls instead: Word has no offset-aware or time-only picker, and `w:fullDate` is a bare `DateTime` that cannot carry an offset. Their run text is therefore the source of truth, rendered in a round-trippable ISO format and parsed back with the offset intact. Two consequences worth knowing:
@@ -1199,7 +1201,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1323-L1333' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1431-L1441' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. A heading is bold and a link is underlined by default, so neither is reported as `<strong>` or `<u>` and an unedited field extracts to the HTML it was rendered from. A departure from the default is reported as an inline style: `<span style="font-weight:normal">` for heading text whose bold was switched off, and `style="text-decoration:none"` on a link that is not underlined throughout. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -1224,7 +1226,7 @@ Protection is applied at registration whenever the model declares at least one `
 ```cs
 store.RegisterDocxTemplate<EditableOrder>(template, ProtectionMode.None);
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L602-L604' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L710-L712' title='Snippet source file'>snippet source</a> | <a href='#snippet-ProtectionModeNone' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 or via the source-generator attribute:

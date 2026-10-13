@@ -11,6 +11,7 @@ using SdtLock = DocumentFormat.OpenXml.Wordprocessing.Lock;
 /// (<c>w14:checked</c>, <c>w:fullDate</c>, <c>w:listItem/@w:value</c>) so extraction does not
 /// depend on parsing display text.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
 static class EditableFieldBuilder
 {
     // Kind-appropriate placeholder text: a dropdown showing "Enter text" reads as a broken text field,
@@ -228,19 +229,54 @@ static class EditableFieldBuilder
     static (OpenXmlElement, Run, bool) BuildDropDown(EditableEntry entry, object? value, RunProperties? sitePr)
     {
         var kind = new SdtContentDropDownList();
-        foreach (var name in Enum.GetNames(entry.ClrType))
+        var type = entry.ClrType;
+
+        // Declaration order, to tell which of several names sharing a value was declared first.
+        var fields = type.GetFields(BindingFlags.Public | BindingFlags.Static);
+        var displayTexts = new HashSet<string>(StringComparer.Ordinal);
+        string? selected = null;
+        foreach (var name in Enum.GetNames(type))
         {
             // Value is the member name — the canonical round-trip key extraction reads back. DisplayText
             // is the friendly label, rendered through Excelsior so a dropdown matches inline `{{ enum }}`
             // substitutions and Excelsior table cells: a [Display] attribute or ValueRenderer.ForEnums
             // override if set, otherwise the humanized member name.
-            var member = (Enum)Enum.Parse(entry.ClrType, name);
+            var member = (Enum)Enum.Parse(type, name);
+            var sharing = fields.Where(_ => member.Equals(_.GetValue(null))).ToList();
+            string label;
+            if (sharing.Count > 1)
+            {
+                // Excelsior renders by value, so every name of a shared value would get the label of
+                // whichever name the value formats as. Label each from its own field instead.
+                label = NameLabel(sharing.Single(_ => _.Name == name));
+            }
+            else
+            {
+                label = EnumRender.Render(member);
+            }
+
+            // Word refuses two items with one display text, and extraction resolves the picked text
+            // back through the first matching item, so a repeated label is qualified by its name.
+            if (!displayTexts.Add(label))
+            {
+                label = $"{label} ({name})";
+                displayTexts.Add(label);
+            }
+
             kind.AppendChild(
                 new ListItem
                 {
-                    DisplayText = EnumRender.Render(member),
+                    DisplayText = label,
                     Value = name
                 });
+
+            // A value with several names selects its first declared one.
+            if (sharing.Count > 0 &&
+                sharing[0].Name == name &&
+                member.Equals(value))
+            {
+                selected = label;
+            }
         }
 
         if (value == null)
@@ -249,8 +285,49 @@ static class EditableFieldBuilder
         }
 
         // The visible text must be the selected item's DisplayText, so extraction maps it back via the
-        // matching w:listItem.
-        return (kind, TextRun(EnumRender.Render((Enum)value), sitePr, multiLine: false), false);
+        // matching w:listItem. A value with no item (undefined, or a flags combination) has only its
+        // rendered text.
+        selected ??= EnumRender.Render((Enum)value);
+        return (kind, TextRun(selected, sitePr, multiLine: false), false);
+    }
+
+    // Excelsior's enum label rules, applied to one named field rather than to a value: [Display]
+    // Description, then Name, otherwise the member name split into words.
+    static string NameLabel(FieldInfo field)
+    {
+        var display = field.GetCustomAttribute<System.ComponentModel.DataAnnotations.DisplayAttribute>();
+        if (display?.Description != null)
+        {
+            return display.Description;
+        }
+
+        if (display?.Name != null)
+        {
+            return display.Name;
+        }
+
+        var name = field.Name;
+        if (name.All(char.IsUpper))
+        {
+            return name;
+        }
+
+        var builder = new StringBuilder(name.Length + 5);
+        builder.Append(name[0]);
+        foreach (var current in name.AsSpan(1))
+        {
+            if (char.IsUpper(current))
+            {
+                builder.Append(' ');
+                builder.Append(char.ToLowerInvariant(current));
+            }
+            else
+            {
+                builder.Append(current);
+            }
+        }
+
+        return builder.ToString();
     }
 
     static Run TextRun(string value, RunProperties? sitePr, bool multiLine)
