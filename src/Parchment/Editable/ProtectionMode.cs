@@ -4,8 +4,8 @@ namespace Parchment;
 /// Controls whether a registered docx template's output is locked down with
 /// <c>w:documentProtection w:edit="readOnly"</c> (with editable-range exceptions around each
 /// <see cref="EditableFieldAttribute"/> site). Protection is cooperative, not security: Word
-/// enforces it in the UI, but anyone can remove it (no password is set) or edit the underlying
-/// XML directly.
+/// enforces it in the UI, but anyone can remove it (no password is set, though one the template
+/// already carries is kept) or edit the underlying XML directly.
 /// </summary>
 public enum ProtectionMode
 {
