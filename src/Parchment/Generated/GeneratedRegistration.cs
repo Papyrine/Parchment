@@ -17,8 +17,11 @@ public static class GeneratedRegistration
     /// generated module initializer; every <see cref="TemplateStore"/> materializes the definition
     /// on the model's first render.
     /// </summary>
-    public static void RegisterDocxTemplate(Type modelType, byte[] template, ProtectionMode protection = ProtectionMode.WhenEditable) =>
+    public static void RegisterDocxTemplate(Type modelType, byte[] template, ProtectionMode protection = ProtectionMode.WhenEditable)
+    {
+        ArgumentNullException.ThrowIfNull(template);
         GeneratedTemplateDefinitions.Add(modelType, new DocxTemplateDefinition(template, protection));
+    }
 
     /// <summary>
     /// Stores the embedded markdown template — and its resolved style source, when the project
@@ -26,8 +29,11 @@ public static class GeneratedRegistration
     /// initializer; every <see cref="TemplateStore"/> materializes the definition on the model's
     /// first render.
     /// </summary>
-    public static void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource = null) =>
+    public static void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource = null)
+    {
+        ArgumentNullException.ThrowIfNull(markdown);
         GeneratedTemplateDefinitions.Add(modelType, new MarkdownTemplateDefinition(markdown, styleSource));
+    }
 
     public static void RegisterFluidAccessors(
         Type type,

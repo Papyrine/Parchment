@@ -38,7 +38,7 @@
                 public MarkdownToken(string markdown) { }
             }
 
-            [System.AttributeUsage(System.AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
+            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
             public sealed class ExcelsiorTableAttribute : System.Attribute
             {
                 public string? HeadingParagraphStyle { get; set; }
@@ -50,7 +50,7 @@
                 public string? Configure { get; set; }
             }
 
-            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
+            [System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
             public sealed class EditableFieldAttribute : System.Attribute
             {
                 public bool MultiLine { get; set; }
@@ -137,6 +137,7 @@
         TemplateFile[] docxes,
         string? modelFileName,
         bool withProjectDir = false,
+        bool realParchment = false,
         LanguageVersion languageVersion = LanguageVersion.Default)
     {
         var directory = Path.Combine(Path.GetTempPath(), "parchment-sg-tests", Guid.NewGuid().ToString("N"));
@@ -157,18 +158,20 @@
         // What <LangVersion> becomes: the one set of parse options every tree in the project
         // shares, the generated ones included.
         var parseOptions = new CSharpParseOptions(languageVersion);
-        var syntaxTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(attributeSource, parseOptions),
-            modelFileName == null
-                ? CSharpSyntaxTree.ParseText(userSource, parseOptions)
-                : CSharpSyntaxTree.ParseText(userSource, parseOptions, path: CreateModelPath(directory, modelFileName))
-        };
+        var modelTree = modelFileName == null
+            ? CSharpSyntaxTree.ParseText(userSource, parseOptions)
+            : CSharpSyntaxTree.ParseText(userSource, parseOptions, path: CreateModelPath(directory, modelFileName));
+
+        // The stand-in attributes and the real assembly declare the same types, so a compilation
+        // gets one or the other.
+        SyntaxTree[] syntaxTrees = realParchment
+            ? [modelTree]
+            : [CSharpSyntaxTree.ParseText(attributeSource, parseOptions), modelTree];
 
         var compilation = CSharpCompilation.Create(
             "GeneratorTest",
             syntaxTrees,
-            BuildReferences(),
+            BuildReferences(realParchment),
             // Nullable context on so `string?` members carry NullableAnnotation.Annotated —
             // ShapeBuilder reads it to decide editable-field nullability.
             new(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
@@ -183,6 +186,44 @@
 
         return new(driver, compilation, additionalTexts, paths.ToImmutable());
     }
+
+    /// <summary>
+    /// Runs the generator and then compiles what it emitted, together with the model, against the
+    /// real Parchment, Fluid and Excelsior assemblies. <see cref="Run"/> stops at the generator, so
+    /// generated source that does not compile, or that warns, goes unnoticed there.
+    /// </summary>
+    public static CompileResult Compile(string userSource, params TemplateFile[] files)
+    {
+        var setup = CreateDriverWithDocxes(userSource, files, modelFileName: null, realParchment: true);
+        var driver = setup.Driver.RunGeneratorsAndUpdateCompilation(setup.Compilation, out var output, out _);
+        var result = driver.GetRunResult();
+        var diagnostics = output.GetDiagnostics()
+            .Where(_ => _.Severity >= DiagnosticSeverity.Warning &&
+                        IsGenerated(_.Location.SourceTree))
+            .ToImmutableArray();
+        return new(
+            result.Diagnostics,
+            diagnostics,
+            output,
+            string.Join('\n', output.SyntaxTrees.Where(IsGenerated).Select(_ => _.ToString())));
+    }
+
+    public static bool IsGenerated(SyntaxTree? tree) =>
+        tree != null &&
+        tree.FilePath.EndsWith(".g.cs", StringComparison.Ordinal);
+
+    /// <param name="Generator">What the generator itself reported.</param>
+    /// <param name="Generated">
+    /// What the compiler reported, warnings included, inside the generated files. The model's own
+    /// source is left out: declaring a member of a deprecated type warns there by design.
+    /// </param>
+    /// <param name="Output">The compilation with the generated files added.</param>
+    /// <param name="Source">The generated files, concatenated.</param>
+    public sealed record CompileResult(
+        ImmutableArray<Diagnostic> Generator,
+        ImmutableArray<Diagnostic> Generated,
+        Compilation Output,
+        string Source);
 
     static string CreateModelPath(string directory, string modelFileName)
     {
@@ -329,12 +370,13 @@
         return stream.ToArray();
     }
 
-    static MetadataReference[] BuildReferences()
+    static MetadataReference[] BuildReferences(bool realParchment)
     {
         var tpa = (string?) AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "";
         return tpa
             .Split(Path.PathSeparator)
             .Where(_ => !string.IsNullOrEmpty(_))
+            .Where(_ => realParchment || Path.GetFileName(_) != "Parchment.dll")
             .Select(MetadataReference (_) => MetadataReference.CreateFromFile(_))
             .ToArray();
     }

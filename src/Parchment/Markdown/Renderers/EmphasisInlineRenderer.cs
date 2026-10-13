@@ -16,28 +16,39 @@ class EmphasisInlineRenderer :
             var element = top.CurrentRuns[i];
             if (element is Run run)
             {
-                ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
-                if (styleId != null)
-                {
-                    // Assigned through the typed property so rStyle lands first in the rPr sequence.
-                    run.RunProperties!.RunStyle = new()
-                    {
-                        Val = styleId
-                    };
-                }
-
+                Apply(run, inline, styleId);
                 continue;
             }
 
             // A link arrives as one Hyperlink holding the runs of its text, so "**[text](url)**"
             // puts no Run of its own between the delimiters and the emphasis has to be carried
-            // inside. The {.StyleName} is not: a run takes a single rStyle, and replacing the one
-            // the link put there would stop the text reading as a link.
+            // inside. The {.StyleName} goes with it: a run takes a single rStyle, and the one on
+            // emphasis wins over a link's whichever of the two encloses the other.
             foreach (var inner in element.Descendants<Run>())
             {
-                ApplyStyle(inner, inline.DelimiterChar, inline.DelimiterCount);
+                Apply(inner, inline, styleId);
             }
         }
+    }
+
+    // One run carries one character style, and the inlines around it can ask for several. Which
+    // wins goes by what asked, not by nesting order: emphasis, then a classed span, then inline
+    // code, then the link ("Hyperlink" unless it names its own). Emphasis is the last to reach a
+    // run - it is applied once its children are written - so it replaces whatever is there;
+    // HtmlInlineRenderer and LinkInlineRenderer hold up the other end.
+    static void Apply(Run run, EmphasisInline inline, string? styleId)
+    {
+        ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
+        if (styleId == null)
+        {
+            return;
+        }
+
+        // Assigned through the typed property so rStyle lands first in the rPr sequence.
+        run.RunProperties!.RunStyle = new()
+        {
+            Val = styleId
+        };
     }
 
     // Emphasis nests, and the outer one applies to runs the inner already reached: "*_text_*" walks

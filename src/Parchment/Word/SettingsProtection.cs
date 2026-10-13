@@ -4,6 +4,12 @@
 /// cooperative UI lock, not security — a password would add no real protection but would force
 /// non-deterministic salt/hash generation into the output.
 ///
+/// The one exception is a template its author already protected with a password. That element is
+/// kept, hash and all, and only switched to enforced read-only: replacing it would hand out a
+/// document anyone can unprotect, and copying the author's salt and hash is still deterministic.
+/// Read-only is the strictest edit mode, so moving a forms, comments or tracked-changes template
+/// to it never loosens what the password guards.
+///
 /// CT_Settings is a strict xsd:sequence, so the element cannot simply be appended — it must land
 /// after every element that precedes <c>w:documentProtection</c> in the schema and before
 /// everything else. Word rejects (or "repairs") files that get this wrong.
@@ -55,13 +61,11 @@ static class SettingsProtection
         var part = mainPart.DocumentSettingsPart ?? mainPart.AddNewPart<DocumentSettingsPart>(RelationshipIds.Named(mainPart, SettingsCompatibility.RelationshipId));
         var settings = part.Settings ??= new();
 
+        var protection = settings.Elements<DocumentProtection>().FirstOrDefault(HasPassword) ?? new DocumentProtection();
         settings.RemoveAllChildren<DocumentProtection>();
 
-        var protection = new DocumentProtection
-        {
-            Edit = DocumentProtectionValues.ReadOnly,
-            Enforcement = true
-        };
+        protection.Edit = DocumentProtectionValues.ReadOnly;
+        protection.Enforcement = true;
 
         var before = settings.ChildElements.FirstOrDefault(_ => !preceding.Contains(_.GetType()));
         if (before == null)
@@ -73,4 +77,10 @@ static class SettingsProtection
             settings.InsertBefore(protection, before);
         }
     }
+
+    // Word writes the hash as w:hash (with the w:crypt* attributes) or, from 2013, as w:hashValue
+    // (with w:algorithmName). Either one means unprotecting asks for the password.
+    static bool HasPassword(DocumentProtection protection) =>
+        protection.Hash != null ||
+        protection.HashValue != null;
 }

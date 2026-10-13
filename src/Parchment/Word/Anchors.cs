@@ -80,13 +80,20 @@ static class Anchors
         // per-render path (~13% of total at 1000 loop iterations).
         //
         // Parchment bookmarks are inserted Start-then-End in the same paragraph
-        // (InsertAfterProperties). Document order therefore guarantees a Start is encountered
-        // before its matching End, so the single-pass id-set works correctly.
+        // (InsertAfterProperties), and a clone or a split carries the two together. So an
+        // anchor's End is the next End with its id among the same paragraph's children, and only
+        // that one is taken. The id alone does not say whose bookmark an End closes: caller code
+        // - a MutateToken delegate - can add a bookmark with an id an anchor already has,
+        // anywhere in the part, and matching by id across the part took that bookmark's End
+        // along with the anchors'.
         List<BookmarkStart>? starts = null;
         List<BookmarkEnd>? ends = null;
-        HashSet<string>? ids = null;
+        // The ids of the anchors opened in the current paragraph and not yet closed. A list
+        // rather than a set: an inline splice leaves the paragraph holding its anchor twice.
+        List<string>? open = null;
         foreach (var paragraph in root.Descendants<Paragraph>())
         {
+            open?.Clear();
             foreach (var child in paragraph.ChildElements)
             {
                 if (child is BookmarkStart {Name.Value: { } name} start &&
@@ -97,12 +104,12 @@ static class Anchors
                     var id = start.Id?.Value;
                     if (id != null)
                     {
-                        (ids ??= new(StringComparer.Ordinal)).Add(id);
+                        (open ??= []).Add(id);
                     }
                 }
                 else if (child is BookmarkEnd {Id.Value: { } endId} end &&
-                         ids != null &&
-                         ids.Contains(endId))
+                         open != null &&
+                         open.Remove(endId))
                 {
                     ends ??= [];
                     ends.Add(end);
@@ -127,6 +134,61 @@ static class Anchors
                 end.Remove();
             }
         }
+    }
+
+    /// <summary>
+    /// Removes every anchor-named bookmark <paramref name="root"/> arrived with, wherever it sits,
+    /// and reports whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// A document that was registered or half processed once and is supplied again - most often as
+    /// a markdown template's style source - can still hold anchors. Nothing in the new registration
+    /// refers to them, and a render only reads the parts that carry tokens, so one left in a
+    /// token-free part would reach every output. Registration therefore takes them out before the
+    /// scan, into the bytes it bakes, and the scan anchors what it needs afresh. Unlike
+    /// <see cref="StripAll"/> this cannot assume where a bookmark sits: the input is not known to
+    /// be Parchment's own work.
+    /// </remarks>
+    public static bool StripArrived(OpenXmlCompositeElement root)
+    {
+        List<OpenXmlElement>? remove = null;
+        HashSet<string>? open = null;
+        foreach (var element in root.Descendants())
+        {
+            if (element is BookmarkStart {Name.Value: { } name} start)
+            {
+                if (!name.StartsWith(Prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                (remove ??= []).Add(start);
+                if (start.Id?.Value is { } id)
+                {
+                    (open ??= new(StringComparer.Ordinal)).Add(id);
+                }
+            }
+            else if (element is BookmarkEnd {Id.Value: { } endId} end &&
+                     open != null &&
+                     open.Remove(endId))
+            {
+                // The first end after the start, and only that one: an id is meant to be unique,
+                // but the same document can hold a second pair under it and that one stays whole.
+                remove!.Add(end);
+            }
+        }
+
+        if (remove == null)
+        {
+            return false;
+        }
+
+        foreach (var element in remove)
+        {
+            element.Remove();
+        }
+
+        return true;
     }
 
     /// <summary>
