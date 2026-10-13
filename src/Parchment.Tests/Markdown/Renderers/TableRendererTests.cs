@@ -648,6 +648,73 @@ public partial class TableRendererTests
         await AssertMatchesSchema(doc);
     }
 
+    [Test]
+    public async Task TableAtTheColumnLimitRenders()
+    {
+        using var doc = await RenderDocument(PipeTable(63, 63));
+        var table = doc.MainDocumentPart!.Document!.Body!.Elements<Table>().Single();
+
+        await Assert.That(table.GetFirstChild<TableGrid>()!.Elements<GridColumn>().Count()).IsEqualTo(63);
+        foreach (var row in table.Elements<TableRow>())
+        {
+            await Assert.That(row.Elements<TableCell>().Count()).IsEqualTo(63);
+        }
+
+        await AssertMatchesSchema(doc);
+    }
+
+    // Word holds at most 63 columns in a table and does not open a document with a wider one. The
+    // schema allows it and the page renderer draws it, so the render is the only place to say so.
+    [Test]
+    [Arguments("pipe", 64)]
+    [Arguments("pipe", 70)]
+    [Arguments("grid", 64)]
+    [Arguments("quoted", 64)]
+    // A body row with more cells than the header keeps them all, so the widest row is what counts.
+    [Arguments("wider body row", 64)]
+    public async Task TableOverTheColumnLimitIsRejected(string shape, int columns)
+    {
+        var markdown = shape switch
+        {
+            "pipe" => PipeTable(columns, columns),
+            "grid" => GridTable(columns),
+            "quoted" => "> " + PipeTable(columns, columns).Replace("\n", "\n> "),
+            _ => PipeTable(2, columns)
+        };
+
+        var store = new TemplateStore();
+        store.RegisterMarkdownTemplate<EmptyModel>(markdown);
+
+        using var stream = new MemoryStream();
+        var exception = await Assert.ThrowsAsync<ParchmentRenderException>(() => store.Render(new EmptyModel(), stream));
+
+        await Assert.That(exception!.Message).Contains($"{columns} columns");
+        await Assert.That(exception.Message).Contains("at most 63");
+        await Assert.That(stream.Length).IsEqualTo(0);
+    }
+
+    static string PipeTable(int headerColumns, int bodyColumns) =>
+        string.Join(
+            '\n',
+            PipeRow(headerColumns, "h"),
+            PipeRow(headerColumns, "---"),
+            PipeRow(bodyColumns, "c"));
+
+    static string PipeRow(int columns, string cell) =>
+        "|" + string.Concat(Enumerable.Repeat($" {cell} |", columns));
+
+    static string GridTable(int columns) =>
+        string.Join(
+            '\n',
+            GridRow(columns, '+', "---"),
+            GridRow(columns, '|', " h "),
+            GridRow(columns, '+', "==="),
+            GridRow(columns, '|', " c "),
+            GridRow(columns, '+', "---"));
+
+    static string GridRow(int columns, char edge, string cell) =>
+        edge + string.Concat(Enumerable.Repeat(cell + edge, columns));
+
     static async Task AssertMatchesSchema(WordprocessingDocument doc)
     {
         var validator = new OpenXmlValidator(FileFormatVersions.Office2013);

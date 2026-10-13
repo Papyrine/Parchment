@@ -23,14 +23,11 @@
 static class MarkdownFormats
 {
     /// <summary>
-    /// A substitution of a plain dotted path and nothing else. A token carrying a filter or an
-    /// expression is left alone: its value is the filter's output rather than the member, which is
-    /// the same reason the docx flow rejects that shape as PARCH010.
+    /// Appends the filter to each token that is a plain path to an annotated member, in whichever
+    /// spelling Fluid reads as one (see <see cref="MarkdownOutputTokens"/>). A token carrying a
+    /// filter or an expression is left alone: its value is the filter's output rather than the
+    /// member, which is the same reason the docx flow rejects that shape as PARCH010.
     /// </summary>
-    static readonly Regex plainToken = new(
-        @"\{\{\s*(?<path>[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}",
-        RegexOptions.Compiled);
-
     public static string Rewrite(string markdown, FormatMap formats)
     {
         if (formats.IsEmpty)
@@ -39,38 +36,51 @@ static class MarkdownFormats
         }
 
         var loops = MarkdownLoopScope.Scan(markdown);
-        return plainToken.Replace(
-            markdown,
-            match =>
+        StringBuilder? builder = null;
+        var copied = 0;
+        foreach (var token in MarkdownOutputTokens.Scan(markdown, SharedFluid.Parser))
+        {
+            // A token that starts with a loop variable reads the loop item, whatever root
+            // path it happens to spell, so the root member's annotation is not its own.
+            // Nor is what sits in a raw or comment region a token at all.
+            if (token.Path == null ||
+                !token.IsPlain ||
+                loops.IsLiteral(token.Start) ||
+                loops.Shadows(token.Start, token.Path) ||
+                !formats.TryGet(token.Path, out var entry))
             {
-                // Fluid tolerates spaces around the dots; the map is keyed on the bare path.
-                var path = match.Groups["path"].Value
-                    .Replace(" ", "")
-                    .Replace("\t", "");
+                continue;
+            }
 
-                // A token that starts with a loop variable reads the loop item, whatever root
-                // path it happens to spell, so the root member's annotation is not its own.
-                // Nor is what sits in a raw or comment region a token at all.
-                if (loops.IsLiteral(match.Index) ||
-                    loops.Shadows(match.Index, path) ||
-                    !formats.TryGet(path, out var entry))
-                {
-                    return match.Value;
-                }
+            var filter = entry.Kind switch
+            {
+                FormatMapKind.Html => "html",
+                FormatMapKind.Markdown => "markdown",
+                _ => null
+            };
 
-                var filter = entry.Kind switch
-                {
-                    FormatMapKind.Html => "html",
-                    FormatMapKind.Markdown => "markdown",
-                    _ => null
-                };
+            if (filter == null)
+            {
+                continue;
+            }
 
-                if (filter == null)
-                {
-                    return match.Value;
-                }
+            // The dashes stay where they were, so the token still trims what it trimmed.
+            builder ??= new();
+            builder.Append(markdown, copied, token.Start - copied);
+            builder.Append(token.TrimLeft ? "{{- " : "{{ ");
+            builder.Append(token.Path);
+            builder.Append(" | ");
+            builder.Append(filter);
+            builder.Append(token.TrimRight ? " -}}" : " }}");
+            copied = token.End;
+        }
 
-                return $"{{{{ {path} | {filter} }}}}";
-            });
+        if (builder == null)
+        {
+            return markdown;
+        }
+
+        builder.Append(markdown, copied, markdown.Length - copied);
+        return builder.ToString();
     }
 }
