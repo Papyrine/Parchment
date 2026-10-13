@@ -102,7 +102,7 @@ static class OpenXmlHtmlSerializer
                 }
 
                 var tag = ListTag(numbering, numberingId, openTags.Count);
-                builder.Append('<').Append(tag).Append('>');
+                AppendListOpen(builder, tag, numbering, numberingId, openTags.Count);
                 openTags.Push(tag);
                 itemOpen = false;
             }
@@ -373,6 +373,56 @@ static class OpenXmlHtmlSerializer
         }
 
         return "ol";
+    }
+
+    static void AppendListOpen(StringBuilder builder, string tag, Numbering? numbering, int numberingId, int level)
+    {
+        builder.Append('<').Append(tag);
+        if (tag == "ol")
+        {
+            // 1 is what html assumes, and what a rendered list with no start attribute carries as
+            // an explicit override, so only another number is worth an attribute.
+            var start = ListStart(numbering!, numberingId, level);
+            if (start != 1)
+            {
+                builder.Append(" start=\"").Append(start.ToString(CultureInfo.InvariantCulture)).Append('"');
+            }
+        }
+
+        builder.Append('>');
+    }
+
+    // The number a list's first item shows: the instance's own override for the level when it has
+    // one (as a bare w:startOverride, or inside a whole replacement w:lvl), else the start of the
+    // level in the definition the instance points at. Word counts from 1 when nothing says.
+    static int ListStart(Numbering numbering, int numberingId, int level)
+    {
+        var instance = numbering
+            .Elements<NumberingInstance>()
+            .FirstOrDefault(_ => _.NumberID?.Value == numberingId);
+        if (instance == null)
+        {
+            return 1;
+        }
+
+        var levelOverride = instance
+            .Elements<LevelOverride>()
+            .FirstOrDefault(_ => _.LevelIndex?.Value == level);
+        var overridden = levelOverride?.StartOverrideNumberingValue?.Val?.Value ??
+                         levelOverride?.Level?.StartNumberingValue?.Val?.Value;
+        if (overridden != null)
+        {
+            return overridden.Value;
+        }
+
+        var abstractId = instance.AbstractNumId?.Val?.Value;
+        return numbering
+                   .Elements<AbstractNum>()
+                   .FirstOrDefault(_ => _.AbstractNumberId?.Value == abstractId)
+                   ?.Elements<Level>()
+                   .FirstOrDefault(_ => _.LevelIndex?.Value == level)
+                   ?.StartNumberingValue?.Val?.Value ??
+               1;
     }
 
     static string? HeadingTag(Paragraph paragraph)

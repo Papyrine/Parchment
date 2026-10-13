@@ -1696,6 +1696,78 @@ public partial class EditableFieldTests
     }
 
     [Test]
+    public Task HtmlEditableOrderedListStartRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"5\"><li>five</li><li>six</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartingAtZeroRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"0\"><li>zero</li><li>one</li></ol>");
+
+    [Test]
+    public Task HtmlEditableNestedOrderedListStartRoundTrips() =>
+        AssertHtmlRoundTrips("<ol start=\"3\"><li>a<ol start=\"7\"><li>b</li><li>c</li></ol></li><li>d</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartNestedInBulletItemRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a<ol start=\"4\"><li>b</li></ol></li><li>c</li></ul>");
+
+    [Test]
+    public Task HtmlEditableOrderedListStartAfterBulletListRoundTrips() =>
+        AssertHtmlRoundTrips("<ul><li>a</li></ul><ol start=\"2\"><li>b</li></ol>");
+
+    [Test]
+    public Task HtmlEditableOrderedListsEitherSideOfParagraphKeepTheirOwnStart() =>
+        AssertHtmlRoundTrips("<ol start=\"5\"><li>a</li></ol><p>mid</p><ol><li>b</li></ol><p>end</p><ol start=\"9\"><li>c</li></ol>");
+
+    [Test]
+    public async Task HtmlEditableOrderedListStartOfOneExtractsWithoutStart()
+    {
+        // The render writes a start override of 1 on every ordered list; that is html's default,
+        // not an attribute.
+        var extracted = await ExtractHtml("<ol start=\"1\"><li>a</li></ol>");
+
+        await Assert.That(extracted).IsEqualTo("<ol><li>a</li></ol>");
+    }
+
+    [Test]
+    public async Task HtmlEditableOrderedListStartReadsDefinitionLevelStart()
+    {
+        // A list numbered in Word can carry its first number on the definition's level, with no
+        // override on the instance.
+        var model = new EditableArticle
+        {
+            Title = "T",
+            Body = "<ol start=\"5\"><li>a</li><li>b</li></ol>"
+        };
+        using var stream = await RenderModel("{{ Body }}", model);
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var main = doc.MainDocumentPart!;
+            var numberingId = FindSdtBlock(main.Document!.Body!, "Body")
+                .Descendants<NumberingId>()
+                .First()
+                .Val!.Value;
+            var numbering = main.NumberingDefinitionsPart!.Numbering!;
+            var instance = numbering.Elements<NumberingInstance>().Single(_ => _.NumberID!.Value == numberingId);
+            instance.RemoveAllChildren<LevelOverride>();
+            numbering
+                .Elements<AbstractNum>()
+                .Single(_ => _.AbstractNumberId!.Value == instance.AbstractNumId!.Val!.Value)
+                .Elements<Level>()
+                .Single(_ => _.LevelIndex!.Value == 0)
+                .StartNumberingValue = new() { Val = 8 };
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableArticle>(stream);
+        result.ApplyTo(model);
+
+        await Assert.That(model.Body).IsEqualTo("<ol start=\"8\"><li>a</li><li>b</li></ol>");
+    }
+
+    [Test]
     [Arguments("mailto:a@b.co?subject=Hi%20there")]
     [Arguments("tel:+61-2-5550-1234")]
     [Arguments("https://example.com")]
