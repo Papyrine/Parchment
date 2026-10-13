@@ -16,6 +16,7 @@ sealed record ExtractedCollection(
     /// Builds the collection (a <c>List&lt;TItem&gt;</c> or <c>TItem[]</c> matching the model
     /// member) with newly constructed items, so every model it is applied to owns its own.
     /// </summary>
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public object Build()
     {
         var listType = typeof(List<>).MakeGenericType(Entry.ElementType);
