@@ -221,4 +221,17 @@ public class TokenScanTests
         var sites = TokenScan.Scan(text);
         await Assert.That(TokenScan.HasContentOutsideSites(text, sites)).IsFalse();
     }
+
+    [Test]
+    [Arguments("{{ x }}", true)]
+    [Arguments("  {{ x }}\t", true)]
+    [Arguments("\u00A0{{ x }}\n", true)]
+    [Arguments("a {{ x }}", false)]
+    [Arguments("{{ x }} a", false)]
+    [Arguments("{{ x }} {{ y }}", false)]
+    public async Task IsSolo(string text, bool expected)
+    {
+        var sites = TokenScan.Scan(text);
+        await Assert.That(TokenScan.IsSolo(text, sites.Count, sites[0].Offset, sites[0].Length)).IsEqualTo(expected);
+    }
 }
