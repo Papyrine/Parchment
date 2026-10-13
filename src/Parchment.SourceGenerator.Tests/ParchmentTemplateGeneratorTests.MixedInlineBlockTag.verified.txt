@@ -1,7 +1,13 @@
 ﻿{
   Diagnostics: [
     {
-      Location: : (10,1)-(10,15),
+      Location: /*
+
+[ParchmentModel]
+ ^^^^^^^^^^^^^^
+public partial class Invoice
+*/
+ : (10,1)-(10,15),
       Message: Template 'Invoice.parchment.docx' block tag '{% for line in Lines %}' shares a paragraph with other content; block tags must be on their own lines,
       Severity: Error,
       Descriptor: {

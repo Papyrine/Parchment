@@ -70,6 +70,18 @@ static class TokenScan
         return HasNonWhitespace(text, pos, text.Length);
     }
 
+    /// <summary>
+    /// Returns true if the site at <paramref name="offset"/> is the only one in
+    /// <paramref name="text"/> and everything around it is whitespace. This is what "alone in
+    /// its paragraph" means for a token whose output replaces the paragraph: padding typed
+    /// around the token is invisible in Word and goes with the paragraph, so it does not count
+    /// as content the swap would lose. The runtime and the source generator both ask here.
+    /// </summary>
+    public static bool IsSolo(string text, int siteCount, int offset, int length) =>
+        siteCount == 1 &&
+        !HasNonWhitespace(text, 0, offset) &&
+        !HasNonWhitespace(text, offset + length, text.Length);
+
     static bool HasNonWhitespace(string text, int start, int end)
     {
         for (var k = start; k < end; k++)

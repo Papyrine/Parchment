@@ -3,6 +3,8 @@
 /// for a model element type known only at runtime, then renders the table against the host
 /// <see cref="MainDocumentPart"/>.
 /// </summary>
+[RequiresUnreferencedCode(Unsupported.Trimming)]
+[RequiresDynamicCode(Unsupported.DynamicCode)]
 static class ExcelsiorTableBridge
 {
     static readonly ConcurrentDictionary<Type, BuilderInvoker> invokerCache = new();
@@ -15,14 +17,14 @@ static class ExcelsiorTableBridge
             IsGenericMethodDefinition: true
         });
 
-    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure)
+    public static Table BuildTable(Type elementType, object data, MainDocumentPart mainPart, BookmarkNames names, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure)
     {
         var invoker = invokerCache.GetOrAdd(elementType, CreateInvoker);
         var table = invoker(data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure);
 
         // Both flows, and every table that comes back through here: a "#name" link means the same
         // thing wherever the table came from.
-        ExcelsiorInternalLinks.Rewrite(table, mainPart);
+        ExcelsiorInternalLinks.Rewrite(table, mainPart, names);
         return table;
     }
 
@@ -76,8 +78,15 @@ static class ExcelsiorTableBridge
     static BuilderInvoker CreateInvoker(Type elementType)
     {
         var method = genericBuildTable.MakeGenericMethod(elementType);
+        // DoNotWrapExceptions: what a Configure hook or a row getter throws reaches the render as
+        // itself rather than inside a TargetInvocationException.
         return (data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure) =>
-            (Table) method.Invoke(null, [data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure])!;
+            (Table) method.Invoke(
+                null,
+                BindingFlags.DoNotWrapExceptions,
+                null,
+                [data, mainPart, headingParagraphStyle, bodyParagraphStyle, tableStyle, configure],
+                null)!;
     }
 
     delegate Table BuilderInvoker(object data, MainDocumentPart mainPart, string? headingParagraphStyle, string? bodyParagraphStyle, string? tableStyle, Action<object>? configure);
