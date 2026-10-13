@@ -200,9 +200,9 @@ public partial class MarkerDetectionTests
         await Assert.That(result.Sections).IsEqualTo(2);
     }
 
-    // Not a supported way to ask for a section, but a paragraph carrying a w:sectPr is read as a
-    // marker wherever it came from, and a token is caller code the markdown walk never saw. So the
-    // section pass still runs for a render that parked one.
+    // Not a supported way to ask for a section, but a paragraph carrying a w:sectPr of the shape a
+    // marker writes is read as one wherever it came from, and a token is caller code the markdown
+    // walk never saw. So the section pass still runs for a render that parked one.
     [Test]
     public async Task ParagraphFromAnOpenXmlTokenCarryingASectionIsRewritten()
     {
