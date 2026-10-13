@@ -40,6 +40,7 @@ public class LiquidMemberGeneratorTests
             public Dictionary<string, string> Lookup { get; set; } = new();
             public LineBag Bag { get; set; } = new();
             public LineList Listed { get; set; } = new();
+            public TokenValue Rich { get; set; } = "";
         }
         """;
 
@@ -108,6 +109,33 @@ public class LiquidMemberGeneratorTests
     {
         await Assert.That(DocxDiagnostics("{% for line in Lines %}", "{{ line.Name.size }}", "{% endfor %}")).IsEmpty();
         await Assert.That(MarkdownDiagnostics("{% for line in Lines %}{{ line.Name.size }}{% endfor %}")).IsEmpty();
+    }
+
+    // Generator counterpart of the runtime TokenValueTextTests. A string assigned to a TokenValue
+    // member reaches a template as a string, but the member holds markup on another render and
+    // answers none of a string's members then, so it is an object with no members here too.
+    [Test]
+    [Arguments("Rich.size")]
+    [Arguments("Rich.first")]
+    [Arguments("Rich.last")]
+    public async Task LiquidMemberOfATokenValueIsRejected(string path)
+    {
+        await Assert.That(DocxDiagnostics($"{{{{ {path} }}}}")).IsEquivalentTo(["PARCH001"]);
+        await Assert.That(MarkdownDiagnostics($"{{{{ {path} }}}}")).IsEquivalentTo(["PARCH001"]);
+    }
+
+    [Test]
+    public async Task TokenValueIsNotALoopSource()
+    {
+        await Assert.That(DocxDiagnostics("{% for item in Rich %}", "row", "{% endfor %}")).IsEquivalentTo(["PARCH002"]);
+        await Assert.That(MarkdownDiagnostics("{% for item in Rich %}row{% endfor %}")).IsEquivalentTo(["PARCH002"]);
+    }
+
+    [Test]
+    public async Task TokenValueIsAValueAndAConditionOperand()
+    {
+        await Assert.That(DocxDiagnostics("{{ Rich | upcase }}", "{% if Rich == 'text' %}", "{{ Rich }}", "{% endif %}")).IsEmpty();
+        await Assert.That(MarkdownDiagnostics("{{ Rich | upcase }}{% if Rich == 'text' %}{{ Rich }}{% endif %}")).IsEmpty();
     }
 
     static List<string> DocxDiagnostics(params string[] paragraphs) =>

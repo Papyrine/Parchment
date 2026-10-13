@@ -13,6 +13,7 @@ namespace Parchment;
 /// </summary>
 public static class ParchmentExtractor
 {
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public static ExtractResult<TModel> Extract<TModel>(string path, CultureInfo? culture = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -20,6 +21,7 @@ public static class ParchmentExtractor
         return Extract<TModel>(file, culture);
     }
 
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public static ExtractResult<TModel> Extract<TModel>(Stream docx, CultureInfo? culture = null)
     {
         ArgumentNullException.ThrowIfNull(docx);
@@ -153,6 +155,7 @@ public static class ParchmentExtractor
         }
     }
 
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart, List<ExtractedField> rowFields)
     {
         var listType = typeof(List<>).MakeGenericType(entry.ElementType);
