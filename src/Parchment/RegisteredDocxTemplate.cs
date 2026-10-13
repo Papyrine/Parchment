@@ -65,11 +65,12 @@ class RegisteredDocxTemplate(
                         continue;
                     }
 
-                    await RenderPartAsync(mainPart, part, target.part, target.root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles).ConfigureAwait(false);
+                    await RenderPartAsync(mainPart, part, target.part, target.root, part.PartUri == mainPartUri, context, model, numberingState, editableState, bookmarks, cloneIds, styles, cancel).ConfigureAwait(false);
                 }
 
                 foreach (var (_, root) in partRoots.Values)
                 {
+                    cancel.ThrowIfCancellationRequested();
                     Anchors.StripAll(root);
                     // Once every substitution in the part has run, so splitting a w:t can no longer
                     // disturb the offsets the substitutions were driven by.
@@ -110,6 +111,7 @@ class RegisteredDocxTemplate(
                 DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
+            cancel.ThrowIfCancellationRequested();
             doc.Save();
         }
 
@@ -121,7 +123,7 @@ class RegisteredDocxTemplate(
         await stream.CopyToAsync(output, cancel).ConfigureAwait(false);
     }
 
-    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlPart owner, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, CloneIds? cloneIds, Lazy<StyleSet> styles)
+    async Task RenderPartAsync(MainDocumentPart mainPart, PartScopeTree part, OpenXmlPart owner, OpenXmlCompositeElement root, bool isBody, TemplateContext context, object model, WordNumberingState numberingState, EditableState editableState, BookmarkIds bookmarks, CloneIds? cloneIds, Lazy<StyleSet> styles, Cancel cancel)
     {
         // Editable fields dispatch only in the document body. Word does not reliably honor
         // editable-range exceptions in headers/footers/notes, so the same token there renders
@@ -147,7 +149,8 @@ class RegisteredDocxTemplate(
             cloneIds,
             numberingState,
             styles,
-            imagePolicies);
+            imagePolicies,
+            cancel);
         try
         {
             await runner.RunAsync(part.Nodes).ConfigureAwait(false);

@@ -22,6 +22,7 @@ class ScopeTreeRunner(
     WordNumberingState numberingState,
     Lazy<StyleSet> styles,
     ImagePolicies imagePolicies,
+    Cancel cancel,
     List<Table>? tables = null,
     List<Paragraph>? sections = null,
     List<Paragraph>? carriedSections = null)
@@ -436,6 +437,9 @@ class ScopeTreeRunner(
 
         for (var i = tokenCount - 1; i >= 0; i--)
         {
+            // Per token, so a render stops at the next token after the caller cancels rather than
+            // at the end of the part. A token check is a volatile read: nothing is allocated.
+            cancel.ThrowIfCancellationRequested();
             var token = node.Tokens[i];
             try
             {
@@ -691,7 +695,7 @@ class ScopeTreeRunner(
             try
             {
                 // Renumbers its own bookmarks, from the same counter.
-                return MarkdownRendering.Render(md.Source, mainPart, relationships.Owner, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+                return MarkdownRendering.Render(md.Source, mainPart, relationships.Owner, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections, cancel);
             }
             catch (TableColumnLimitException exception)
             {
@@ -1061,6 +1065,7 @@ class ScopeTreeRunner(
             numberingState,
             styles,
             imagePolicies,
+            cancel,
             tablesToCheck,
             sectionMarkers,
             sectionBreaks)
@@ -1071,6 +1076,8 @@ class ScopeTreeRunner(
         var first = true;
         foreach (var item in items)
         {
+            cancel.ThrowIfCancellationRequested();
+
             // Each iteration gets its own non-bubbling child scope so the loop variable binding
             // is confined to the iteration. Without this, context.SetValue lands in the root
             // scope and the binding leaks past `{% endfor %}` — shadowing model properties of
@@ -1220,6 +1227,7 @@ class ScopeTreeRunner(
         var first = true;
         foreach (var fluidItem in effectiveItems)
         {
+            cancel.ThrowIfCancellationRequested();
             var rawItem = isBlank ? null : fluidItem.ToObjectValue();
             context.EnterChildScope();
             try
@@ -1259,6 +1267,7 @@ class ScopeTreeRunner(
                     numberingState,
                     styles,
                     imagePolicies,
+                    cancel,
                     tablesToCheck,
                     sectionMarkers,
                     sectionBreaks)
@@ -1525,7 +1534,7 @@ class ScopeTreeRunner(
             CollectAnchors(element, branchAnchors, ifNode.NestedAnchors);
         }
 
-        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, tablesToCheck, sectionMarkers, sectionBreaks)
+        var innerRunner = new ScopeTreeRunner(templateName, partUri, branchAnchors, context, mainPart, relationships, rootModel, excelsiorTables, formats, stringLists, editables, editableState, bookmarks, cloneIds, numberingState, styles, imagePolicies, cancel, tablesToCheck, sectionMarkers, sectionBreaks)
         {
             loopVariables = loopVariables
         };

@@ -742,6 +742,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     [RequiresDynamicCode(Unsupported.DynamicCode)]
     public Task Render<TModel>(TModel model, Stream output, WordDocumentProperties? properties, Cancel cancel = default)
     {
+        // Before the template is resolved: for a generated template the first render is what
+        // scans and validates it.
+        cancel.ThrowIfCancellationRequested();
+
         var template = Resolve(typeof(TModel));
 
         if (model == null)
@@ -770,6 +774,9 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
     [RequiresDynamicCode(Unsupported.DynamicCode)]
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
+        // Before the file is created, so an already cancelled call leaves nothing at the path.
+        cancel.ThrowIfCancellationRequested();
+
         // Rendered into a sibling temporary file and moved into place, so the destination is
         // never truncated ahead of a render that then throws, and never holds half a document
         // when the write itself fails. The same directory keeps the move on one volume, where it

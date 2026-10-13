@@ -25,6 +25,9 @@ class RegisteredMarkdownTemplate(
 
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
+        // Before the liquid render, which is the first thing to read the model.
+        cancel.ThrowIfCancellationRequested();
+
         var context = SharedFluid.CreateContext(model, SharedFluid.MarkdownOptions);
         using var writer = new StringWriter();
         var blankOutputs = MarkdownBlankOutputs.Begin(context, writer);
@@ -91,7 +94,7 @@ class RegisteredMarkdownTemplate(
                 bool mayHoldSections;
                 try
                 {
-                    elements = MarkdownRendering.Render(markdownText, mainPart, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections);
+                    elements = MarkdownRendering.Render(markdownText, mainPart, mainPart, numberingState, imagePolicies, bookmarks, headingOffset: 0, out mayHoldSections, cancel);
                 }
                 catch (SectionMarkerException exception)
                 {
@@ -108,6 +111,8 @@ class RegisteredMarkdownTemplate(
                 {
                     body.AppendChild(element);
                 }
+
+                cancel.ThrowIfCancellationRequested();
 
                 // Before anything measures or numbers the document: a table is taller than the marker
                 // paragraph it replaces, so every page number after it moves.
@@ -168,6 +173,7 @@ class RegisteredMarkdownTemplate(
                 DocumentPropertiesWriter.Apply(doc, properties, Name);
             }
 
+            cancel.ThrowIfCancellationRequested();
             doc.Save();
         }
 
@@ -252,7 +258,8 @@ class RegisteredMarkdownTemplate(
                 cloneIds,
                 numberingState,
                 styles,
-                imagePolicies);
+                imagePolicies,
+                cancel);
             try
             {
                 await runner.RunAsync(part.Nodes).ConfigureAwait(false);
