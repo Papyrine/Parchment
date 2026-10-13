@@ -16,8 +16,8 @@ public partial class ValueFormattingTests
         public TimeSpan Span { get; init; } = new(1, 2, 3, 4);
         public TimeSpan Short { get; init; } = new(0, 0, 90);
         public TimeSpan? NoSpan { get; init; }
-        public TimeOnly Time { get; init; } = new(13, 5, 6);
-        public TimeOnly? MaybeTime { get; init; } = new(7, 8, 9);
+        public Time Time { get; init; } = new(13, 5, 6);
+        public Time? MaybeTime { get; init; } = new(7, 8, 9);
         public IReadOnlyList<Line> Lines { get; init; } = [new(), new()];
     }
 

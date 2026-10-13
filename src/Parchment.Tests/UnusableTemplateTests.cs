@@ -90,7 +90,7 @@ public partial class UnusableTemplateTests
     static byte[] Presentation()
     {
         using var stream = new MemoryStream();
-        using (var deck = DocumentFormat.OpenXml.Packaging.PresentationDocument.Create(stream, DocumentFormat.OpenXml.PresentationDocumentType.Presentation))
+        using (var deck = PresentationDocument.Create(stream, PresentationDocumentType.Presentation))
         {
             deck.AddPresentationPart().Presentation = new();
         }

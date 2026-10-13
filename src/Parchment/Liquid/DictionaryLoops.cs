@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-
 /// <summary>
 /// Makes the entry a <c>{% for kv in Lookup %}</c> loop hands out answer to <c>Key</c> and
 /// <c>Value</c>, the names every validator binds the loop variable to.

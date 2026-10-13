@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Text.Encodings.Web;
 
 namespace Parchment;
 

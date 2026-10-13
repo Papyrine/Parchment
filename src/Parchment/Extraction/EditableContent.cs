@@ -120,8 +120,11 @@ static class EditableContent
                 continue;
             }
 
-            if (child.NamespaceUri == wordNamespace &&
-                child.LocalName is "del" or "moveFrom")
+            if (child is
+                {
+                    NamespaceUri: wordNamespace,
+                    LocalName: "del" or "moveFrom"
+                })
             {
                 continue;
             }
@@ -164,9 +167,13 @@ static class EditableContent
 
     static bool HasRemovalMark(OpenXmlElement? properties) =>
         properties != null &&
-        properties.Elements().Any(_ => _.LocalName is "del" or "moveFrom");
+        properties.Elements()
+            .Any(_ => _.LocalName is "del" or "moveFrom");
 
     static bool IsMath(OpenXmlElement element) =>
-        element.NamespaceUri == mathNamespace &&
-        element.LocalName == "oMath";
+        element is
+        {
+            NamespaceUri: mathNamespace,
+            LocalName: "oMath"
+        };
 }

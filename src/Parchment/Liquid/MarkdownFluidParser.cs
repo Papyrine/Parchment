@@ -1,7 +1,3 @@
-using System.Text.Encodings.Web;
-using Fluid.Parser;
-using static Parlot.Fluent.Parsers;
-
 /// <summary>
 /// Fluid's parser with <c>{% liquid %}</c> replaced by a statement the validators can see.
 /// </summary>

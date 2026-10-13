@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-
 /// <summary>
 /// Removes the emphasis a markdown template wrapped around a token whose value turned out blank, so
 /// <c>**{{ Name }}**</c> prints nothing for an empty <c>Name</c> rather than <c>****</c>.
