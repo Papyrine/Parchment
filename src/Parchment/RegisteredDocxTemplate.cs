@@ -112,7 +112,10 @@ class RegisteredDocxTemplate(
             }
 
             cancel.ThrowIfCancellationRequested();
-            doc.Save();
+
+            // No doc.Save() here: disposing the package is what serialises it, and a save ahead of
+            // that wrote every loaded part twice. See "A package is saved by its Dispose" in
+            // contributing.md.
         }
 
         // A part added during this render — a numbering part for a list, an image, editable-field

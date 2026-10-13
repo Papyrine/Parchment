@@ -160,7 +160,8 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
             // model-independent, so registration is the right place. See SettingsCompatibility.
             SettingsCompatibility.Apply(doc.MainDocumentPart!);
 
-            doc.Save();
+            // No doc.Save() here: the dispose serialises the package, once. See "A package is
+            // saved by its Dispose" in contributing.md.
         }
 
         if (macros)
@@ -331,7 +332,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 parts.Clear();
             }
 
-            doc.Save();
+            // Saved by the dispose, as in RegisterDocxTemplate.
         }
 
         if (macros)
@@ -386,7 +387,7 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 SettingsCompatibility.Apply(mainPart);
             }
 
-            doc.Save();
+            // Saved by the dispose, as in RegisterDocxTemplate.
         }
 
         return (stream.ToArray(), compatibilityBaked);
