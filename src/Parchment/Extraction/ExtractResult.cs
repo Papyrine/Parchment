@@ -47,6 +47,7 @@ public sealed class ExtractResult<TModel>
     /// applicable path has a null intermediate object, a <see cref="ParchmentExtractionException"/>
     /// is thrown before anything is mutated.
     /// </summary>
+    [RequiresDynamicCode(Unsupported.DynamicCode)]
     public void ApplyTo(TModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -114,10 +115,11 @@ public sealed class ExtractResult<TModel>
         }
 
         // Replace-all: the rebuilt list is the new collection state (added rows appear, removed rows
-        // are absent). Callers needing identity preservation diff the rebuilt list themselves.
+        // are absent). Callers needing identity preservation diff the rebuilt list themselves. The
+        // list and its items are built per call, so models applied from one result share nothing.
         foreach (var collection in applicableCollections)
         {
-            collection.Entry.Setter(model, collection.List);
+            collection.Entry.Setter(model, collection.Build());
         }
     }
 }

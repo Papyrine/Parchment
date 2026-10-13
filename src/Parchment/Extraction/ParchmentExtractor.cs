@@ -157,17 +157,19 @@ public static class ParchmentExtractor
         }
     }
 
-    [RequiresDynamicCode(Unsupported.DynamicCode)]
-    static object ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart, List<ExtractedField> rowFields)
+    // Reads the rows as values rather than building the items here: ExtractedCollection.Build
+    // constructs the list and its items once per ApplyTo, so no two models share them.
+    static List<List<(EditableEntry Entry, object? Value)>> ReconstructCollection(SdtElement container, CollectionEntry entry, CultureInfo culture, MainDocumentPart mainPart, List<ExtractedField> rowFields)
     {
-        var listType = typeof(List<>).MakeGenericType(entry.ElementType);
-        var list = (IList)Activator.CreateInstance(listType)!;
+        var rows = new List<List<(EditableEntry Entry, object? Value)>>();
 
         foreach (var itemSdt in RepeatedItems(container))
         {
+            // Never handed out: only answers CanReach for an element as the factory builds it.
             var item = entry.ElementFactory();
             var isBlank = EditableRepeatingBuilder.IsBlankItem(itemSdt);
             var anyValue = false;
+            var row = new List<(EditableEntry Entry, object? Value)>();
             var itemFields = new List<ExtractedField>();
             foreach (var elementEntry in entry.ElementMap.Entries)
             {
@@ -199,7 +201,11 @@ public static class ParchmentExtractor
 
                 // Where an object on the way could not be created the value has nowhere to go,
                 // and the row's entry says so instead of the value being dropped.
-                if (!elementEntry.CanReach(item))
+                if (elementEntry.CanReach(item))
+                {
+                    row.Add((elementEntry, field.Value));
+                }
+                else
                 {
                     field = field with
                     {
@@ -229,20 +235,13 @@ public static class ParchmentExtractor
 
             foreach (var field in itemFields)
             {
-                rowFields.Add(field with { Path = $"{entry.DottedPath}[{list.Count}].{field.Path}" });
+                rowFields.Add(field with { Path = $"{entry.DottedPath}[{rows.Count}].{field.Path}" });
             }
 
-            list.Add(item);
+            rows.Add(row);
         }
 
-        if (!entry.IsArray)
-        {
-            return list;
-        }
-
-        var array = Array.CreateInstance(entry.ElementType, list.Count);
-        list.CopyTo(array, 0);
-        return array;
+        return rows;
     }
 
     static IEnumerable<SdtElement> RepeatedItems(SdtElement container)
