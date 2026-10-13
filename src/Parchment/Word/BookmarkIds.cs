@@ -12,17 +12,26 @@
 /// refers to a bookmark by id: a link's <c>w:anchor</c> and a <c>PAGEREF</c> both name it.
 /// </para>
 /// <para>
+/// A <see cref="MutateToken"/> is caller code as well, but it produces no fragment: it edits its
+/// host paragraph in place, among markers that are the template's and the anchor's. So the markers
+/// the host holds are noted before the delegate runs (<see cref="Markers"/>) and what it added
+/// beyond them is renumbered afterwards (<see cref="RenumberAdded"/>). The host is all that is
+/// walked: a marker the delegate puts outside its own paragraph keeps the id it was given.
+/// </para>
+/// <para>
 /// The counter is seeded at registration with the highest id the template carries, the anchor
-/// bookmarks included. Anchors are gone before the save, but <see cref="Anchors.StripAll"/> pairs
-/// an anchor's end to its start by id, so a produced bookmark that shared an anchor's id would lose
-/// its end to that pass. Starting above them leaves a gap in the output's ids, which costs nothing:
-/// the ids have to be distinct, not dense. Sequential in processing order, so the same template and
-/// model give the same ids.
+/// bookmarks included, so nothing numbered here shares an id with an anchor while both are in the
+/// document. Anchors are gone before the save, which leaves a gap in the output's ids and costs
+/// nothing: the ids have to be distinct, not dense. Sequential in processing order, so the same
+/// template and model give the same ids.
 /// </para>
 /// </remarks>
 sealed class BookmarkIds(int max)
 {
     int last = max;
+
+    // Beside the ids because both are per render and both reach everything that writes a bookmark.
+    public BookmarkNames Names { get; } = new();
 
     public string Next() =>
         (++last).ToString(CultureInfo.InvariantCulture);
@@ -44,6 +53,61 @@ sealed class BookmarkIds(int max)
         foreach (var element in elements)
         {
             Renumber(element, ref open);
+        }
+    }
+
+    /// <summary>
+    /// The bookmark markers <paramref name="element"/> holds, taken before caller code edits it in
+    /// place so that <see cref="RenumberAdded"/> can tell what the caller added.
+    /// </summary>
+    public static HashSet<OpenXmlElement> Markers(OpenXmlElement element)
+    {
+        var markers = new HashSet<OpenXmlElement>(ReferenceEqualityComparer.Instance);
+        foreach (var bookmark in Bookmarks(element))
+        {
+            markers.Add(bookmark);
+        }
+
+        return markers;
+    }
+
+    /// <summary>
+    /// Give every bookmark put into <paramref name="element"/> since <paramref name="existing"/>
+    /// was taken a fresh id. Only one that both opens and closes inside the element: a bookmark
+    /// that reaches outside it is left on the id it was given, since renumbering the half that is
+    /// in view would part it from the half that is not.
+    /// </summary>
+    public void RenumberAdded(OpenXmlElement element, HashSet<OpenXmlElement> existing)
+    {
+        Dictionary<string, BookmarkStart>? open = null;
+        foreach (var bookmark in Bookmarks(element))
+        {
+            if (existing.Contains(bookmark))
+            {
+                continue;
+            }
+
+            if (bookmark is BookmarkStart start)
+            {
+                var id = start.Id?.Value;
+                if (id != null)
+                {
+                    open ??= new(StringComparer.Ordinal);
+                    open[id] = start;
+                }
+            }
+            else if (bookmark is BookmarkEnd end)
+            {
+                var id = end.Id?.Value;
+                if (id != null &&
+                    open != null &&
+                    open.Remove(id, out var opened))
+                {
+                    var replacement = Next();
+                    opened.Id = replacement;
+                    end.Id = replacement;
+                }
+            }
         }
     }
 

@@ -3,16 +3,36 @@ static class DocxArchiveReader
     static readonly XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     static readonly XName paragraphName = w + "p";
     static readonly XName textName = w + "t";
+    static readonly XName fallbackName = XName.Get("Fallback", "http://schemas.openxmlformats.org/markup-compatibility/2006");
+    static readonly XName sdtName = w + "sdt";
+    static readonly XName sdtPropertiesName = w + "sdtPr";
+    static readonly XNamespace w14 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
-    public static DocxReadResult Read(string filePath)
+    static readonly HashSet<XName> valueControlKinds =
+    [
+        w + "text",
+        w + "date",
+        w + "dropDownList",
+        w + "comboBox",
+        w14 + "checkbox",
+        w + "picture"
+    ];
+
+    // Takes the file's bytes rather than its path: the caller embeds those same bytes, so what is
+    // validated here is what ships, and the file is opened once, by the one place that knows how
+    // to share it with a word processor that has it open.
+    public static DocxReadResult Read(byte[] content)
     {
         var paragraphs = new List<string>();
         var bodyParagraphs = new List<string>();
+        var bodyFallbacks = new List<bool>();
         var containers = new List<int>();
+        var valueControlSpans = new List<int>();
         var containerCount = 0;
         var hasRemovePersonalInformation = false;
+        var hasMainPart = false;
         var builder = new StringBuilder();
-        using var archive = ZipFile.OpenRead(filePath);
+        using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
         foreach (var entry in archive.Entries)
         {
             if (IsSettingsPart(entry.FullName))
@@ -31,6 +51,7 @@ static class DocxArchiveReader
             // Zip entry order is not guaranteed body-first, so track the body part explicitly —
             // editable-field validation is body-scoped.
             var isBody = IsBodyPart(entry.FullName);
+            hasMainPart |= isBody;
 
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
@@ -42,7 +63,8 @@ static class DocxArchiveReader
             foreach (var paragraph in doc.Descendants(paragraphName))
             {
                 builder.Clear();
-                AppendOwnText(paragraph, builder);
+                var spans = isBody ? valueControlSpans : null;
+                AppendOwnText(paragraph, builder, spans, bodyParagraphs.Count, InsideValueControl(paragraph));
 
                 if (builder.Length > 0)
                 {
@@ -52,12 +74,27 @@ static class DocxArchiveReader
                     if (isBody)
                     {
                         bodyParagraphs.Add(text);
+                        bodyFallbacks.Add(InFallback(paragraph));
                     }
                 }
             }
         }
 
-        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, bodyFallbacks, containers, valueControlSpans, hasRemovePersonalInformation, hasMainPart);
+    }
+
+    // The VML copy of a text box, which mirrors the DrawingML copy in the mc:Choice beside it.
+    static bool InFallback(XElement paragraph)
+    {
+        foreach (var ancestor in paragraph.Ancestors())
+        {
+            if (ancestor.Name == fallbackName)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)
@@ -80,21 +117,72 @@ static class DocxArchiveReader
     // Mirrors the runtime's ParagraphText.Texts: a text box anchored in a paragraph holds
     // paragraphs of its own, which the outer Descendants walk visits separately, so their text
     // is not also the anchoring paragraph's.
-    static void AppendOwnText(XElement element, StringBuilder builder)
+    //
+    // spans collects, for the body part, the stretches of that text sitting inside a content
+    // control that holds a single typed value: an [EditableField] token there would render as a
+    // control nested in it, which Word refuses to open (PARCH016).
+    static void AppendOwnText(XElement element, StringBuilder builder, List<int>? spans, int paragraphIndex, bool insideValueControl)
     {
         foreach (var child in element.Elements())
         {
             if (child.Name == textName)
             {
+                if (insideValueControl &&
+                    spans != null &&
+                    child.Value.Length > 0)
+                {
+                    spans.Add(paragraphIndex);
+                    spans.Add(builder.Length);
+                    spans.Add(builder.Length + child.Value.Length);
+                }
+
                 builder.Append(child.Value);
                 continue;
             }
 
             if (child.Name != paragraphName)
             {
-                AppendOwnText(child, builder);
+                AppendOwnText(child, builder, spans, paragraphIndex, insideValueControl || IsValueControl(child));
             }
         }
+    }
+
+    static bool InsideValueControl(XElement paragraph)
+    {
+        foreach (var ancestor in paragraph.Ancestors(sdtName))
+        {
+            if (IsValueControl(ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Lockstep with the runtime's EditableTokenValidator.ValueControlKind.
+    static bool IsValueControl(XElement element)
+    {
+        if (element.Name != sdtName)
+        {
+            return false;
+        }
+
+        var properties = element.Element(sdtPropertiesName);
+        if (properties == null)
+        {
+            return false;
+        }
+
+        foreach (var child in properties.Elements())
+        {
+            if (valueControlKinds.Contains(child.Name))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool IsBodyPart(string path) =>

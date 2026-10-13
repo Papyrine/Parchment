@@ -79,7 +79,7 @@
     },
     {
       Number: 20,
-      Text: src=x\x12onerror="javascript:alert(190)"> | <img src=x\x13onerror="javascript:alert(191)"> | <img[a]b][c]src[d]=x[e]onerror=[f]"alert(192)"> | <img src=x onerror=\x09"javascript:alert(193)"> | <img src=x onerror=\x10"javascript:alert(194)"> | <img src=x onerror=\x11"javascript:alert(195)"> | <img src=x onerror=\x12"javascript:alert(196)"> | <img src=x onerror=\x32"javascript:alert(197)"> | <img src=x onerror=\x00"javascript:alert(198)"> | <a href=java&#1&#2&#3&#4&#5&#6&#7&#8&#11&#12script:javascript:alert(199)>XXX</a> | <img src=“x <script>javascript:alert(200)</script>" > | <img src onerror /” '"= alt=javascript:alert(201)//"> | <title onpropertychange=javascript:alert(202)></title><title title=> | <a href=http://foo.bar/#x=y></a><img alt="><img src=x:x onerror=javascript:alert(203)></a>"> | <!-- [if]><script>javascript:alert(204)</script --> | <!--[if<img src=x onerror=javascript:alert(205)//]> --> | <script src="/\%(jscript)s"></script> | <script
+      Text: src=x\x12onerror="javascript:alert(190)"> | <img src=x\x13onerror="javascript:alert(191)"> | <img[a][b][c]src[d]=x[e]onerror=[f]"alert(192)"> | <img src=x onerror=\x09"javascript:alert(193)"> | <img src=x onerror=\x10"javascript:alert(194)"> | <img src=x onerror=\x11"javascript:alert(195)"> | <img src=x onerror=\x12"javascript:alert(196)"> | <img src=x onerror=\x32"javascript:alert(197)"> | <img src=x onerror=\x00"javascript:alert(198)"> | <a href=java&#1&#2&#3&#4&#5&#6&#7&#8&#11&#12script:javascript:alert(199)>XXX</a> | <img src=“x <script>javascript:alert(200)</script>" > | <img src onerror /” '"= alt=javascript:alert(201)//"> | <title onpropertychange=javascript:alert(202)></title><title title=> | <a href=http://foo.bar/#x=y></a><img alt="><img src=x:x onerror=javascript:alert(203)></a>"> | <!-- [if]><script>javascript:alert(204)</script --> | <!--[if<img src=x onerror=javascript:alert(205)//]> --> | <script src="/\%(jscript)s"></script> | <script
     },
     {
       Number: 21,
@@ -96,7 +96,7 @@
     {
       Number: 24,
       Text:
-If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you. | Roses are 0;31mred0m, violets are 0;34mblue. Hope you enjoy terminal hue | But now...20Cfor my greatest trick...8m | The quick brown fox… [Beeeep] | Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗 | 🏳0🌈️ | జ్ఞ‌ా | گچپژ | {% print ‘x’ * 64 * 1024**3 %} | {{ "".class.mro[2].subclasses()40.read() }} | En dash – | Em dash — | Horizontal bar ― | Figure dash ‒ | Swung dash ⁓ | Single opening quote ‘ | Single closing quote ’ | Double opening quote “ | Double closing quote ” | Copyright © | Registered ® | Trademark ™ | Section § | Paragraph ¶ | Ellipsis … | Optional hyphen ¬ | Non- breaking hyphen ߛ | Em space ߓ | En space ߒ | Quarter space ߕ
+If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you. | Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue | But now...[20Cfor my greatest trick...[8m | The quick brown fox… [Beeeep] | Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗 | 🏳0🌈️ | జ్ఞ‌ా | گچپژ | {% print ‘x’ * 64 * 1024**3 %} | {{ "".class.mro[2].subclasses()40 ("/etc/passwd").read() }} | En dash – | Em dash — | Horizontal bar ― | Figure dash ‒ | Swung dash ⁓ | Single opening quote ‘ | Single closing quote ’ | Double opening quote “ | Double closing quote ” | Copyright © | Registered ® | Trademark ™ | Section § | Paragraph ¶ | Ellipsis … | Optional hyphen ¬ | Non-breaking hyphen ߛ | Em space ߓ | En space ߒ | Quarter space ߕ
 undefined
 undef
     },
@@ -169,12 +169,13 @@ $1.00
 1,0/0,0
 0,0/0,0
 –1
+•
 -.
--,
     },
     {
       Number: 29,
       Text:
+-,
 999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
 NaN
 Infinity
@@ -188,11 +189,11 @@ INF
 0x0
 0xffffffff
 0xffffffffffffffff
-0xabad1dea
     },
     {
       Number: 30,
       Text:
+0xabad1dea
 123456789012345678901234567890123456789
 1,000.00
 1 000.00
@@ -206,11 +207,11 @@ INF
 1.000.000,00
 1 000 000,00
 1'000'000,00
-01000
     },
     {
       Number: 31,
       Text:
+01000
 08
 09
 2.2250738585072011e-308
@@ -223,11 +224,11 @@ INF
 ­؀؁؂؃؄؅؜۝܏᠎​‌‍‎‏‪‫‬‭‮⁠⁡⁢⁣⁤⁦⁧⁨⁩⁪⁫⁬⁭⁮⁯﻿￹￺￻𑂽𛲠𛲡𛲢𛲣𝅳𝅴𝅵𝅶𝅷𝅸𝅹𝅺󠀁󠀠󠀡󠀢󠀣󠀤󠀥󠀦󠀧󠀨󠀩󠀪󠀫󠀬󠀭󠀮󠀯󠀰󠀱󠀲󠀳󠀴󠀵󠀶󠀷󠀸󠀹󠀺󠀻󠀼󠀽󠀾󠀿󠁀󠁁󠁂󠁃󠁄󠁅󠁆󠁇󠁈󠁉󠁊󠁋󠁌󠁍󠁎󠁏󠁐󠁑󠁒󠁓󠁔󠁕󠁖󠁗󠁘󠁙󠁚󠁛󠁜󠁝󠁞󠁟󠁠󠁡󠁢󠁣󠁤󠁥󠁦󠁧󠁨󠁩󠁪󠁫󠁬󠁭󠁮󠁯󠁰󠁱󠁲󠁳󠁴󠁵󠁶󠁷󠁸󠁹󠁺󠁻󠁼󠁽󠁾󠁿
 ﻿
 Ω≈ç√∫˜µ≤≥÷
-åß∂ƒ©˙∆˚¬…æ
     },
     {
       Number: 32,
       Text:
+åß∂ƒ©˙∆˚¬…æ
 œ∑´®†¥¨ˆøπ“‘
 ¡™£¢∞§¶•ªº–≠
 ¸˛Ç◊ı˜Â¯˘¿
@@ -240,11 +241,11 @@ INF
 ⁰⁴⁵
 ₀₁₂
 ⁰⁴⁵₀₁₂
-ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็
     },
     {
       Number: 33,
       Text:
+ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็ ด้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็็้้้้้้้้็็็็็้้้้้็็็็
 '
 "
 ''
@@ -254,12 +255,12 @@ INF
 “'"'"''''”
 <foo val=`bar' />
 田中さんにあげて下さい
-パーティーへ行かないか
-和製漢語
     },
     {
       Number: 34,
       Text:
+パーティーへ行かないか
+和製漢語
 部落格
 사회과학원 어학연구소
 찦차를 타고 온 펲시맨과 쑛다리 똠방각하
@@ -271,12 +272,12 @@ INF
 ポ
 あ
 A
-鷗
-Œ
     },
     {
       Number: 35,
       Text:
+鷗
+Œ
 é
 Ｂ
 逍
@@ -289,12 +290,12 @@ A
 㐀
 𠀀
 Ⱥ
-Ⱦ
-ヽ༼ຈل͜ຈ༽ﾉ ヽ༼ຈل͜ຈ༽ﾉ
     },
     {
       Number: 36,
       Text:
+Ⱦ
+ヽ༼ຈل͜ຈ༽ﾉ ヽ༼ຈل͜ຈ༽ﾉ
 (｡◕ ∀ ◕｡)
 ｀ｨ(´∀｀∩
 __ﾛ(,_,*)
@@ -307,12 +308,12 @@ __ﾛ(,_,*)
 ( ͡° ͜ʖ ͡°)
 ¯_(ツ)_/¯
 😍
-👩🏽
-👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️
     },
     {
       Number: 37,
       Text:
+👩🏽
+👨‍🦰 👨🏿‍🦰 👨‍🦱 👨🏿‍🦱 🦹🏿‍♂️
 👾 🙇 💁 🙅 🙆 🙋 🙎 🙍
 🐵 🙈 🙉 🙊
 ❤️ 💔 💌 💕 💞 💓 💗 💖 💘 💝 💟 💜 💛 💚 💙
@@ -325,12 +326,11 @@ __ﾛ(,_,*)
 🇺🇸🇷🇺🇸🇦
 １２３
 ١٢٣
-ثم نفس سقطت وبالتحديد،, جزيرتي باستخدام أن دنو. إذ هنا؟ الستار وتنصيب كان. أهّل ايطاليا،
     },
     {
       Number: 38,
       Text:
-بريطانيا-فرنسا قد أخذ. سليمان، إتفاقية بين ما, يذكر الحدود أي بعد, معاملة بولندا، الإطلاق عل إيو.
+ثم نفس سقطت وبالتحديد،, جزيرتي باستخدام أن دنو. إذ هنا؟ الستار وتنصيب كان. أهّل ايطاليا، بريطانيا-فرنسا قد أخذ. سليمان، إتفاقية بين ما, يذكر الحدود أي بعد, معاملة بولندا، الإطلاق عل إيو.
 בְּרֵאשִׁית, בָּרָא אֱלֹהִים, אֵת הַשָּׁמַיִם, וְאֵת הָאָרֶץ
 הָיְתָהtestالصفحات التّحول
 ﷽
@@ -341,12 +341,12 @@ __ﾛ(,_,*)
 ᚛                 ᚜
 ‪‪test‪
 ‫test‫
-test
-test⁠test‫
     },
     {
       Number: 39,
       Text:
+test
+test⁠test‫
 ⁦test⁧
 Ṱ̺̺̕o͞ ̷i̲̬͇̪͙n̝̗͕v̟̜̘̦͟o̶̙̰̠kè͚̮̺̪̹̱̤ ̖t̝͕̳̣̻̪͞h̼͓̲̦̳̘̲e͇̣̰̦̬͎ ̢̼̻̱̘h͚͎͙̜̣̲ͅi̦̲̣̰̤v̻͍e̺̭̳̪̰-m̢iͅn̖̺̞̲̯̰d̵̼̟͙̩̼̘̳ ̞̥̱̳̭r̛̗̘e͙p͠r̼̞̻̭̗e̺̠̣͟s̘͇̳͍̝͉e͉̥̯̞̲͚̬͜ǹ̬͎͎̟̖͇̤t͍̬̤͓̼̭͘ͅi̪̱n͠g̴͉ ͏͉ͅc̬̟h͡a̫̻̯͘o̫̟̖͍̙̝͉s̗̦̲.̨̹͈̣
 ̡͓̞ͅI̗̘̦͝n͇͇͙v̮̫ok̲̫̙͈i̖͙̭̹̠̞n̡̻̮̣̺g̲͈͙̭͙̬͎ ̰t͔̦h̞̲e̢̤ ͍̬̲͖f̴̘͕̣è͖ẹ̥̩l͖͔͚i͓͚̦͠n͖͍̗͓̳̮g͍ ̨o͚̪͡f̘̣̬ ̖̘͖̟͙̮c҉͔̫͖͓͇͖ͅh̵̤̣͚͔á̗̼͕ͅo̼̣̥s̱͈̺̖̦̻͢.̛̖̞̠̫̰
@@ -358,27 +358,27 @@ Z̮̞̠͙͔ͅḀ̗̞͈̻̗Ḷ͙͎̯̹̞͓G̻O̭̗̮
 Ｔｈｅ ｑｕｉｃｋ ｂｒｏｗｎ ｆｏｘ ｊｕｍｐｓ ｏｖｅｒ ｔｈｅ ｌａｚｙ ｄｏｇ
 𝐓𝐡𝐞 𝐪𝐮𝐢𝐜𝐤 𝐛𝐫𝐨𝐰𝐧 𝐟𝐨𝐱 𝐣𝐮𝐦𝐩𝐬 𝐨𝐯𝐞𝐫 𝐭𝐡𝐞 𝐥𝐚𝐳𝐲 𝐝𝐨𝐠
 𝕿𝖍𝖊 𝖖𝖚𝖎𝖈𝖐 𝖇𝖗𝖔𝖜𝖓 𝖋𝖔𝖝 𝖏𝖚𝖒𝖕𝖘 𝖔𝖛𝖊𝖗 𝖙𝖍𝖊 𝖑𝖆𝖟𝖞 𝖉𝖔𝖌
-𝑻𝒉𝒆 𝒒𝒖𝒊𝒄𝒌 𝒃𝒓𝒐𝒘𝒏 𝒇𝒐𝒙 𝒋𝒖𝒎𝒑𝒔 𝒐𝒗𝒆𝒓 𝒕𝒉𝒆 𝒍𝒂𝒛𝒚 𝒅𝒐𝒈
-𝓣𝓱𝓮 𝓺𝓾𝓲𝓬𝓴 𝓫𝓻𝓸𝔀𝓷 𝓯𝓸𝔁 𝓳𝓾𝓶𝓹𝓼 𝓸𝓿𝓮𝓻 𝓽𝓱𝓮 𝓵𝓪𝔃𝔂 𝓭𝓸𝓰
     },
     {
       Number: 40,
       Text:
+𝑻𝒉𝒆 𝒒𝒖𝒊𝒄𝒌 𝒃𝒓𝒐𝒘𝒏 𝒇𝒐𝒙 𝒋𝒖𝒎𝒑𝒔 𝒐𝒗𝒆𝒓 𝒕𝒉𝒆 𝒍𝒂𝒛𝒚 𝒅𝒐𝒈
+𝓣𝓱𝓮 𝓺𝓾𝓲𝓬𝓴 𝓫𝓻𝓸𝔀𝓷 𝓯𝓸𝔁 𝓳𝓾𝓶𝓹𝓼 𝓸𝓿𝓮𝓻 𝓽𝓱𝓮 𝓵𝓪𝔃𝔂 𝓭𝓸𝓰
 𝕋𝕙𝕖 𝕢𝕦𝕚𝕔𝕜 𝕓𝕣𝕠𝕨𝕟 𝕗𝕠𝕩 𝕛𝕦𝕞𝕡𝕤 𝕠𝕧𝕖𝕣 𝕥𝕙𝕖 𝕝𝕒𝕫𝕪 𝕕𝕠𝕘
 𝚃𝚑𝚎 𝚚𝚞𝚒𝚌𝚔 𝚋𝚛𝚘𝚠𝚗 𝚏𝚘𝚡 𝚓𝚞𝚖𝚙𝚜 𝚘𝚟𝚎𝚛 𝚝𝚑𝚎 𝚕𝚊𝚣𝚢 𝚍𝚘𝚐
 ⒯⒣⒠ ⒬⒰⒤⒞⒦ ⒝⒭⒪⒲⒩ ⒡⒪⒳ ⒥⒰⒨⒫⒮ ⒪⒱⒠⒭ ⒯⒣⒠ ⒧⒜⒵⒴ ⒟⒪⒢
-scriptalert(1);/script
+<script>alert('1');</script>
 <svg><script>123<1>alert(3)</script>
 "><script>alert(4)</script>
 '><script>alert(5)</script>
 </script><script>alert(7)</script>
 < / script >< script >alert(8)< / script >
-onfocus=JaVaSCript:alert(9) autofocus
-" onfocus=JaVaSCript:alert(10) autofocus
     },
     {
       Number: 41,
       Text:
+onfocus=JaVaSCript:alert(9) autofocus
+" onfocus=JaVaSCript:alert(10) autofocus
 ' onfocus=JaVaSCript:alert(11) autofocus
 ＜script＞alert(12)＜/script＞
 <sc<script>ript>alert(13)</sc</script>ript>
@@ -390,12 +390,12 @@ JavaSCript:alert(17)
 src=JaVaSCript:prompt(19)
 “><script>alert(20);</script x=”
 ‘><script>alert(21);</script x=’
-" autofocus onkeyup="javascript:alert(23)
-' autofocus onkeyup='javascript:alert(24)
     },
     {
       Number: 42,
       Text:
+" autofocus onkeyup="javascript:alert(23)
+' autofocus onkeyup='javascript:alert(24)
 <script\x20type=“text/javascript”>javascript:alert(25);</script>
 <script\x3Etype=“text/javascript”>javascript:alert(26);</script>
 <script\x0Dtype=“text/javascript”>javascript:alert(27);</script>
@@ -407,11 +407,11 @@ src=JaVaSCript:prompt(19)
 '`"><\x00script>javascript:alert(33)</script>
 ABC<div style="x\x3Aexpression(javascript:alert(34)">DEF
 ABC<div style="x:expression\x5C(javascript:alert(35)">DEF
-ABC<div style="x:expression\x00(javascript:alert(36)">DEF
     },
     {
       Number: 43,
       Text:
+ABC<div style="x:expression\x00(javascript:alert(36)">DEF
 ABC<div style="x:exp\x00ression(javascript:alert(37)">DEF
 ABC<div style="x:exp\x5Cression(javascript:alert(38)">DEF
 ABC<div style="x:\x0Aexpression(javascript:alert(39)">DEF
@@ -419,11 +419,11 @@ ABC<div style="x:\x09expression(javascript:alert(40)">DEF
 ABC<div style="x:\xE3\x80\x80expression(javascript:alert(41)">DEF
 ABC<div style="x:\xE2\x80\x84expression(javascript:alert(42)">DEF
 ABC<div style="x:\xC2\xA0expression(javascript:alert(43)">DEF
-ABC<div style="x:\xE2\x80\x80expression(javascript:alert(44)">DEF
     },
     {
       Number: 44,
       Text:
+ABC<div style="x:\xE2\x80\x80expression(javascript:alert(44)">DEF
 ABC<div style="x:\xE2\x80\x8Aexpression(javascript:alert(45)">DEF
 ABC<div style="x:\x0Dexpression(javascript:alert(46)">DEF
 ABC<div style="x:\x0Cexpression(javascript:alert(47)">DEF
@@ -431,11 +431,11 @@ ABC<div style="x:\xE2\x80\x87expression(javascript:alert(48)">DEF
 ABC<div style="x:\xEF\xBB\xBFexpression(javascript:alert(49)">DEF
 ABC<div style="x:\x20expression(javascript:alert(50)">DEF
 ABC<div style="x:\xE2\x80\x88expression(javascript:alert(51)">DEF
-ABC<div style="x:\x00expression(javascript:alert(52)">DEF
     },
     {
       Number: 45,
       Text:
+ABC<div style="x:\x00expression(javascript:alert(52)">DEF
 ABC<div style="x:\xE2\x80\x8Bexpression(javascript:alert(53)">DEF
 ABC<div style="x:\xE2\x80\x86expression(javascript:alert(54)">DEF
 ABC<div style="x:\xE2\x80\x85expression(javascript:alert(55)">DEF
@@ -443,11 +443,11 @@ ABC<div style="x:\xE2\x80\x82expression(javascript:alert(56)">DEF
 ABC<div style="x:\x0Bexpression(javascript:alert(57)">DEF
 ABC<div style="x:\xE2\x80\x81expression(javascript:alert(58)">DEF
 ABC<div style="x:\xE2\x80\x83expression(javascript:alert(59)">DEF
-ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
     },
     {
       Number: 46,
       Text:
+ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\x0Bjavascript:javascript:alert(61)" id="fuzzelement1">test</a>
 <a href="\x0Fjavascript:javascript:alert(62)" id="fuzzelement1">test</a>
 <a href="\xC2\xA0javascript:javascript:alert(63)" id="fuzzelement1">test</a>
@@ -455,11 +455,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\xE1\xA0\x8Ejavascript:javascript:alert(65)" id="fuzzelement1">test</a>
 <a href="\x18javascript:javascript:alert(66)" id="fuzzelement1">test</a>
 <a href="\x11javascript:javascript:alert(67)" id="fuzzelement1">test</a>
-<a href="\xE2\x80\x88javascript:javascript:alert(68)" id="fuzzelement1">test</a>
     },
     {
       Number: 47,
       Text:
+<a href="\xE2\x80\x88javascript:javascript:alert(68)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x89javascript:javascript:alert(69)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x80javascript:javascript:alert(70)" id="fuzzelement1">test</a>
 <a href="\x17javascript:javascript:alert(71)" id="fuzzelement1">test</a>
@@ -467,11 +467,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\x0Ejavascript:javascript:alert(73)" id="fuzzelement1">test</a>
 <a href="\x1Ajavascript:javascript:alert(74)" id="fuzzelement1">test</a>
 <a href="\x00javascript:javascript:alert(75)" id="fuzzelement1">test</a>
-<a href="\x10javascript:javascript:alert(76)" id="fuzzelement1">test</a>
     },
     {
       Number: 48,
       Text:
+<a href="\x10javascript:javascript:alert(76)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x82javascript:javascript:alert(77)" id="fuzzelement1">test</a>
 <a href="\x20javascript:javascript:alert(78)" id="fuzzelement1">test</a>
 <a href="\x13javascript:javascript:alert(79)" id="fuzzelement1">test</a>
@@ -479,11 +479,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\xE2\x80\x8Ajavascript:javascript:alert(81)" id="fuzzelement1">test</a>
 <a href="\x14javascript:javascript:alert(82)" id="fuzzelement1">test</a>
 <a href="\x19javascript:javascript:alert(83)" id="fuzzelement1">test</a>
-<a href="\xE2\x80\xAFjavascript:javascript:alert(84)" id="fuzzelement1">test</a>
     },
     {
       Number: 49,
       Text:
+<a href="\xE2\x80\xAFjavascript:javascript:alert(84)" id="fuzzelement1">test</a>
 <a href="\x1Fjavascript:javascript:alert(85)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x81javascript:javascript:alert(86)" id="fuzzelement1">test</a>
 <a href="\x1Djavascript:javascript:alert(87)" id="fuzzelement1">test</a>
@@ -491,11 +491,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\x07javascript:javascript:alert(89)" id="fuzzelement1">test</a>
 <a href="\xE1\x9A\x80javascript:javascript:alert(90)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x83javascript:javascript:alert(91)" id="fuzzelement1">test</a>
-<a href="\x04javascript:javascript:alert(92)" id="fuzzelement1">test</a>
     },
     {
       Number: 50,
       Text:
+<a href="\x04javascript:javascript:alert(92)" id="fuzzelement1">test</a>
 <a href="\x01javascript:javascript:alert(93)" id="fuzzelement1">test</a>
 <a href="\x08javascript:javascript:alert(94)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x84javascript:javascript:alert(95)" id="fuzzelement1">test</a>
@@ -503,11 +503,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\xE3\x80\x80javascript:javascript:alert(97)" id="fuzzelement1">test</a>
 <a href="\x12javascript:javascript:alert(98)" id="fuzzelement1">test</a>
 <a href="\x0Djavascript:javascript:alert(99)" id="fuzzelement1">test</a>
-<a href="\x0Ajavascript:javascript:alert(100)" id="fuzzelement1">test</a>
     },
     {
       Number: 51,
       Text:
+<a href="\x0Ajavascript:javascript:alert(100)" id="fuzzelement1">test</a>
 <a href="\x0Cjavascript:javascript:alert(101)" id="fuzzelement1">test</a>
 <a href="\x15javascript:javascript:alert(102)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\xA8javascript:javascript:alert(103)" id="fuzzelement1">test</a>
@@ -515,11 +515,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="\x02javascript:javascript:alert(105)" id="fuzzelement1">test</a>
 <a href="\x1Bjavascript:javascript:alert(106)" id="fuzzelement1">test</a>
 <a href="\x06javascript:javascript:alert(107)" id="fuzzelement1">test</a>
-<a href="\xE2\x80\xA9javascript:javascript:alert(108)" id="fuzzelement1">test</a>
     },
     {
       Number: 52,
       Text:
+<a href="\xE2\x80\xA9javascript:javascript:alert(108)" id="fuzzelement1">test</a>
 <a href="\xE2\x80\x85javascript:javascript:alert(109)" id="fuzzelement1">test</a>
 <a href="\x1Ejavascript:javascript:alert(110)" id="fuzzelement1">test</a>
 <a href="\xE2\x81\x9Fjavascript:javascript:alert(111)" id="fuzzelement1">test</a>
@@ -527,11 +527,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <a href="javascript\x00:javascript:alert(113)" id="fuzzelement1">test</a>
 <a href="javascript\x3A:javascript:alert(114)" id="fuzzelement1">test</a>
 <a href="javascript\x09:javascript:alert(115)" id="fuzzelement1">test</a>
-<a href="javascript\x0D:javascript:alert(116)" id="fuzzelement1">test</a>
     },
     {
       Number: 53,
       Text:
+<a href="javascript\x0D:javascript:alert(116)" id="fuzzelement1">test</a>
 <a href="javascript\x0A:javascript:alert(117)" id="fuzzelement1">test</a>
 `"'><img src=xxx:x \x0Aonerror=javascript:alert(118)>
 `"'><img src=xxx:x \x22onerror=javascript:alert(119)>
@@ -544,11 +544,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 `"'><img src=xxx:x \x27onerror=javascript:alert(126)>
 `"'><img src=xxx:x \x20onerror=javascript:alert(127)>
 "`'><script>\x3Bjavascript:alert(128)</script>
-"`'><script>\x0Djavascript:alert(129)</script>
     },
     {
       Number: 54,
       Text:
+"`'><script>\x0Djavascript:alert(129)</script>
 "`'><script>\xEF\xBB\xBFjavascript:alert(130)</script>
 "`'><script>\xE2\x80\x81javascript:alert(131)</script>
 "`'><script>\xE2\x80\x84javascript:alert(132)</script>
@@ -562,11 +562,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 "`'><script>\xE2\x80\x8Ajavascript:alert(140)</script>
 "`'><script>\xE1\x9A\x80javascript:alert(141)</script>
 "`'><script>\x0Cjavascript:alert(142)</script>
-"`'><script>\x2Bjavascript:alert(143)</script>
     },
     {
       Number: 55,
       Text:
+"`'><script>\x2Bjavascript:alert(143)</script>
 "`'><script>\xF0\x90\x96\x9Ajavascript:alert(144)</script>
 "`'><script>-javascript:alert(145)</script>
 "`'><script>\x0Ajavascript:alert(146)</script>
@@ -580,11 +580,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 "`'><script>\xE2\x80\x83javascript:alert(154)</script>
 "`'><script>\xE2\x80\x8Bjavascript:alert(155)</script>
 "`'><script>\xEF\xBF\xBEjavascript:alert(156)</script>
-"`'><script>\xE2\x80\x80javascript:alert(157)</script>
     },
     {
       Number: 56,
       Text:
+"`'><script>\xE2\x80\x80javascript:alert(157)</script>
 "`'><script>\x21javascript:alert(158)</script>
 "`'><script>\xE2\x80\x82javascript:alert(159)</script>
 "`'><script>\xE2\x80\x86javascript:alert(160)</script>
@@ -598,11 +598,11 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <img \x12src=x onerror="javascript:alert(168)">
 <img\x47src=x onerror="javascript:alert(169)">
 <img\x10src=x onerror="javascript:alert(170)">
-<img\x13src=x onerror="javascript:alert(171)">
     },
     {
       Number: 57,
       Text:
+<img\x13src=x onerror="javascript:alert(171)">
 <img\x32src=x onerror="javascript:alert(172)">
 <img\x47src=x onerror="javascript:alert(173)">
 <img\x11src=x onerror="javascript:alert(174)">
@@ -616,18 +616,18 @@ ABC<div style="x:\xE2\x80\x89expression(javascript:alert(60)">DEF
 <img src\x32=x onerror="javascript:alert(182)">
 <img src\x12=x onerror="javascript:alert(183)">
 <img src\x11=x onerror="javascript:alert(184)">
-<img src\x00=x onerror="javascript:alert(185)">
     },
     {
       Number: 58,
       Text:
+<img src\x00=x onerror="javascript:alert(185)">
 <img src\x47=x onerror="javascript:alert(186)">
 <img src=x\x09onerror="javascript:alert(187)">
 <img src=x\x10onerror="javascript:alert(188)">
 <img src=x\x11onerror="javascript:alert(189)">
 <img src=x\x12onerror="javascript:alert(190)">
 <img src=x\x13onerror="javascript:alert(191)">
-<img[a]b][c]src[d]=x[e]onerror=[f]"alert(192)">
+<img[a][b][c]src[d]=x[e]onerror=[f]"alert(192)">
 <img src=x onerror=\x09"javascript:alert(193)">
 <img src=x onerror=\x10"javascript:alert(194)">
 <img src=x onerror=\x11"javascript:alert(195)">
@@ -674,6 +674,7 @@ http://a/%%30%30
       Text:
 %
 _
+•
 –
 –version
 –help
@@ -685,11 +686,11 @@ $(touch /tmp/blns.fail)
 eval("puts ‘hello world’")
 System("ls -al /")
 ls -al /
-Kernel.exec("ls -al /")
     },
     {
       Number: 63,
       Text:
+Kernel.exec("ls -al /")
 Kernel.exit(1)
 %x('ls -al /')
 ]>&xxe;
@@ -703,11 +704,11 @@ $ENV{‘HOME’}
 %n
 File:///
 ../../../../../../../../../../../etc/passwd%00
-../../../../../../../../../../../etc/hosts
     },
     {
       Number: 64,
       Text:
+../../../../../../../../../../../etc/hosts
 () { 0; }; touch /tmp/blns.shellshock1.fail;
 () { ; } >[$($())] { touch /tmp/blns.shellshock2.fail; }
 <<< %s(un='%s') = %u
@@ -721,11 +722,11 @@ A:
 ZZ:
 COM1
 LPT1
-LPT2
     },
     {
       Number: 65,
       Text:
+LPT2
 LPT3
 COM2
 COM3
@@ -739,11 +740,11 @@ Horniman Museum
 shitake mushrooms
 RomansInSussex.co.uk
 http://www.cum.qc.ca/
-Craig Cockburn, Software Specialist
     },
     {
       Number: 66,
       Text:
+Craig Cockburn, Software Specialist
 Linda Callahan
 Dr. Herman I. Libshitz
 magna cum laude
@@ -762,15 +763,15 @@ basement
       Number: 67,
       Text:
 If you're reading this, you've been in a coma for almost 20 years now. We're trying a new technique. We don't know where this message will end up in your dream, but we hope it works. Please wake up, we miss you.
-Roses are 0;31mred0m, violets are 0;34mblue. Hope you enjoy terminal hue
-But now...20Cfor my greatest trick...8m
+Roses are [0;31mred[0m, violets are [0;34mblue. Hope you enjoy terminal hue
+But now...[20Cfor my greatest trick...[8m
 The quick brown fox… [Beeeep]
 Powerلُلُصّبُلُلصّبُررً ॣ ॣh ॣ ॣ冗
 🏳0🌈️
 జ్ఞ‌ా
 گچپژ
 {% print ‘x’ * 64 * 1024**3 %}
-{{ "".class.mro[2].subclasses()40.read() }}
+{{ "".class.mro[2].subclasses()40 ("/etc/passwd").read() }}
 En dash –
     },
     {
