@@ -100,14 +100,7 @@ static class EditableFieldReader
 
             foreach (var element in piece.Elements())
             {
-                if (element is Text text)
-                {
-                    builder.Append(text.Text);
-                }
-                else if (element is Break)
-                {
-                    builder.Append('\n');
-                }
+                builder.Append(RunCharacters.For(element));
             }
         }
 

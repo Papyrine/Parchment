@@ -6,7 +6,7 @@ namespace Parchment;
 /// It reads <em>standard</em> WordprocessingML (paragraph styles, <c>w:numPr</c> lists, run
 /// <c>rPr</c> emphasis, hyperlinks), so it inverts both the original render and any edits Word
 /// itself wrote. Supported subset: paragraphs, headings, bold/italic/underline/strike,
-/// superscript/subscript, hyperlinks, line breaks, and bullet/ordered lists (with nesting).
+/// superscript/subscript, hyperlinks, line breaks, tabs, and bullet/ordered lists (with nesting).
 /// Anything outside the subset degrades to its text content; <see cref="EditableContent"/> decides
 /// which paragraphs and runs the control holds.
 /// </summary>
@@ -142,15 +142,7 @@ static class OpenXmlHtmlSerializer
         var inner = new StringBuilder();
         foreach (var child in run.Elements())
         {
-            switch (child)
-            {
-                case Text text:
-                    inner.Append(Escape(text.Text));
-                    break;
-                case Break:
-                    inner.Append("<br>");
-                    break;
-            }
+            AppendCharacters(inner, RunCharacters.For(child));
         }
 
         if (inner.Length == 0)
@@ -203,6 +195,44 @@ static class OpenXmlHtmlSerializer
         {
             builder.Append("</").Append(tags[i]).Append('>');
         }
+    }
+
+    // What OpenXmlHtml turns back into a w:tab. Written as the bare character a tab would fold to
+    // a space when the html is rendered again, as html's own whitespace rules require.
+    const string tabHtml = "<span style=\"white-space:pre\">&#9;</span>";
+
+    // A line break and a tab are markup in html as they are elements in Word; everything else is
+    // text.
+    static void AppendCharacters(StringBuilder builder, string? characters)
+    {
+        if (characters == null)
+        {
+            return;
+        }
+
+        var start = 0;
+        for (var index = 0; index < characters.Length; index++)
+        {
+            var character = characters[index];
+            if (character is not ('\n' or '\t'))
+            {
+                continue;
+            }
+
+            builder.Append(Escape(characters[start..index]));
+            if (character == '\n')
+            {
+                builder.Append("<br>");
+            }
+            else
+            {
+                builder.Append(tabHtml);
+            }
+
+            start = index + 1;
+        }
+
+        builder.Append(Escape(characters[start..]));
     }
 
     static bool IsListItem(Paragraph paragraph, out int numberingId, out int level)

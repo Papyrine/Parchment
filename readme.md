@@ -1247,9 +1247,19 @@ With `ProtectionMode.None` the fields still render as tagged controls (and still
 
 A plain `[EditableField]` renders as a Word plain-text content control (`<w:text/>`). That element constrains the control's *content model* — a single run of text, no images, no nested controls, no extra paragraphs — but it says nothing about run properties, and Word deliberately lets a user bold or italicise the control's contents. Nothing on `w:sdt` forbids it: `w:lock="sdtLocked"` only stops the control being deleted.
 
-The formatting is cosmetic. Extraction reads the control's `w:t` text (turning `w:br` into a newline) and ignores `w:rPr` entirely, so a bolded field extracts exactly as an unbolded one and the emphasis never reaches the model. This applies to plain fields only — for an `[EditableField] [Html]` field, formatting *is* the value, and bold round-trips as `<strong>`.
+The formatting is cosmetic. Extraction reads the control's text (see [What extraction reads as text](#what-extraction-reads-as-text)) and ignores `w:rPr` entirely, so a bolded field extracts exactly as an unbolded one and the emphasis never reaches the model. This applies to plain fields only — for an `[EditableField] [Html]` field, formatting *is* the value, and bold round-trips as `<strong>`.
 
 The one way to make Word refuse the keystroke is `w:documentProtection w:edit="forms"`, which disallows formatting inside the protected region. Parchment writes `readOnly` instead, because forms protection also blocks selecting and copying the locked text.
+
+### What extraction reads as text
+
+Word does not keep every character of a control in `w:t`. Some are elements of their own, and both the plain-text and the rich-text reader return the character each stands for:
+
+- `w:tab` is a tab. A tab in a rendered value is written as `w:tab` too, not left inside `w:t`, where Word draws it as a space and rewrites it on the first save. A rich-text value carries it as `<span style="white-space:pre">&#9;</span>`, since a bare tab in html folds to a space; that span renders back to a `w:tab`.
+- `w:br` and `w:cr` are a newline (`<br>` in rich text).
+- `w:noBreakHyphen` is U+2011.
+- `w:softHyphen` is nothing. It marks where a word may be hyphenated and is not part of the word.
+- `w:sym` (Insert → Symbol) is the character at its code point. The font is not part of a value, so a symbol-font glyph (Symbol, Wingdings) comes back as the private use code point Word stored for it (`U+F000` plus the font's character code), which only means something in that font.
 
 ### Rich content cannot be whitelisted in Word
 

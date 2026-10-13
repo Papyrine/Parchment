@@ -1,4 +1,5 @@
 using System.Globalization;
+using DocumentFormat.OpenXml.Validation;
 using W14 = DocumentFormat.OpenXml.Office2010.Word;
 // ReSharper disable PartialTypeWithSinglePart
 
@@ -162,6 +163,125 @@ public partial class ExtractTests
         var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
 
         await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task TabSavedByWordAsAnElementIsRead()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        // The run shape Word leaves behind on saving a control whose value held a tab: the tab
+        // becomes w:tab at the head of a run of its own, and the line break likewise.
+        Edit(stream, body =>
+        {
+            SetSdtRuns(
+                body,
+                "PurchaseOrder",
+                new Run(new Text("left")),
+                new Run(new TabChar(), new Text("right")));
+            SetSdtRuns(
+                body,
+                "Instructions",
+                new Run(new Text("col1")),
+                new Run(new TabChar(), new Text("col2")),
+                new Run(new Break(), new Text("row2")),
+                new Run(new TabChar(), new Text("cell")));
+        });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("left\tright");
+        await Assert.That(Field(result, "PurchaseOrder").RawText).IsEqualTo("left\tright");
+        await Assert.That(Field(result, "Instructions").Value).IsEqualTo("col1\tcol2\nrow2\tcell");
+    }
+
+    [Test]
+    public async Task RunContentWordWritesAsElementsIsRead()
+    {
+        using var stream = await RenderOrder(EditableFieldTests.NewOrder());
+
+        Edit(stream, body =>
+        {
+            SetSdtRuns(
+                body,
+                "PurchaseOrder",
+                new Run(
+                    new Text("co"),
+                    new NoBreakHyphen(),
+                    new Text("op"),
+                    new SoftHyphen(),
+                    new Text("s ")),
+                new Run(
+                    // A Unicode font: the code point is the character.
+                    new SymbolChar
+                    {
+                        Font = "Arial",
+                        Char = "2022"
+                    },
+                    // A symbol font: the private use code point Word stored, as stored.
+                    new SymbolChar
+                    {
+                        Font = "Wingdings",
+                        Char = "F0E0"
+                    },
+                    // Not a code point at all.
+                    new SymbolChar
+                    {
+                        Font = "Arial",
+                        Char = "zz"
+                    }));
+            SetSdtRuns(
+                body,
+                "Instructions",
+                new Run(new Text("a"), new CarriageReturn(), new Text("b")));
+        });
+
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("co‑ops •");
+        await Assert.That(Field(result, "Instructions").Value).IsEqualTo("a\nb");
+    }
+
+    [Test]
+    public async Task TabInValueRendersAsATabElementAndRoundTrips()
+    {
+        var order = EditableFieldTests.NewOrder();
+        order.PurchaseOrder = "left\tright";
+        order.Instructions = "col1\tcol2\nrow2\tcell\t";
+        using var stream = await RenderOrder(order);
+
+        using (var doc = WordprocessingDocument.Open(stream, false))
+        {
+            var body = doc.MainDocumentPart!.Document!.Body!;
+
+            // A tab inside w:t is whitespace to Word, which rewrites it as w:tab on save. Written
+            // as the element up front, the control is the same before and after that save.
+            await Assert.That(body.Descendants<Text>().Any(_ => _.Text.Contains('\t'))).IsFalse();
+            await Assert.That(FindSdt(body, "PurchaseOrder").Descendants<TabChar>().Count()).IsEqualTo(1);
+            await Assert.That(FindSdt(body, "Instructions").Descendants<TabChar>().Count()).IsEqualTo(3);
+
+            var errors = new OpenXmlValidator(FileFormatVersions.Microsoft365)
+                .Validate(doc)
+                .Select(_ => $"{_.Description} @ {_.Path?.XPath}")
+                .ToList();
+            await Assert.That(errors).IsEmpty();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<EditableFieldTests.EditableOrder>(stream);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(Field(result, "PurchaseOrder").Value).IsEqualTo("left\tright");
+        await Assert.That(Field(result, "Instructions").Value).IsEqualTo("col1\tcol2\nrow2\tcell\t");
+    }
+
+    static void SetSdtRuns(Body body, string tag, params Run[] runs)
+    {
+        var sdt = FindSdt(body, tag);
+        sdt.SdtProperties!.RemoveAllChildren<ShowingPlaceholder>();
+        var content = sdt.ChildElements.First(_ => _.LocalName == "sdtContent");
+        content.RemoveAllChildren();
+        content.Append(runs);
     }
 
     [Test]
