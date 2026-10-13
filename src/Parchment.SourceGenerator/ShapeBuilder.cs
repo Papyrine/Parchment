@@ -2,10 +2,10 @@
 /// Builds a primitive-only <see cref="ModelShape"/> from a live <see cref="INamedTypeSymbol"/>
 /// at extract time. Consuming the shape downstream (instead of the symbol) is what makes the
 /// incremental pipeline actually cacheable.
-/// Known limitation: the shape is only rebuilt when the attributed class's own syntax changes,
-/// because <c>ForAttributeWithMetadataName</c> in <see cref="ParchmentTemplateGenerator"/> keys
-/// re-extraction on that class's syntax. Edits to a model type declared in a separate file
-/// will not re-trigger validation until something in the attributed class is touched.
+/// The shape is rebuilt on every new compilation — <c>ForAttributeWithMetadataName</c> in
+/// <see cref="ParchmentTemplateGenerator"/> re-runs the extract each time — so an edit to a model
+/// type declared in a separate file is picked up; the rebuilt shape compares equal by value when
+/// nothing a template can bind has changed, and downstream stages stay cached.
 /// </summary>
 static class ShapeBuilder
 {
@@ -19,20 +19,30 @@ static class ShapeBuilder
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<ITypeSymbol>();
+        // Sorted, so the pragma the ids end up in reads the same whatever order the walk met them.
+        var suppressed = new SortedSet<string>(StringComparer.Ordinal);
+        var pending = new List<string>();
 
         Enqueue(root, visited, queue);
         while (queue.Count > 0)
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue));
+            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue, suppressed, pending));
         }
 
-        return new(Fqn(root), new(entries.ToImmutable()));
+        return new(Fqn(root), new(entries.ToImmutable()), new(suppressed.ToImmutableArray()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue)
+    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue, SortedSet<string> suppressed, List<string> pending)
     {
+        // Every type in the shape is named by the generated code (a cast, a typeof), the root
+        // included. One that is obsolete as an error only gets here as the root, where there is no
+        // member to leave out.
+        pending.Clear();
+        UseSiteDiagnostics.TryCollectType(type, pending);
+        suppressed.UnionWith(pending);
+
         string? elementFqn = null;
         if (type.SpecialType != SpecialType.System_String &&
             ModelSymbolResolver.TryGetElementType(type, out var element))
@@ -43,6 +53,14 @@ static class ShapeBuilder
 
         var liquid = LiquidKindFor(type);
         var members = ImmutableArray.CreateBuilder<MemberEntry>();
+
+        // An enum's constants are public static fields, which is all a member needs to be here. But
+        // a template never holds the enum: it is handed the text the value prints as, so a constant
+        // recorded as a member validates `{{ Status.Final }}` and then renders nothing.
+        if (liquid == LiquidKind.Enum)
+        {
+            return new(Fqn(type), elementFqn, new(members.ToImmutable()), Liquid: liquid);
+        }
 
         // An array's CLR members (Length, IsFixedSize, Array.MaxLength…) are not binding surface,
         // and emitting accessors for them produces illegal casts like `string[].MaxLength`.
@@ -93,20 +111,45 @@ static class ShapeBuilder
                         continue;
                     }
 
-                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure);
+                    // A member obsolete as an error, or typed as something that is, has no legal
+                    // reference: CS0619 cannot be suppressed. It is left out of the shape, so a
+                    // token naming it is PARCH001 rather than a compile error in generated code.
+                    // Anything milder stays bindable, with its diagnostic id carried to the pragma
+                    // at the top of the generated file. The name is claimed first either way, so a
+                    // base member it hides is not bound in its place.
+                    pending.Clear();
+                    if (!UseSiteDiagnostics.TryCollectMember(member, pending) ||
+                        !UseSiteDiagnostics.TryCollectType(memberType, pending))
+                    {
+                        continue;
+                    }
+
+                    // An inherited member is read through its declaring type's attributes too: an
+                    // experimental base class makes each of its members experimental.
+                    if (!SymbolEqualityComparer.Default.Equals(current, type))
+                    {
+                        UseSiteDiagnostics.TryCollectType(current, pending);
+                    }
+
+                    suppressed.UnionWith(pending);
+
+                    var isExcelsior = TryGetExcelsiorTable(member, excelsiorTableType, out var excelsiorHeadingStyle, out var excelsiorBodyStyle, out var excelsiorTableStyle, out var excelsiorConfigure, out var excelsiorConfigureOwner);
                     // Resolved here, where the declaring symbol is at hand: the generated code
                     // calls the method directly, so the name has to become a qualified target - and
-                    // a name that resolves to no static method becomes the diagnostic instead.
+                    // a name that resolves to no static method becomes the diagnostic instead. The
+                    // type searched is the one the attribute was written in, which for an override
+                    // inheriting it is the base that named the method.
                     string? excelsiorConfigureCall = null;
                     var excelsiorConfigureMissing = false;
-                    if (excelsiorConfigure != null)
+                    if (excelsiorConfigure != null &&
+                        excelsiorConfigureOwner != null)
                     {
-                        var hasMethod = current.GetMembers(excelsiorConfigure)
+                        var hasMethod = excelsiorConfigureOwner.GetMembers(excelsiorConfigure)
                             .OfType<IMethodSymbol>()
                             .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
                         if (hasMethod)
                         {
-                            excelsiorConfigureCall = $"{Fqn(current)}.{excelsiorConfigure}";
+                            excelsiorConfigureCall = $"{Fqn(excelsiorConfigureOwner)}.{excelsiorConfigure}";
                         }
                         else
                         {
@@ -120,6 +163,15 @@ static class ShapeBuilder
                     // on top of it is the same claim made twice — and applying both converts the
                     // placeholder the first one produced. See PARCH025.
                     var markerOnToken = (isHtml || isMarkdown) && IsTokenValue(memberType);
+                    // Decided here and carried on the entry, so the diagnostic (PARCH034) and
+                    // the emission-side skip in AccessorEmission.WalkForMaps read one answer.
+                    var excelsiorNotTabular = isExcelsior && !IsTabular(memberType);
+                    // The conversion reads a string, so a marker on anything else has nothing to
+                    // convert. An unresolved type is left to the compiler's own error. See PARCH029.
+                    var markerOnNonString = (isHtml || isMarkdown) &&
+                                            !markerOnToken &&
+                                            memberType.SpecialType != SpecialType.System_String &&
+                                            memberType.TypeKind != TypeKind.Error;
                     var isStringList = !isExcelsior &&
                                        IsEnumerableOfString(memberType);
                     var isEditable = TryGetEditableField(member, editableFieldType, out var editableMultiLine, out var editableDateFormat);
@@ -129,6 +181,7 @@ static class ShapeBuilder
                     // A collection of a system element type (e.g. List<string>) is not one — it falls
                     // through to the scalar path, where MapEditableKind yields null → PARCH013.
                     string? editableCollectionElementFqn = null;
+                    var editableCollectionAssignable = true;
                     EditableFieldKind? editableKind = null;
                     if (isEditable)
                     {
@@ -137,6 +190,7 @@ static class ShapeBuilder
                             !IsSystemType(collectionElement))
                         {
                             editableCollectionElementFqn = Fqn(collectionElement);
+                            editableCollectionAssignable = AcceptsRebuiltList(memberType);
                         }
                         else
                         {
@@ -165,7 +219,11 @@ static class ShapeBuilder
                         editableDateFormat,
                         editableCollectionElementFqn,
                         excelsiorConfigureCall,
-                        excelsiorConfigureMissing));
+                        excelsiorConfigureMissing,
+                        excelsiorNotTabular,
+                        markerOnNonString,
+                        editableCollectionAssignable,
+                        !isStatic && HasUsableSetter(member) && IsCreatable(memberType)));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -176,13 +234,44 @@ static class ShapeBuilder
         return new(Fqn(type), elementFqn, new(members.ToImmutable()), HasParameterlessCtor(type), liquid, type.IsValueType);
     }
 
-    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same three cases off a
+    // Lockstep with the runtime's ParchmentExtractor.ReconstructCollection, which rebuilds an
+    // editable collection as a T[] for a member declared T[] and as a List<T> for everything else.
+    // The generated setter casts that value to the declared type, so the declared type has to be
+    // one of the two or an interface List<T> implements. Anything else (HashSet<T>, Collection<T>,
+    // an immutable collection, a class deriving from List<T>) is PARCH022.
+    static bool AcceptsRebuiltList(ITypeSymbol type)
+    {
+        if (type is IArrayTypeSymbol array)
+        {
+            return array.IsSZArray;
+        }
+
+        if (type is not INamedTypeSymbol {IsGenericType: true, TypeArguments.Length: 1} named)
+        {
+            return false;
+        }
+
+        return named.ConstructedFrom.ToDisplayString() is
+            "System.Collections.Generic.List<T>" or
+            "System.Collections.Generic.IList<T>" or
+            "System.Collections.Generic.ICollection<T>" or
+            "System.Collections.Generic.IEnumerable<T>" or
+            "System.Collections.Generic.IReadOnlyList<T>" or
+            "System.Collections.Generic.IReadOnlyCollection<T>";
+    }
+
+    // Lockstep with the runtime's LiquidMembers.Classify, which reads the same four cases off a
     // System.Type. The order is Fluid's: a dictionary is enumerable too, and is tested for first.
     static LiquidKind LiquidKindFor(ITypeSymbol type)
     {
         if (type.SpecialType == SpecialType.System_String)
         {
             return LiquidKind.String;
+        }
+
+        if (IsEnum(type))
+        {
+            return LiquidKind.Enum;
         }
 
         if (type is IArrayTypeSymbol)
@@ -217,6 +306,17 @@ static class ShapeBuilder
         return LiquidKind.None;
     }
 
+    // A nullable enum is boxed on its way to Fluid, so what arrives is the enum or nothing.
+    static bool IsEnum(ITypeSymbol type)
+    {
+        if (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable)
+        {
+            type = nullable.TypeArguments[0];
+        }
+
+        return type.TypeKind == TypeKind.Enum;
+    }
+
     static bool IsDictionary(ITypeSymbol type) =>
         type.OriginalDefinition.ToDisplayString() is
             "System.Collections.IDictionary" or
@@ -246,12 +346,17 @@ static class ShapeBuilder
             DeclaredAccessibility: Accessibility.Public
         });
 
+    static bool IsCreatable(ITypeSymbol type) =>
+        type is INamedTypeSymbol { TypeKind: TypeKind.Class, IsAbstract: false } &&
+        !IsSystemType(type) &&
+        HasParameterlessCtor(type);
+
     static (bool isHtml, bool isMarkdown, bool conflict) DetectFormat(ISymbol member)
     {
         var hasHtml = false;
         var hasMarkdown = false;
         string? stringSyntax = null;
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, _) in AttributesOf(member))
         {
             var cls = attribute.AttributeClass;
             if (cls == null)
@@ -267,12 +372,13 @@ static class ShapeBuilder
             // how a whole report silently stopped rendering its html. Nothing is lost by accepting
             // the short form: this has only ever matched on the bare name, never on where the
             // attribute came from.
-            var name = cls.Name;
-            if (name is "HtmlAttribute" or "Html")
+            // The base chain is walked so that an attribute deriving from one of the markers is
+            // the marker too, as it is to anything reading attributes by type.
+            if (IsOrDerivesFrom(cls, "HtmlAttribute", "Html"))
             {
                 hasHtml = true;
             }
-            else if (name is "MarkdownAttribute" or "Markdown")
+            else if (IsOrDerivesFrom(cls, "MarkdownAttribute", "Markdown"))
             {
                 hasMarkdown = true;
             }
@@ -305,24 +411,143 @@ static class ShapeBuilder
         return (false, false, false);
     }
 
+    static bool IsOrDerivesFrom(INamedTypeSymbol cls, string name, string shortName)
+    {
+        for (var current = cls; current != null; current = current.BaseType)
+        {
+            if (current.Name == name ||
+                current.Name == shortName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // What C# attribute inheritance gives a member: its own attributes, then those of each member
+    // it overrides whose attribute class is inherited. The owner is the member the attribute was
+    // written on, for what has to be resolved beside it. A member hiding another with `new`
+    // overrides nothing, and an interface member's attributes are not inherited by its
+    // implementation, so neither contributes.
+    static IEnumerable<(AttributeData attribute, ISymbol owner)> AttributesOf(ISymbol member)
+    {
+        foreach (var attribute in member.GetAttributes())
+        {
+            yield return (attribute, member);
+        }
+
+        var overridden = (member as IPropertySymbol)?.OverriddenProperty;
+        while (overridden != null)
+        {
+            foreach (var attribute in overridden.GetAttributes())
+            {
+                if (IsInherited(attribute.AttributeClass))
+                {
+                    yield return (attribute, overridden);
+                }
+            }
+
+            overridden = overridden.OverriddenProperty;
+        }
+    }
+
+    // [AttributeUsage] is itself inherited, so the nearest one up the attribute's base chain
+    // decides, and Inherited is true unless it says otherwise.
+    static bool IsInherited(INamedTypeSymbol? cls)
+    {
+        for (var current = cls; current != null; current = current.BaseType)
+        {
+            foreach (var attribute in current.GetAttributes())
+            {
+                if (attribute.AttributeClass?.ToDisplayString(format) != "global::System.AttributeUsageAttribute")
+                {
+                    continue;
+                }
+
+                foreach (var named in attribute.NamedArguments)
+                {
+                    if (named is { Key: "Inherited", Value.Value: bool inherited })
+                    {
+                        return inherited;
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        return true;
+    }
+
     // `string` itself is `IEnumerable<char>`, not `IEnumerable<string>` — element type would
     // be `char`, which is correctly rejected here.
     static bool IsEnumerableOfString(ITypeSymbol type) =>
-        ModelSymbolResolver.TryGetElementType(type, out var element) &&
+        TryGetSequenceElementType(type, out var element) &&
         element is {SpecialType: SpecialType.System_String};
 
-    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure)
+    // A multi-dimensional array has an element type but is no IEnumerable<T>: the runtime reads a
+    // string list and an Excelsior source through that interface, so `string[,]` handed to either
+    // yields nothing. A jagged `string[][]` is a rank-1 array of arrays and is unaffected.
+    static bool TryGetSequenceElementType(ITypeSymbol type, [NotNullWhen(true)] out ITypeSymbol? element)
+    {
+        element = null;
+        if (type.SpecialType == SpecialType.System_String ||
+            type is IArrayTypeSymbol {Rank: > 1})
+        {
+            return false;
+        }
+
+        return ModelSymbolResolver.TryGetElementType(type, out element);
+    }
+
+    /// <summary>
+    /// Whether an <c>[ExcelsiorTable]</c> member's type is a sequence of something Excelsior can
+    /// lay out as columns: an element with at least one public instance property or field, which
+    /// is what its column discovery reads. A scalar, a string, an untyped <c>IEnumerable</c>, and a
+    /// sequence of strings, primitives, enums, <c>object</c> or <c>dynamic</c> have none.
+    /// </summary>
+    static bool IsTabular(ITypeSymbol type)
+    {
+        if (!TryGetSequenceElementType(type, out var element))
+        {
+            return false;
+        }
+
+        // Covers string, object, the primitives, decimal, DateTime and Nullable<T>.
+        if (element.OriginalDefinition.SpecialType != SpecialType.None)
+        {
+            return false;
+        }
+
+        for (var current = element; current != null; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers())
+            {
+                if (TryGetMemberType(member, out _, out _, out var isStatic) &&
+                    !isStatic)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    static bool TryGetExcelsiorTable(ISymbol member, INamedTypeSymbol? excelsiorTableType, out string? headingParagraphStyle, out string? bodyParagraphStyle, out string? tableStyle, out string? configure, out INamedTypeSymbol? configureOwner)
     {
         headingParagraphStyle = null;
         bodyParagraphStyle = null;
         tableStyle = null;
         configure = null;
+        configureOwner = null;
         if (excelsiorTableType is null)
         {
             return false;
         }
 
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, owner) in AttributesOf(member))
         {
             if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, excelsiorTableType))
             {
@@ -353,6 +578,7 @@ static class ShapeBuilder
                 else if (named.Key == "Configure")
                 {
                     configure = value;
+                    configureOwner = owner.ContainingType;
                 }
             }
 
@@ -371,7 +597,7 @@ static class ShapeBuilder
             return false;
         }
 
-        foreach (var attribute in member.GetAttributes())
+        foreach (var (attribute, _) in AttributesOf(member))
         {
             if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, editableFieldType))
             {
@@ -424,7 +650,8 @@ static class ShapeBuilder
 
     /// <summary>
     /// The runtime lockstep is <c>EditableMap.MapKind</c> + the bool? guard: null means
-    /// PARCH013 (unsupported type — including <c>bool?</c>, which a checkbox cannot represent).
+    /// PARCH013 (unsupported type — including <c>bool?</c>, which a checkbox cannot represent, and
+    /// a <c>[Flags]</c> enum, which a dropdown cannot).
     /// </summary>
     static EditableFieldKind? MapEditableKind(ITypeSymbol type)
     {
@@ -464,6 +691,14 @@ static class ShapeBuilder
 
         if (type.TypeKind == TypeKind.Enum)
         {
+            // A dropdown selects one item, and a [Flags] value is a combination: Read | Write
+            // matches no item, so the control would show text that is not in its list and
+            // extraction could not read it back. The attribute decides, not the constants.
+            if (IsFlagsEnum(type))
+            {
+                return null;
+            }
+
             return EditableFieldKind.DropDown;
         }
 
@@ -478,6 +713,19 @@ static class ShapeBuilder
             "global::System.TimeOnly" => EditableFieldKind.Time,
             _ => null
         };
+    }
+
+    static bool IsFlagsEnum(ITypeSymbol type)
+    {
+        foreach (var attribute in type.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "FlagsAttribute", ContainingNamespace: { Name: "System", ContainingNamespace.IsGlobalNamespace: true } })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static bool IsNullableMember(ITypeSymbol type) =>

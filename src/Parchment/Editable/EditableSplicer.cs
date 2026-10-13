@@ -8,6 +8,13 @@
 /// one. This splicer instead splits runs at the exact token boundaries and inserts between them,
 /// touching nothing outside the token's character range.
 ///
+/// The elements go in beside the run owning the token's first character, in whatever holds that
+/// run: the paragraph, or an inline wrapper (<c>w:hyperlink</c>, an author's own <c>w:sdt</c>,
+/// <c>w:ins</c> / <c>w:moveTo</c>, <c>w:smartTag</c>, <c>w:fldSimple</c>, <c>w:dir</c> /
+/// <c>w:bdo</c>) — every one of them takes a content control and a perm-range marker as a child.
+/// A token straddling a wrapper's edge is therefore placed on the side it starts on, and the
+/// rest of its text is removed from the other side.
+///
 /// Tokens are processed in reverse-offset order (see <c>ScopeTreeRunner</c>), so any previously
 /// inserted field sits at a higher offset than the current token and is never walked into.
 /// </summary>
@@ -25,16 +32,15 @@ static class EditableSplicer
         var sitePr = (RunProperties?)firstRun?.RunProperties?.CloneNode(true);
         var produced = factory(sitePr);
 
-        var insertAfter = EnsureBoundary(host, offset);
+        var (container, cursor) = EnsureBoundary(host, offset);
         EnsureBoundary(host, offset + length);
         RemoveCoveredTexts(host, offset, offset + length);
 
-        var cursor = insertAfter ?? host.ParagraphProperties;
         foreach (var element in produced)
         {
             cursor = cursor == null
-                ? host.InsertAt(element, 0)
-                : host.InsertAfter(element, cursor);
+                ? container.InsertAt(element, 0)
+                : container.InsertAfter(element, cursor);
         }
     }
 
@@ -56,11 +62,12 @@ static class EditableSplicer
     }
 
     /// <summary>
-    /// Ensures a paragraph-level element boundary exists at <paramref name="absOffset"/> and
-    /// returns the direct child of <paramref name="host"/> after which content at that offset
-    /// begins (null when the offset is at the very start of the paragraph's content).
+    /// Ensures a run boundary exists at <paramref name="absOffset"/> and returns where content at
+    /// that offset begins: the element holding the run that owns the character at the offset (the
+    /// paragraph, or the inline wrapper the run sits in) and the child of it to insert after (null
+    /// when the offset is at the very start of that element).
     /// </summary>
-    static OpenXmlElement? EnsureBoundary(Paragraph host, int absOffset)
+    static (OpenXmlElement Container, OpenXmlElement? After) EnsureBoundary(Paragraph host, int absOffset)
     {
         var consumed = 0;
         OpenXmlElement? lastTopLevelBefore = null;
@@ -80,14 +87,14 @@ static class EditableSplicer
             if (start >= absOffset)
             {
                 // Boundary falls exactly before this text. If the run holds earlier content,
-                // split the run so the boundary is at paragraph level.
+                // split the run so the boundary is between two runs.
                 if (HasContentBefore(run, text))
                 {
                     SplitRunBefore(run, text);
-                    return TopLevel(host, run);
+                    return (run.Parent!, run);
                 }
 
-                return TopLevel(host, run).PreviousSibling();
+                return (run.Parent!, run.PreviousSibling());
             }
 
             // Boundary falls inside this text — split the text, then the run.
@@ -107,11 +114,11 @@ static class EditableSplicer
 
             run.InsertAfter(tail, text);
             SplitRunBefore(run, tail);
-            return TopLevel(host, run);
+            return (run.Parent!, run);
         }
 
         // Offset is at (or past) the end of the paragraph's text.
-        return lastTopLevelBefore ?? host.ChildElements.LastOrDefault(_ => _ is not ParagraphProperties);
+        return (host, lastTopLevelBefore ?? host.LastChild);
     }
 
     static bool HasContentBefore(Run run, Text text)
@@ -134,11 +141,9 @@ static class EditableSplicer
 
     /// <summary>
     /// Moves <paramref name="from"/> and every following sibling out of <paramref name="run"/>
-    /// into a fresh run (cloning run properties) inserted immediately after, so a paragraph-level
-    /// boundary exists just before <paramref name="from"/>. When the run is nested (inside a
-    /// hyperlink etc.) the split happens within that container — the boundary is then not at
-    /// paragraph level, which is fine: token scanning never produces tokens straddling such
-    /// containers and the host paragraphs Parchment mutates keep runs as direct children.
+    /// into a fresh run (cloning run properties) inserted immediately after, so a run boundary
+    /// exists just before <paramref name="from"/>. When the run is nested (inside a hyperlink
+    /// etc.) the split happens within that container, which is where the control is inserted.
     /// </summary>
     static void SplitRunBefore(Run run, OpenXmlElement from)
     {

@@ -9,6 +9,39 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
 
+    // PARCH001 again, worded for the one unknown member that is plainly there in the C#. Told only
+    // that a constant is "not a member", the reader checks the spelling.
+    public static readonly DiagnosticDescriptor EnumHasNoMembers = new(
+        id: "PARCH001",
+        title: "Template references an unknown model member",
+        messageFormat: "Template '{0}' token '{1}' references '{2}', but '{3}' is an enum. A template sees an enum as the text it renders as, " +
+                       "so its constants cannot be named: compare against that text instead.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch001--unknown-model-member");
+
+    /// <summary>
+    /// PARCH001 for a path <see cref="ShapeResolver.TryResolve"/> turned down, in whichever of its
+    /// two wordings fits.
+    /// </summary>
+    public static Diagnostic UnknownMember(
+        TargetInfo target,
+        string templatePath,
+        Location location,
+        string tokenSource,
+        IReadOnlyList<string> path,
+        IReadOnlyDictionary<string, string> scope)
+    {
+        var reference = SegmentNames.Join(path);
+        if (ShapeResolver.StopsAtEnum(target.Shape, path, scope, out var enumPath))
+        {
+            return Diagnostic.Create(EnumHasNoMembers, location, templatePath, tokenSource, reference, enumPath);
+        }
+
+        return Diagnostic.Create(MissingMember, location, templatePath, tokenSource, reference, target.ModelDisplayName);
+    }
+
     public static readonly DiagnosticDescriptor LoopSourceNotEnumerable = new(
         id: "PARCH002",
         title: "Loop source is not enumerable",
@@ -18,10 +51,19 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch002--loop-source-is-not-enumerable");
 
+    // The reason is an argument because the two flows differ in it: a docx template supports a
+    // fixed list of block tags, a markdown one everything liquid parses except the partial tags
+    // and the liquid tag.
+    public const string DocxBlockTags = "supported: for, endfor, if, elsif, else, endif";
+
+    public const string MarkdownPartialTag = "a markdown template is a single file with nothing to load a partial from";
+
+    public const string MarkdownLiquidTag = "the statements inside it do not run; write each one as its own tag";
+
     public static readonly DiagnosticDescriptor UnsupportedBlockTag = new(
         id: "PARCH003",
         title: "Unsupported block tag",
-        messageFormat: "Template '{0}' uses unsupported block tag '{1}' (supported: for, endfor, if, elsif, else, endif)",
+        messageFormat: "Template '{0}' uses unsupported block tag '{1}' ({2}){3}",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -110,7 +152,7 @@
     public static readonly DiagnosticDescriptor EditableUnsupportedType = new(
         id: "PARCH013",
         title: "[EditableField] member has an unsupported type",
-        messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums, and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
+        messageFormat: "Model '{0}' member '{1}' is [EditableField] but its type '{2}' is not supported. Supported: string, bool, DateOnly, DateTime, DateTimeOffset, TimeOnly, enums without [Flags], and numeric types (nullable variants except bool? — a checkbox cannot represent null).",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -143,10 +185,21 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch016--editablefield-token-with-filters-or-complex-expression");
 
+    // Shares PARCH016 with the rule above: both say the token cannot render as an editable field
+    // as written.
+    public static readonly DiagnosticDescriptor EditableTokenInValueControl = new(
+        id: "PARCH016",
+        title: "[EditableField] token must be a plain member-access expression",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member from inside a plain-text, date, drop-down, combo box, checkbox or picture content control; the token renders as a content control of its own and Word refuses to open a document with a control nested in one of those",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch016--editablefield-token-with-filters-or-complex-expression");
+
     public static readonly DiagnosticDescriptor EditableTokenDuplicated = new(
         id: "PARCH017",
         title: "[EditableField] member referenced more than once in the document body",
-        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body; the dotted path is the content control's tag and must be unique for extraction",
+        messageFormat: "Template '{0}' token '{1}' references an [EditableField] member already referenced elsewhere in the document body, or binds an [EditableField] collection that another loop already binds; the dotted path is the content control's tag and must be unique for extraction",
         category: "Parchment",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -222,6 +275,17 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch025--format-marker-on-a-member-already-typed-as-a-token");
 
+    // The conversion reads the member as a string. Anything else used to reach it as no string at
+    // all and render as nothing, in a document that otherwise looked complete.
+    public static readonly DiagnosticDescriptor FormatMarkerOnNonString = new(
+        id: "PARCH029",
+        title: "Format marker on a member that is not a string",
+        messageFormat: "Model '{0}' member '{1}' is typed '{2}' and carries [Html]/[Markdown]/[StringSyntax]. The marker converts a string, and this member has none to convert. Type the member as a string, or remove the marker.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch029--format-marker-on-a-member-that-is-not-a-string");
+
     // The generated code calls the method directly, so an unresolvable name would otherwise
     // surface as a compile error inside a .g.cs file - correct, but pointing at code nobody wrote.
     // This reports it on the member that named it instead, and suppresses the emission so the
@@ -234,6 +298,17 @@
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch026--excelsiortable-configure-method-not-found");
+
+    // Nothing was reported for this before: the attribute was dropped and the token printed whatever
+    // the plain value prints, where the author expected a table.
+    public static readonly DiagnosticDescriptor ExcelsiorNotTabular = new(
+        id: "PARCH034",
+        title: "[ExcelsiorTable] member is not a collection of rows",
+        messageFormat: "Model '{0}' member '{1}' is marked [ExcelsiorTable] but its type '{2}' is not a collection of a type with properties to show as columns. Excelsior renders one row per element and one column per public property of the element type, so the member must be an array, a list or another IEnumerable<T> of such a type. Change the member's type, or remove the attribute.",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch034--excelsiortable-member-is-not-a-collection-of-rows");
 
     // Extraction is replace-all: the rows in the document become the collection. A window or a
     // reversal on the loop that rendered them would therefore be written back as data.
@@ -268,6 +343,18 @@
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch032--editablefield-member-is-reached-through-a-struct");
+
+    // The wording after the token is TokenFilterOrder.Message, so the build and the runtime's
+    // registration exception explain the mistake in the same words. Which filters produce a token
+    // depends on the flow — see TokenFilterOrder.
+    public static readonly DiagnosticDescriptor FilterAfterTokenFilter = new(
+        id: "PARCH037",
+        title: "Filter applied after a filter that produces Word content",
+        messageFormat: "Template '{0}' token '{1}' has a filter out of order: {2}",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch037--filter-after-a-format-filter");
 
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",

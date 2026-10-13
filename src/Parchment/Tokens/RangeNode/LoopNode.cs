@@ -12,5 +12,10 @@ sealed record LoopNode(
     Expression? Limit,
     Expression? Offset,
     bool Reversed,
+    // True when a paragraph between the tags anchors a text box that holds a token. That paragraph
+    // carries anchors below its direct children, which is as far as the runner looks unless told
+    // otherwise (ScopeTreeRunner.CollectAnchors). Precomputed at tree-build time, so a block
+    // without one, which is nearly every block, costs the render a bool check.
+    bool NestedAnchors,
     IReadOnlyList<RangeNode> Body) :
     RangeNode;

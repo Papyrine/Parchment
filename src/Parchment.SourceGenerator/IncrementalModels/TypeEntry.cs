@@ -6,7 +6,8 @@ sealed record TypeEntry(
     // collection shape rules (extraction rebuilds the list, so elements must be constructable).
     bool HasParameterlessCtor = false,
     // What Fluid hands a template for a value of this type. Anything but None answers to liquid's
-    // own members instead of the ones above — see ShapeResolver.TryResolveLiquidMember.
+    // own members instead of the ones above, and an enum to none at all — see
+    // ShapeResolver.TryResolveLiquidMember.
     LiquidKind Liquid = LiquidKind.None,
     // A struct. Extraction writes editable values back along the member path, and a write through
     // a struct lands on a copy — consulted by the editable shape rules (PARCH022 / PARCH032).
