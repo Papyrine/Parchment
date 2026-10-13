@@ -617,14 +617,68 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         RenderToFile(model, path, null, cancel);
 
     /// <inheritdoc cref="Render{TModel}(TModel, Stream, WordDocumentProperties, Cancel)"/>
+    /// <remarks>
+    /// The file at <paramref name="path"/> is only replaced once the render has succeeded. A
+    /// failed or cancelled render leaves an existing file as it was and creates nothing at a new
+    /// path.
+    /// </remarks>
     [RequiresUnreferencedCode(Unsupported.Trimming)]
     [RequiresDynamicCode(Unsupported.DynamicCode)]
     public async Task RenderToFile<TModel>(TModel model, string path, WordDocumentProperties? properties, Cancel cancel = default)
     {
-        var file = File.Create(path);
-        await using (file.ConfigureAwait(false))
+        // Rendered into a sibling temporary file and moved into place, so the destination is
+        // never truncated ahead of a render that then throws, and never holds half a document
+        // when the write itself fails. The same directory keeps the move on one volume, where it
+        // is a rename rather than a copy.
+        ProbeDestination(path);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        var temp = Path.Combine(directory, Path.GetRandomFileName());
+        var file = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        try
         {
-            await Render(model, file, properties, cancel).ConfigureAwait(false);
+            await using (file.ConfigureAwait(false))
+            {
+                await Render(model, file, properties, cancel).ConfigureAwait(false);
+            }
+
+            File.Move(temp, path, true);
+        }
+        catch
+        {
+            DeleteQuietly(temp);
+            throw;
+        }
+    }
+
+    // Opens an existing destination the way File.Create would, without truncating it, so a missing
+    // directory, a locked file or a read-only one fails before the render and with the exception
+    // writing to the path directly gives. Replacing a locked file by a move reports
+    // UnauthorizedAccessException on Windows where opening it reports IOException.
+    static void ProbeDestination(string path)
+    {
+        try
+        {
+            using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+            }
+        }
+        catch (FileNotFoundException)
+        {
+        }
+    }
+
+    // Cleanup on a path that is already failing: the render's own exception is the one to surface.
+    static void DeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
