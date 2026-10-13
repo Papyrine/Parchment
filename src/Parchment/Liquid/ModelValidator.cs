@@ -122,6 +122,12 @@ static class ModelValidator
 
     static string MissingMemberMessage(Type type, string name)
     {
+        if (IsTokenValue(type))
+        {
+            return $"Member '{name}' of '{type.Name}' is not available to a template. " +
+                   "A token value is rendered whole and none of its members is bound; expose the value as a member of the model instead.";
+        }
+
         var kind = LiquidMembers.Classify(type);
         if (kind != LiquidKind.None)
         {
@@ -145,6 +151,12 @@ static class ModelValidator
     /// </summary>
     public static bool TryResolveSegment(Type type, string name, [NotNullWhen(true)] out Type? memberType)
     {
+        if (IsTokenValue(type))
+        {
+            memberType = null;
+            return false;
+        }
+
         var kind = LiquidMembers.Classify(type);
         if (kind != LiquidKind.None)
         {
@@ -159,6 +171,14 @@ static class ModelValidator
 
         return TryResolveMember(type, name, out memberType);
     }
+
+    // A token is a thing to print, not an object to read. The markdown flow hands Fluid the text it
+    // renders as, so Source on an HtmlToken is nil there and renders blank, while the docx flow
+    // prints raw markup, or the type name of the delegate an OpenXmlToken or a MutateToken holds.
+    // A token type of the model's own is no different. Lockstep with the generator, whose
+    // ShapeBuilder records no members for one, so no accessor exists either.
+    static bool IsTokenValue(Type type) =>
+        typeof(TokenValue).IsAssignableFrom(type);
 
     // The generator emits accessors for the model's own types and stops at a system one
     // (ShapeBuilder.IsSystemType): Year on a DateTime, Value on a Nullable<T> and Item1 on a tuple
