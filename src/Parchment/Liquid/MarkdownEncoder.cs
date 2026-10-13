@@ -105,6 +105,24 @@ class MarkdownEncoder(StringBuilder? written) :
             _ => null
         };
 
+    static bool TryReadLeadingReference(CharSpan value, out char character, out int length)
+    {
+        foreach (var candidate in " \t[")
+        {
+            var reference = LeadingReference(candidate)!;
+            if (value.StartsWith(reference))
+            {
+                character = candidate;
+                length = reference.Length;
+                return true;
+            }
+        }
+
+        character = default;
+        length = 0;
+        return false;
+    }
+
     public override int MaxOutputCharactersPerInputCharacter => Break.Length;
 
     public override bool WillEncode(int unicodeScalar) =>
@@ -333,11 +351,13 @@ class MarkdownEncoder(StringBuilder? written) :
     /// <summary>
     /// Undoes <see cref="Encode(string)"/>'s backslashes for the one construct that reads them
     /// verbatim and still has to work: an autolink, whose text is also its target. A backslash that
-    /// escapes nothing is kept.
+    /// escapes nothing is kept. The character reference a value's first character can be written
+    /// as (<see cref="LeadingReference"/>) is undone as well, since an autolink does not resolve
+    /// one; a reference the value itself spelled out arrives with its ampersand escaped and stays.
     /// </summary>
     public static string Unescape(CharSpan value)
     {
-        if (value.IndexOf('\\') < 0)
+        if (value.IndexOfAny('\\', '&') < 0)
         {
             return value.ToString();
         }
@@ -345,6 +365,14 @@ class MarkdownEncoder(StringBuilder? written) :
         var builder = new StringBuilder(value.Length);
         for (var index = 0; index < value.Length; index++)
         {
+            if (value[index] == '&' &&
+                TryReadLeadingReference(value[index..], out var character, out var length))
+            {
+                builder.Append(character);
+                index += length - 1;
+                continue;
+            }
+
             if (value[index] == '\\' &&
                 index + 1 < value.Length &&
                 escapable.Contains(value[index + 1]))

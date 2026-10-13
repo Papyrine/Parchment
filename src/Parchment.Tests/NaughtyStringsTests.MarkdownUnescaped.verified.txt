@@ -688,14 +688,14 @@ o
 • జ్ఞ‌ా
 • گچپژ
 • {% print ‘x’ * 64 * 1024**3 %}
-• {{ "".class.mro[2].subclasses()40.read() }}
+• {{ "".class.mro[2].subclasses()40 ("/etc/passwd").read() }}
 • En dash –
 • Em dash —
-• Horizontal bar ―
     },
     {
       Number: 39,
       Text:
+• Horizontal bar ―
 • Figure dash ‒
 • Swung dash ⁓
 • Single opening quote ‘

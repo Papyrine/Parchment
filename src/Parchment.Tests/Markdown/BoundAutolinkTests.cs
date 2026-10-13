@@ -135,8 +135,10 @@ public partial class BoundAutolinkTests
             .Select(_ => _.Uri.OriginalString)
             .ToList();
 
-        await Assert.That(targets).IsEquivalentTo(["https://portal.example.com/a b/a b", "a b"]);
-        await Assert.That(main.Document!.Body!.InnerText).IsEqualTo("one and two for a b.");
+        // The second destination is relative, which nothing in a generated document can be
+        // relative to, so that link stays text.
+        await Assert.That(targets).IsEquivalentTo(["https://portal.example.com/a b/a b"]);
+        await Assert.That(main.Document!.Body!.InnerText).IsEqualTo("one and two (a b) for a b.");
     }
 
     // The same value outside a destination is unchanged: a closed destination is not one, and

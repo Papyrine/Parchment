@@ -51,11 +51,36 @@ class LinkInlineRenderer :
             return;
         }
 
-        var relId = RelationshipIds.Hyperlink(renderer.Part, url);
+        if (!RelationshipIds.TryHyperlink(renderer.Part, url, out var relId))
+        {
+            WriteUnlinked(renderer, inline, url);
+            return;
+        }
+
         WriteHyperlink(renderer, inline, new()
         {
             Id = relId
         });
+    }
+
+    // A destination no relationship can point at — one that is not a url at all, or a relative one,
+    // which has nothing to be relative to here — leaves the link as its text followed by the
+    // destination in parentheses, so the reader still has both. This is what OpenXmlHtml writes for
+    // an <a href> it cannot resolve. Text that already is the destination is not repeated.
+    static void WriteUnlinked(OpenXmlMarkdownRenderer renderer, LinkInline inline, string url)
+    {
+        url = XmlChars.Strip(url.AsSpan()).ToString();
+        if (inline.FirstChild == null)
+        {
+            renderer.AddRun(LiteralInlineRenderer.BuildRun(url));
+            return;
+        }
+
+        renderer.WriteChildren(inline);
+        if (!ExtractAlt(inline).AsSpan().Trim().Equals(url, StringComparison.Ordinal))
+        {
+            renderer.AddRun(LiteralInlineRenderer.BuildRun($" ({url})"));
+        }
     }
 
     static void WriteHyperlink(OpenXmlMarkdownRenderer renderer, LinkInline inline, Hyperlink hyperlink)

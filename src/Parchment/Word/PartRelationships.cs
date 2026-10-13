@@ -215,7 +215,20 @@ sealed class PartRelationships(MainDocumentPart mainPart, OpenXmlPart owner)
     {
         if (link.IsExternal)
         {
-            return RelationshipIds.Hyperlink(owner, link.Uri.OriginalString);
+            // Already a relationship on the main part, so the target is one a relationship can
+            // hold: it is carried over as it stands, and shared when the owner points there too.
+            foreach (var existing in owner.HyperlinkRelationships)
+            {
+                if (existing.IsExternal &&
+                    string.Equals(existing.Uri.OriginalString, link.Uri.OriginalString, StringComparison.Ordinal))
+                {
+                    return existing.Id;
+                }
+            }
+
+            var externalId = RelationshipIds.Next(owner, "rIdLink");
+            owner.AddHyperlinkRelationship(link.Uri, true, externalId);
+            return externalId;
         }
 
         var id = RelationshipIds.Next(owner, "rIdLink");

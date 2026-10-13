@@ -1809,6 +1809,8 @@ A bookmark name is far more restricted than an html id: it must start with a let
 
 An id and a style can sit on the same block: `Text {#note}{.BOXText}`.
 
+Any other link target has to be an absolute url (`https://…`, `mailto:…`, `file:///…`) to become a hyperlink. A relative target (`page.html`, `/docs/page`) has nothing to be relative to in a generated document, and a target that is not a url at all, which a bound value can easily be, cannot be linked. Both are written as the link text followed by the target in parentheses — `text (page.html)` — which is also what an `<a href>` in `[Html]` content becomes. Text that already is the target is not repeated.
+
 A link with **no text** and a `#` target becomes a page reference instead — the page the bookmark lands on, which only Word can compute:
 
 ```markdown
