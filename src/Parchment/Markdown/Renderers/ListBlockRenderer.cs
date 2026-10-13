@@ -27,7 +27,7 @@ class ListBlockRenderer :
             // vanished and every later item of an ordered list took the number before its own.
             if (!HasParagraph(itemBlock))
             {
-                renderer.FlushParagraph(MarkerProperties(listStyleId ?? "ListParagraph", ilvl, numId));
+                renderer.FlushParagraph(ItemProperties(listStyleId ?? "ListParagraph", Marker(ilvl, numId)));
                 numbered = true;
             }
 
@@ -51,21 +51,19 @@ class ListBlockRenderer :
                 // one before the list attaches to the ListBlock and covers every item. The item
                 // wins where both are present.
                 var leaf = (LeafBlock) child;
-                var styleId = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph";
-                ParagraphProperties properties;
+                OpenXmlElement placement;
                 if (numbered)
                 {
                     // Without a numPr none of the level's indentation applies, so the paragraph
                     // states the level's text indent itself to sit under the item's text.
-                    properties = BaseProperties(styleId);
-                    properties.Indentation = new()
+                    placement = new Indentation
                     {
                         Left = WordNumberingState.TextIndent(ilvl).ToString(CultureInfo.InvariantCulture)
                     };
                 }
                 else
                 {
-                    properties = MarkerProperties(styleId, ilvl, numId);
+                    placement = Marker(ilvl, numId);
                     numbered = true;
                 }
 
@@ -73,14 +71,13 @@ class ListBlockRenderer :
                 {
                     // A heading takes the marker and the indent like any other item text, but
                     // under its own style rather than the list's, so it is still a heading.
-                    properties.ParagraphStyleId = null;
-                    properties.ContextualSpacing = null;
-                    HeadingBlockRenderer.Write(renderer, heading, properties);
+                    HeadingBlockRenderer.Write(renderer, heading, new(placement));
                     continue;
                 }
 
+                var styleId = MarkdownStyle.Resolve(leaf) ?? listStyleId ?? "ListParagraph";
                 renderer.WriteLeafInline(leaf);
-                renderer.FlushParagraph(properties);
+                renderer.FlushParagraph(ItemProperties(styleId, placement));
             }
         }
     }
@@ -104,20 +101,20 @@ class ListBlockRenderer :
         return false;
     }
 
-    static ParagraphProperties BaseProperties(string styleId) =>
-        new()
-        {
-            ParagraphStyleId = new()
+    // Built through the children constructor, which appends in the order given, so the order here
+    // is the pPr schema sequence: pStyle, then numPr or ind (the placement is one or the other),
+    // then contextualSpacing.
+    static ParagraphProperties ItemProperties(string styleId, OpenXmlElement placement) =>
+        new(
+            new ParagraphStyleId
             {
                 Val = styleId
             },
-            ContextualSpacing = new()
-        };
+            placement,
+            new ContextualSpacing());
 
-    static ParagraphProperties MarkerProperties(string styleId, int ilvl, int numId)
-    {
-        var properties = BaseProperties(styleId);
-        properties.NumberingProperties = new(
+    static NumberingProperties Marker(int ilvl, int numId) =>
+        new(
             new NumberingLevelReference
             {
                 Val = ilvl
@@ -126,8 +123,6 @@ class ListBlockRenderer :
             {
                 Val = numId
             });
-        return properties;
-    }
 
     /// <summary>
     /// Nesting depth of a list, which is the <c>ilvl</c> its items belong at.

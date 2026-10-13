@@ -26,12 +26,21 @@ class RegisteredDocxTemplate(
 
     internal byte[] Snapshot => canonicalBytes;
 
+    // The token parts, parsed on the first render and cloned by every render after it instead of being
+    // parsed from xml again. Shared by concurrent renders and never mutated - see ParsedParts.
+    ParsedParts? parsedParts;
+    object? parsedPartsLock;
+
     public override async Task Render(object model, Stream output, WordDocumentProperties? properties, Cancel cancel)
     {
         cancel.ThrowIfCancellationRequested();
 
         var context = SharedFluid.CreateContext(model, SharedFluid.Options);
-        using var stream = DocxCloner.ToWritableStream(canonicalBytes);
+        var parsed = LazyInitializer.EnsureInitialized(
+            ref parsedParts,
+            ref parsedPartsLock,
+            () => ParsedParts.Read(canonicalBytes, tokenParts));
+        using var stream = DocxCloner.ToWritableStream(parsed.Bytes);
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
             var mainPart = doc.MainDocumentPart!;
@@ -44,6 +53,9 @@ class RegisteredDocxTemplate(
             var partRoots = new Dictionary<string, (OpenXmlPart part, OpenXmlCompositeElement root)>(StringComparer.Ordinal);
             foreach (var (uri, part, root) in DocxCloner.EnumerateParts(doc, tokenParts))
             {
+                // The root arrives empty: its content is a copy of the tree kept from the first
+                // render, which costs less than parsing the same xml again.
+                parsed.Fill(uri, root);
                 partRoots[uri] = (part, root);
             }
 
@@ -112,7 +124,10 @@ class RegisteredDocxTemplate(
             }
 
             cancel.ThrowIfCancellationRequested();
-            doc.Save();
+
+            // No doc.Save() here: disposing the package is what serialises it, and a save ahead of
+            // that wrote every loaded part twice. See "A package is saved by its Dispose" in
+            // contributing.md.
         }
 
         // A part added during this render — a numbering part for a list, an image, editable-field

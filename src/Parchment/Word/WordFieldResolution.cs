@@ -49,7 +49,8 @@ static class WordFieldResolution
             }
 
             ApplyToEntries(body, pages);
-            doc.Save();
+
+            // Saved by the dispose - see "A package is saved by its Dispose" in contributing.md.
         }
 
         document.Position = 0;

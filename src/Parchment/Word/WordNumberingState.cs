@@ -56,6 +56,8 @@ class WordNumberingState(MainDocumentPart mainPart)
     public List<OpenXmlElement> ConvertHtml(string html, HtmlConvertSettings settings)
     {
         var last = LastInstance();
+        // The converter adds the relationships of links and images to the main part itself.
+        RelationshipIds.Forget(mainPart);
         var elements = WordHtmlConverter.ToElements(html, mainPart, settings);
         if (!ReferenceEquals(last, LastInstance()))
         {

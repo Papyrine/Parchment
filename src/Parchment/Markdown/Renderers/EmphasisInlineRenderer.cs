@@ -38,17 +38,84 @@ class EmphasisInlineRenderer :
     // HtmlInlineRenderer and LinkInlineRenderer hold up the other end.
     static void Apply(Run run, EmphasisInline inline, string? styleId)
     {
-        ApplyStyle(run, inline.DelimiterChar, inline.DelimiterCount);
+        var format = Format(inline.DelimiterChar, inline.DelimiterCount);
+        if (run.GetFirstChild<RunProperties>() is not { } properties)
+        {
+            // Most emphasised runs are plain text reached once, so there is nothing to place the
+            // new elements among: the properties are built holding them, rStyle first as the rPr
+            // sequence has it.
+            properties = new();
+            if (styleId != null)
+            {
+                properties.Append(
+                    new RunStyle
+                    {
+                        Val = styleId
+                    });
+            }
+
+            if (format != null)
+            {
+                properties.Append(format);
+            }
+
+            run.PrependChild(properties);
+            return;
+        }
+
+        Merge(properties, format);
         if (styleId == null)
         {
             return;
         }
 
         // Assigned through the typed property so rStyle lands first in the rPr sequence.
-        run.RunProperties!.RunStyle = new()
+        properties.RunStyle = new()
         {
             Val = styleId
         };
+    }
+
+    static OpenXmlElement? Format(char delimiter, int count)
+    {
+        switch (delimiter)
+        {
+            case '*':
+            case '_':
+                if (count >= 2)
+                {
+                    return new Bold();
+                }
+
+                return new Italic();
+            case '~':
+                if (count >= 2)
+                {
+                    return new Strike();
+                }
+
+                return new VerticalTextAlignment
+                {
+                    Val = VerticalPositionValues.Subscript
+                };
+            case '^':
+                return new VerticalTextAlignment
+                {
+                    Val = VerticalPositionValues.Superscript
+                };
+            case '+':
+                return new Underline
+                {
+                    Val = UnderlineValues.Single
+                };
+            case '=':
+                return new Highlight
+                {
+                    Val = HighlightColorValues.Yellow
+                };
+        }
+
+        return null;
     }
 
     // Emphasis nests, and the outer one applies to runs the inner already reached: "*_text_*" walks
@@ -57,54 +124,27 @@ class EmphasisInlineRenderer :
     // through its typed property, which places it by the rPr sequence rather than last: a run inside
     // a link already holds an rStyle, and the inner emphasis is not always the earlier element -
     // "**_text_**" reaches the run italic first and bold second.
-    static void ApplyStyle(Run run, char delimiter, int count)
+    static void Merge(RunProperties properties, OpenXmlElement? format)
     {
-        var properties = run.RunProperties ??= new();
-        switch (delimiter)
+        switch (format)
         {
-            case '*':
-            case '_':
-                if (count >= 2)
-                {
-                    properties.Bold ??= new();
-                }
-                else
-                {
-                    properties.Italic ??= new();
-                }
-
+            case Bold bold:
+                properties.Bold ??= bold;
                 break;
-            case '~':
-                if (count >= 2)
-                {
-                    properties.Strike ??= new();
-                }
-                else
-                {
-                    properties.VerticalTextAlignment ??= new()
-                    {
-                        Val = VerticalPositionValues.Subscript
-                    };
-                }
-
+            case Italic italic:
+                properties.Italic ??= italic;
                 break;
-            case '^':
-                properties.VerticalTextAlignment ??= new()
-                {
-                    Val = VerticalPositionValues.Superscript
-                };
+            case Strike strike:
+                properties.Strike ??= strike;
                 break;
-            case '+':
-                properties.Underline ??= new()
-                {
-                    Val = UnderlineValues.Single
-                };
+            case VerticalTextAlignment alignment:
+                properties.VerticalTextAlignment ??= alignment;
                 break;
-            case '=':
-                properties.Highlight ??= new()
-                {
-                    Val = HighlightColorValues.Yellow
-                };
+            case Underline underline:
+                properties.Underline ??= underline;
+                break;
+            case Highlight highlight:
+                properties.Highlight ??= highlight;
                 break;
         }
     }

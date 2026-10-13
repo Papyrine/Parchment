@@ -3,21 +3,23 @@ class CodeInlineRenderer :
 {
     protected override void Write(OpenXmlMarkdownRenderer renderer, CodeInline inline)
     {
-        var properties = new RunProperties(
+        // rStyle leads the rPr sequence, so it goes in before the fonts.
+        var properties = new RunProperties();
+        if (MarkdownStyle.Resolve(inline) is { } styleId)
+        {
+            properties.Append(
+                new RunStyle
+                {
+                    Val = styleId
+                });
+        }
+
+        properties.Append(
             new RunFonts
             {
                 Ascii = "Consolas",
                 HighAnsi = "Consolas"
             });
-
-        // Assigned through the typed property so rStyle leads the rPr sequence.
-        if (MarkdownStyle.Resolve(inline) is { } styleId)
-        {
-            properties.RunStyle = new()
-            {
-                Val = styleId
-            };
-        }
 
         var run = new Run(
             properties,

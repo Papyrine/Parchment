@@ -87,7 +87,12 @@ class LinkInlineRenderer :
     {
         var top = renderer.Top;
         var before = top.CurrentRuns.Count;
+
+        // These runs go into the hyperlink, which the flush does not fold, so each literal keeps
+        // the run it always had.
+        renderer.BeginUnfoldedRuns();
         renderer.WriteChildren(inline);
+        renderer.EndUnfoldedRuns();
         var produced = top.CurrentRuns.Skip(before).ToList();
 
         var styleId = MarkdownStyle.Resolve(inline) ?? "Hyperlink";
@@ -95,15 +100,28 @@ class LinkInlineRenderer :
         {
             if (run is Run runElement)
             {
-                // The children have already given these runs properties, so the style is assigned
+                // Where the children have already given the run properties, the style is assigned
                 // through the typed property, which puts rStyle first in the rPr sequence. A run
                 // carries one character style: one a child asked for by name ("`code`{.Mono}", a
-                // classed span) is the more specific and is kept.
-                var properties = runElement.RunProperties ??= new();
-                properties.RunStyle ??= new()
+                // classed span) is the more specific and is kept. Plain link text has no properties
+                // yet, and they are built holding the style.
+                if (runElement.GetFirstChild<RunProperties>() is { } properties)
                 {
-                    Val = styleId
-                };
+                    properties.RunStyle ??= new()
+                    {
+                        Val = styleId
+                    };
+                }
+                else
+                {
+                    runElement.PrependChild(
+                        new RunProperties(
+                            new RunStyle
+                            {
+                                Val = styleId
+                            }));
+                }
+
                 hyperlink.Append(runElement);
             }
             else

@@ -19,6 +19,12 @@ static class ExcelsiorInternalLinks
 
     public static void Rewrite(Table table, MainDocumentPart mainPart, BookmarkNames names)
     {
+        // Read once, on the first link, rather than searched per link: a table with a link in
+        // every row would otherwise walk the part's relationships once per row. Nothing adds a
+        // relationship while this runs, and the ones removed here are removed from the map too,
+        // so a second hyperlink on a relationship that is already gone still finds nothing.
+        Dictionary<string, string>? targets = null;
+
         // Materialized before mutating: an empty link is replaced by the runs of a field, which
         // edits the tree being walked.
         foreach (var hyperlink in table.Descendants<Hyperlink>().ToList())
@@ -28,14 +34,15 @@ static class ExcelsiorInternalLinks
                 continue;
             }
 
-            var relationship = mainPart.HyperlinkRelationships
-                .FirstOrDefault(_ => _.Id == relationshipId);
-            if (relationship?.Uri.OriginalString is not { } target ||
+            targets ??= Targets(mainPart);
+            if (!targets.TryGetValue(relationshipId, out var target) ||
                 target.Length == 0 ||
                 target[0] != '#')
             {
                 continue;
             }
+
+            targets.Remove(relationshipId);
 
             var bookmark = names.For(target[1..]);
 
@@ -53,6 +60,17 @@ static class ExcelsiorInternalLinks
 
             hyperlink.Anchor = bookmark;
         }
+    }
+
+    static Dictionary<string, string> Targets(MainDocumentPart mainPart)
+    {
+        var targets = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var relationship in mainPart.HyperlinkRelationships)
+        {
+            targets.TryAdd(relationship.Id, relationship.Uri.OriginalString);
+        }
+
+        return targets;
     }
 
     static void ReplaceWithPageReference(Hyperlink hyperlink, string bookmark)
