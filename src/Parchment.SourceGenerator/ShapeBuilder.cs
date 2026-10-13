@@ -73,8 +73,8 @@ static class ShapeBuilder
         // IDictionary<K, V> reached from the model. Surfacing Key and Value lets `{{ kv.Key }}`
         // validate and gives the accessor emission something to register, and enqueuing V (and K)
         // makes user-type values reachable.
-        if (type is INamedTypeSymbol { IsGenericType: true } pair &&
-            pair.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>")
+        if (type is INamedTypeSymbol pair &&
+            ModelSymbolResolver.IsKeyValuePair(pair))
         {
             members.Add(new("Key", Fqn(pair.TypeArguments[0])));
             members.Add(new("Value", Fqn(pair.TypeArguments[1])));
@@ -330,10 +330,7 @@ static class ShapeBuilder
     }
 
     static bool IsDictionary(ITypeSymbol type) =>
-        type.OriginalDefinition.ToDisplayString() is
-            "System.Collections.IDictionary" or
-            "System.Collections.Generic.IDictionary<TKey, TValue>" or
-            "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
+        ModelSymbolResolver.IsDictionary(type);
 
     // Walked rather than compared to a referenced symbol: the shape is built from whatever the
     // consuming compilation has, and the base chain is enough to recognise one of the token types.
