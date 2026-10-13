@@ -304,7 +304,7 @@ static class MarkdownTokenBlocks
         ImagePolicies imagePolicies) =>
         token switch
         {
-            HtmlToken html => WordHtmlConverter.ToElements(html.Source, mainPart, imagePolicies.BuildSettings()),
+            HtmlToken html => numbering.ConvertHtml(html.Source, imagePolicies.BuildSettings()),
             OpenXmlToken raw when ReferenceEquals(raw, OpenXmlToken.Empty) => [],
             // The host is handed over as well as the part: a token that only wants to know what it
             // is replacing - its style, its indentation - gets the same answer it would in the docx
