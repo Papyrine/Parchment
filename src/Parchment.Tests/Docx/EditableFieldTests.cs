@@ -1630,6 +1630,138 @@ public partial class EditableFieldTests
         return model.Body;
     }
 
+    const string fragmentUrl = "https://example.com/docs/page#section-two";
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentSplitByWordIsRejoined()
+    {
+        // On any save Word moves a link's fragment out of the relationship target and into
+        // w:anchor on the w:hyperlink.
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/docs/page", _ => _.Anchor = "section-two");
+
+        var extracted = ExtractBody(stream);
+
+        await Assert.That(extracted).Contains($"<a href=\"{fragmentUrl}\">");
+
+        // The extracted html renders back to the link the document started with.
+        using var again = await RenderLink(extracted!, wrap: false);
+        await Assert.That(LinkTargets(again)).IsEquivalentTo([fragmentUrl]);
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentInDocLocationIsRejoined()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/docs/page", _ => _.DocLocation = "section-two");
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkAnchorWinsOverDocLocation()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(
+            stream,
+            "https://example.com/docs/page",
+            _ =>
+            {
+                _.Anchor = "section-two";
+                _.DocLocation = "elsewhere";
+            });
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkFragmentLeftInTargetExtractsOnce()
+    {
+        // The shape Parchment writes, before Word has saved the document.
+        using var stream = await RenderLink(fragmentUrl);
+
+        await Assert.That(ExtractBody(stream)).Contains($"<a href=\"{fragmentUrl}\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableBookmarkLinkExtractsAsFragmentOnly()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, null, _ => _.Anchor = "section-two");
+
+        await Assert.That(ExtractBody(stream)).Contains("<a href=\"#section-two\">");
+    }
+
+    [Test]
+    public async Task HtmlEditableLinkKeepsPercentEscapesAndEscapesTheAttribute()
+    {
+        using var stream = await RenderLink(fragmentUrl);
+        RewriteLink(stream, "https://example.com/q?a=%22x%22&b=Hi%20there", _ => _.Anchor = "a<b");
+
+        await Assert.That(ExtractBody(stream))
+            .Contains("<a href=\"https://example.com/q?a=%22x%22&amp;b=Hi%20there#a&lt;b\">");
+    }
+
+    static Task<MemoryStream> RenderLink(string value, bool wrap = true)
+    {
+        var body = value;
+        if (wrap)
+        {
+            body = $"<p>See <a href=\"{value}\">section two</a> for more</p>";
+        }
+
+        return RenderModel(
+            "{{ Body }}",
+            new EditableArticle
+            {
+                Title = "T",
+                Body = body
+            });
+    }
+
+    /// <summary>
+    /// Points the rendered link at <paramref name="target"/> through a new relationship (none when
+    /// null) and lets the caller set the attributes Word keeps on the <c>w:hyperlink</c> itself.
+    /// </summary>
+    static void RewriteLink(MemoryStream stream, string? target, Action<Hyperlink> edit)
+    {
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var mainPart = doc.MainDocumentPart!;
+            var hyperlink = FindSdtBlock(mainPart.Document!.Body!, "Body")
+                .Descendants<Hyperlink>()
+                .Single();
+            mainPart.DeleteReferenceRelationship(hyperlink.Id!.Value!);
+            hyperlink.Id = null;
+            if (target != null)
+            {
+                mainPart.AddHyperlinkRelationship(new(target, UriKind.Absolute), true, "rIdWord1");
+                hyperlink.Id = "rIdWord1";
+            }
+
+            edit(hyperlink);
+            doc.Save();
+        }
+
+        stream.Position = 0;
+    }
+
+    static string? ExtractBody(MemoryStream stream)
+    {
+        var field = ParchmentExtractor.Extract<EditableArticle>(stream)
+            .Fields.Single(_ => _.Path == "Body");
+        stream.Position = 0;
+        return field.Value as string;
+    }
+
+    static List<string> LinkTargets(MemoryStream stream)
+    {
+        using var doc = WordprocessingDocument.Open(stream, false);
+        return doc.MainDocumentPart!.HyperlinkRelationships
+            .Select(_ => _.Uri.OriginalString)
+            .ToList();
+    }
+
     [Test]
     public async Task HtmlEditableRendersPlaceholderWhenEmpty()
     {

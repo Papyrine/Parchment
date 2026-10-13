@@ -271,23 +271,48 @@ static class OpenXmlHtmlSerializer
 
     static string? ResolveHref(Hyperlink hyperlink, MainDocumentPart mainPart)
     {
-        var id = hyperlink.Id?.Value;
-        if (id != null)
+        var anchor = hyperlink.Anchor?.Value;
+        var target = ResolveTarget(hyperlink, mainPart);
+        if (target == null)
         {
-            var relationship = mainPart.HyperlinkRelationships.FirstOrDefault(_ => _.Id == id);
-            if (relationship != null)
+            // No relationship: a link to a bookmark in this document.
+            if (string.IsNullOrEmpty(anchor))
             {
-                return relationship.Uri.ToString();
+                return null;
             }
+
+            return "#" + anchor;
         }
 
-        var anchor = hyperlink.Anchor?.Value;
-        if (anchor == null)
+        // Word never keeps a fragment in the relationship target: on save it moves it to w:anchor
+        // (or w:docLocation for a location that is not a bookmark), so the url is the two rejoined.
+        // w:anchor wins when both are present, as it does in Word.
+        var fragment = anchor;
+        if (string.IsNullOrEmpty(fragment))
+        {
+            fragment = hyperlink.DocLocation?.Value;
+        }
+
+        if (string.IsNullOrEmpty(fragment) ||
+            target.Contains('#'))
+        {
+            return target;
+        }
+
+        return target + "#" + fragment;
+    }
+
+    static string? ResolveTarget(Hyperlink hyperlink, MainDocumentPart mainPart)
+    {
+        var id = hyperlink.Id?.Value;
+        if (id == null)
         {
             return null;
         }
 
-        return "#" + anchor;
+        // OriginalString is the target as stored. Uri.ToString() would decode percent-escapes
+        // (%20 to a space, %22 to a quote), handing back a different url than the one linked.
+        return mainPart.HyperlinkRelationships.FirstOrDefault(_ => _.Id == id)?.Uri.OriginalString;
     }
 
     static bool IsOn(OnOffType? toggle) =>
