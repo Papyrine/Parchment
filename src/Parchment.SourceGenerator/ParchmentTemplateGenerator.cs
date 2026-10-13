@@ -238,7 +238,7 @@ public sealed class ParchmentTemplateGenerator :
             .GetTypeByMetadataName(ShapeBuilder.ExcelsiorTableAttributeFullName);
         var editableFieldType = context.SemanticModel.Compilation
             .GetTypeByMetadataName(ShapeBuilder.EditableFieldAttributeFullName);
-        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, cancel);
+        var shape = ShapeBuilder.Build(typeSymbol, excelsiorTableType, editableFieldType, context.SemanticModel.Compilation, cancel);
 
         var protection = ProtectionMode.WhenEditable;
         foreach (var named in attribute.NamedArguments)
@@ -304,7 +304,7 @@ public sealed class ParchmentTemplateGenerator :
 
     // Whether the declaration can be named from anywhere in the module. A module initializer has
     // to be (CS8814), along with every type it sits in.
-    static bool IsModuleAccessible(INamedTypeSymbol typeSymbol) =>
+    internal static bool IsModuleAccessible(INamedTypeSymbol typeSymbol) =>
         typeSymbol.DeclaredAccessibility is
             Accessibility.Public or
             Accessibility.Internal or
@@ -331,7 +331,7 @@ public sealed class ParchmentTemplateGenerator :
         return (stack, null);
     }
 
-    static bool IsPartial(INamedTypeSymbol typeSymbol)
+    internal static bool IsPartial(INamedTypeSymbol typeSymbol)
     {
         foreach (var reference in typeSymbol.DeclaringSyntaxReferences)
         {
@@ -345,7 +345,7 @@ public sealed class ParchmentTemplateGenerator :
         return false;
     }
 
-    static string GetTypeKindKeyword(INamedTypeSymbol type)
+    internal static string GetTypeKindKeyword(INamedTypeSymbol type)
     {
         if (type.IsRecord)
         {
@@ -783,6 +783,18 @@ public sealed class ParchmentTemplateGenerator :
                             memberDisplay,
                             member.ExcelsiorConfigure ?? "",
                             Display(type.TypeFullyQualifiedName)));
+                }
+
+                if (member.ExcelsiorConfigureInaccessibleOn != null)
+                {
+                    context.ReportDiagnostic(
+                        Diagnostic.Create(
+                            Diagnostics.ExcelsiorConfigureInaccessible,
+                            location,
+                            target.ModelDisplayName,
+                            memberDisplay,
+                            member.ExcelsiorConfigure ?? "",
+                            Display(member.ExcelsiorConfigureInaccessibleOn)));
                 }
 
                 if (member.HasFormatConflict)
@@ -1392,6 +1404,14 @@ public sealed class ParchmentTemplateGenerator :
         context.AddSource(
             $"{hintPrefix}_{suffix}.g.cs",
             SourceText.From(source, Encoding.UTF8));
+
+        var forwarders = AccessorEmission.EmitConfigureForwarders(target.Shape);
+        if (forwarders != null)
+        {
+            context.AddSource(
+                $"{hintPrefix}_{suffix}_Configure.g.cs",
+                SourceText.From(forwarders, Encoding.UTF8));
+        }
     }
 
     // Scope binding for a loop variable whose source is not statically known: a range, a path

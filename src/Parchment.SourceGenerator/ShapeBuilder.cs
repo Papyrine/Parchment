@@ -14,7 +14,7 @@ static class ShapeBuilder
 
     static readonly SymbolDisplayFormat format = SymbolDisplayFormat.FullyQualifiedFormat;
 
-    public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Cancel cancel)
+    public static ModelShape Build(INamedTypeSymbol root, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, Compilation compilation, Cancel cancel)
     {
         var entries = ImmutableArray.CreateBuilder<TypeEntry>();
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -28,13 +28,13 @@ static class ShapeBuilder
         {
             cancel.ThrowIfCancellationRequested();
             var type = queue.Dequeue();
-            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, visited, queue, suppressed, pending));
+            entries.Add(BuildEntry(type, excelsiorTableType, editableFieldType, root, compilation, visited, queue, suppressed, pending));
         }
 
         return new(Fqn(root), new(entries.ToImmutable()), new(suppressed.ToImmutableArray()));
     }
 
-    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, HashSet<string> visited, Queue<ITypeSymbol> queue, SortedSet<string> suppressed, List<string> pending)
+    static TypeEntry BuildEntry(ITypeSymbol type, INamedTypeSymbol? excelsiorTableType, INamedTypeSymbol? editableFieldType, INamedTypeSymbol root, Compilation compilation, HashSet<string> visited, Queue<ITypeSymbol> queue, SortedSet<string> suppressed, List<string> pending)
     {
         // Every type in the shape is named by the generated code (a cast, a typeof), the root
         // included. One that is obsolete as an error only gets here as the root, where there is no
@@ -141,23 +141,14 @@ static class ShapeBuilder
                     // inheriting it is the base that named the method.
                     string? excelsiorConfigureCall = null;
                     var excelsiorConfigureMissing = false;
+                    string? excelsiorConfigureInaccessibleOn = null;
+                    EquatableArray<ConfigureForwarder> excelsiorConfigureForwarders = default;
                     if (excelsiorConfigure != null &&
                         excelsiorConfigureOwner != null)
                     {
-                        var hasMethod = excelsiorConfigureOwner.GetMembers(excelsiorConfigure)
-                            .OfType<IMethodSymbol>()
-                            .Any(_ => _ is { IsStatic: true, Parameters.Length: 1 });
-                        if (hasMethod)
-                        {
-                            excelsiorConfigureCall = $"{Fqn(excelsiorConfigureOwner)}.{excelsiorConfigure}";
-                        }
-                        else
-                        {
-                            // The raw name, for the diagnostic to quote.
-                            excelsiorConfigureCall = excelsiorConfigure;
-                            excelsiorConfigureMissing = true;
-                        }
+                        ResolveConfigure(excelsiorConfigureOwner, excelsiorConfigure, root, compilation, out excelsiorConfigureCall, out excelsiorConfigureMissing, out excelsiorConfigureInaccessibleOn, out excelsiorConfigureForwarders);
                     }
+
                     var (isHtml, isMarkdown, formatConflict) = DetectFormat(member);
                     // A TokenValue-typed member already declares its rendering by type, so a marker
                     // on top of it is the same claim made twice — and applying both converts the
@@ -223,7 +214,9 @@ static class ShapeBuilder
                         excelsiorNotTabular,
                         markerOnNonString,
                         editableCollectionAssignable,
-                        !isStatic && HasUsableSetter(member) && IsCreatable(memberType)));
+                        !isStatic && HasUsableSetter(member) && IsCreatable(memberType),
+                        excelsiorConfigureInaccessibleOn,
+                        excelsiorConfigureForwarders));
                     Enqueue(memberType, visited, queue);
                 }
 
@@ -795,6 +788,131 @@ static class ShapeBuilder
         }
 
         return ns.Name == "System";
+    }
+
+    // Turns the name in [ExcelsiorTable(Configure = ...)] into what the model's generated code
+    // calls. That code sits in a type nested in the model, so it reaches a private method of the
+    // model itself and nothing private anywhere else - and the member naming the method can sit on
+    // any type the model reaches, or on a base of one. Where the method is out of reach the call
+    // goes through a forwarder added to a partial part of the type that named it; where that type
+    // is not partial, or is not in this compilation, the member is flagged instead, so the report
+    // is a diagnostic on the model rather than CS0122 inside a generated file.
+    static void ResolveConfigure(
+        ITypeSymbol owner,
+        string name,
+        INamedTypeSymbol root,
+        Compilation compilation,
+        out string call,
+        out bool missing,
+        out string? inaccessibleOn,
+        out EquatableArray<ConfigureForwarder> forwarders)
+    {
+        missing = false;
+        inaccessibleOn = null;
+        forwarders = default;
+
+        var methods = FindConfigureMethods(owner, name);
+        if (methods.Count == 0)
+        {
+            // The raw name, for the diagnostic to quote.
+            call = name;
+            missing = true;
+            return;
+        }
+
+        if (methods.Any(_ => compilation.IsSymbolAccessibleWithin(_, root)))
+        {
+            call = $"{Fqn(owner)}.{name}";
+            return;
+        }
+
+        var forwarderName = $"ParchmentConfigure_{AccessorEmission.ToIdentifier(root.ToDisplayString())}_{name}";
+        var built = BuildForwarders(owner, name, forwarderName, compilation);
+        if (built.Length == 0)
+        {
+            call = name;
+            inaccessibleOn = Fqn(owner);
+            return;
+        }
+
+        call = $"{Fqn(owner)}.{forwarderName}";
+        forwarders = new(built);
+    }
+
+    // The way C# reads `Type.Name`: the nearest type up the base chain declaring a candidate wins,
+    // so a method the declaring type inherits is found, and one it hides is not.
+    static List<IMethodSymbol> FindConfigureMethods(ITypeSymbol owner, string name)
+    {
+        for (var type = owner; type != null; type = type.BaseType)
+        {
+            var found = type.GetMembers(name)
+                .OfType<IMethodSymbol>()
+                .Where(_ => _ is { IsStatic: true, Parameters.Length: 1 })
+                .ToList();
+            if (found.Count > 0)
+            {
+                return found;
+            }
+        }
+
+        return [];
+    }
+
+    // One forwarder per overload, all under one name, so the cast at the call site picks among
+    // them exactly as it would have picked among the methods. Built from the type's definition:
+    // that is what the partial part declares, and it puts each parameter in terms of the type's
+    // own type parameters. Empty when the type cannot take a generated part.
+    static ImmutableArray<ConfigureForwarder> BuildForwarders(ITypeSymbol owner, string name, string forwarderName, Compilation compilation)
+    {
+        if (owner.OriginalDefinition is not INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } definition)
+        {
+            return [];
+        }
+
+        var types = new List<EnclosingType>();
+        for (var type = definition; type != null; type = type.ContainingType)
+        {
+            if (!ParchmentTemplateGenerator.IsPartial(type))
+            {
+                return [];
+            }
+
+            types.Add(new(NameWithTypeParameters(type), ParchmentTemplateGenerator.GetTypeKindKeyword(type), ParchmentTemplateGenerator.IsModuleAccessible(type)));
+        }
+
+        types.Reverse();
+
+        string? declaringNamespace = null;
+        if (!definition.ContainingNamespace.IsGlobalNamespace)
+        {
+            declaringNamespace = definition.ContainingNamespace.ToDisplayString();
+        }
+
+        var chain = new EquatableArray<EnclosingType>(types.ToImmutableArray());
+        var forwarders = ImmutableArray.CreateBuilder<ConfigureForwarder>();
+        foreach (var method in FindConfigureMethods(definition, name))
+        {
+            if (method.IsGenericMethod ||
+                method.Parameters[0].RefKind != RefKind.None ||
+                !compilation.IsSymbolAccessibleWithin(method, definition))
+            {
+                continue;
+            }
+
+            forwarders.Add(new(declaringNamespace, chain, forwarderName, Fqn(method.Parameters[0].Type), name));
+        }
+
+        return forwarders.ToImmutable();
+    }
+
+    static string NameWithTypeParameters(INamedTypeSymbol type)
+    {
+        if (type.TypeParameters.Length == 0)
+        {
+            return type.Name;
+        }
+
+        return $"{type.Name}<{string.Join(", ", type.TypeParameters.Select(_ => _.Name))}>";
     }
 
     static string Fqn(ITypeSymbol type) =>

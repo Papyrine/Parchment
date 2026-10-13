@@ -42,4 +42,11 @@
     bool EditableCollectionAssignable = true,
     // Whether extraction can put a new object here when it rebuilds a collection item: the member
     // is assignable and its type is a concrete class with a public parameterless constructor.
-    bool CanCreateValue = false);
+    bool CanCreateValue = false,
+    // Non-null when the method exists but the generated code can neither call it nor be given a
+    // partial part of its type to call it from: the type the method was looked up on, for the
+    // diagnostic. Emission skips the call, as it does for a missing method.
+    string? ExcelsiorConfigureInaccessibleOn = null,
+    // What has to be added to the declaring type for ExcelsiorConfigure to be callable. Empty when
+    // the method is called directly.
+    EquatableArray<ConfigureForwarder> ExcelsiorConfigureForwarders = default);
