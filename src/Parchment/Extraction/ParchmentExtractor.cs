@@ -136,6 +136,20 @@ public static class ParchmentExtractor
 
             return new(fields, collections, map);
         }
+        // The SDK reads each part on first touch, so a package that opened cleanly can still fail
+        // here: at the main part, or at a numbering / hyperlink lookup while reading a field.
+        catch (XmlException exception)
+        {
+            throw new ParchmentExtractionException(
+                $"The document contains a part that is not well-formed XML: {exception.Message}",
+                exception);
+        }
+        catch (Exception exception) when (exception is FileFormatException or InvalidDataException or OpenXmlPackageException)
+        {
+            throw new ParchmentExtractionException(
+                $"The document could not be read: {exception.GetBaseException().Message}",
+                exception);
+        }
         finally
         {
             if (!ReferenceEquals(source, docx))
