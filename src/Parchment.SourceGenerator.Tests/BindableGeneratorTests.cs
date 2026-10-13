@@ -57,9 +57,9 @@ public class BindableGeneratorTests
                 .Select(_ => _.SourceText.ToString()));
 
         await Assert.That(emitted).Contains("[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]");
-        await Assert.That(emitted).Contains("internal static class ParchmentGeneratedLetter");
+        await Assert.That(emitted).Contains("internal static class ParchmentGenerated_Sample_Letter");
         // Inside the nested type rather than beside it.
-        await Assert.That(emitted.IndexOf("internal static class ParchmentGeneratedLetter", StringComparison.Ordinal))
+        await Assert.That(emitted.IndexOf("internal static class ParchmentGenerated_Sample_Letter", StringComparison.Ordinal))
             .IsLessThan(emitted.IndexOf("_Accessors_", StringComparison.Ordinal));
     }
 
