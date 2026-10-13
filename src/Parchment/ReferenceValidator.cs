@@ -1,4 +1,5 @@
-﻿class ReferenceValidator(Type modelType, string templateName, string partUri)
+﻿[RequiresUnreferencedCode(Unsupported.Trimming)]
+class ReferenceValidator(Type modelType, string templateName, string partUri)
 {
     // Scope binding for a loop variable whose source is not statically known: a range, or a path
     // rooted at another such variable. The variable exists, but members reached through it are not
@@ -43,7 +44,17 @@
                 else if (sourceRefs.Count > 0 &&
                          TryResolvePathType(sourceRefs[0], scope, out var iterableType))
                 {
-                    ModelValidator.TryResolveElementType(iterableType, out elementType);
+                    if (iterableType == untyped)
+                    {
+                        // Reached through an index that says nothing about what it yields: an
+                        // unknown too, where typing the variable from the member indexed into
+                        // would reject its real members.
+                        elementType = untyped;
+                    }
+                    else
+                    {
+                        ModelValidator.TryResolveElementType(iterableType, out elementType);
+                    }
                 }
 
                 if (elementType == null)
@@ -129,13 +140,26 @@
     {
         pathType = null;
         if (!scope.TryGetValue(path.Root, out var current) &&
-            !ModelValidator.TryResolveMember(modelType, path.Root, out current))
+            !ModelValidator.TryResolveRootMember(modelType, path.Root, out current))
         {
             return false;
         }
 
         for (var i = 1; i < path.Segments.Count; i++)
         {
+            if (path.Segments[i] == IdentifierPath.Index)
+            {
+                // A dictionary key, say: what it yields is only known at render.
+                if (!LiquidMembers.TryResolveIndex(current, out var element))
+                {
+                    pathType = untyped;
+                    return true;
+                }
+
+                current = element;
+                continue;
+            }
+
             if (!ModelValidator.TryResolveSegment(current, path.Segments[i], out var next))
             {
                 return false;
