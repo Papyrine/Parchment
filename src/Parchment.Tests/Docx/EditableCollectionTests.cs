@@ -494,6 +494,184 @@ public partial class EditableCollectionTests
         await Assert.That(list.Chores[0].Done).IsFalse();
     }
 
+    [Test]
+    public async Task RowFieldsAreReported()
+    {
+        using var stream = await Render(template, NewPlan());
+
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(result.Fields.Select(_ => _.Path))
+            .IsEquivalentTo(["Budgets[0].Year", "Budgets[0].Amount", "Budgets[1].Year", "Budgets[1].Amount"]);
+        var amount = result.Fields.Single(_ => _.Path == "Budgets[1].Amount");
+        await Assert.That(amount.State).IsEqualTo(FieldState.Extracted);
+        await Assert.That(amount.Value).IsEqualTo(20m);
+    }
+
+    [Test]
+    public async Task UnparseableRowValueIsReported()
+    {
+        using var stream = await Render(template, NewPlan());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var items = Items(doc, "Budgets");
+            SetText(Control(items[1], "Amount"), "abc");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        await Assert.That(result.AllExtracted).IsFalse();
+        var amount = result.Fields.Single(_ => _.Path == "Budgets[1].Amount");
+        await Assert.That(amount.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(amount.RawText).IsEqualTo("abc");
+        await Assert.That(result.Fields.Single(_ => _.Path == "Budgets[0].Amount").State).IsEqualTo(FieldState.Extracted);
+
+        // The row is still applied; the member that failed keeps the element's default.
+        var model = NewPlan();
+        result.ApplyTo(model);
+        await Assert.That(model.Budgets.Count).IsEqualTo(2);
+        await Assert.That(model.Budgets[1].Year).IsEqualTo("2027");
+        await Assert.That(model.Budgets[1].Amount).IsEqualTo(0m);
+    }
+
+    [Test]
+    public async Task UnknownRowDropDownValueIsReported()
+    {
+        using var stream = await Render(
+            choreTemplate,
+            new ChoreList
+            {
+                Chores =
+                [
+                    new()
+                    {
+                        Name = "Sweep",
+                        Priority = Priority.High
+                    }
+                ]
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            SetText(Control(Items(doc, "Chores")[0], "Priority"), "Urgent");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<ChoreList>(stream);
+
+        await Assert.That(result.AllExtracted).IsFalse();
+        var priority = result.Fields.Single(_ => _.Path == "Chores[0].Priority");
+        await Assert.That(priority.State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(priority.RawText).IsEqualTo("Urgent");
+    }
+
+    [Test]
+    public async Task DeletedRowControlIsReported()
+    {
+        using var stream = await Render(template, NewPlan());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            Control(Items(doc, "Budgets")[0], "Amount").Remove();
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        await Assert.That(result.AllExtracted).IsFalse();
+        var amount = result.Fields.Single(_ => _.Path == "Budgets[0].Amount");
+        await Assert.That(amount.State).IsEqualTo(FieldState.Missing);
+        await Assert.That(amount.RawText).IsNull();
+
+        var model = NewPlan();
+        result.ApplyTo(model);
+        await Assert.That(model.Budgets.Count).IsEqualTo(2);
+        await Assert.That(model.Budgets[0].Year).IsEqualTo("2026");
+        await Assert.That(model.Budgets[0].Amount).IsEqualTo(0m);
+    }
+
+    // A row index is the item's position in the rebuilt list, so a dropped row is not counted
+    // and reports nothing.
+    [Test]
+    public async Task RowIndexSkipsClearedRows()
+    {
+        using var stream = await Render(template, NewPlan());
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var items = Items(doc, "Budgets");
+            SetText(Control(items[0], "Year"), "");
+            SetText(Control(items[0], "Amount"), "");
+            SetText(Control(items[1], "Amount"), "abc");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        await Assert.That(result.Fields.Select(_ => _.Path))
+            .IsEquivalentTo(["Budgets[0].Year", "Budgets[0].Amount"]);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Budgets[0].Amount").State).IsEqualTo(FieldState.ParseFailed);
+
+        var model = NewPlan();
+        result.ApplyTo(model);
+        await Assert.That(model.Budgets.Count).IsEqualTo(1);
+        await Assert.That(model.Budgets[0].Year).IsEqualTo("2027");
+    }
+
+    // Text that does not parse is still something the user typed: the row is kept and reported
+    // rather than dropped as cleared, in the blank row of an empty collection too.
+    [Test]
+    public async Task RowHoldingOnlyUnparseableValueIsKept()
+    {
+        using var stream = await Render(
+            template,
+            new BudgetPlan
+            {
+                Title = "Empty",
+                Budgets = []
+            });
+
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            SetText(Control(doc.MainDocumentPart!.Document!.Body!, "Amount"), "abc");
+            doc.Save();
+        }
+
+        stream.Position = 0;
+        var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
+
+        await Assert.That(result.AllExtracted).IsFalse();
+        await Assert.That(result.Fields.Single(_ => _.Path == "Budgets[0].Amount").State).IsEqualTo(FieldState.ParseFailed);
+        await Assert.That(result.Fields.Single(_ => _.Path == "Budgets[0].Year").State).IsEqualTo(FieldState.Empty);
+
+        var model = NewPlan();
+        result.ApplyTo(model);
+        await Assert.That(model.Budgets.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task UntouchedBlankRowReportsNothing()
+    {
+        using var stream = await Render(
+            choreTemplate,
+            new ChoreList
+            {
+                Chores = []
+            });
+
+        var result = ParchmentExtractor.Extract<ChoreList>(stream);
+
+        await Assert.That(result.AllExtracted).IsTrue();
+        await Assert.That(result.Fields.Count).IsEqualTo(0);
+    }
+
     // Extraction is replace-all: the rows in the document become the collection. A loop that
     // rendered only a window of it, or rendered it backwards, would have that written back as the
     // data, so the modifiers are refused here instead of applied.
@@ -548,9 +726,94 @@ public partial class EditableCollectionTests
         await Assert.That(nested).IsEquivalentTo(["first=2026", "first=2026"]);
     }
 
+    // An item member reached through the loop variable is a control like a root member, and the
+    // control is built from the member, not from the expression: a filter would be dropped and the
+    // filtered text could not be read back.
+    [Test]
+    [Arguments("{{ b.Year | append: '!' }}")]
+    [Arguments("{{ b.Amount | plus: 1 }}")]
+    public async Task FilterOnItemMemberFailsRegistration(string token)
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            $$$"""
+               {% for b in Budgets %}
+
+               {{{token}}}
+
+               {% endfor %}
+               """);
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("plain member-access");
+    }
+
+    // The member's path is the control's tag inside each repeated item; extraction reads one.
+    [Test]
+    public async Task ItemMemberBoundTwiceFailsRegistration()
+    {
+        using var docx = DocxTemplateBuilder.Build(
+            """
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }}
+
+            Again: {{ b.Year }}
+
+            {% endfor %}
+            """);
+        var store = new TemplateStore();
+        var exception = await Assert.That(
+                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+            .Throws<ParchmentRegistrationException>();
+        await Assert.That(exception!.Message).Contains("more than once");
+    }
+
+    // A loop nested in the repeating section renders read-only through Fluid, so the rules for a
+    // control do not reach it; neither do they reach the collection's own token.
+    [Test]
+    public async Task ReadOnlyOccurrencesTakeAFilter()
+    {
+        using var stream = await Render(
+            """
+            count={{ Budgets | size }}
+
+            {% for b in Budgets %}
+
+            Year: {{ b.Year }}
+
+            {% for other in Budgets limit:1 %}
+
+            again={{ b.Year | append: '!' }}
+
+            {% endfor %}
+
+            {% endfor %}
+            """,
+            NewPlan());
+
+        using var doc = WordprocessingDocument.Open(stream, false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var text = body.Descendants<Paragraph>()
+            .Select(_ => _.InnerText)
+            .Where(_ => _.StartsWith("again=", StringComparison.Ordinal) ||
+                        _.StartsWith("count=", StringComparison.Ordinal))
+            .ToList();
+        await Assert.That(text).IsEquivalentTo(["count=2", "again=2026!", "again=2027!"]);
+        await Assert.That(body.Descendants<SdtRun>().Count(_ => Tag(_) == "Year")).IsEqualTo(2);
+    }
+
     static bool IsItem(OpenXmlElement element) =>
         element is SdtBlock sdt &&
         sdt.SdtProperties?.GetFirstChild<W15.SdtRepeatedSectionItem>() != null;
+
+    static List<SdtBlock> Items(WordprocessingDocument doc, string tag) =>
+        RepeatingSection(doc.MainDocumentPart!.Document!.Body!, tag)
+            .ChildElements.First(_ => _.LocalName == "sdtContent")
+            .ChildElements.Where(IsItem)
+            .Cast<SdtBlock>()
+            .ToList();
 
     static SdtElement Control(OpenXmlElement item, string tag) =>
         item.Descendants<SdtElement>().First(_ => Tag(_) == tag);

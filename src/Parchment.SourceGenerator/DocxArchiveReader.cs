@@ -4,15 +4,19 @@ static class DocxArchiveReader
     static readonly XName paragraphName = w + "p";
     static readonly XName textName = w + "t";
 
-    public static DocxReadResult Read(string filePath)
+    // Takes the file's bytes rather than its path: the caller embeds those same bytes, so what is
+    // validated here is what ships, and the file is opened once, by the one place that knows how
+    // to share it with a word processor that has it open.
+    public static DocxReadResult Read(byte[] content)
     {
         var paragraphs = new List<string>();
         var bodyParagraphs = new List<string>();
         var containers = new List<int>();
         var containerCount = 0;
         var hasRemovePersonalInformation = false;
+        var hasMainPart = false;
         var builder = new StringBuilder();
-        using var archive = ZipFile.OpenRead(filePath);
+        using var archive = new ZipArchive(new MemoryStream(content, writable: false), ZipArchiveMode.Read);
         foreach (var entry in archive.Entries)
         {
             if (IsSettingsPart(entry.FullName))
@@ -31,6 +35,7 @@ static class DocxArchiveReader
             // Zip entry order is not guaranteed body-first, so track the body part explicitly —
             // editable-field validation is body-scoped.
             var isBody = IsBodyPart(entry.FullName);
+            hasMainPart |= isBody;
 
             using var partStream = entry.Open();
             var doc = XDocument.Load(partStream);
@@ -57,7 +62,7 @@ static class DocxArchiveReader
             }
         }
 
-        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation);
+        return new(paragraphs, bodyParagraphs, containers, hasRemovePersonalInformation, hasMainPart);
     }
 
     static int ContainerId(XElement paragraph, Dictionary<XElement, int> ids, ref int count)

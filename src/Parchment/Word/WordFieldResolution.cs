@@ -27,7 +27,7 @@ static class WordFieldResolution
     public static async Task Resolve(MemoryStream document, IPageNumberResolver resolver, Cancel cancel)
     {
         using var copy = new MemoryStream(document.ToArray(), false);
-        var pages = await resolver.Resolve(copy, cancel);
+        var pages = await resolver.Resolve(copy, cancel).ConfigureAwait(false);
         cancel.ThrowIfCancellationRequested();
         if (pages.Count == 0)
         {
@@ -76,7 +76,7 @@ static class WordFieldResolution
         foreach (var field in WordFieldRegion.Scan(body).Where(_ => _.IsTableOfContents))
         {
             var resolved = true;
-            foreach (var hyperlink in EntriesOf(body, field))
+            foreach (var hyperlink in EntriesOf(field))
             {
                 var anchor = hyperlink.Anchor?.Value;
                 var number = hyperlink.Elements<Run>().LastOrDefault()?.GetFirstChild<Text>();
@@ -95,25 +95,26 @@ static class WordFieldResolution
                 }
             }
 
-            if (resolved)
+            // A field with no heading in range was never built: it still shows its placeholder, in
+            // a paragraph with no entry in it. That is nothing to resolve rather than nothing left
+            // to, so it stays marked and Word tries again when the document is opened.
+            if (resolved &&
+                field.Paragraph.Elements<Hyperlink>().Any())
             {
                 field.ClearDirty();
             }
         }
     }
 
-    // The entries run from the paragraph the field starts in to the one its end marker closes.
-    static IEnumerable<Hyperlink> EntriesOf(Body body, WordFieldRegion field)
+    // The entries run from the paragraph the field starts in to the one its end marker closes. They
+    // are that paragraph's siblings, and it is not always the body's child: a [TOC] in a table cell
+    // has its entries built in the cell. So the walk starts at the field rather than at the body,
+    // which would never come across a paragraph one level down and would report nothing to resolve.
+    static IEnumerable<Hyperlink> EntriesOf(WordFieldRegion field)
     {
-        var started = false;
-        foreach (var paragraph in body.Elements<Paragraph>())
+        for (OpenXmlElement? element = field.Paragraph; element != null; element = element.NextSibling())
         {
-            if (paragraph == field.Paragraph)
-            {
-                started = true;
-            }
-
-            if (!started)
+            if (element is not Paragraph paragraph)
             {
                 continue;
             }

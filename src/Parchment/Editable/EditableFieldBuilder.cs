@@ -188,14 +188,14 @@ static class EditableFieldBuilder
     // Round-trippable ISO 8601 defaults for the text-backed temporal kinds. DateTimeOffset keeps
     // its offset (zzz); both are re-parsed verbatim by EditableFieldReader. Seconds precision by
     // default — a caller needing sub-seconds sets DateFormat (e.g. "o").
-    const string dateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
-    const string timeFormat = "HH:mm:ss";
+    public const string DateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:sszzz";
+    public const string TimeFormat = "HH:mm:ss";
 
     static string? FormatDateTimeOffset(EditableEntry entry, object? value, CultureInfo culture)
     {
         if (value is DateTimeOffset offset)
         {
-            return offset.ToString(entry.DateFormat ?? dateTimeOffsetFormat, culture);
+            return offset.ToString(entry.DateFormat ?? DateTimeOffsetFormat, culture);
         }
 
         return null;
@@ -205,7 +205,7 @@ static class EditableFieldBuilder
     {
         if (value is Time time)
         {
-            return time.ToString(entry.DateFormat ?? timeFormat, culture);
+            return time.ToString(entry.DateFormat ?? TimeFormat, culture);
         }
 
         return null;
@@ -270,26 +270,40 @@ static class EditableFieldBuilder
                 }
 
                 first = false;
-                if (line.Length > 0)
-                {
-                    run.AppendChild(
-                        new Text(line.TrimEnd('\r'))
-                        {
-                            Space = SpaceProcessingModeValues.Preserve
-                        });
-                }
+                AppendTabbed(run, line.TrimEnd('\r'));
             }
         }
         else
         {
-            run.AppendChild(
-                new Text(cleaned.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' '))
-                {
-                    Space = SpaceProcessingModeValues.Preserve
-                });
+            AppendTabbed(run, cleaned.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' '));
         }
 
         return run;
+    }
+
+    // A tab inside w:t is not a Word tab: Word draws it as whitespace, and rewrites it as w:tab
+    // the first time it saves the document. Writing the element here keeps the control the same
+    // before and after that save.
+    static void AppendTabbed(Run run, string text)
+    {
+        var first = true;
+        foreach (var segment in text.Split('\t'))
+        {
+            if (!first)
+            {
+                run.AppendChild(new TabChar());
+            }
+
+            first = false;
+            if (segment.Length > 0)
+            {
+                run.AppendChild(
+                    new Text(segment)
+                    {
+                        Space = SpaceProcessingModeValues.Preserve
+                    });
+            }
+        }
     }
 
     static Run PlaceholderRun(RunProperties? sitePr, string text)
