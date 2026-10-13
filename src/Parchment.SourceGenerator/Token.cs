@@ -19,4 +19,7 @@
     // Substitution only, and set together: a filter that produces a token, and the filter applied
     // after it. See TokenFilterOrder.
     string? TokenFilter = null,
-    string? FilterAfterTokenFilter = null);
+    string? FilterAfterTokenFilter = null,
+    // The token starts inside a content control that holds a single typed value (plain text, date
+    // picker, drop-down list, combo box, checkbox, picture). Set only when the scan is given spans.
+    bool InValueControl = false);

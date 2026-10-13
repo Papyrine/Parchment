@@ -1201,7 +1201,7 @@ public partial class EditableArticle
     public required string Body { get; set; }
 }
 ```
-<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1431-L1441' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
+<sup><a href='/src/Parchment.Tests/Docx/EditableFieldTests.cs#L1693-L1703' title='Snippet source file'>snippet source</a> | <a href='#snippet-EditableRichTextModel' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
 
 The token must sit alone in its paragraph (the control is block-level, matching the read-only `[Html]` rule). The round-trip covers the subset a rich-text editor emits; content outside that subset degrades to its text. A heading is bold and a link is underlined by default, so neither is reported as `<strong>` or `<u>` and an unedited field extracts to the HTML it was rendered from. A departure from the default is reported as an inline style: `<span style="font-weight:normal">` for heading text whose bold was switched off, and `style="text-decoration:none"` on a link that is not underlined throughout. `[Markdown]` combined with `[EditableField]` is rejected (`PARCH015`) — editable round-trip is HTML-only, since extraction has no OpenXML-to-Markdown serializer.
@@ -2472,6 +2472,8 @@ public partial class Order
 ### `PARCH016` — `[EditableField]` token with filters or complex expression
 
 **Docx only.** The editable render path is selected by attribute rather than via Fluid, so filter chains would be silently ignored. Use plain member access (`{{ PurchaseOrder }}` or `{{ Customer.Notes }}`). The rule covers every token that renders as a control, including an item member reached through the loop variable of an [editable collection](#editable-collections) loop; a header, a footer or a read-only loop body renders through Fluid and takes filters.
+
+The same id is reported for an `[EditableField]` token placed inside a content control of the template's own that holds a single value: plain text, date picker, drop-down list, combo box, checkbox or picture. The token renders as a content control where it sits, and Word refuses to open a document with a control nested in one of those. Move the token out of the control or make the control rich text; a rich-text control, a hyperlink and a tracked insertion can all hold the token.
 
 
 ### `PARCH017` — `[EditableField]` member referenced more than once in the body

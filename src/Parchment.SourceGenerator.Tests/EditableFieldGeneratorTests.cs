@@ -540,6 +540,84 @@ public class EditableFieldGeneratorTests
         await Assert.That(ids).Contains("PARCH016");
     }
 
+    static List<Diagnostic> BlockDiagnostics(string model, params OpenXmlElement[] blocks)
+    {
+        var setup = GeneratorDriver.CreateDriverWithDocxes(
+            model,
+            new TemplateFile($"{GeneratorDriver.ModelTypeName(model)}.parchment.docx", GeneratorDriver.BuildDocxBytesFromBlocks(blocks)));
+        return setup.Driver.RunGenerators(setup.Compilation).GetRunResult().Results.Single().Diagnostics.ToList();
+    }
+
+    static Paragraph ControlParagraph(OpenXmlElement? marker, string text) =>
+        new(
+            new Run(new Text("before ")
+            {
+                Space = SpaceProcessingModeValues.Preserve
+            }),
+            new SdtRun(
+                new SdtProperties(marker == null ? [] : [marker]),
+                new SdtContentRun(new Run(new Text(text)))));
+
+    public static IEnumerable<Func<OpenXmlElement>> ValueControlMarkers()
+    {
+        yield return () => new SdtContentText();
+        yield return () => new SdtContentDate();
+        yield return () => new SdtContentDropDownList();
+        yield return () => new SdtContentComboBox();
+        yield return () => new DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox();
+        yield return () => new SdtContentPicture();
+    }
+
+    [Test]
+    [MethodDataSource(nameof(ValueControlMarkers))]
+    public async Task TokenInsideValueControl_ReportsParch016(OpenXmlElement marker)
+    {
+        // Lockstep with the runtime's EditableTokenValidator: the field would be a content
+        // control nested in one Word does not let hold another.
+        var diagnostics = BlockDiagnostics(editableModel, ControlParagraph(marker, "{{ PurchaseOrder }}"));
+        var diagnostic = diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH016");
+        await Assert.That(diagnostic.GetMessage()).Contains("content control");
+    }
+
+    [Test]
+    public async Task TokenInsideBlockLevelValueControl_ReportsParch016()
+    {
+        var diagnostics = BlockDiagnostics(
+            editableModel,
+            new SdtBlock(
+                new SdtProperties(new SdtContentText()),
+                new SdtContentBlock(GeneratorDriver.BuildParagraph("{{ PurchaseOrder }}"))));
+        await Assert.That(diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH016"]);
+    }
+
+    [Test]
+    public async Task TokenInsideRichTextControl_NoDiagnostics()
+    {
+        var diagnostics = BlockDiagnostics(editableModel, ControlParagraph(null, "{{ PurchaseOrder }}"));
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
+    public async Task TokenBesideValueControl_NoDiagnostics()
+    {
+        var paragraph = ControlParagraph(new SdtContentText(), "static");
+        paragraph.AppendChild(new Run(new Text("{{ PurchaseOrder }}")));
+        var diagnostics = BlockDiagnostics(editableModel, paragraph);
+        await Assert.That(diagnostics).IsEmpty();
+    }
+
+    [Test]
+    public async Task CollectionItemTokenInsideValueControl_ReportsParch016()
+    {
+        var diagnostics = BlockDiagnostics(
+            collectionModel,
+            GeneratorDriver.BuildParagraph("{% for line in Lines %}"),
+            ControlParagraph(new SdtContentText(), "{{ line.Note }}"),
+            GeneratorDriver.BuildParagraph("{% endfor %}"));
+        await Assert.That(diagnostics.Select(_ => _.Id).ToList()).IsEquivalentTo(["PARCH016"]);
+    }
+
     [Test]
     public async Task DuplicateBodyToken_ReportsParch017()
     {

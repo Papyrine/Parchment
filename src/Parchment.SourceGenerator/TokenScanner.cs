@@ -3,8 +3,12 @@ public static class TokenScanner
     static readonly FluidParser parser = new();
 
     // containers runs parallel to paragraphs: the id of the element each paragraph sits in, copied
-    // onto its tokens. Omitted, every token reports container 0.
-    public static List<Token> Scan(IEnumerable<string> paragraphs, IReadOnlyList<int>? containers = null)
+    // onto its tokens. Omitted, every token reports container 0. valueControlSpans is the flat
+    // triple list DocxArchiveReader produces (paragraph index, start, end).
+    public static List<Token> Scan(
+        IEnumerable<string> paragraphs,
+        IReadOnlyList<int>? containers = null,
+        IReadOnlyList<int>? valueControlSpans = null)
     {
         var result = new List<Token>();
         var index = -1;
@@ -32,7 +36,12 @@ public static class TokenScanner
                     // A sibling token is other content to a substitution: the runtime asks the
                     // same TokenScan.IsSolo before it swaps a paragraph for a token's output.
                     var solo = TokenScan.IsSolo(paragraph, sites.Count, site.Offset, site.Length);
-                    result.Add(ParseSubstitution(source, !solo) with { Container = container });
+                    result.Add(
+                        ParseSubstitution(source, !solo) with
+                        {
+                            Container = container,
+                            InValueControl = InSpan(valueControlSpans, index, site.Offset)
+                        });
                 }
                 else
                 {
@@ -42,6 +51,26 @@ public static class TokenScanner
         }
 
         return result;
+    }
+
+    static bool InSpan(IReadOnlyList<int>? spans, int paragraph, int offset)
+    {
+        if (spans == null)
+        {
+            return false;
+        }
+
+        for (var index = 0; index + 2 < spans.Count; index += 3)
+        {
+            if (spans[index] == paragraph &&
+                offset >= spans[index + 1] &&
+                offset < spans[index + 2])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     static Token ParseSubstitution(string source, bool hasOtherContent)
