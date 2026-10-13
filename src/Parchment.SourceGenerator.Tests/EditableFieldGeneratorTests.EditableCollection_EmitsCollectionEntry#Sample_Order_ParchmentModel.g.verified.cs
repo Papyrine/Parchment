@@ -5,6 +5,7 @@ namespace Sample;
 partial class Order
 {
   [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Order
   {
     static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
@@ -29,7 +30,7 @@ partial class Order
       global::Parchment.Generated.GeneratedRegistration.RegisterEditableCollections(typeof(global::Sample.Order), _EditableCollections);
       global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
         typeof(global::Sample.Order),
-        global::System.Convert.FromBase64String("scrubbed"));
+        typeof(ParchmentGenerated_Sample_Order));
     }
   }
 }

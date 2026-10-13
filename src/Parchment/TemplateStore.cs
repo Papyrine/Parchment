@@ -880,10 +880,10 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
         switch (definition)
         {
             case DocxTemplateDefinition docx:
-                RegisterDocxTemplate(modelType, DocxCloner.ToWritableStream(docx.Template), docx.Protection);
+                RegisterDocxTemplate(modelType, DocxCloner.ToWritableStream(docx.Template()), docx.Protection);
                 break;
             case MarkdownTemplateDefinition markdown:
-                RegisterMarkdownTemplate(modelType, markdown.Markdown, markdown.StyleSource);
+                RegisterMarkdownTemplate(modelType, markdown.Markdown, markdown.StyleSource?.Invoke());
                 break;
             default:
                 throw new InvalidOperationException($"Unknown template definition: {definition.GetType().Name}");

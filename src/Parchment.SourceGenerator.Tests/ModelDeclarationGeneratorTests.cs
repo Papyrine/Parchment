@@ -25,14 +25,24 @@ public class ModelDeclarationGeneratorTests
 
         namespace Parchment.Generated
         {
+            [System.AttributeUsage(System.AttributeTargets.Class, Inherited = false)]
+            public sealed class EmbeddedBytesAttribute(string base64) :
+                System.Attribute
+            {
+                public string Base64 { get; } = base64;
+            }
+
             public static class GeneratedRegistration
             {
                 public static readonly System.Collections.Generic.List<string> Registered = [];
 
-                public static void RegisterDocxTemplate(System.Type modelType, byte[] template, Parchment.ProtectionMode protection = Parchment.ProtectionMode.WhenEditable) =>
+                public static void RegisterDocxTemplate(System.Type modelType, System.Type embedded, Parchment.ProtectionMode protection = Parchment.ProtectionMode.WhenEditable) =>
                     Registered.Add($"docx:{modelType.FullName}");
 
                 public static void RegisterMarkdownTemplate(System.Type modelType, string markdown, byte[]? styleSource = null) =>
+                    Registered.Add($"markdown:{modelType.FullName}");
+
+                public static void RegisterMarkdownTemplate(System.Type modelType, string markdown, System.Type embeddedStyle) =>
                     Registered.Add($"markdown:{modelType.FullName}");
 
                 public static void RegisterFluidAccessors(

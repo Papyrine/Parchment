@@ -20,7 +20,19 @@ public static class GeneratedRegistration
     public static void RegisterDocxTemplate(Type modelType, byte[] template, ProtectionMode protection = ProtectionMode.WhenEditable)
     {
         ArgumentNullException.ThrowIfNull(template);
-        GeneratedTemplateDefinitions.Add(modelType, new DocxTemplateDefinition(template, protection));
+        GeneratedTemplateDefinitions.Add(modelType, new DocxTemplateDefinition(() => template, protection));
+    }
+
+    /// <summary>
+    /// Stores the embedded docx template for <paramref name="modelType"/>, whose bytes are the
+    /// <see cref="EmbeddedBytesAttribute"/> of <paramref name="embedded"/>. The attribute is read
+    /// when a <see cref="TemplateStore"/> materializes the definition, not here: a model that is
+    /// never rendered costs nothing beyond this call.
+    /// </summary>
+    public static void RegisterDocxTemplate(Type modelType, Type embedded, ProtectionMode protection = ProtectionMode.WhenEditable)
+    {
+        ArgumentNullException.ThrowIfNull(embedded);
+        GeneratedTemplateDefinitions.Add(modelType, new DocxTemplateDefinition(() => ReadEmbeddedBytes(embedded), protection));
     }
 
     /// <summary>
@@ -32,7 +44,36 @@ public static class GeneratedRegistration
     public static void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource = null)
     {
         ArgumentNullException.ThrowIfNull(markdown);
-        GeneratedTemplateDefinitions.Add(modelType, new MarkdownTemplateDefinition(markdown, styleSource));
+        if (styleSource == null)
+        {
+            GeneratedTemplateDefinitions.Add(modelType, new MarkdownTemplateDefinition(markdown, null));
+            return;
+        }
+
+        GeneratedTemplateDefinitions.Add(modelType, new MarkdownTemplateDefinition(markdown, () => styleSource));
+    }
+
+    /// <summary>
+    /// Stores the embedded markdown template for <paramref name="modelType"/> with a style source
+    /// whose bytes are the <see cref="EmbeddedBytesAttribute"/> of <paramref name="embeddedStyle"/>,
+    /// read when a <see cref="TemplateStore"/> materializes the definition.
+    /// </summary>
+    public static void RegisterMarkdownTemplate(Type modelType, string markdown, Type embeddedStyle)
+    {
+        ArgumentNullException.ThrowIfNull(markdown);
+        ArgumentNullException.ThrowIfNull(embeddedStyle);
+        GeneratedTemplateDefinitions.Add(modelType, new MarkdownTemplateDefinition(markdown, () => ReadEmbeddedBytes(embeddedStyle)));
+    }
+
+    static byte[] ReadEmbeddedBytes(Type embedded)
+    {
+        var attribute = embedded.GetCustomAttribute<EmbeddedBytesAttribute>(false);
+        if (attribute == null)
+        {
+            throw new InvalidOperationException($"{embedded.FullName} carries no [EmbeddedBytes] attribute.");
+        }
+
+        return Convert.FromBase64String(attribute.Base64);
     }
 
     public static void RegisterFluidAccessors(

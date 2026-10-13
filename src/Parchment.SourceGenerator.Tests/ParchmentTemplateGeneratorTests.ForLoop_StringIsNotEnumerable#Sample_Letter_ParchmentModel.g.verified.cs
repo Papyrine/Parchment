@@ -5,6 +5,7 @@ namespace Sample;
 partial class Letter
 {
   [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+  [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Letter
   {
     static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Letter =
@@ -23,7 +24,7 @@ partial class Letter
       global::Parchment.Generated.GeneratedRegistration.RegisterFluidAccessors(typeof(global::Sample.Customer), _Accessors_global__Sample_Customer);
       global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
         typeof(global::Sample.Letter),
-        global::System.Convert.FromBase64String("scrubbed"));
+        typeof(ParchmentGenerated_Sample_Letter));
     }
   }
 }

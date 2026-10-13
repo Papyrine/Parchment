@@ -69,10 +69,17 @@ public class GeneratedNameCollisionTests
                 IReadOnlyList<EditableFieldMapEntry> ElementFields,
                 bool IsArray);
 
+            [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+            public sealed class EmbeddedBytesAttribute(string base64) : Attribute
+            {
+                public string Base64 { get; } = base64;
+            }
+
             public static class GeneratedRegistration
             {
-                public static void RegisterDocxTemplate(Type modelType, byte[] template, global::Parchment.ProtectionMode protection = global::Parchment.ProtectionMode.WhenEditable) { }
+                public static void RegisterDocxTemplate(Type modelType, Type embedded, global::Parchment.ProtectionMode protection = global::Parchment.ProtectionMode.WhenEditable) { }
                 public static void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource = null) { }
+                public static void RegisterMarkdownTemplate(Type modelType, string markdown, Type embeddedStyle) { }
                 public static void RegisterFluidAccessors(Type type, IEnumerable<KeyValuePair<string, global::Fluid.IMemberAccessor>> accessors) { }
                 public static void RegisterExcelsiorTable(Type modelType, IEnumerable<ExcelsiorTableMapEntry> entries) { }
                 public static void RegisterFormat(Type modelType, IEnumerable<FormatMapEntry> entries) { }

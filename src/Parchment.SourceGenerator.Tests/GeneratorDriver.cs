@@ -434,7 +434,7 @@
         }
     }
 
-    sealed class PathAdditionalText(string path) :
+    public sealed class PathAdditionalText(string path) :
         AdditionalText
     {
         public override string Path { get; } = path;

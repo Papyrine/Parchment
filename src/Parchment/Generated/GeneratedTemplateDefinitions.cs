@@ -6,6 +6,12 @@ namespace Parchment.Generated;
 /// model type. Registration into a <see cref="TemplateStore"/> is deferred until first render so
 /// module load stays cheap and per-store settings (image policies, page numbers) apply.
 /// </summary>
+/// <remarks>
+/// Bytes are held as a factory rather than as an array: for a generated registration it decodes
+/// the model's <see cref="EmbeddedBytesAttribute"/> when a store materializes the definition, so a
+/// template that is never rendered is never decoded and one that is leaves nothing behind once
+/// its store has baked it.
+/// </remarks>
 static class GeneratedTemplateDefinitions
 {
     static readonly ConcurrentDictionary<Type, TemplateDefinition> definitions = new();
@@ -19,16 +25,16 @@ static class GeneratedTemplateDefinitions
 
 abstract class TemplateDefinition;
 
-sealed class DocxTemplateDefinition(byte[] template, ProtectionMode protection) :
+sealed class DocxTemplateDefinition(Func<byte[]> template, ProtectionMode protection) :
     TemplateDefinition
 {
-    public byte[] Template { get; } = template;
+    public Func<byte[]> Template { get; } = template;
     public ProtectionMode Protection { get; } = protection;
 }
 
-sealed class MarkdownTemplateDefinition(string markdown, byte[]? styleSource) :
+sealed class MarkdownTemplateDefinition(string markdown, Func<byte[]>? styleSource) :
     TemplateDefinition
 {
     public string Markdown { get; } = markdown;
-    public byte[]? StyleSource { get; } = styleSource;
+    public Func<byte[]>? StyleSource { get; } = styleSource;
 }
