@@ -546,7 +546,7 @@ public class ParchmentTemplateGeneratorTests
             new TemplateFile("Letter.parchment.docx", bytes));
 
         GeneratorDriverRunResult result;
-        using (new FileStream(setup.DocxPath, FileMode.Open, FileAccess.ReadWrite, share))
+        await using (new FileStream(setup.DocxPath, FileMode.Open, FileAccess.ReadWrite, share))
         {
             result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         }
@@ -566,13 +566,13 @@ public class ParchmentTemplateGeneratorTests
             new TemplateFile("Letter.parchment.docx", bytes));
 
         GeneratorDriverRunResult result;
-        using (new FileStream(
-                   setup.DocxPath,
-                   FileMode.Open,
-                   FileAccess.ReadWrite,
-                   FileShare.ReadWrite | FileShare.Delete,
-                   bufferSize: 1,
-                   FileOptions.DeleteOnClose))
+        await using (new FileStream(
+                         setup.DocxPath,
+                         FileMode.Open,
+                         FileAccess.ReadWrite,
+                         FileShare.ReadWrite | FileShare.Delete,
+                         bufferSize: 1,
+                         FileOptions.DeleteOnClose))
         {
             result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         }
@@ -594,7 +594,7 @@ public class ParchmentTemplateGeneratorTests
             new TemplateFile("Letter.parchment.dotx", styleBytes));
 
         GeneratorDriverRunResult result;
-        using (new FileStream(setup.DocxPaths[1], FileMode.Open, FileAccess.ReadWrite, share))
+        await using (new FileStream(setup.DocxPaths[1], FileMode.Open, FileAccess.ReadWrite, share))
         {
             result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         }
@@ -613,13 +613,13 @@ public class ParchmentTemplateGeneratorTests
             new TemplateFile("Letter.parchment.dotx", styleBytes));
 
         GeneratorDriverRunResult result;
-        using (new FileStream(
-                   setup.DocxPaths[1],
-                   FileMode.Open,
-                   FileAccess.ReadWrite,
-                   FileShare.ReadWrite | FileShare.Delete,
-                   bufferSize: 1,
-                   FileOptions.DeleteOnClose))
+        await using (new FileStream(
+                         setup.DocxPaths[1],
+                         FileMode.Open,
+                         FileAccess.ReadWrite,
+                         FileShare.ReadWrite | FileShare.Delete,
+                         bufferSize: 1,
+                         FileOptions.DeleteOnClose))
         {
             result = setup.Driver.RunGenerators(setup.Compilation).GetRunResult();
         }

@@ -155,10 +155,10 @@ public class DocxPackageLayoutGeneratorTests
     public async Task ZipWithoutAWordPart_ReportsParch006()
     {
         using var stream = new MemoryStream();
-        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
+        await using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, true))
         {
-            using var writer = new StreamWriter(archive.CreateEntry("readme.txt").Open());
-            writer.Write("not a document");
+            await using var writer = new StreamWriter(await archive.CreateEntry("readme.txt").OpenAsync());
+            await writer.WriteAsync("not a document");
         }
 
         await Assert.That(Run(stream.ToArray())).IsEquivalentTo(["PARCH006"]);

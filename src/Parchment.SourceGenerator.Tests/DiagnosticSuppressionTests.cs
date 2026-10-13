@@ -37,7 +37,7 @@ public class DiagnosticSuppressionTests
         foreach (var diagnostic in diagnostics)
         {
             await Assert.That(diagnostic.Location.IsInSource).IsTrue();
-            await Assert.That(diagnostic.Location.SourceTree!.GetText().ToString(diagnostic.Location.SourceSpan))
+            await Assert.That((await diagnostic.Location.SourceTree!.GetTextAsync()).ToString(diagnostic.Location.SourceSpan))
                 .IsEqualTo("ParchmentModel");
         }
     }
