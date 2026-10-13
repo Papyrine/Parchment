@@ -7,6 +7,10 @@ class OpenXmlMarkdownRenderer :
     readonly Stack<int> indentStack = new();
     int currentIndent;
     int nextBookmarkId;
+    LiteralInline? foldInline;
+    Run? foldRun;
+    Text? foldText;
+    int unfoldedDepth;
 
     public OpenXmlMarkdownRenderer(MainDocumentPart mainPart, OpenXmlPart part, WordNumberingState numbering, ImagePolicies imagePolicies, BookmarkNames bookmarkNames, int headingOffset = 0)
     {
@@ -127,6 +131,10 @@ class OpenXmlMarkdownRenderer :
         // written since it started — so a merge at add time would fuse a run into its neighbour
         // before that formatting landed, and would leave the renderer's index range pointing at the
         // wrong runs. By the time a paragraph flushes, every inline in it is final.
+        //
+        // AddLiteral folds the one case that is safe before then, a literal directly after another,
+        // so most of a bound value arrives here as one run already. Everything else - text beside an
+        // entity, a soft line break or a smart quote - is still folded here.
         foreach (var run in top.CurrentRuns)
         {
             if (paragraph.LastChild is Run last &&
@@ -182,6 +190,72 @@ class OpenXmlMarkdownRenderer :
 
         stack.Peek().CurrentRuns.Add(run);
     }
+
+    /// <summary>
+    /// Adds the text of a literal, to the run of the literal before it when that is the inline
+    /// directly before this one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Markdig ends a literal at every backslash escape and starts the next at the escaped
+    /// character, so a bound value arrives as a chain of sibling literals with nothing between
+    /// them. <see cref="FlushParagraph"/> folds the runs of such a chain into one, and this spares
+    /// building them: two inlines that are adjacent siblings sit under the same emphasis, in the
+    /// same link and between the same inline html tags, so whatever formats the run of the first
+    /// is what would have formatted the run of the second.
+    /// </para>
+    /// <para>
+    /// That is the whole of what makes it safe ahead of the flush. A literal is folded only into
+    /// the run of its previous sibling, only while that run is still the last one written here,
+    /// and only when both are a single <c>w:t</c> - a tab makes a run of several pieces. Anything
+    /// else between two pieces of text is an inline of its own and ends the chain, and it is left
+    /// to the flush as before.
+    /// </para>
+    /// </remarks>
+    internal void AddLiteral(LiteralInline inline, CharSpan text)
+    {
+        var hasTab = text.Contains('\t');
+        if (foldText != null &&
+            !hasTab &&
+            ReferenceEquals(foldInline, inline.PreviousSibling) &&
+            stack.Peek().CurrentRuns is [.., var last] &&
+            ReferenceEquals(last, foldRun))
+        {
+            foldText.Text = string.Concat(foldText.Text, text);
+            foldInline = inline;
+            return;
+        }
+
+        var run = LiteralInlineRenderer.BuildRun(text.ToString());
+        AddRun(run);
+        if (hasTab ||
+            unfoldedDepth > 0)
+        {
+            foldInline = null;
+            foldRun = null;
+            foldText = null;
+            return;
+        }
+
+        // The text is the last child: AddRun puts an rPr ahead of it when an inline html tag is open.
+        foldInline = inline;
+        foldRun = run;
+        foldText = (Text) run.LastChild!;
+    }
+
+    /// <summary>
+    /// Keeps the literals written until <see cref="EndUnfoldedRuns"/> a run each.
+    /// </summary>
+    /// <remarks>
+    /// For runs that leave <see cref="ContainerState.CurrentRuns"/> before the paragraph is flushed:
+    /// the text of a link is moved into its <c>w:hyperlink</c>, where <see cref="FlushParagraph"/>
+    /// does not look, so those runs were never folded and folding them here would change the output.
+    /// </remarks>
+    internal void BeginUnfoldedRuns() =>
+        unfoldedDepth++;
+
+    internal void EndUnfoldedRuns() =>
+        unfoldedDepth--;
 
     /// <summary>
     /// Gives <paramref name="run"/> the formatting of every inline html tag open around it.
