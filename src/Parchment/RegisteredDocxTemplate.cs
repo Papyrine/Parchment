@@ -127,6 +127,6 @@ class RegisteredDocxTemplate(
             imagePolicies);
         await runner.RunAsync(part.Nodes).ConfigureAwait(false);
         runner.ApplyStructural();
-        runner.SeparateProducedTables();
+        runner.SeparateTables();
     }
 }
