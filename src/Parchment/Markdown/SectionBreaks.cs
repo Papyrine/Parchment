@@ -28,6 +28,12 @@ using System.Numerics;
 /// land on the document-final <c>w:sectPr</c> instead.
 /// </para>
 /// <para>
+/// A section is at least a page, so one with nothing in it is a blank page nobody asked for.
+/// <see cref="Apply"/> therefore writes a break only between content: a marker with nothing before
+/// it sets up the first section, markers with nothing between them are one break, and a marker with
+/// nothing after it is dropped.
+/// </para>
+/// <para>
 /// A markdown value rendered by the docx flow goes through the same walk, so it can hold a marker
 /// too, but there the document already has sections of its own and the paragraphs carrying their
 /// <c>w:sectPr</c> are not markers. So the runner <see cref="Collect"/>s the markers each value
@@ -217,20 +223,27 @@ static class SectionBreaks
         // declared, so the marker after it — or the end of the section — inherits from there
         // rather than from the style source.
         var current = (SectionProperties) baseSection.CloneNode(true);
-        var first = true;
 
-        foreach (var paragraph in markers)
+        // The break met last, which is where the section being read starts, whether it was written
+        // here (lastWritten) or arrived as a finished section, and how many sections end ahead of
+        // the one being read.
+        Paragraph? lastBreak = null;
+        Paragraph? lastWritten = null;
+        var ended = 0;
+
+        foreach (var marker in markers)
         {
-            var properties = paragraph.ParagraphProperties!;
+            var properties = marker.ParagraphProperties!;
             var declared = properties.SectionProperties!;
-            var topLevel = ReferenceEquals(paragraph.Parent, body);
+            var topLevel = ReferenceEquals(marker.Parent, body);
 
             if (!IsDeclared(declared))
             {
                 // Not a section of the body anywhere else, so only a top level one is counted.
                 if (topLevel)
                 {
-                    first = false;
+                    lastBreak = marker;
+                    ended++;
                 }
 
                 continue;
@@ -247,20 +260,48 @@ static class SectionBreaks
 
             var next = Derive(current, declared);
 
+            // The section this marker would close holds nothing, and a section is at least a page,
+            // so writing the break puts a blank page in front of what the marker describes. What
+            // it declared replaces the settings of the section it stands at the start of instead:
+            // the first section for a marker that opens the document, and for markers in a row the
+            // section they share, read in order as they are when content separates them.
+            if (ClosesNothing(marker, lastBreak))
+            {
+                marker.Remove();
+                current = next;
+                continue;
+            }
+
             // Page numbering restarts wherever w:pgNumType carries a start, so only the first
             // section keeps the style source's. Every later one continues from the section before
             // it, which is what inserting a section break in Word gives you.
-            if (!first)
+            if (ended > 0)
             {
                 StripPageNumberStart(current);
             }
 
-            first = false;
             properties.SectionProperties = current;
             current = next;
+            lastBreak = marker;
+            lastWritten = marker;
+            ended++;
         }
 
-        if (!first)
+        // The same from the other end. baseSection is not attached yet, so a break with no sibling
+        // after it opens a section nothing was written into: the break goes, and the settings it
+        // closed its section with are the document's last after all. Only a break written here: a
+        // finished section stays exactly as it arrived.
+        if (lastBreak != null &&
+            ReferenceEquals(lastBreak, lastWritten) &&
+            lastBreak.NextSibling() == null &&
+            IsBare(lastBreak))
+        {
+            current = lastBreak.ParagraphProperties!.SectionProperties!;
+            lastBreak.Remove();
+            ended--;
+        }
+
+        if (ended > 0)
         {
             StripPageNumberStart(current);
         }
@@ -274,6 +315,18 @@ static class SectionBreaks
             baseSection.AppendChild(child.CloneNode(true));
         }
     }
+
+    // Nothing between the marker and the break before it, or the top of the document when there is
+    // no break yet.
+    static bool ClosesNothing(Paragraph marker, Paragraph? lastBreak) =>
+        ReferenceEquals(marker.PreviousSibling(), lastBreak) &&
+        IsBare(marker);
+
+    // Always true of the paragraph TryWrite emits. Asked because a paragraph caller code supplied is
+    // read as a marker too when it carries a w:sectPr, and one holding text is itself the content of
+    // the section it closes.
+    static bool IsBare(Paragraph marker) =>
+        marker.ChildElements.Count == 1;
 
     // What TryWrite writes and nothing a finished section looks like: a w:pgSz naming an orientation
     // and no size, with at most a w:pgMar beside it. Told apart by shape rather than by identity
