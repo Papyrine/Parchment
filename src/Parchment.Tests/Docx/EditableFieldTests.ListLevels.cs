@@ -1,5 +1,3 @@
-using System.Xml.Linq;
-
 public partial class EditableFieldTests
 {
     // One list paragraph as Word stores it: its w:ilvl and whether its numbering is ordered.
@@ -231,7 +229,7 @@ public partial class EditableFieldTests
 
     // Replaces the rendered control's content with the given paragraphs, the way a user's Tab and
     // Shift+Tab leave them, and extracts the field.
-    static string? ExtractListLinesFrom(MemoryStream rendered, ListLine?[] lines)
+    static string ExtractListLinesFrom(MemoryStream rendered, ListLine?[] lines)
     {
         using var copy = new MemoryStream();
         rendered.Position = 0;

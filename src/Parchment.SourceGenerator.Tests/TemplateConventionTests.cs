@@ -68,7 +68,7 @@ public class TemplateConventionTests
     }
 
     static string Messages(GeneratorDriverRunResult result) =>
-        string.Join("\n", result.Diagnostics.Select(_ => _.GetMessage()));
+        string.Join('\n', result.Diagnostics.Select(_ => _.GetMessage()));
 
     // The list is what separates "named wrong" from "nothing arrived", and the near-miss is
     // usually sitting in it.

@@ -104,13 +104,13 @@ public class UseSiteDiagnosticGeneratorTests
     }
 
     [Test]
-    public async Task ObsoleteMember_Markdown()
+    public Task ObsoleteMember_Markdown()
     {
         var result = GeneratorDriver.Compile(
             Model("""[Obsolete("use Name")] public string OldName { get; set; } = "";"""),
             new TemplateFile("Legacy.parchment.md", "{{ OldName }}"u8.ToArray()));
 
-        await AssertClean(result);
+        return AssertClean(result);
     }
 
     [Test]
@@ -125,7 +125,7 @@ public class UseSiteDiagnosticGeneratorTests
     }
 
     [Test]
-    public async Task ObsoleteMember_ThroughTheAttributeMaps()
+    public Task ObsoleteMember_ThroughTheAttributeMaps()
     {
         var result = Compile(
             Model(
@@ -152,7 +152,7 @@ public class UseSiteDiagnosticGeneratorTests
             "{{ OldNote }}",
             "{{ OldInner.Body }}");
 
-        await AssertClean(result);
+        return AssertClean(result);
     }
 
     [Test]
@@ -192,7 +192,7 @@ public class UseSiteDiagnosticGeneratorTests
     }
 
     [Test]
-    public async Task ObsoleteModel_CompilesClean()
+    public Task ObsoleteModel_CompilesClean()
     {
         var result = Compile(
             """
@@ -209,7 +209,7 @@ public class UseSiteDiagnosticGeneratorTests
             }
             """);
 
-        await AssertClean(result);
+        return AssertClean(result);
     }
 
     [Test]

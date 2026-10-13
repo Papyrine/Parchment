@@ -394,11 +394,11 @@ public partial class DocumentPropertiesTests
 
     static async Task AssertValid(WordprocessingDocument doc)
     {
-        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(DocumentFormat.OpenXml.FileFormatVersions.Microsoft365)
+        var errors = new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Microsoft365)
             .Validate(doc)
             .Select(_ => $"{_.Part?.Uri}: {_.Description}")
             .ToList();
-        await Assert.That(string.Join("\n", errors)).IsEqualTo("");
+        await Assert.That(string.Join('\n', errors)).IsEqualTo("");
     }
 
     [Test]
@@ -474,7 +474,7 @@ public partial class DocumentPropertiesTests
         await Assert.That(Variant(doc, "Count")).IsEqualTo("ui4:4294967295");
 
         await Assert.ThrowsAsync<ParchmentRenderException>(
-            async () => await store.Render(
+            () => store.Render(
                 model,
                 new MemoryStream(),
                 new WordDocumentProperties

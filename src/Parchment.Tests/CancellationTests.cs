@@ -27,7 +27,7 @@ public partial class CancellationTests
     public class Reads
     {
         public int Count { get; set; }
-        public CancellationTokenSource? Source { get; init; }
+        public CancelSource? Source { get; init; }
         public bool Throw { get; init; }
     }
 
@@ -78,7 +78,7 @@ public partial class CancellationTests
     public async Task DocxLoopStopsAtTheNextIteration()
     {
         var store = DocxStore(loopTemplate);
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
         var reads = new Reads
         {
             Source = source
@@ -100,7 +100,7 @@ public partial class CancellationTests
         // tokens still to run in the paragraph are never evaluated.
         var tokens = string.Concat(Enumerable.Range(0, 500).Select(_ => "{{ Rows[0].Value }}"));
         var store = DocxStore(tokens);
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
         var reads = new Reads
         {
             Source = source
@@ -127,7 +127,7 @@ public partial class CancellationTests
 
             {% endfor %}
             """);
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
         var reads = new Reads
         {
             Source = source
@@ -158,7 +158,7 @@ public partial class CancellationTests
     public async Task MarkdownStopsAfterTheLiquidRender()
     {
         var store = MarkdownStore("{% for row in Rows limit:20 %}{{ row.Value }}{% endfor %}");
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
         var reads = new Reads
         {
             Source = source
@@ -185,7 +185,7 @@ public partial class CancellationTests
             store = DocxStore(loopTemplate);
         }
 
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
         source.Cancel();
         var reads = new Reads();
 
@@ -202,9 +202,10 @@ public partial class CancellationTests
         // The Markdig walk only subscribes its check for a token that can be cancelled, so both
         // paths are run and have to agree.
         var store = MarkdownStore("# Title\n\n{% for row in Rows limit:5 %}- {{ row.Value }}\n{% endfor %}\n\n| a | b |\n|---|---|\n| 1 | 2 |");
-        using var source = new CancellationTokenSource();
+        using var source = new CancelSource();
 
         using var plain = new MemoryStream();
+        // ReSharper disable once MethodSupportsCancellation
         await store.Render(Model(new()), plain);
         using var cancellable = new MemoryStream();
         await store.Render(Model(new()), cancellable, source.Token);

@@ -804,6 +804,7 @@ static class ShapeBuilder
 
         if (type is IArrayTypeSymbol array)
         {
+            // ReSharper disable once TailRecursiveCall
             return ContainsPointer(array.ElementType);
         }
 
@@ -895,6 +896,7 @@ static class ShapeBuilder
 
         if (type is IArrayTypeSymbol array)
         {
+            // ReSharper disable once TailRecursiveCall
             return ContainsDynamic(array.ElementType);
         }
 
@@ -986,7 +988,11 @@ static class ShapeBuilder
     // own type parameters. Empty when the type cannot take a generated part.
     static ImmutableArray<ConfigureForwarder> BuildForwarders(ITypeSymbol owner, string name, string forwarderName, Compilation compilation)
     {
-        if (owner.OriginalDefinition is not INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } definition)
+        if (owner.OriginalDefinition is not
+            INamedTypeSymbol
+            {
+                TypeKind: TypeKind.Class or TypeKind.Struct
+            } definition)
         {
             return [];
         }

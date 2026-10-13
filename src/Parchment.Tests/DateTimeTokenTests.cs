@@ -9,7 +9,7 @@ public partial class DateTimeTokenTests
         public DateTime Local { get; init; } = new(2026, 3, 1, 13, 5, 9, DateTimeKind.Local);
         public DateTime? Nullable { get; init; } = new(2026, 3, 1, 13, 5, 9);
         public DateTimeOffset Offset { get; init; } = new(2026, 3, 1, 13, 5, 9, TimeSpan.FromHours(5));
-        public DateOnly Day { get; init; } = new(2026, 3, 1);
+        public Date Day { get; init; } = new(2026, 3, 1);
         public string Text { get; init; } = "2026-03-01 13:05:09";
         public long Unix { get; init; } = 1772370309;
 

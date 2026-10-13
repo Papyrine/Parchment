@@ -109,7 +109,7 @@ public class TokenValueMemberGeneratorTests
     {
         var source = string.Join(
             '\n',
-            GeneratorDriver.Run(model, ["{{ Html }}"])
+            GeneratorDriver.Run(model, "{{ Html }}")
                 .Results.Single()
                 .GeneratedSources
                 .Select(_ => _.SourceText.ToString()));

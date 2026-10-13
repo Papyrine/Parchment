@@ -1,6 +1,3 @@
-using System.Reflection;
-using System.Runtime.Loader;
-
 // What the generator does with each way a model can be declared. The snapshots elsewhere show what
 // is emitted; these compile it, because the failure being guarded against is generated source that
 // the generator was happy with and the compiler is not. The supported shapes are then loaded and

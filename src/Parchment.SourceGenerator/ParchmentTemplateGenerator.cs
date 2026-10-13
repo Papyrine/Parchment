@@ -2012,10 +2012,10 @@ public sealed class ParchmentTemplateGenerator :
         // for the common case stay minimal.
         var protection = ProtectionArgument(target.Protection);
         var statements =
-            $$"""
-              {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
-                  typeof({{target.ModelFullyQualifiedName}}),
-                  global::System.Convert.FromBase64String("{{matched.ContentBase64}}"){{protection}});
+            $"""
+              {registrationsBlock}  global::Parchment.Generated.GeneratedRegistration.RegisterDocxTemplate(
+                  typeof({target.ModelFullyQualifiedName}),
+                  global::System.Convert.FromBase64String("{matched.ContentBase64}"){protection});
               """;
 
         return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);
@@ -2051,10 +2051,10 @@ public sealed class ParchmentTemplateGenerator :
             ? ""
             : $",\n    global::System.Convert.FromBase64String(\"{style.ContentBase64}\")";
         var statements =
-            $$"""
-              {{registrationsBlock}}  global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
-                  typeof({{target.ModelFullyQualifiedName}}),
-                  {{markdown}}{{styleArgument}});
+            $"""
+              {registrationsBlock}  global::Parchment.Generated.GeneratedRegistration.RegisterMarkdownTemplate(
+                  typeof({target.ModelFullyQualifiedName}),
+                  {markdown}{styleArgument});
               """;
 
         return BuildPartialSource(target, fieldsBlock, templateInitializer, statements);

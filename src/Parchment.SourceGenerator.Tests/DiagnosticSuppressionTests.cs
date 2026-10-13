@@ -106,7 +106,7 @@ public class DiagnosticSuppressionTests
     {
         // The error is one no suppression applies to, so the location
         // kind is asserted directly.
-        var template = new TemplateFile("Letter.parchment.md", Encoding.UTF8.GetBytes("{{ Missing }}\n"));
+        var template = new TemplateFile("Letter.parchment.md", "{{ Missing }}\n"u8.ToArray());
         var diagnostic = Run(model, template: template).Single(_ => _.Id == "PARCH001");
 
         await Assert.That(diagnostic.Id).IsEqualTo("PARCH001");

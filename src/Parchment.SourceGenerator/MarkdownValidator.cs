@@ -226,8 +226,11 @@ class MarkdownValidator
             ValidateExpression(forStatement.Limit, sourceText);
         }
 
-        if (forStatement.Offset != null &&
-            !forStatement.OffsetIsContinue)
+        if (forStatement is
+            {
+                Offset: not null,
+                OffsetIsContinue: false
+            })
         {
             ValidateExpression(forStatement.Offset, sourceText);
         }

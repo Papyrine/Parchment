@@ -79,7 +79,7 @@ public partial class CloneIdTests
                 P(Run("{% endfor %}"))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         // The first copy is the template's own; the later ones are numbered above it.
         await Assert.That(Join(DrawingIds(doc))).IsEqualTo("1,2,3");
@@ -97,7 +97,7 @@ public partial class CloneIdTests
                 P(Run("{% endfor %}"))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var ids = ControlIds(doc);
         await Assert.That(ids.Count).IsEqualTo(6);
@@ -120,7 +120,7 @@ public partial class CloneIdTests
                 P(Run("{% endfor %}"))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var ids = RevisionIds(doc);
         await Assert.That(ids.Count).IsEqualTo(15);
@@ -142,7 +142,7 @@ public partial class CloneIdTests
                 P(Run("{% endfor %}"))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var drawings = DrawingIds(doc);
         await Assert.That(drawings.Count).IsEqualTo(6);
@@ -162,7 +162,7 @@ public partial class CloneIdTests
             "</w:tc></w:tr></w:tbl>");
         using var template = BuildDocx([table, P(Run("after"))]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         // The drawing sits inside mc:AlternateContent, which is walked like anything else.
         await Assert.That(Join(DrawingIds(doc))).IsEqualTo("4,5,6");
@@ -184,7 +184,7 @@ public partial class CloneIdTests
                 P(Run("{% endfor %}"))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var drawings = DrawingIds(doc);
         await Assert.That(drawings.Count).IsEqualTo(6);
@@ -208,7 +208,7 @@ public partial class CloneIdTests
             ],
             [P(Drawing(7) + $"<w:ins w:id=\"9\" {tracked}>{Run("static")}</w:ins>")]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         await Assert.That(Join(DrawingIds(doc))).IsEqualTo("1,8,9,7");
         await Assert.That(Join(RevisionIds(doc))).IsEqualTo("1,10,11,9");
@@ -226,7 +226,7 @@ public partial class CloneIdTests
                     Drawing(9))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         await Assert.That(Join(body.Elements<Paragraph>().Select(_ => _.InnerText))).IsEqualTo("before ,one,two, after");
@@ -251,7 +251,7 @@ public partial class CloneIdTests
                 P(Control(5, Run("before {{ Inline }} after")))
             ]);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         await Assert.That(Join(body.Elements<Paragraph>().Select(_ => _.InnerText))).IsEqualTo("before bold after,before bold after");
@@ -344,7 +344,7 @@ public partial class CloneIdTests
             ],
             comment: true);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         await Assert.That(Join(body.Elements<Paragraph>().Select(_ => _.InnerText))).IsEqualTo("a,b,c");
@@ -417,7 +417,7 @@ public partial class CloneIdTests
             [P(Commented(Run("before {{ Block }} after")))],
             comment: true);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         var paragraphs = body.Elements<Paragraph>().ToList();
@@ -436,7 +436,7 @@ public partial class CloneIdTests
             [P(Commented(Run("before {{ Inline }} after")))],
             comment: true);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         var paragraph = body.Elements<Paragraph>().Single();
@@ -461,7 +461,7 @@ public partial class CloneIdTests
             [P(Commented(Run("noted")) + Run(" then {{ Block }} after"))],
             comment: true);
 
-        using var doc = await Render(template, new Doc());
+        using var doc = await Render(template, new());
 
         var body = doc.MainDocumentPart!.Document!.Body!;
         var paragraphs = body.Elements<Paragraph>().ToList();
@@ -575,11 +575,11 @@ public partial class CloneIdTests
         }
     }
 
-    static async Task<WordprocessingDocument> Render(MemoryStream template, Doc model)
+    static Task<WordprocessingDocument> Render(MemoryStream template, Doc model)
     {
         var store = new TemplateStore();
         store.RegisterDocxTemplate<Doc>(template);
-        return await Render(store, model);
+        return Render(store, model);
     }
 
     static async Task<WordprocessingDocument> Render<T>(TemplateStore store, T model)

@@ -427,12 +427,12 @@ public partial class ConditionalTests
     public async Task ClosingTagWithArgumentsIsRejected(string open, string close, string expected)
     {
         using var template = DocxTemplateBuilder.Build(
-            $$"""
-            {{open}}
+            $"""
+            {open}
 
             A
 
-            {{close}}
+            {close}
             """);
 
         var store = new TemplateStore();

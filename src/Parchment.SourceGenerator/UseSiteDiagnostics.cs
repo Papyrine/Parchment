@@ -35,40 +35,44 @@ static class UseSiteDiagnostics
     /// </summary>
     public static bool TryCollectType(ITypeSymbol type, List<string> ids)
     {
-        if (type is IArrayTypeSymbol array)
+        while (true)
         {
-            return TryCollectType(array.ElementType, ids);
-        }
+            if (type is IArrayTypeSymbol array)
+            {
+                type = array.ElementType;
+                continue;
+            }
 
-        if (type is not INamedTypeSymbol named)
-        {
-            return true;
-        }
+            if (type is not INamedTypeSymbol named)
+            {
+                return true;
+            }
 
-        if (!TryCollect(named, ids))
-        {
-            return false;
-        }
-
-        // An assembly or module can be experimental as a whole. Inside that assembly the compiler
-        // stays silent and the pragma is inert.
-        CollectExperimental(named.ContainingModule, ids);
-        CollectExperimental(named.ContainingAssembly, ids);
-
-        foreach (var argument in named.TypeArguments)
-        {
-            if (!TryCollectType(argument, ids))
+            if (!TryCollect(named, ids))
             {
                 return false;
             }
-        }
 
-        if (named.ContainingType == null)
-        {
-            return true;
-        }
+            // An assembly or module can be experimental as a whole. Inside that assembly the compiler
+            // stays silent and the pragma is inert.
+            CollectExperimental(named.ContainingModule, ids);
+            CollectExperimental(named.ContainingAssembly, ids);
 
-        return TryCollectType(named.ContainingType, ids);
+            foreach (var argument in named.TypeArguments)
+            {
+                if (!TryCollectType(argument, ids))
+                {
+                    return false;
+                }
+            }
+
+            if (named.ContainingType == null)
+            {
+                return true;
+            }
+
+            type = named.ContainingType;
+        }
     }
 
     static bool TryCollect(ISymbol symbol, List<string> ids)

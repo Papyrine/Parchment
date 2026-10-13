@@ -1409,20 +1409,20 @@ public class ParchmentTemplateGeneratorTests
     }
 
     [Test]
-    public async Task FormatMarkerOnNonString_ReportsParch029() =>
-        await AssertParch029(GeneratorDriver.Run(markerOnNonStringModel, "{{ Count }}"));
+    public Task FormatMarkerOnNonString_ReportsParch029() =>
+        AssertParch029(GeneratorDriver.Run(markerOnNonStringModel, "{{ Count }}"));
 
     // A markdown template reads the marker too: it rewrites the token to carry the filter.
     [Test]
-    public async Task FormatMarkerOnNonString_ReportsParch029_Markdown() =>
-        await AssertParch029(GeneratorDriver.RunMarkdown(markerOnNonStringModel, "{{ Count }}"));
+    public Task FormatMarkerOnNonString_ReportsParch029_Markdown() =>
+        AssertParch029(GeneratorDriver.RunMarkdown(markerOnNonStringModel, "{{ Count }}"));
 
     [Test]
-    public async Task FormatMarkerOnNonString_ReportsParch029_Bindable()
+    public Task FormatMarkerOnNonString_ReportsParch029_Bindable()
     {
         var setup = GeneratorDriver.CreateDriverWithFiles(markerOnNonStringModel.Replace("[ParchmentModel]", "[ParchmentBindable]"));
 
-        await AssertParch029(setup.Driver.RunGenerators(setup.Compilation).GetRunResult());
+        return AssertParch029(setup.Driver.RunGenerators(setup.Compilation).GetRunResult());
     }
 
     // Only the string member reaches the format map, so nothing reads the others as a string

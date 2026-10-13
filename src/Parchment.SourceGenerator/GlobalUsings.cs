@@ -17,6 +17,7 @@ global using Fluid.Parser;
 global using Fluid.Values;
 
 global using System.Diagnostics.CodeAnalysis;
+global using System.Text.Encodings.Web;
 global using Microsoft.CodeAnalysis;
 global using Microsoft.CodeAnalysis.Diagnostics;
 global using Microsoft.CodeAnalysis.CSharp;

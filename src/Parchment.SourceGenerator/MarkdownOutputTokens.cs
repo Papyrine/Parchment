@@ -139,7 +139,11 @@ static class MarkdownOutputTokens
     {
         // Anything Fluid cannot parse fails the whole template the same way a moment later.
         if (!parser.TryParse("{{" + expression + "}}", out var template, out _) ||
-            template is not Fluid.Parser.FluidTemplate { Statements: [OutputStatement output] })
+            template is not
+                FluidTemplate
+                {
+                    Statements: [OutputStatement output]
+                })
         {
             return (null, false);
         }

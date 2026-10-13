@@ -278,10 +278,17 @@ static class AccessorEmission
                 // the emitted source stays compilable.
                 if (member.EditableCollectionElementFqn != null)
                 {
-                    if (member.HasUsableSetter &&
-                        member.EditableCollectionAssignable &&
+                    if (member is
+                        {
+                            HasUsableSetter: true,
+                            EditableCollectionAssignable: true
+                        } &&
                         typesByFqn.TryGetValue(member.EditableCollectionElementFqn, out var elementEntry) &&
-                        elementEntry is { HasParameterlessCtor: true, IsValueType: false } &&
+                        elementEntry is
+                        {
+                            HasParameterlessCtor: true,
+                            IsValueType: false
+                        } &&
                         HasScalarEditableMember(elementEntry))
                     {
                         collections.Add((nextPath, member));

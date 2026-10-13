@@ -203,7 +203,7 @@ public class ExcelsiorConfigureAccessibilityTests
     }
 
     [Test]
-    public async Task PrivateOnNonPartialClass_Reported()
+    public Task PrivateOnNonPartialClass_Reported()
     {
         var outcome = Run(
             """
@@ -224,7 +224,7 @@ public class ExcelsiorConfigureAccessibilityTests
             }
             """);
 
-        await AssertReported(outcome, "ConfigureLines", "Sample.Customer");
+        return AssertReported(outcome, "ConfigureLines", "Sample.Customer");
     }
 
     [Test]
@@ -279,7 +279,7 @@ public class ExcelsiorConfigureAccessibilityTests
     }
 
     [Test]
-    public async Task PrivateOnNonPartialBaseOfModel_Reported()
+    public Task PrivateOnNonPartialBaseOfModel_Reported()
     {
         var outcome = Run(
             """
@@ -299,7 +299,7 @@ public class ExcelsiorConfigureAccessibilityTests
             }
             """);
 
-        await AssertReported(outcome, "ConfigureLines", "Sample.DocumentBase");
+        return AssertReported(outcome, "ConfigureLines", "Sample.DocumentBase");
     }
 
     // A protected static is reachable from a type nested in a derived one, so nothing is forwarded.
@@ -389,7 +389,7 @@ public class ExcelsiorConfigureAccessibilityTests
 
     // Every enclosing type has to be partial for the part to be declared at all.
     [Test]
-    public async Task PrivateOnPartialClassNestedInNonPartial_Reported()
+    public Task PrivateOnPartialClassNestedInNonPartial_Reported()
     {
         var outcome = Run(
             """
@@ -413,7 +413,7 @@ public class ExcelsiorConfigureAccessibilityTests
             }
             """);
 
-        await AssertReported(outcome, "ConfigureLines", "Sample.Crm.Customer");
+        return AssertReported(outcome, "ConfigureLines", "Sample.Crm.Customer");
     }
 
     // A model nested in the type that declares the method sees its privates, as any nested type
@@ -550,7 +550,7 @@ public class ExcelsiorConfigureAccessibilityTests
     // A type from another assembly cannot be given a part, and its private method cannot be made
     // reachable from here at all.
     [Test]
-    public async Task PrivateInAnotherAssembly_Reported()
+    public Task PrivateInAnotherAssembly_Reported()
     {
         var library = CSharpCompilation.Create(
             "Library",
@@ -581,7 +581,7 @@ public class ExcelsiorConfigureAccessibilityTests
             """,
             library.ToMetadataReference());
 
-        await AssertReported(outcome, "ConfigureLines", "Sample.Invoice");
+        return AssertReported(outcome, "ConfigureLines", "Sample.Invoice");
     }
 
     [Test]

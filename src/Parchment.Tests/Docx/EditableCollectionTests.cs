@@ -5,6 +5,7 @@ using W15 = DocumentFormat.OpenXml.Office2013.Word;
 public partial class EditableCollectionTests
 {
     #region EditableCollectionModel
+
     public class Budget
     {
         [EditableField]
@@ -22,6 +23,7 @@ public partial class EditableCollectionTests
         [EditableField]
         public required List<Budget> Budgets { get; set; }
     }
+
     #endregion
 
     public enum Priority
@@ -223,10 +225,12 @@ public partial class EditableCollectionTests
         };
 
         #region EditableCollectionExtract
+
         var result = ParchmentExtractor.Extract<BudgetPlan>(stream);
 
         // model.Budgets is the edited list - added rows appear, removed rows are gone
         result.ApplyTo(model);
+
         #endregion
 
         await Assert.That(result.AllExtracted).IsTrue();
@@ -819,8 +823,7 @@ public partial class EditableCollectionTests
         using var docx = DocxTemplateBuilder.Build(
             entryTemplate + "\n\nAgain\n\n{% for other in Entries %}\n\n" + secondBody + "\n\n{% endfor %}");
         var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<EntryList>(docx))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<EntryList>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("more than once");
     }
@@ -833,8 +836,7 @@ public partial class EditableCollectionTests
     {
         using var docx = DocxTemplateBuilder.Build("{% for e in Entries %}\n\n" + body + "\n\n{% endfor %}");
         var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<EntryList>(docx))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<EntryList>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("more than once");
     }
@@ -1198,7 +1200,7 @@ public partial class EditableCollectionTests
         public Time At { get; set; }
 
         [EditableField]
-        [System.Diagnostics.CodeAnalysis.StringSyntax("html")]
+        [StringSyntax("html")]
         public string? Instructions { get; set; }
 
         public Depot? Depot { get; set; }
@@ -1280,10 +1282,10 @@ public partial class EditableCollectionTests
         await Assert.That(shipping.Note).IsEqualTo("leave at door");
         await Assert.That(shipping.Fragile).IsTrue();
         await Assert.That(shipping.Boxes).IsEqualTo(3);
-        await Assert.That(shipping.Due).IsEqualTo(new Date(2026, 3, 4));
+        await Assert.That(shipping.Due).IsEqualTo(new(2026, 3, 4));
         await Assert.That(shipping.Priority).IsEqualTo(Priority.High);
-        await Assert.That(shipping.Logged).IsEqualTo(new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)));
-        await Assert.That(shipping.At).IsEqualTo(new Time(9, 30));
+        await Assert.That(shipping.Logged).IsEqualTo(new(2026, 1, 2, 3, 4, 5, TimeSpan.FromHours(2)));
+        await Assert.That(shipping.At).IsEqualTo(new(9, 30));
         await Assert.That(shipping.Instructions).IsEqualTo("<p>Keep <strong>upright</strong></p>");
         await Assert.That(shipping.Depot!.Code).IsEqualTo("SYD");
 
@@ -1377,9 +1379,12 @@ public partial class EditableCollectionTests
             Seal = new("s1")
             {
                 Colour = "red"
+            },
+            Customs =
+            {
+                Tariff = "8471"
             }
         };
-        crate.Customs.Tariff = "8471";
         using var stream = await Render(
             """
             {% for c in Crates %}
@@ -1436,8 +1441,7 @@ public partial class EditableCollectionTests
                {% endfor %}
                """);
         var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<BudgetPlan>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("Budgets");
         await Assert.That(exception.Message).Contains("[EditableField]");
@@ -1481,16 +1485,15 @@ public partial class EditableCollectionTests
     public async Task FilterOnItemMemberFailsRegistration(string token)
     {
         using var docx = DocxTemplateBuilder.Build(
-            $$$"""
-               {% for b in Budgets %}
+            $$"""
+              {% for b in Budgets %}
 
-               {{{token}}}
+              {{token}}
 
-               {% endfor %}
-               """);
+              {% endfor %}
+              """);
         var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<BudgetPlan>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("plain member-access");
     }
@@ -1510,8 +1513,7 @@ public partial class EditableCollectionTests
             {% endfor %}
             """);
         var store = new TemplateStore();
-        var exception = await Assert.That(
-                () => store.RegisterDocxTemplate<BudgetPlan>(docx))
+        var exception = await Assert.That(() => store.RegisterDocxTemplate<BudgetPlan>(docx))
             .Throws<ParchmentRegistrationException>();
         await Assert.That(exception!.Message).Contains("more than once");
     }
