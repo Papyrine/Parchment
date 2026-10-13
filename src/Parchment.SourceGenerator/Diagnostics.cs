@@ -318,6 +318,18 @@
         isEnabledByDefault: true,
         helpLinkUri: "https://github.com/Papyrine/Parchment#parch028--block-tags-in-different-containers");
 
+    // The wording after the token is TokenFilterOrder.Message, so the build and the runtime's
+    // registration exception explain the mistake in the same words. Which filters produce a token
+    // depends on the flow — see TokenFilterOrder.
+    public static readonly DiagnosticDescriptor FilterAfterTokenFilter = new(
+        id: "PARCH037",
+        title: "Filter applied after a filter that produces Word content",
+        messageFormat: "Template '{0}' token '{1}' has a filter out of order: {2}",
+        category: "Parchment",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        helpLinkUri: "https://github.com/Papyrine/Parchment#parch037--filter-after-a-format-filter");
+
     public static readonly DiagnosticDescriptor AmbiguousStyleDoc = new(
         id: "PARCH021",
         title: "Model matches more than one style document",

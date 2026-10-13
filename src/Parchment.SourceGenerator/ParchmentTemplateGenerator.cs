@@ -1247,6 +1247,7 @@ public sealed class ParchmentTemplateGenerator :
                     ValidateReferences(context, target, templatePath, location, token.References, scope, token.Source);
                     ValidateExcelsiorToken(context, target, templatePath, location, token, scope);
                     ValidateFormatToken(context, target, templatePath, location, token, scope);
+                    ValidateFilterOrder(context, templatePath, location, token);
                     break;
 
                 case TokenKind.ForOpen:
@@ -1573,6 +1574,28 @@ public sealed class ParchmentTemplateGenerator :
                 location,
                 templatePath,
                 token.Source));
+    }
+
+    // PARCH037. The scanner has already found the pair — see TokenScanner.ParseSubstitution.
+    static void ValidateFilterOrder(
+        SourceProductionContext context,
+        string templatePath,
+        Location location,
+        Token token)
+    {
+        if (token.TokenFilter == null ||
+            token.FilterAfterTokenFilter == null)
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FilterAfterTokenFilter,
+                location,
+                templatePath,
+                token.Source,
+                TokenFilterOrder.Message(token.TokenFilter, token.FilterAfterTokenFilter)));
     }
 
     static void ValidateReferences(

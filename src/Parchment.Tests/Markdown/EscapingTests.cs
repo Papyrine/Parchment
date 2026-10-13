@@ -739,6 +739,79 @@ public partial class EscapingTests
         await Assert.That(paragraph.Descendants<Bold>().Any()).IsTrue();
     }
 
+    // Here `html` parks its value and writes a placeholder, so a filter after it was handed the
+    // placeholder rather than the value: `{{ Details | html | upcase }}` printed PARCHMENT-TOKEN-0,
+    // and `append` left the placeholder sharing its block, which failed the render with a message
+    // about a block the template never wrote.
+    [Test]
+    [Arguments("{{ Details | html | upcase }}", "upcase", "Details | html | upcase")]
+    [Arguments("{{ Details | html | append: ' tail' }}", "append", "Details | html | append")]
+    [Arguments("{{ Details | upcase | html | downcase | strip }}", "downcase", "Details | upcase | html | downcase | strip")]
+    [Arguments("{% assign shout = Details | html | upcase %}{{ shout }}", "upcase", "Details | html | upcase")]
+    [Arguments("{% capture held %}{{ Details | html | upcase }}{% endcapture %}{{ held }}", "upcase", "Details | html | upcase")]
+    [Arguments("{% for item in Items %}{{ item | html | upcase }}{% endfor %}", "upcase", "item | html | upcase")]
+    [Arguments("{% if Title %}x{% else %}{{ Details | html | upcase }}{% endif %}", "upcase", "Details | html | upcase")]
+    public async Task FilterAfterHtmlFilterFailsRegistration(string template, string following, string chain)
+    {
+        using var styleSource = DocxTemplateBuilder.Build();
+        var store = new TemplateStore();
+
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => store.RegisterMarkdownTemplate<EscapeModel>(template, styleSource));
+
+        await Assert.That(exception.Message).Contains($"Filter '{following}' is applied after 'html'");
+        await Assert.That(exception.Message).Contains($"Move '{following}' before 'html'");
+        await Assert.That(exception.TokenSource).IsEqualTo(chain);
+    }
+
+    [Test]
+    public async Task FilterBeforeHtmlFilterIsApplied()
+    {
+        var body = await Render(
+            "{{ Details | upcase | html }}",
+            new()
+            {
+                Details = "<b>bold</b> text"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    // The other three are not token filters in this flow: each writes markdown source, and source is
+    // text a later filter can still work on. The docx flow refuses these same chains, because there
+    // the value has already become Word content.
+    [Test]
+    public async Task FilterAfterMarkdownFilterTransformsItsSource()
+    {
+        var body = await Render(
+            "{{ Details | markdown | upcase }}",
+            new()
+            {
+                Details = "**bold** text"
+            });
+
+        await Assert.That(body.InnerText).IsEqualTo("BOLD TEXT");
+        await Assert.That(body.Descendants<Run>().Single(_ => _.RunProperties?.Bold != null).InnerText).IsEqualTo("BOLD");
+    }
+
+    [Test]
+    [Arguments("bullet_list")]
+    [Arguments("numbered_list")]
+    public async Task FilterAfterListFilterTransformsItsSource(string listFilter)
+    {
+        var body = await Render(
+            $"{{{{ Items | {listFilter} | upcase }}}}",
+            new()
+            {
+                Items = ["one", "two"]
+            });
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        await Assert.That(string.Join(',', paragraphs.Select(_ => _.InnerText))).IsEqualTo("ONE,TWO");
+        await Assert.That(paragraphs.All(_ => _.ParagraphProperties?.NumberingProperties != null)).IsTrue();
+    }
+
     // The annotation says once, at the model, what the filter says at every site. It reached the
     // docx flow already; a markdown template ignored it, which stopped being invisible the moment
     // an unannotated value started being escaped.

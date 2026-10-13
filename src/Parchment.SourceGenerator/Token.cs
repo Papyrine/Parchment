@@ -15,4 +15,8 @@
     bool LoopSourceIsRange = false,
     // UnknownBlock only: why a tag that is otherwise supported was refused, such as an `else`
     // carrying arguments. Null for a tag that is not supported at all.
-    string? Problem = null);
+    string? Problem = null,
+    // Substitution only, and set together: a filter that produces a token, and the filter applied
+    // after it. See TokenFilterOrder.
+    string? TokenFilter = null,
+    string? FilterAfterTokenFilter = null);

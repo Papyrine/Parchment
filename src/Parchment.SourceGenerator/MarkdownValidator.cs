@@ -10,6 +10,7 @@
 ///   PARCH002 — LoopSourceNotEnumerable
 ///   PARCH003 — UnsupportedBlockTag, for the partial tags `render` and `include` only
 ///   PARCH024 — FormatMarkerThroughLoopVariable
+///   PARCH037 — FilterAfterTokenFilter
 /// PARCH005 / PARCH010 are docx-specific and not emitted for markdown — the runtime
 /// markdown flow has no concept of paragraph boundaries and no [Html]/[Markdown] structural
 /// replacement.
@@ -410,6 +411,8 @@ class MarkdownValidator
 
     void ValidateExpression(Expression expression, string sourceForDiagnostic)
     {
+        ValidateFilterOrder(expression);
+
         var paths = ExpressionPathCollector.Collect(expression);
         foreach (var path in paths)
         {
@@ -427,6 +430,26 @@ class MarkdownValidator
             context.ReportDiagnostic(
                 Diagnostics.UnknownMember(target, templatePath, location, sourceForDiagnostic, path, scope));
         }
+    }
+
+    // `html` is the one filter that produces a token in this flow: it parks its value and writes a
+    // placeholder, which a filter after it would be handed in place of the value. Lockstep with
+    // MarkdownReferenceValidator.VisitFilterExpression. A chain is only ever the whole of an output
+    // or an assign value, so the expressions handed to ValidateExpression are everywhere one can be.
+    void ValidateFilterOrder(Expression expression)
+    {
+        if (!TokenFilterOrder.TryFind(expression, markdownFlow: true, out var tokenFilter, out var following))
+        {
+            return;
+        }
+
+        context.ReportDiagnostic(
+            Diagnostic.Create(
+                Diagnostics.FilterAfterTokenFilter,
+                location,
+                templatePath,
+                TokenFilterOrder.Describe(expression),
+                TokenFilterOrder.Message(tokenFilter, following)));
     }
 
     // A format marker on a member reached through a loop variable cannot be honoured: the rewrite

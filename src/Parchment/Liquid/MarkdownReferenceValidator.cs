@@ -192,6 +192,24 @@ class MarkdownReferenceValidator :
         return captureStatement;
     }
 
+    // `html` is the one filter that produces a token in this flow: it parks its value and writes a
+    // placeholder, which a filter after it would be handed in place of the value. The scan of a
+    // style source's headers and footers applies the docx form of the rule — see TokenScanner.
+    // PARCH037 in the source generator.
+    protected override Expression VisitFilterExpression(FilterExpression expression)
+    {
+        if (TokenFilterOrder.TryFind(expression, markdownFlow: true, out var tokenFilter, out var following))
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                TokenFilterOrder.Message(tokenFilter, following),
+                null,
+                TokenFilterOrder.Describe(expression));
+        }
+
+        return base.VisitFilterExpression(expression);
+    }
+
     // Both tags parse, and both load another template through `TemplateOptions.FileProvider`. A
     // markdown template is registered as one piece of text and no provider is ever set, so Fluid's
     // null provider answers every name with a FileNotFoundException, at render.
