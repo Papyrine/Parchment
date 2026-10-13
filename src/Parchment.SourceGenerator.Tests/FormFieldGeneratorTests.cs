@@ -54,16 +54,16 @@ public class FormFieldGeneratorTests
         await Assert.That(diagnostics).IsEmpty();
     }
 
-    // The placeholder is not text beside the tag: once the field is a token the block tag has no
-    // other content in its paragraph, where the unconverted text would have counted against it.
+    // Once the field is a token it is a substitution in the tag's paragraph, and the runtime
+    // rejects a block tag that shares its paragraph with one, whatever the token came from.
     [Test]
-    public async Task PlaceholderOfAFormFieldIsNotContentBesideABlockTag()
+    public async Task FormFieldBesideABlockTagIsATokenBesideIt()
     {
         var diagnostics = Run(
             new Paragraph([TextRun("{% if Flag %}"), ..FormField("Title")]),
             new Paragraph(TextRun("{% endif %}")));
 
-        await Assert.That(diagnostics.Select(_ => _.Id)).DoesNotContain("PARCH005");
+        await Assert.That(diagnostics.Select(_ => _.Id)).Contains("PARCH005");
     }
 
     [Test]
