@@ -328,7 +328,12 @@ class ScopeTreeRunner(
             foreach (var (mutate, target) in mutations)
             {
                 var ctx = new OpenXmlContextImpl(mainPart, numberingState, styles.Value, target);
+                // The caller numbers a bookmark it adds without sight of the document, and the
+                // paragraph it adds it to already holds the anchor's and maybe the template's -
+                // see BookmarkIds.
+                var existing = BookmarkIds.Markers(target);
                 mutate.Apply(target, ctx);
+                bookmarks.RenumberAdded(target, existing);
             }
         }
 
