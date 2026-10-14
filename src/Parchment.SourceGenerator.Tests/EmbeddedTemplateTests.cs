@@ -44,7 +44,7 @@ public class EmbeddedTemplateTests
     static string Describe(CompiledGenerator.Result result) =>
         string.Join("\n", result.Errors.Select(_ => $"{_.Id}: {_.GetMessage()}"));
 
-    static byte[] Embedded(System.Reflection.Assembly assembly, string model)
+    static byte[] Embedded(Assembly assembly, string model)
     {
         var type = assembly.GetType($"Sample.{model}+ParchmentGenerated_Sample_{model}", throwOnError: true)!;
         var attribute = (Parchment.Generated.EmbeddedBytesAttribute) type
@@ -53,7 +53,7 @@ public class EmbeddedTemplateTests
         return Convert.FromBase64String(attribute.Base64);
     }
 
-    static async Task<string> Render(System.Reflection.Assembly assembly, string model)
+    static async Task<string> Render(Assembly assembly, string model)
     {
         dynamic instance = Activator.CreateInstance(assembly.GetType($"Sample.{model}", throwOnError: true)!)!;
         instance.Name = "World";
@@ -110,9 +110,9 @@ public class EmbeddedTemplateTests
         TemplateFile[] files =
         [
             new("M0.parchment.docx", docx),
-            new("M1.parchment.md", Encoding.UTF8.GetBytes("Greetings {{ Name }}")),
+            new("M1.parchment.md", "Greetings {{ Name }}"u8.ToArray()),
             new("M1.parchment.dotx", style),
-            new("M2.parchment.md", Encoding.UTF8.GetBytes("Plain {{ Name }}"))
+            new("M2.parchment.md", "Plain {{ Name }}"u8.ToArray())
         ];
 
         var result = CompiledGenerator.Run(Models(3), files);
@@ -140,7 +140,7 @@ public class EmbeddedTemplateTests
         };
         for (var index = 0; index < 20; index++)
         {
-            files.Add(new($"M{index}.parchment.md", Encoding.UTF8.GetBytes("# {{ Name }}")));
+            files.Add(new($"M{index}.parchment.md", "# {{ Name }}"u8.ToArray()));
         }
 
         var result = CompiledGenerator.Run(Models(20), files.ToArray());
