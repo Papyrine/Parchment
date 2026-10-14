@@ -41,7 +41,7 @@
          those must stay put: see the note in Parchment.SourceGenerator.csproj. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
-    <PackageVersion Include="MarkdownSnippets.MsBuild" Version="28.5.0" />
+    <PackageVersion Include="MarkdownSnippets.MsBuild" Version="28.5.1" />
     <PackageVersion Include="Argon" Version="0.38.2" />
     <PackageVersion Include="DiffEngine" Version="20.8.1" />
     <PackageVersion Include="EmptyFiles" Version="8.20.1" />
