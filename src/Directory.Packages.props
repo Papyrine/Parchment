@@ -14,27 +14,27 @@
     <SponsorExemption Include="OpenSource" Message="Open source projects that do not generate revenue are exempt. Voluntary donations and sponsorships are not revenue." MaxTermMonths="12" />
     <PackageVersion Include="Excelsior" Version="6.5.8" />
     <PackageVersion Include="OpenXmlHtml" Version="1.7.5" />
-    <PackageVersion Include="Markdig" Version="1.5.0" />
+    <PackageVersion Include="Markdig" Version="1.4.2" />
     <PackageVersion Include="Fluid.Core" Version="2.40.0" />
-    <PackageVersion Include="Parlot" Version="2.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.FileProviders.Abstractions" Version="10.0.14" />
-    <PackageVersion Include="Microsoft.Extensions.Primitives" Version="10.0.14" />
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.14" />
+    <PackageVersion Include="Parlot" Version="1.5.12" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Abstractions" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Primitives" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageVersion Include="TimeZoneConverter" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Bcl.HashCode" Version="6.0.0" />
-    <PackageVersion Include="System.Text.Json" Version="10.0.14" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.13" />
     <PackageVersion Include="PackageShader.MsBuild" Version="1.1.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
     <PackageVersion Include="Polyfill" Version="11.4.5" />
     <PackageVersion Include="ProjectDefaults" Version="1.0.184" />
     <PackageVersion Include="ProjectFiles" Version="1.6.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageVersion Include="TUnit" Version="1.76.28" />
+    <PackageVersion Include="TUnit" Version="1.75.0" />
     <PackageVersion Include="Verify" Version="33.3.4" />
     <PackageVersion Include="Verify.TUnit" Version="33.3.4" />
     <PackageVersion Include="Verify.OpenXml" Version="2.0.0" />
-    <PackageVersion Include="Morph" Version="1.23.1" />
-    <PackageVersion Include="Morph.Skia" Version="1.23.1" />
+    <PackageVersion Include="Morph" Version="1.22.0" />
+    <PackageVersion Include="Morph.Skia" Version="1.22.0" />
     <PackageVersion Include="Verify.SourceGenerators" Version="2.5.0" />
     <!-- The compiler the generator tests host the generator in, so free to follow the SDK. The
          generator itself overrides this with the older versions its package folders name, and
