@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 /// <summary>
 /// Picks the relationship id for every part and relationship Parchment adds. Adding one without an
 /// id makes the Open XML SDK mint a random one (<c>R</c> + 16 hex digits), which lands in the

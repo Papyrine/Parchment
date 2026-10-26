@@ -27,7 +27,7 @@ public class LiteralFoldingTests
     // Inline html formats what is written while the tag is open.
     [Arguments(@"<b>a\-b</b>c\-d", "[b]'a-b' 'c-d'")]
     [Arguments(@"a\-b<u>c\-d", "'a-b' [u]'c-d'")]
-    [Arguments(@"a\-b<span class=""Mark"">c\-d</span>\-e", "'a-b' [rStyle]'c-d' '-e'")]
+    [Arguments("""a\-b<span class="Mark">c\-d</span>\-e""", "'a-b' [rStyle]'c-d' '-e'")]
     [Arguments(@"<i>a\-b *c\-d*</i>", "[i]'a-b c-d'")]
     // A tab makes a run of several pieces, which is folded with nothing.
     [Arguments("a\\-b\tc\\-d\\-e", "'a' '-b'<tab>'c' '-d-e'")]
@@ -35,7 +35,11 @@ public class LiteralFoldingTests
     // Text from the other inlines is still folded at the flush.
     [Arguments(@"a\-b&amp;c\-d", "'a-b&c-d'")]
     [Arguments("a\\-b\nc\\-d", "'a-b c-d'")]
-    [Arguments(@"a\-b ""c\-d""", "'a-b “c-d”'")]
+    [Arguments(
+        """
+        a\-b "c\-d"
+        """,
+        "'a-b “c-d”'")]
     [Arguments(@"see [a\-b c\-d", "'see [a-b c-d'")]
     // And what is not text keeps its place between the runs.
     [Arguments("a\\-b\\\nc\\-d", "'a-b' <br> 'c-d'")]

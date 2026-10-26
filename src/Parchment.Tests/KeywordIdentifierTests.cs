@@ -3,6 +3,7 @@
 // ReSharper disable UnusedMember.Global
 // ReSharper disable UnusedParameter.Local
 // Lower-case type names are what is under test.
+// ReSharper disable RedundantVerbatimPrefix
 #pragma warning disable CS8981
 #pragma warning disable CS8860
 

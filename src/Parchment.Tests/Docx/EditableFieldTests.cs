@@ -1598,12 +1598,12 @@ public partial class EditableFieldTests
         first.Position = 0;
         using var rendered =WordprocessingDocument.Open(first, false);
         var renderedMain = rendered.MainDocumentPart!;
-        var roots = new List<OpenXmlCompositeElement>
-        {
-            renderedMain.Document!.Body!
-        };
-        roots.AddRange(renderedMain.HeaderParts.Select(_ => _.Header!));
-        roots.AddRange(renderedMain.FooterParts.Select(_ => _.Footer!));
+        List<OpenXmlCompositeElement> roots =
+        [
+            renderedMain.Document!.Body!,
+            ..renderedMain.HeaderParts.Select(_ => _.Header!),
+            ..renderedMain.FooterParts.Select(_ => _.Footer!)
+        ];
 
         var sdtIds = roots
             .SelectMany(_ => _.Descendants<SdtId>())

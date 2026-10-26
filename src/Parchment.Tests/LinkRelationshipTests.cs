@@ -465,9 +465,12 @@ public partial class LinkRelationshipTests
     {
         var problems = new List<string>();
         var main = doc.MainDocumentPart!;
-        var parts = new List<OpenXmlPart> { main };
-        parts.AddRange(main.HeaderParts);
-        parts.AddRange(main.FooterParts);
+        List<OpenXmlPart> parts =
+        [
+            main,
+            ..main.HeaderParts,
+            ..main.FooterParts
+        ];
         if (main.FootnotesPart is { } footnotes)
         {
             parts.Add(footnotes);

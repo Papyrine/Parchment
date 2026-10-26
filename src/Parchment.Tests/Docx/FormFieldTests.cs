@@ -91,13 +91,16 @@ public partial class FormFieldTests
     [Test]
     public async Task FormFieldWhoseResultHoldsANestedFieldIsReplacedWhole()
     {
-        var runs = new List<OpenXmlElement> {TextRun("before ")};
-        runs.AddRange(FieldStart("Title"));
-        runs.Add(TextRun("ph "));
-        runs.AddRange(PageField());
-        runs.Add(TextRun(" tail"));
-        runs.Add(FieldEnd());
-        runs.Add(TextRun(" after"));
+        List<OpenXmlElement> runs =
+        [
+            TextRun("before "),
+            ..FieldStart("Title"),
+            TextRun("ph "),
+            ..PageField(),
+            TextRun(" tail"),
+            FieldEnd(),
+            TextRun(" after")
+        ];
         using var template = Build(new Paragraph(runs));
 
         using var result = await RenderDocument(template);
@@ -176,8 +179,12 @@ public partial class FormFieldTests
     [Test]
     public async Task FormFieldClosedInALaterParagraphIsLeftAlone()
     {
-        var first = new List<OpenXmlElement>(FieldStart("Title")) {TextRun("ph ")};
-        first.AddRange(PageField());
+        List<OpenXmlElement> first =
+        [
+            ..FieldStart("Title"),
+            TextRun("ph "),
+            ..PageField()
+        ];
         using var template = Build(new Paragraph(first), new Paragraph(TextRun("more"), FieldEnd()));
 
         using var result = await RenderDocument(template);
