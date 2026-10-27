@@ -7,7 +7,7 @@
 body intro
 • body first
 • body second
-Cell hosted:	cell intro • cell first • cell second
+Cell hosted:	cell intro • cell first • cell secon d
     }
   ]
 }
