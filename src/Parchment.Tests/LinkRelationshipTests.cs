@@ -583,5 +583,11 @@ public partial class LinkRelationshipTests
     static IEnumerable<OpenXmlElement> Paragraphs(string text) =>
         text
             .Split('\n')
-            .Select(_ => new Paragraph(new Run(new Text(_) { Space = SpaceProcessingModeValues.Preserve })));
+            .Select(_ =>
+                new Paragraph(
+                    new Run(
+                        new Text(_)
+                        {
+                            Space = SpaceProcessingModeValues.Preserve
+                        })));
 }
