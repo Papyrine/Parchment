@@ -16,7 +16,7 @@
     <PackageVersion Include="OpenXmlHtml" Version="1.7.5" />
     <PackageVersion Include="Markdig" Version="1.5.0" />
     <PackageVersion Include="Fluid.Core" Version="2.40.0" />
-    <PackageVersion Include="Parlot" Version="1.5.12" />
+    <PackageVersion Include="Parlot" Version="1.6.0" Pinned="true" />
     <PackageVersion Include="Microsoft.Extensions.FileProviders.Abstractions" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.Primitives" Version="10.0.14" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.14" />
