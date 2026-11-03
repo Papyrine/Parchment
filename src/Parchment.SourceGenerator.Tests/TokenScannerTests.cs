@@ -179,5 +179,5 @@ public class TokenScannerTests
     }
 
     static List<string> Paths(Token token) =>
-        token.References.Select(_ => string.Join(".", _)).ToList();
+        token.References.Select(_ => string.Join('.', _)).ToList();
 }

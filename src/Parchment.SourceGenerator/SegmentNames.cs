@@ -34,5 +34,5 @@ static class SegmentNames
     // A path as a diagnostic shows it, the index written against the segment it applies to:
     // `Rows[].Item`.
     public static string Join(IReadOnlyList<string> path) =>
-        string.Join(".", path).Replace("." + Index, Index);
+        string.Join('.', path).Replace('.' + Index, Index);
 }

@@ -116,6 +116,6 @@ static class TokenFilterOrder
             names.Add(identifier.Identifier);
         }
 
-        return string.Join(".", names);
+        return string.Join('.', names);
     }
 }
