@@ -456,7 +456,7 @@ static class AccessorEmission
         {
             fields.Append(
                 $$"""
-                static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] {{fieldName}} =
+                static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] {{fieldName}} =
                 {
 
                 """);

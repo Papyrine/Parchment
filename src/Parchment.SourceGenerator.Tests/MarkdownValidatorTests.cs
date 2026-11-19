@@ -40,8 +40,9 @@ public class MarkdownValidatorTests
         }
         """;
 
-    // Fluid refuses these on its own, naming the tag it expected instead; the diagnostic leads
-    // with the tag that is wrong, in the words the docx flow uses.
+    // Fluid 3 refuses only `elseif`, naming the tag it expected instead, and parses the rest with
+    // the argument dropped. Either way the diagnostic names the tag that is wrong, in the words the
+    // docx flow uses.
     [Test]
     [Arguments("{% if Lines %}a{% else if Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
     [Arguments("{% if Lines %}a{% elseif Lines %}b{% endif %}", "Use '{% elsif condition %}'.")]
@@ -54,6 +55,38 @@ public class MarkdownValidatorTests
         var diagnostic = result.Results.Single().Diagnostics.Single();
         await Assert.That(diagnostic.Id).IsEqualTo("PARCH006");
         await Assert.That(diagnostic.GetMessage()).Contains(expected);
+    }
+
+    // Fluid 3 reads it as an empty string; the docx flow refuses it, and so does this one.
+    [Test]
+    [Arguments("{{ }}")]
+    [Arguments("a {{- -}} b")]
+    public async Task EmptyToken(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH006");
+        await Assert.That(diagnostic.GetMessage()).Contains("'{{ }}' names no value.");
+    }
+
+    // Liquid reads `reversed` only straight after the source, and Fluid's own error does not say so.
+    [Test]
+    public async Task ReversedAfterAModifier_SaysWhereItGoes()
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, "{% for line in Lines limit:2 reversed %}{% endfor %}");
+        var diagnostic = result.Results.Single().Diagnostics.Single();
+        await Assert.That(diagnostic.Id).IsEqualTo("PARCH006");
+        await Assert.That(diagnostic.GetMessage()).Contains("'reversed' has to come straight after the loop source, ahead of limit and offset: '{% for line in Lines reversed limit:2 %}'.");
+    }
+
+    // A raw or comment region is text, so what reads as a tag or a token there is not judged.
+    [Test]
+    [Arguments("{% raw %}{% else Lines %}{{ }}{% endraw %}")]
+    [Arguments("{% comment %}{% endif extra %}{% endcomment %}")]
+    public async Task ProblemInALiteralRegion_NoDiagnostic(string markdown)
+    {
+        var result = GeneratorDriver.RunMarkdown(invoiceModel, markdown);
+        await Assert.That(result.Results.Single().Diagnostics).IsEmpty();
     }
 
     [Test]

@@ -76,7 +76,7 @@ public class LoopSourceValidationTests
 
     [Test]
     [Arguments("Lines limit: Max offset: Skip")]
-    [Arguments("Lines limit:2 offset:1 reversed")]
+    [Arguments("Lines reversed limit:2 offset:1")]
     [Arguments("Lines reversed")]
     [Arguments("Lines limit: Lines.size")]
     [Arguments("(1..Max) offset: Skip")]

@@ -86,7 +86,7 @@ public partial class TokenValueMemberTests
     public async Task MemberOfATokenRendersBlankInMarkdownFluid(string path)
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
-        var context = new TemplateContext(new Doc(), SharedFluid.MarkdownOptions, allowModelMembers: true);
+        var context = new TemplateContext(new Doc(), SharedFluid.MarkdownOptions);
         await Assert.That(await template!.RenderAsync(context)).IsEqualTo("[]");
     }
 
@@ -101,7 +101,7 @@ public partial class TokenValueMemberTests
     public async Task MemberOfATokenRendersBlankInDocxFluid(string path)
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
-        var context = new TemplateContext(new Doc(), SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(new Doc(), SharedFluid.Options);
         await Assert.That(await template!.RenderAsync(context)).IsEqualTo("[]");
     }
 

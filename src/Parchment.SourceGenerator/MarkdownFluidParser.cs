@@ -24,6 +24,6 @@ class MarkdownFluidParser :
 class UnsupportedLiquidTagStatement :
     Statement
 {
-    public override ValueTask<Completion> WriteToAsync(TextWriter writer, TextEncoder encoder, TemplateContext context) =>
+    public override ValueTask<Completion> WriteToAsync(IFluidOutput output, TextEncoder encoder, TemplateContext context) =>
         throw new NotSupportedException("'{% liquid %}' is rejected when the template is registered and never renders.");
 }

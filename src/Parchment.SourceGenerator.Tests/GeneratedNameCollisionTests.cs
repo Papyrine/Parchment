@@ -11,12 +11,12 @@ public class GeneratedNameCollisionTests
         """
         namespace Fluid
         {
-            public interface IMemberAccessor { }
+            public abstract class MemberAccessor { }
         }
 
         namespace Fluid.Accessors
         {
-            public sealed class DelegateAccessor(System.Func<object, string, object?> getter) : Fluid.IMemberAccessor
+            public sealed class DelegateAccessor(System.Func<object, string, object?> getter) : Fluid.MemberAccessor
             {
                 public System.Func<object, string, object?> Getter { get; } = getter;
             }
@@ -80,7 +80,7 @@ public class GeneratedNameCollisionTests
                 public static void RegisterDocxTemplate(Type modelType, Type embedded, global::Parchment.ProtectionMode protection = global::Parchment.ProtectionMode.WhenEditable) { }
                 public static void RegisterMarkdownTemplate(Type modelType, string markdown, byte[]? styleSource = null) { }
                 public static void RegisterMarkdownTemplate(Type modelType, string markdown, Type embeddedStyle) { }
-                public static void RegisterFluidAccessors(Type type, IEnumerable<KeyValuePair<string, global::Fluid.IMemberAccessor>> accessors) { }
+                public static void RegisterFluidAccessors(Type type, IEnumerable<KeyValuePair<string, global::Fluid.MemberAccessor>> accessors) { }
                 public static void RegisterExcelsiorTable(Type modelType, IEnumerable<ExcelsiorTableMapEntry> entries) { }
                 public static void RegisterFormat(Type modelType, IEnumerable<FormatMapEntry> entries) { }
                 public static void RegisterStringList(Type modelType, IEnumerable<StringListMapEntry> entries) { }
@@ -218,7 +218,7 @@ public class GeneratedNameCollisionTests
         var (diagnostics, generated) = Compile(source, Markdown("M", "{{ Name }} {{ System }}"));
 
         await Assert.That(diagnostics).IsEmpty();
-        await Assert.That(generated).Contains("global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[]");
+        await Assert.That(generated).Contains("global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[]");
         await Assert.That(generated).DoesNotContain("using ");
     }
 

@@ -8,7 +8,7 @@ partial class Invoice
   [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Invoice
   {
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Invoice =
     {
       new("Total", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Total)),
     };

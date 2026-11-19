@@ -17,16 +17,16 @@ static class SegmentNames
         segment switch
         {
             IdentifierSegment id => id.Identifier,
+            // Fluid 3 takes a context for every conversion and keeps the text of a string internal.
+            // A StringValue's conversion is its text and reads nothing of the context, and building
+            // one would load all of TemplateOptions into the analyzer for a string literal.
             IndexerSegment
             {
                 Expression: LiteralExpression
                 {
-                    Value:
-                    {
-                        Type: FluidValues.String
-                    } value
+                    Value: StringValue value
                 }
-            } => value.ToStringValue(),
+            } => value.ToStringValue(null!),
             IndexerSegment => Index,
             _ => null
         };

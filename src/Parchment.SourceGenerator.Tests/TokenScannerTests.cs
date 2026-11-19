@@ -89,7 +89,7 @@ public class TokenScannerTests
     [Test]
     public async Task ForLoopModifiers_AreKeptApartFromTheSource()
     {
-        var tokens = TokenScanner.Scan(["{% for line in lines limit: max offset: skip reversed %}"]);
+        var tokens = TokenScanner.Scan(["{% for line in lines reversed limit: max offset: skip %}"]);
         await Assert.That(tokens[0].Kind).IsEqualTo(TokenKind.ForOpen);
         await Assert.That(tokens[0].References.Count).IsEqualTo(1);
         await Assert.That(tokens[0].References[0][0]).IsEqualTo("lines");
@@ -114,7 +114,7 @@ public class TokenScannerTests
     // the same BlockTagParser file, so a dashed tag classifies exactly as the plain one does.
     [Test]
     [Arguments("for line in lines", TokenKind.ForOpen)]
-    [Arguments("for line in lines limit: max reversed", TokenKind.ForOpen)]
+    [Arguments("for line in lines reversed limit: max", TokenKind.ForOpen)]
     [Arguments("endfor", TokenKind.ForClose)]
     [Arguments("if customer.is_preferred", TokenKind.IfOpen)]
     [Arguments("elsif customer.is_preferred", TokenKind.ElsIf)]

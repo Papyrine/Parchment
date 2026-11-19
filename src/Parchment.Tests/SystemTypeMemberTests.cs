@@ -330,7 +330,7 @@ public partial class SystemTypeMemberTests
     static async Task<string> RenderFluid(string source)
     {
         SharedFluid.Parser.TryParse(source, out var template, out _);
-        var context = new TemplateContext(new Invoice(), SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(new Invoice(), SharedFluid.Options);
         return await template!.RenderAsync(context);
     }
 

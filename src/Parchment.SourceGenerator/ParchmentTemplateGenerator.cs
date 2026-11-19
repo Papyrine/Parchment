@@ -1414,6 +1414,17 @@ public sealed class ParchmentTemplateGenerator :
             return;
         }
 
+        if (BlockTagArguments.MarkdownProblem(matched.Text) is { } problem)
+        {
+            context.ReportDiagnostic(
+                Diagnostic.Create(
+                    Diagnostics.TemplateReadError,
+                    location,
+                    templatePath,
+                    problem));
+            return;
+        }
+
         MarkdownValidator.Validate(context, target, templatePath, location, template);
         ValidateFormatMarkerTypes(context, target, location);
         ValidateMarkdownExcelsiorTokens(context, target, templatePath, location, matched.Text);

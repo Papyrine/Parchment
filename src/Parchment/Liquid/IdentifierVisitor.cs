@@ -54,16 +54,16 @@ class IdentifierVisitor :
         segment switch
         {
             IdentifierSegment id => id.Identifier,
+            // Fluid 3 takes a context for every conversion and keeps the text of a string internal.
+            // A StringValue's conversion is its text and reads nothing of the context. Mirrors the
+            // generator's SegmentNames, which has no context to hand over.
             IndexerSegment
             {
                 Expression: LiteralExpression
                 {
-                    Value:
-                    {
-                        Type: FluidValues.String
-                    } value
+                    Value: Fluid.Values.StringValue value
                 }
-            } => value.ToStringValue(),
+            } => value.ToStringValue(null!),
             IndexerSegment => IdentifierPath.Index,
             _ => null
         };

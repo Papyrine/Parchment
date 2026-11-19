@@ -5,7 +5,7 @@
       Number: 1,
       Text:
 Q2 Platform Health Review
-Prepared by Alex Chen on 07/01/2026
+Prepared by Alex Chen on 2026-07-01
 Summary
 Platform reliability and developer experience both trended upward this quarter, driven by the build pipeline rewrite and the new on-call rotation.
 Findings

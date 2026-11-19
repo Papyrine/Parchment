@@ -14,7 +14,7 @@ public partial class AddFilterTests
         TemplateStore.AddFilter("add_filter_test_shout", Shout);
 
     static ValueTask<FluidValue> Shout(FluidValue input, FilterArguments arguments, TemplateContext context) =>
-        new(new Fluid.Values.StringValue(input.ToStringValue().ToUpperInvariant()));
+        new(Fluid.Values.StringValue.Create(input.ToStringValue(context).ToUpperInvariant()));
 
     // The two flows render through separate TemplateOptions, and Fluid exposes Filters as get-only,
     // so the two cannot be pointed at one collection. Registering against the docx set alone left

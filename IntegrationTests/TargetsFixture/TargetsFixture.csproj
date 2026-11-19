@@ -7,7 +7,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>TargetsFixture</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>

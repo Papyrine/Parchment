@@ -80,7 +80,7 @@ public partial class LoopSourceValidationTests
 
     [Test]
     [Arguments("Lines limit: Max offset: Skip", "two,three")]
-    [Arguments("Lines limit:2 offset:1 reversed", "three,two")]
+    [Arguments("Lines reversed limit:2 offset:1", "three,two")]
     [Arguments("Lines reversed", "three,two,one")]
     [Arguments("Lines limit: Lines.size", "one,two,three")]
     [Arguments("(1..Max) offset: Skip", "2")]

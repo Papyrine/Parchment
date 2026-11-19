@@ -27,8 +27,8 @@ public partial class TokenValueTextTests
 
     static ValueTask<FluidValue> Wrap(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
-        TokenValue token = input.ToStringValue();
-        return new(new ObjectValue(token));
+        TokenValue token = input.ToStringValue(context);
+        return new(ObjectValue.Create(token));
     }
 
     [Test]
@@ -349,7 +349,7 @@ public partial class TokenValueTextTests
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
 
-        var text = new TemplateContext(new Doc(), SharedFluid.Options, allowModelMembers: true);
+        var text = new TemplateContext(new Doc(), SharedFluid.Options);
         await Assert.That(await template!.RenderAsync(text)).IsNotEqualTo("[]");
 
         var markup = new TemplateContext(
@@ -357,8 +357,7 @@ public partial class TokenValueTextTests
             {
                 Rich = new MarkdownToken("plain text")
             },
-            SharedFluid.Options,
-            allowModelMembers: true);
+            SharedFluid.Options);
         await Assert.That(await template.RenderAsync(markup)).IsEqualTo("[]");
     }
 

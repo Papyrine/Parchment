@@ -9,7 +9,22 @@ static class SharedFluid
 {
     public static FluidParser Parser { get; } = new MarkdownFluidParser();
 
-    public static TemplateOptions Options { get; } = BuildOptions();
+    // One for both option sets, and for every set AddFilter builds after them: the generated
+    // accessors are registered once and reach both flows.
+    static readonly PrecompiledMemberAccessStrategy memberAccess = new();
+
+    // Fluid 3 options are immutable once built, so a filter added later means building both sets
+    // again. Serialized so two filters added at once both survive.
+    static readonly System.Threading.Lock filterSync = new();
+
+    // Every markdown set ever built, so a render that began before AddFilter swapped the sets is
+    // still recognised as the markdown flow by the filters it runs.
+    static readonly ConditionalWeakTable<TemplateOptions, object> markdownSets = new();
+
+    static volatile TemplateOptions options = BuildOptions();
+    static volatile TemplateOptions markdownOptions = BuildMarkdownOptions();
+
+    public static TemplateOptions Options => options;
 
     /// <summary>
     /// Options for the markdown flow, which needs <see cref="TokenValue"/> flattened to markdown
@@ -24,11 +39,20 @@ static class SharedFluid
     /// in <see cref="BuildOptions"/>. The MemberAccessStrategy is shared, so RegisterModel covers
     /// both sets of options.
     /// </remarks>
-    public static TemplateOptions MarkdownOptions { get; } = BuildMarkdownOptions();
+    public static TemplateOptions MarkdownOptions => markdownOptions;
+
+    /// <summary>
+    /// Whether <paramref name="templateOptions"/> is a set the markdown flow renders with.
+    /// </summary>
+    public static bool IsMarkdown(TemplateOptions templateOptions) =>
+        markdownSets.TryGetValue(templateOptions, out _);
 
     static readonly ConcurrentDictionary<Type, bool> registeredTypes = new();
 
-    static TemplateOptions BuildOptions()
+    static TemplateOptions BuildOptions() =>
+        CreateBuilder(() => Options).Build();
+
+    static TemplateOptionsBuilder CreateBuilder(Func<TemplateOptions> current)
     {
         // No MaxSteps. Fluid counts a step for every statement it executes, so the steps a render
         // takes grow with the model rather than with the template: a limit caps how many rows a
@@ -36,38 +60,36 @@ static class SharedFluid
         // Running out is also reported as "The maximum level of recursion has been reached. Your
         // script must have a cyclic include statement", which names a cause the template does not
         // have. MaxRecursion is the limit that message belongs to, and it stays.
-        var options = new TemplateOptions
-        {
-            MaxRecursion = 100,
+        var builder = new TemplateOptionsBuilder()
+            .WithMaxRecursion(100)
             // Fluid defaults this to TimeZoneInfo.Local and uses it to read a string or a unix
             // timestamp handed to the `date` filter, so the same template and model printed a
-            // different time on a machine in another zone.
-            TimeZone = TimeZoneInfo.Utc,
-            MemberAccessStrategy =
-            {
-                // A token names a model member without regard to case. Every validator resolves it that
-                // way, and so do the per-model maps, which are keyed on the member's path. Fluid compares
-                // ordinally unless told otherwise, and that left a token registration had accepted reading
-                // nothing at render. It has to be set here, ahead of the first registered accessor: the
-                // strategy chooses the comparer for its map inside Register, and a lookup uses whatever
-                // the map was last built with.
-                IgnoreCasing = true
-            }
-        };
+            // different time on a machine in another zone. 'now' and 'today' are read in it too,
+            // so they print the machine's clock in UTC.
+            .WithTimeZone(TimeZoneInfo.Utc)
+            // A token names a model member without regard to case. Every validator resolves it that
+            // way, and so do the per-model maps, which are keyed on the member's path. The strategy
+            // compares member names that way itself.
+            .WithMemberAccessStrategy(static () => memberAccess)
+            // Variables, though, keep their exact spelling: `{% for color in Colors %}` binds
+            // `color` and leaves the model's `Color` readable. Fluid 3 compares variable names with
+            // this comparer and defaults it to ignoring case. The strategy is handed it too, and
+            // does not use it.
+            .WithModelNamesComparer(StringComparer.Ordinal)
+            .ConfigureFilters(Filters.Register);
 
-        Filters.Register(options.Filters);
-        // A DateTime of Kind Unspecified names no zone. Fluid stores every date as a
-        // DateTimeOffset and gets there through the implicit conversion, which reads an
-        // Unspecified value as machine-local time: a bare token then printed it shifted to UTC
-        // by whatever offset the rendering machine had. Pinning the offset to zero keeps the
-        // value's own wall clock. Utc already converts that way. Local is left to Fluid — it is
-        // an instant on the machine that built it, which no fixed offset can stand in for.
-        options.ValueConverters
-            .Add(static value =>
+        // A DateTime of Kind Unspecified names no zone. Fluid keeps one as a PlainDateTimeValue,
+        // read in the context's zone (UTC, above) when it is printed or formatted, but equal only
+        // to another PlainDateTimeValue: `{% if Unspecified == Utc %}` was false for the same
+        // wall clock. A DateTimeValue at offset zero prints the same text and compares as the
+        // instant it names. Local is left to Fluid — it is an instant on the machine that built
+        // it, which no fixed offset can stand in for.
+        builder
+            .AddValueConverter(static value =>
             {
                 if (value is DateTime { Kind: DateTimeKind.Unspecified } dateTime)
                 {
-                    return new DateTimeValue(new DateTimeOffset(dateTime.Ticks, TimeSpan.Zero));
+                    return DateTimeValue.Create(new DateTimeOffset(dateTime.Ticks, TimeSpan.Zero));
                 }
 
                 return null;
@@ -77,12 +99,12 @@ static class SharedFluid
         // ValueRenderer.ForEnums) that Excelsior applies to table cells. Returning a
         // StringValue short-circuits Fluid's default type dispatch (which would have called
         // Enum.ToString() and emitted the raw symbol name).
-        options.ValueConverters
-            .Add(static value =>
+        builder
+            .AddValueConverter(static value =>
             {
                 if (value is Enum e)
                 {
-                    return new StringValue(EnumRender.Render(e));
+                    return StringValue.Create(EnumRender.Render(e));
                 }
 
                 // A TextToken is a plain string wearing a TokenValue coat, so Fluid is handed the
@@ -98,7 +120,7 @@ static class SharedFluid
                         return NilValue.Instance;
                     }
 
-                    return new StringValue(text.Value);
+                    return StringValue.Create(text.Value);
                 }
 
                 // Fluid turns a TimeSpan into a date counted from 1970 in the machine's time zone,
@@ -107,27 +129,26 @@ static class SharedFluid
                 // a time in the format an editable TimeOnly field defaults to.
                 if (value is TimeSpan span)
                 {
-                    return new StringValue(span.ToString("c", CultureInfo.InvariantCulture));
+                    return StringValue.Create(span.ToString("c", CultureInfo.InvariantCulture));
                 }
 
                 if (value is Time time)
                 {
-                    return new StringValue(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+                    return StringValue.Create(time.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
                 }
 
                 return null;
             });
-        DictionaryLoops.Register(options);
+        DictionaryLoops.Register(builder, current);
 
-        return options;
+        return builder;
     }
 
     static TemplateOptions BuildMarkdownOptions()
     {
-        var options = BuildOptions();
-        options.MemberAccessStrategy = Options.MemberAccessStrategy;
-        options.ValueConverters
-            .Add(static value =>
+        var builder = CreateBuilder(() => MarkdownOptions);
+        builder
+            .AddValueConverter(static value =>
             {
                 if (value is TokenValue token)
                 {
@@ -136,13 +157,19 @@ static class SharedFluid
                     // A TextToken makes no such claim and never gets this far: the converter
                     // BuildOptions added runs ahead of this one and has already made it a string,
                     // which is escaped like any other bound value.
-                    return new StringValue(TokenMarkdown.Render(token), encode: false);
+                    return StringValue.Create(TokenMarkdown.Render(token), encode: false);
                 }
 
                 return null;
             });
 
-        return options;
+        return RecordMarkdown(builder.Build());
+    }
+
+    static TemplateOptions RecordMarkdown(TemplateOptions built)
+    {
+        markdownSets.AddOrUpdate(built, built);
+        return built;
     }
 
     /// <summary>
@@ -159,22 +186,29 @@ static class SharedFluid
     /// <see cref="LiquidMembers"/> validates it as the array it is there.
     /// </remarks>
     public static TemplateContext CreateContext(object model, TemplateOptions options) =>
-        new(new ObjectValue(model), options);
+        new(ObjectValue.Create(model), options);
 
     /// <summary>
     /// Registers a user filter against every option set.
     /// </summary>
     /// <remarks>
-    /// <see cref="Options"/> and <see cref="MarkdownOptions"/> hold separate FilterCollections.
-    /// Fluid exposes <c>TemplateOptions.Filters</c> as get-only, so the two cannot be pointed at one
-    /// instance the way <c>MemberAccessStrategy</c> is. Registering against a single set is a silent
-    /// no-op in the other flow: Fluid treats an unknown filter as a pass-through, so the value
-    /// renders unfiltered with nothing reported.
+    /// <para>
+    /// Registering against a single set is a silent no-op in the other flow: Fluid treats an
+    /// unknown filter as a pass-through, so the value renders unfiltered with nothing reported.
+    /// </para>
+    /// <para>
+    /// Fluid 3 options cannot change once built, so both sets are built again with the filter and
+    /// replace the ones in use. A render already under way keeps the set it started with. The new
+    /// sets carry over everything else, the shared member access strategy included.
+    /// </para>
     /// </remarks>
     public static void AddFilter(string name, FilterDelegate filter)
     {
-        Options.Filters.AddFilter(name, filter);
-        MarkdownOptions.Filters.AddFilter(name, filter);
+        lock (filterSync)
+        {
+            options = options.ToBuilder().AddFilter(name, filter).Build();
+            markdownOptions = RecordMarkdown(markdownOptions.ToBuilder().AddFilter(name, filter).Build());
+        }
     }
 
     /// <summary>
@@ -221,13 +255,13 @@ static class SharedFluid
     /// </summary>
     internal static void RegisterPrecompiledAccessors(
         Type type,
-        IEnumerable<KeyValuePair<string, IMemberAccessor>> accessors)
+        IEnumerable<KeyValuePair<string, MemberAccessor>> accessors)
     {
         if (!registeredTypes.TryAdd(type, true))
         {
             return;
         }
 
-        Options.MemberAccessStrategy.Register(type, accessors);
+        memberAccess.Register(type, accessors);
     }
 }

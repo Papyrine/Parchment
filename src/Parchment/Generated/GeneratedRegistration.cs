@@ -78,7 +78,7 @@ public static class GeneratedRegistration
 
     public static void RegisterFluidAccessors(
         Type type,
-        IEnumerable<KeyValuePair<string, IMemberAccessor>> accessors) =>
+        IEnumerable<KeyValuePair<string, MemberAccessor>> accessors) =>
         SharedFluid.RegisterPrecompiledAccessors(type, accessors);
 
     public static void RegisterExcelsiorTable(

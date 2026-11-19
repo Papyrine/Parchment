@@ -10,11 +10,11 @@ partial record OuterRecord
     [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
     internal static class ParchmentGenerated_Sample_OuterRecord_LetterModel
     {
-      static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_OuterRecord_LetterModel =
+      static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_OuterRecord_LetterModel =
       {
         new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.OuterRecord.LetterModel)o).Customer)),
       };
-      static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+      static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Customer =
       {
         new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
       };

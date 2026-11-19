@@ -2370,7 +2370,7 @@ public class ParchmentTemplateGeneratorTests
     [Test]
     [Arguments("{% for line in Lines limit: Max %}")]
     [Arguments("{% for line in Lines offset: Max %}")]
-    [Arguments("{% for line in Lines limit:2 offset:1 reversed %}")]
+    [Arguments("{% for line in Lines reversed limit:2 offset:1 %}")]
     [Arguments("{% for line in Lines limit: Lines.size %}")]
     public async Task Docx_LoopModifier_Valid_NoDiagnostic(string openTag) =>
         await Assert.That(PagedDiagnostics(openTag)).IsEmpty();
@@ -2400,10 +2400,23 @@ public class ParchmentTemplateGeneratorTests
     [Arguments("{% for i in (1..5) limit:2 %}")]
     [Arguments("{% for i in (1..5) offset:1 %}")]
     [Arguments("{% for i in (1..5) reversed %}")]
-    [Arguments("{% for i in (1..5) limit:2 offset:1 reversed %}")]
+    [Arguments("{% for i in (1..5) reversed limit:2 offset:1 %}")]
     [Arguments("{% for i in (1..Max) limit: Max offset: Lines.size %}")]
     public async Task Docx_RangeLoopModifier_Valid_NoDiagnostic(string openTag) =>
         await Assert.That(RangeModifierDiagnostics(openTag)).IsEmpty();
+
+    // Liquid reads `reversed` only straight after the source. Lockstep with the runtime's
+    // LoopModifierTests.ReversedAfterAModifier_FailsRegistration.
+    [Test]
+    public async Task Docx_ReversedAfterAModifier_SaysWhereItGoes()
+    {
+        var message = GeneratorDriver.Run(pagedModel, "{% for i in (1..5) limit:2 reversed %}", "{{ i }}", "{% endfor %}")
+            .Results.Single()
+            .Diagnostics
+            .Single(_ => _.Id == "PARCH003")
+            .GetMessage();
+        await Assert.That(message).Contains("'reversed' has to come straight after the loop source, ahead of limit and offset: '{% for i in (1..5) reversed limit:2 %}'.");
+    }
 
     [Test]
     [Arguments("{% for i in (1..5) limit: Missing %}")]

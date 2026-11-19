@@ -11,7 +11,6 @@ public partial class RenderExceptionTests
         public string Name { get; set; } = "Alice";
         public bool Flag { get; set; }
         public List<int> Numbers { get; set; } = [1, 2, 3];
-        public long Big { get; set; } = 5_000_000_000;
         public TokenValue? Token { get; set; }
 
         public bool Thrower => throw new InvalidOperationException("boom-getter");
@@ -102,17 +101,18 @@ public partial class RenderExceptionTests
         await Assert.That(exception.InnerException).IsTypeOf<InvalidOperationException>();
     }
 
+    // Liquid's own refusal, from the ForStatement both flows window a loop with.
     [Test]
     [Arguments("limit")]
     [Arguments("offset")]
-    public async Task Docx_LoopModifierBeyondIntRange_SaysSo(string modifier)
+    public async Task Docx_LoopModifierNotANumber_NamesTheTag(string modifier)
     {
-        var tag = $"{{% for i in Numbers {modifier}: Big %}}";
+        var tag = $"{{% for i in Numbers {modifier}: Name %}}";
         var exception = await DocxFailure($"{tag}\n\n{{{{ i }}}}\n\n{{% endfor %}}", new Model());
 
         await Assert.That(exception.TokenSource).IsEqualTo(tag);
-        await Assert.That(exception.Message).Contains($"'{modifier}' is 5000000000");
-        await Assert.That(exception.InnerException).IsNull();
+        await Assert.That(exception.Message).Contains($"for: {modifier} is not a number");
+        await Assert.That(exception.InnerException).IsTypeOf<LiquidException>();
     }
 
     [Test]
@@ -212,11 +212,12 @@ public partial class RenderExceptionTests
     }
 
     [Test]
-    public async Task Markdown_LoopModifierBeyondIntRange_IsWrapped()
+    public async Task Markdown_LoopModifierNotANumber_IsWrapped()
     {
-        var exception = await MarkdownFailure("{% for i in Numbers limit: Big %}{{ i }}{% endfor %}", new Model());
+        var exception = await MarkdownFailure("{% for i in Numbers limit: Name %}{{ i }}{% endfor %}", new Model());
 
-        await Assert.That(exception.InnerException).IsTypeOf<OverflowException>();
+        await Assert.That(exception.Message).Contains("for: limit is not a number");
+        await Assert.That(exception.InnerException).IsTypeOf<LiquidException>();
     }
 
     [Test]

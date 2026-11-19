@@ -225,6 +225,11 @@ public sealed class TemplateStore(ILogger<TemplateStore>? logger = null)
                 BlockTagArguments.MarkdownParseFailure(rewritten, error));
         }
 
+        if (BlockTagArguments.MarkdownProblem(rewritten) is { } problem)
+        {
+            throw new ParchmentRegistrationException(name, problem);
+        }
+
         MarkdownReferenceValidator.Validate(template, model, name);
         template = MarkdownNumberText.Rewrite(template);
 

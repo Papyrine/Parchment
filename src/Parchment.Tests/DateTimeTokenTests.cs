@@ -46,13 +46,14 @@ public partial class DateTimeTokenTests
     // Token to the text it prints on every machine. Each renders in both flows.
     static readonly (string Token, string Expected)[] zoneFree =
     [
-        ("{{ Unspecified }}", "2026-03-01 13:05:09Z"),
-        ("{{ Nullable }}", "2026-03-01 13:05:09Z"),
-        ("{{ Utc }}", "2026-03-01 13:05:09Z"),
-        // An offset-bearing value is an instant, and the bare token prints that instant in UTC.
-        ("{{ Offset }}", "2026-03-01 08:05:09Z"),
-        ("{{ Day }}", "03/01/2026"),
-        ("{{ Unspecified | date }}", "2026-03-01 13:05:09Z"),
+        // A bare token prints a date as liquid does, like a Ruby Time: its wall clock and offset,
+        // or UTC for a value of that kind.
+        ("{{ Unspecified }}", "2026-03-01 13:05:09 +0000"),
+        ("{{ Nullable }}", "2026-03-01 13:05:09 +0000"),
+        ("{{ Utc }}", "2026-03-01 13:05:09 UTC"),
+        ("{{ Offset }}", "2026-03-01 13:05:09 +0500"),
+        ("{{ Day }}", "2026-03-01"),
+        ("{{ Unspecified | date }}", "2026-03-01 13:05:09 +0000"),
         ($"{{{{ Unspecified | date: {stamp} }}}}", "2026-03-01 13:05:09 +0000"),
         ($"{{{{ Utc | date: {stamp} }}}}", "2026-03-01 13:05:09 +0000"),
         // With a format the value's own wall clock and offset are printed.
@@ -161,23 +162,23 @@ public partial class DateTimeTokenTests
     {
         using (LocalTimeZone.Emulate("Tokyo Standard Time"))
         {
-            await Assert.That(await RenderDocx("{{ Local }}")).IsEqualTo("2026-03-01 04:05:09Z");
-            await Assert.That(await RenderMarkdown("{{ Local }}")).IsEqualTo("2026-03-01 04:05:09Z");
+            await Assert.That(await RenderDocx("{{ Local }}")).IsEqualTo("2026-03-01 13:05:09 +0900");
+            await Assert.That(await RenderMarkdown("{{ Local }}")).IsEqualTo("2026-03-01 13:05:09 +0900");
             await Assert.That(await RenderDocx($"{{{{ Local | date: {stamp} }}}}")).IsEqualTo("2026-03-01 13:05:09 +0900");
             await Assert.That(await RenderMarkdown($"{{{{ Local | date: {stamp} }}}}")).IsEqualTo("2026-03-01 13:05:09 +0900");
         }
     }
 
-    // "now" and "today" read the rendering machine's clock, zone included. Not deterministic by
-    // nature; the readme says so.
+    // "now" and "today" read the rendering machine's clock, in UTC whatever the machine's zone.
+    // Not deterministic by nature; the readme says so.
     [Test]
     [NotInParallel]
-    public async Task NowFollowsTheMachineClock()
+    public async Task NowIsTheMachineClockInUtc()
     {
         using (LocalTimeZone.Emulate("Tokyo Standard Time"))
         {
-            await Assert.That(await RenderDocx("{{ 'now' | date: '%z' }}")).IsEqualTo("+0900");
-            await Assert.That(await RenderMarkdown("{{ 'today' | date: '%z' }}")).IsEqualTo("+0900");
+            await Assert.That(await RenderDocx("{{ 'now' | date: '%z' }}")).IsEqualTo("+0000");
+            await Assert.That(await RenderMarkdown("{{ 'today' | date: '%z' }}")).IsEqualTo("+0000");
         }
     }
 

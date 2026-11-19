@@ -23,11 +23,11 @@ static class MarkdownBlankOutputs
     const string ambientKey = "Parchment.MarkdownBlankOutputs";
 
     /// <summary>
-    /// Where the blank values of one render landed in the text <paramref name="writer"/> collects.
+    /// Where the blank values of one render landed in the text <paramref name="output"/> collects.
     /// </summary>
-    public sealed class Tracker(StringWriter writer)
+    public sealed class Tracker(MarkdownOutput output)
     {
-        public StringWriter Writer { get; } = writer;
+        public MarkdownOutput Output { get; } = output;
 
         // In the order written, so ascending by start.
         public List<(int Start, int Length)> Spans { get; } = [];
@@ -40,9 +40,9 @@ static class MarkdownBlankOutputs
     public static IFluidTemplate Instrument(IFluidTemplate template) =>
         new Rewriter().VisitTemplate(template);
 
-    public static Tracker Begin(TemplateContext context, StringWriter writer)
+    public static Tracker Begin(TemplateContext context, MarkdownOutput output)
     {
-        var tracker = new Tracker(writer);
+        var tracker = new Tracker(output);
         context.AmbientValues[ambientKey] = tracker;
         return tracker;
     }
@@ -62,20 +62,21 @@ static class MarkdownBlankOutputs
     sealed class TrackedOutputStatement(OutputStatement inner) :
         Statement
     {
-        public override async ValueTask<Completion> WriteToAsync(TextWriter writer, TextEncoder encoder, TemplateContext context)
+        public override async ValueTask<Completion> WriteToAsync(IFluidOutput output, TextEncoder encoder, TemplateContext context)
         {
-            // A capture block renders into a writer of its own, and where its text ends up is
-            // decided later, so only what goes straight to the render's writer is tracked.
+            // A capture block renders into an output of its own, and where its text ends up is
+            // decided later, so only what goes straight to the render's output is tracked. That
+            // output writes through to its builder, so the length before and after is exact.
             if (!context.AmbientValues.TryGetValue(ambientKey, out var value) ||
                 value is not Tracker tracker ||
-                !ReferenceEquals(tracker.Writer, writer))
+                !ReferenceEquals(tracker.Output, output))
             {
-                return await inner.WriteToAsync(writer, encoder, context).ConfigureAwait(false);
+                return await inner.WriteToAsync(output, encoder, context).ConfigureAwait(false);
             }
 
-            var builder = tracker.Writer.GetStringBuilder();
+            var builder = tracker.Output.Builder;
             var start = builder.Length;
-            var completion = await inner.WriteToAsync(writer, encoder, context).ConfigureAwait(false);
+            var completion = await inner.WriteToAsync(output, encoder, context).ConfigureAwait(false);
 
             if (IsBlank(builder, start))
             {
@@ -136,7 +137,7 @@ static class MarkdownBlankOutputs
     /// </summary>
     public static string Strip(Tracker tracker)
     {
-        var builder = tracker.Writer.GetStringBuilder();
+        var builder = tracker.Output.Builder;
         var spans = tracker.Spans;
         if (spans.Count == 0)
         {

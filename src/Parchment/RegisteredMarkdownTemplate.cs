@@ -29,8 +29,8 @@ class RegisteredMarkdownTemplate(
         cancel.ThrowIfCancellationRequested();
 
         var context = SharedFluid.CreateContext(model, SharedFluid.MarkdownOptions);
-        using var writer = new StringWriter();
-        var blankOutputs = MarkdownBlankOutputs.Begin(context, writer);
+        var liquidOutput = new MarkdownOutput();
+        var blankOutputs = MarkdownBlankOutputs.Begin(context, liquidOutput);
 
         // Scoped to the liquid render alone: a value with no markdown form is parked rather than
         // written, and only what runs inside the render can park it. The map is taken off the scope here and
@@ -44,8 +44,10 @@ class RegisteredMarkdownTemplate(
                 // into the markdown being assembled rather than allowed to become part of its
                 // syntax. One per render, over this render's output: how a value is escaped
                 // depends on whether it lands in a link destination.
-                var encoder = new MarkdownEncoder(writer.GetStringBuilder());
-                await parsedTemplate.RenderAsync(writer, encoder, context).ConfigureAwait(false);
+                // Straight to the template rather than through Fluid's TextWriter overload, which
+                // buffers: both the encoder and the blank tracker read the output as it is written.
+                var encoder = new MarkdownEncoder(liquidOutput.Builder);
+                await parsedTemplate.RenderAsync(liquidOutput, encoder, context).ConfigureAwait(false);
             }
             catch (TokenNotRenderableException exception)
             {

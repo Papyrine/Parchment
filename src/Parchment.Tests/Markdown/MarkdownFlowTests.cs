@@ -402,8 +402,9 @@ public partial class MarkdownFlowTests
         new TemplateStore().RegisterMarkdownTemplate<LoopModel>(markdown, styleSource);
     }
 
-    // Liquid has no `else if`, and `else` / `endif` / `endfor` take no arguments. The docx flow
-    // scans its own tags and has to agree with what Fluid rejects here.
+    // Liquid has no `else if`, and `else` / `endif` / `endfor` take no arguments. Fluid 3 refuses
+    // only `elseif` and parses the rest with the argument dropped, so `else if` would render as a
+    // plain `else`; the markdown flow scans for them itself, in the words the docx flow uses.
     [Test]
     [Arguments("{% if Flag %}a{% else if Flag %}b{% endif %}", "elsif")]
     [Arguments("{% if Flag %}a{%- else if Flag -%}b{% endif %}", "elsif")]
@@ -417,6 +418,24 @@ public partial class MarkdownFlowTests
             () => Register(markdown));
         await Assert.That(exception.Message).Contains(expected);
     }
+
+    // Fluid 3 reads it as an empty string; the docx flow refuses it, and so does this one.
+    [Test]
+    [Arguments("{{ }}")]
+    [Arguments("a {{- -}} b")]
+    public async Task EmptyTokenFailsRegistration(string markdown)
+    {
+        var exception = Assert.Throws<ParchmentRegistrationException>(
+            () => Register(markdown));
+        await Assert.That(exception.Message).Contains("'{{ }}' names no value.");
+    }
+
+    // A raw or comment region is text, so what reads as a tag or a token there is not judged.
+    [Test]
+    [Arguments("{% raw %}{% else Flag %}{{ }}{% endraw %}")]
+    [Arguments("{% comment %}{% endif extra %}{% endcomment %}")]
+    public void ProblemInALiteralRegionRegisters(string markdown) =>
+        Register(markdown);
 
     [Test]
     public void WhitespaceControlOnArgumentlessTagsIsAccepted() =>
