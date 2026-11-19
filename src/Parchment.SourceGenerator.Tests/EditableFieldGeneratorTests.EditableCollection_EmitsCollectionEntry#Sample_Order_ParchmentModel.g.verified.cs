@@ -8,11 +8,11 @@ partial class Order
   [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Order
   {
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Order =
     {
       new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Lines)),
     };
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Line =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Line =
     {
       new("Note", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Note)),
       new("Amount", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Amount)),

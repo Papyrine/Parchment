@@ -7,6 +7,7 @@ public partial class LoopModifierTests
         public required IReadOnlyList<string> Items { get; init; }
         public int Max { get; init; }
         public int Skip { get; init; }
+        public long Big { get; init; }
     }
 
     static readonly string[] five = ["a", "b", "c", "d", "e"];
@@ -15,19 +16,24 @@ public partial class LoopModifierTests
     [Arguments("limit:2", "a,b")]
     [Arguments("limit:0", "")]
     [Arguments("limit:9", "a,b,c,d,e")]
-    // A negative limit drops that many from the end, as it does in liquid's own loop.
-    [Arguments("limit:-2", "a,b,c")]
+    // A negative limit selects nothing, as it does in liquid's own loop.
+    [Arguments("limit:-2", "")]
     [Arguments("offset:3", "d,e")]
     [Arguments("offset:9", "")]
+    // A negative offset counts places before the first item, and the limit spends those first.
+    [Arguments("offset:-2 limit:3", "a")]
     [Arguments("reversed", "e,d,c,b,a")]
     [Arguments("offset:1 limit:2", "b,c")]
     [Arguments("limit:2 offset:1", "b,c")]
-    // The window is taken first and then reversed, whatever order the modifiers are written in.
+    // The window is taken first and then reversed, though `reversed` is written first.
     [Arguments("reversed limit:2", "b,a")]
-    [Arguments("limit:2 offset:1 reversed", "c,b")]
+    [Arguments("reversed limit:2 offset:1", "c,b")]
     [Arguments("limit: Max", "a,b,c")]
     [Arguments("offset: Skip", "c,d,e")]
     [Arguments("offset: Skip limit: Max", "c,d,e")]
+    // A value beyond an int is taken as the nearest one.
+    [Arguments("limit: Big", "a,b,c,d,e")]
+    [Arguments("offset: Big", "")]
     // Liquid's own members resolve in a modifier as they do in a token.
     [Arguments("limit: Items.size", "a,b,c,d,e")]
     [Arguments("offset: Items.size", "")]
@@ -37,7 +43,8 @@ public partial class LoopModifierTests
         {
             Items = five,
             Max = 3,
-            Skip = 2
+            Skip = 2,
+            Big = 5_000_000_000
         };
 
         var docx = await RenderDocx($"{{% for item in Items {modifiers} %}}", model);
@@ -55,7 +62,7 @@ public partial class LoopModifierTests
     [Arguments("(1..5) limit:2", "1,2")]
     [Arguments("(1..5) offset:3", "4,5")]
     [Arguments("(1..5) reversed", "5,4,3,2,1")]
-    [Arguments("(1..5) limit:2 offset:1 reversed", "3,2")]
+    [Arguments("(1..5) reversed limit:2 offset:1", "3,2")]
     [Arguments("(1..Max) reversed", "3,2,1")]
     [Arguments("(1..5) limit: Max", "1,2,3")]
     [Arguments("(1..5) offset: Skip", "3,4,5")]
@@ -88,6 +95,27 @@ public partial class LoopModifierTests
         await Assert.That(
                 () => store.RegisterDocxTemplate<Model>(template))
             .Throws<ParchmentRegistrationException>();
+    }
+
+    // Liquid reads `reversed` only straight after the source. Both flows refuse it anywhere else,
+    // with the tag written the way liquid reads it.
+    [Test]
+    [Arguments("limit:2 reversed", "{% for item in Items reversed limit:2 %}")]
+    [Arguments("limit:2 offset:1 reversed", "{% for item in Items reversed limit:2 offset:1 %}")]
+    [Arguments("limit: Max reversed offset: Skip", "{% for item in Items reversed limit: Max offset: Skip %}")]
+    public async Task ReversedAfterAModifier_FailsRegistration(string modifiers, string written)
+    {
+        var expected = $"'reversed' has to come straight after the loop source, ahead of limit and offset: '{written}'.";
+        var openTag = $"{{% for item in Items {modifiers} %}}";
+
+        using var template = Template(openTag);
+        var docx = Assert.Throws<ParchmentRegistrationException>(
+            () => new TemplateStore().RegisterDocxTemplate<Model>(template));
+        await Assert.That(docx.Message).Contains(expected);
+
+        var markdown = Assert.Throws<ParchmentRegistrationException>(
+            () => new TemplateStore().RegisterMarkdownTemplate<Model>($"{openTag}\n{{{{ item }}}}\n\n{{% endfor %}}"));
+        await Assert.That(markdown.Message).Contains(expected);
     }
 
     [Test]

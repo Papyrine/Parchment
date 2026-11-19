@@ -202,8 +202,8 @@ class MarkdownValidator
 
             // `{% liquid %}` and `{% ifchanged %}` hold statements and nothing else. Everything
             // left over has no expression and no body to walk: text, `raw`, `comment`, `break`,
-            // `continue`, and `increment` / `decrement`, whose counter is not a variable a token
-            // can read.
+            // `continue`, and `increment` / `decrement`, whose counter Parchment does not let a
+            // token read, although Fluid 3 would.
             case LiquidStatement or IfChangedStatement:
                 WalkStatements(((TagStatement) statement).Statements);
                 break;
@@ -348,19 +348,17 @@ class MarkdownValidator
     {
         ValidateExpression(caseStatement.Expression, "{% case ... %}");
 
-        foreach (var when in caseStatement.Whens)
+        foreach (var block in caseStatement.Blocks)
         {
-            foreach (var option in when.Options)
+            if (block is WhenBlock whenBlock)
             {
-                ValidateExpression(option, "{% when ... %}");
+                foreach (var option in whenBlock.Options)
+                {
+                    ValidateExpression(option, "{% when ... %}");
+                }
             }
 
-            WalkStatements(when.Statements);
-        }
-
-        if (caseStatement.Else != null)
-        {
-            WalkStatements(caseStatement.Else.Statements);
+            WalkStatements(block.Statements);
         }
     }
 

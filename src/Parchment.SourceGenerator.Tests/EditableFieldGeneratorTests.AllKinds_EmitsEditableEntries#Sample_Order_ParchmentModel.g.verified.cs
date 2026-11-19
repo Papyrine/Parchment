@@ -8,7 +8,7 @@ partial class Order
   [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Order
   {
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Order =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Order =
     {
       new("Number", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Number)),
       new("PurchaseOrder", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).PurchaseOrder)),
@@ -21,7 +21,7 @@ partial class Order
       new("Instructions", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Instructions)),
       new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Order)o).Customer)),
     };
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Customer =
     {
       new("Email", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Email)),
     };

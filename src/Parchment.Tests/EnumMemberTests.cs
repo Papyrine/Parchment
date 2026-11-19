@@ -116,7 +116,7 @@ public partial class EnumMemberTests
     public async Task ConstantRendersBlankInFluid(string path)
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
-        var context = new TemplateContext(new Doc(), SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(new Doc(), SharedFluid.Options);
         await Assert.That(await template!.RenderAsync(context)).IsEqualTo("[]");
     }
 

@@ -19,9 +19,13 @@ static class DictionaryLoops
     [ThreadStatic]
     static bool converting;
 
-    public static void Register(TemplateOptions options) =>
-        options.ValueConverters
-            .Add(value =>
+    // A converter is handed the value alone, and it is registered before the options it belongs to
+    // are built. current answers with the set of its flow at the time of the call, which is what
+    // Fluid's own conversion has to be asked through: the values of a dictionary are converted on
+    // read, with the options the DictionaryValue was made with.
+    public static void Register(TemplateOptionsBuilder builder, Func<TemplateOptions> current) =>
+        builder
+            .AddValueConverter(value =>
             {
                 if (converting ||
                     !IsDictionary(value))
@@ -33,7 +37,7 @@ static class DictionaryLoops
                 FluidValue converted;
                 try
                 {
-                    converted = FluidValue.Create(value, options);
+                    converted = FluidValue.Create(value, current());
                 }
                 finally
                 {
@@ -104,9 +108,9 @@ static class DictionaryLoops
         public override FluidValues Type => inner.Type;
 
         // The order is the one Fluid reads the keys in, which is the dictionary's own.
-        public override IEnumerable<FluidValue> Enumerate(TemplateContext context)
+        public override async IAsyncEnumerable<FluidValue> EnumerateAsync(TemplateContext context)
         {
-            foreach (var item in inner.Enumerate(context))
+            await foreach (var item in inner.EnumerateAsync(context).ConfigureAwait(false))
             {
                 if (item is ArrayValue { Values.Count: 2 } pair)
                 {
@@ -124,8 +128,8 @@ static class DictionaryLoops
         public override ValueTask<FluidValue> GetIndexAsync(FluidValue index, TemplateContext context) =>
             inner.GetIndexAsync(index, context);
 
-        public override bool Contains(FluidValue value) =>
-            inner.Contains(value);
+        public override ValueTask<bool> ContainsAsync(FluidValue value, TemplateContext context) =>
+            inner.ContainsAsync(value, context);
 
         public override bool Equals(FluidValue other) =>
             inner.Equals(Unwrap(other));
@@ -137,20 +141,20 @@ static class DictionaryLoops
         public override int GetHashCode() =>
             inner.GetHashCode();
 
-        public override bool ToBooleanValue() =>
-            inner.ToBooleanValue();
+        public override bool ToBooleanValue(TemplateContext context) =>
+            inner.ToBooleanValue(context);
 
-        public override decimal ToNumberValue() =>
-            inner.ToNumberValue();
+        public override decimal ToNumberValue(TemplateContext context) =>
+            inner.ToNumberValue(context);
 
-        public override string ToStringValue() =>
-            inner.ToStringValue();
+        public override string ToStringValue(TemplateContext context) =>
+            inner.ToStringValue(context);
 
-        public override object ToObjectValue() =>
-            inner.ToObjectValue();
+        public override object ToObjectValue(TemplateContext context) =>
+            inner.ToObjectValue(context);
 
-        public override ValueTask WriteToAsync(TextWriter writer, TextEncoder encoder, CultureInfo cultureInfo) =>
-            inner.WriteToAsync(writer, encoder, cultureInfo);
+        public override ValueTask WriteToAsync(IFluidOutput output, TextEncoder encoder, TemplateContext context) =>
+            inner.WriteToAsync(output, encoder, context);
     }
 
     sealed class Entry(ArrayValue pair) :
@@ -177,7 +181,7 @@ static class DictionaryLoops
         public override ValueTask<FluidValue> GetIndexAsync(FluidValue index, TemplateContext context)
         {
             if (index.Type == FluidValues.String &&
-                TryGetNamed(index.ToStringValue(), out var named))
+                TryGetNamed(index.ToStringValue(context), out var named))
             {
                 return named;
             }
@@ -203,11 +207,11 @@ static class DictionaryLoops
             return false;
         }
 
-        public override IEnumerable<FluidValue> Enumerate(TemplateContext context) =>
-            pair.Enumerate(context);
+        public override IAsyncEnumerable<FluidValue> EnumerateAsync(TemplateContext context) =>
+            pair.EnumerateAsync(context);
 
-        public override bool Contains(FluidValue value) =>
-            pair.Contains(value);
+        public override ValueTask<bool> ContainsAsync(FluidValue value, TemplateContext context) =>
+            pair.ContainsAsync(value, context);
 
         public override bool Equals(FluidValue other) =>
             pair.Equals(Unwrap(other));
@@ -219,19 +223,19 @@ static class DictionaryLoops
         public override int GetHashCode() =>
             pair.GetHashCode();
 
-        public override bool ToBooleanValue() =>
-            pair.ToBooleanValue();
+        public override bool ToBooleanValue(TemplateContext context) =>
+            pair.ToBooleanValue(context);
 
-        public override decimal ToNumberValue() =>
-            pair.ToNumberValue();
+        public override decimal ToNumberValue(TemplateContext context) =>
+            pair.ToNumberValue(context);
 
-        public override string ToStringValue() =>
-            pair.ToStringValue();
+        public override string ToStringValue(TemplateContext context) =>
+            pair.ToStringValue(context);
 
-        public override object ToObjectValue() =>
-            pair.ToObjectValue();
+        public override object ToObjectValue(TemplateContext context) =>
+            pair.ToObjectValue(context);
 
-        public override ValueTask WriteToAsync(TextWriter writer, TextEncoder encoder, CultureInfo cultureInfo) =>
-            pair.WriteToAsync(writer, encoder, cultureInfo);
+        public override ValueTask WriteToAsync(IFluidOutput output, TextEncoder encoder, TemplateContext context) =>
+            pair.WriteToAsync(output, encoder, context);
     }
 }

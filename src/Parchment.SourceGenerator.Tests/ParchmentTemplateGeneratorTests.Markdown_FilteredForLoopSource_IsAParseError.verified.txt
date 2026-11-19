@@ -9,7 +9,7 @@ public partial class Invoice
 */
  : (10,1)-(10,15),
       Message:
-Template 'Invoice.parchment.md' could not be read: Failed to parse markdown as a liquid template: Invalid 'for' tag at (1:7)
+Template 'Invoice.parchment.md' could not be read: Failed to parse markdown as a liquid template: Invalid attribute in for loop. Valid attributes are limit and offset at (1:21)
 Source:
 {% for line in Lines | reverse %},
       Severity: Error,

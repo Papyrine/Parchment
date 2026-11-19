@@ -65,7 +65,7 @@ public class RegistrationBenchmarks
         store.RegisterDocxTemplate<Invoice>(stream);
     }
 
-    static KeyValuePair<string, Fluid.IMemberAccessor>[] invoiceAccessors =
+    static KeyValuePair<string, Fluid.MemberAccessor>[] invoiceAccessors =
     [
         new("Number", new Fluid.Accessors.DelegateAccessor((o, _) => ((Invoice)o).Number)),
         new("IssueDate", new Fluid.Accessors.DelegateAccessor((o, _) => ((Invoice)o).IssueDate)),
@@ -80,7 +80,7 @@ public class RegistrationBenchmarks
         new("Total", new Fluid.Accessors.DelegateAccessor((o, _) => ((Invoice)o).Total))
     ];
 
-    static KeyValuePair<string, Fluid.IMemberAccessor>[] customerAccessors =
+    static KeyValuePair<string, Fluid.MemberAccessor>[] customerAccessors =
     [
         new("Name", new Fluid.Accessors.DelegateAccessor((o, _) => ((Customer)o).Name)),
         new("Email", new Fluid.Accessors.DelegateAccessor((o, _) => ((Customer)o).Email)),
@@ -89,7 +89,7 @@ public class RegistrationBenchmarks
         new("IsPreferred", new Fluid.Accessors.DelegateAccessor((o, _) => ((Customer)o).IsPreferred))
     ];
 
-    static KeyValuePair<string, Fluid.IMemberAccessor>[] lineItemAccessors =
+    static KeyValuePair<string, Fluid.MemberAccessor>[] lineItemAccessors =
     [
         new("Description", new Fluid.Accessors.DelegateAccessor((o, _) => ((LineItem)o).Description)),
         new("Quantity", new Fluid.Accessors.DelegateAccessor((o, _) => ((LineItem)o).Quantity)),

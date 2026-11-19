@@ -14,21 +14,21 @@ static class Filters
     // The markdown flow therefore has to be detected here and the markdown source emitted directly;
     // otherwise the token reaches the writer and Fluid writes its type name into the document.
     static bool IsMarkdownFlow(TemplateContext context) =>
-        ReferenceEquals(context.Options, SharedFluid.MarkdownOptions);
+        SharedFluid.IsMarkdown(context.Options);
 
     static ValueTask<FluidValue> Markdown(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
-        var text = input.ToStringValue();
+        var text = input.ToStringValue(context);
         if (IsMarkdownFlow(context))
         {
             // The result is about to be parsed as markdown anyway, so the source passes straight
             // through — unencoded, since asking for the markdown filter is asking for the value to
             // be read as syntax. This is the explicit form of what MarkdownEncoder turns off by
             // default for every other substitution.
-            return new(new Fluid.Values.StringValue(text, encode: false));
+            return new(Fluid.Values.StringValue.Create(text, encode: false));
         }
 
-        return new(new ObjectValue(new MarkdownToken(text)));
+        return new(ObjectValue.Create(new MarkdownToken(text)));
     }
 
     // The counterpart to `markdown`, and unlike it not a pass-through: markdown source written into
@@ -37,18 +37,18 @@ static class Filters
     // MarkdownTokenBlocks — which is what makes `| html` mean the same thing in both flows.
     static ValueTask<FluidValue> Html(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
-        var text = input.ToStringValue();
+        var text = input.ToStringValue(context);
         if (IsMarkdownFlow(context))
         {
-            return new(new Fluid.Values.StringValue(MarkdownTokenBlocks.Register(text), encode: false));
+            return new(Fluid.Values.StringValue.Create(MarkdownTokenBlocks.Register(text), encode: false));
         }
 
-        return new(new ObjectValue(new HtmlToken(text)));
+        return new(ObjectValue.Create(new HtmlToken(text)));
     }
 
     static ValueTask<FluidValue> EscapeXml(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
-        var text = input.ToStringValue();
+        var text = input.ToStringValue(context);
 
         // Opting out of MarkdownEncoder also opts out of what it does for a line break, so that part
         // is repeated here. Only in the markdown flow, where the value becomes source: a newline
@@ -97,38 +97,38 @@ static class Filters
         // Unencoded: escaping the entities back into literal text would undo the filter. Asking for
         // xml escaping says the value is headed for a markup context the template is assembling, so
         // MarkdownEncoder stays out of it.
-        return new(new Fluid.Values.StringValue(builder.ToString(), encode: false));
+        return new(Fluid.Values.StringValue.Create(builder.ToString(), encode: false));
     }
 
     static ValueTask<FluidValue> BulletList(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
         if (IsMarkdownFlow(context))
         {
-            return new(new Fluid.Values.StringValue(BuildList(input, static (_, _) => "- "), encode: false));
+            return new(Fluid.Values.StringValue.Create(BuildList(input, context, static (_, _) => "- "), encode: false));
         }
 
-        return new(new ObjectValue(TokenValueHelpers.BulletList(Enumerate(input))));
+        return new(ObjectValue.Create(TokenValueHelpers.BulletList(Enumerate(input, context))));
     }
 
     static ValueTask<FluidValue> NumberedList(FluidValue input, FilterArguments arguments, TemplateContext context)
     {
         if (IsMarkdownFlow(context))
         {
-            return new(new Fluid.Values.StringValue(BuildList(input, static (_, index) => $"{index + 1}. "), encode: false));
+            return new(Fluid.Values.StringValue.Create(BuildList(input, context, static (_, index) => $"{index + 1}. "), encode: false));
         }
 
-        return new(new ObjectValue(TokenValueHelpers.NumberedList(Enumerate(input))));
+        return new(ObjectValue.Create(TokenValueHelpers.NumberedList(Enumerate(input, context))));
     }
 
     // Markdown flow only — the docx flow builds real list paragraphs via TokenValueHelpers. The
     // result is returned unencoded because the markers and the newlines between them have to stay
     // syntax, so each item is escaped here instead: an item reading "1. First" or carrying a "|"
     // is text, not a nested list or a table cell.
-    static string BuildList(FluidValue input, Func<string, int, string> marker)
+    static string BuildList(FluidValue input, TemplateContext context, Func<string, int, string> marker)
     {
         var builder = new StringBuilder();
         var index = 0;
-        foreach (var item in Enumerate(input))
+        foreach (var item in Enumerate(input, context))
         {
             if (index > 0)
             {
@@ -143,19 +143,19 @@ static class Filters
         return builder.ToString();
     }
 
-    static IEnumerable<string> Enumerate(FluidValue input)
+    static IEnumerable<string> Enumerate(FluidValue input, TemplateContext context)
     {
         if (input is ArrayValue array)
         {
             foreach (var item in array.Values)
             {
-                yield return item.ToStringValue();
+                yield return item.ToStringValue(context);
             }
 
             yield break;
         }
 
-        var value = input.ToObjectValue();
+        var value = input.ToObjectValue(context);
 
         if (value is IEnumerable<object?> objects)
         {
@@ -177,6 +177,6 @@ static class Filters
             yield break;
         }
 
-        yield return input.ToStringValue();
+        yield return input.ToStringValue(context);
     }
 }

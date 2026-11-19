@@ -90,6 +90,15 @@ static class TokenScanner
 
     static DocxTokenSite ParseSubstitution(string source, int offset, string templateName, string partUri)
     {
+        if (TokenScan.IsEmptySubstitution(source))
+        {
+            throw new ParchmentRegistrationException(
+                templateName,
+                $"Failed to parse liquid token: {TokenScan.EmptySubstitution}",
+                partUri,
+                source);
+        }
+
         if (!SharedFluid.Parser.TryParse(source, out var template, out var error))
         {
             throw new ParchmentRegistrationException(
@@ -208,7 +217,7 @@ static class TokenScanner
         {
             throw new ParchmentRegistrationException(
                 templateName,
-                $"Failed to parse {{% for %}} tag: {error}",
+                BlockTagArguments.Problem("for", expression) ?? $"Failed to parse {{% for %}} tag: {error}",
                 partUri,
                 source);
         }

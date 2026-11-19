@@ -84,13 +84,15 @@ public partial class MarkdownBlockTagTests
     public async Task CycleRenders() =>
         await Assert.That(await RenderText("{% for l in Lines %}{% cycle Name, l.Name %} {% endfor %}")).IsEqualTo("Alice two Alice");
 
-    // The reason a counter's name is rejected as a token: Fluid keeps it apart from variables.
+    // Fluid 3 reads a counter back as a variable, as liquid does; Fluid 2 kept it apart. A
+    // counter's name is still rejected as a token, so a counter stays a counter: what it prints
+    // is what `increment` and `decrement` print, and nothing else depends on its value.
     [Test]
-    public async Task CounterIsNotAVariableInFluid()
+    public async Task CounterIsAVariableInFluid()
     {
         SharedFluid.Parser.TryParse("{% increment n %}{% decrement m %}[{{ n }}{{ m }}]", out var template, out _);
-        var context = new TemplateContext(BuildModel(), SharedFluid.Options, allowModelMembers: true);
-        await Assert.That(await template!.RenderAsync(context)).EndsWith("[]");
+        var context = new TemplateContext(BuildModel(), SharedFluid.Options);
+        await Assert.That(await template!.RenderAsync(context)).IsEqualTo("0-1[1-1]");
     }
 
     [Test]

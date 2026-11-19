@@ -11,13 +11,13 @@ public class ModelDeclarationGeneratorTests
         """
         namespace Fluid
         {
-            public interface IMemberAccessor;
+            public abstract class MemberAccessor;
         }
 
         namespace Fluid.Accessors
         {
             public sealed class DelegateAccessor(System.Func<object, string, object?> getter) :
-                Fluid.IMemberAccessor
+                Fluid.MemberAccessor
             {
                 public System.Func<object, string, object?> Getter { get; } = getter;
             }
@@ -47,7 +47,7 @@ public class ModelDeclarationGeneratorTests
 
                 public static void RegisterFluidAccessors(
                     System.Type type,
-                    System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, Fluid.IMemberAccessor>> accessors) =>
+                    System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, Fluid.MemberAccessor>> accessors) =>
                     Registered.Add($"accessors:{type.FullName}");
             }
         }

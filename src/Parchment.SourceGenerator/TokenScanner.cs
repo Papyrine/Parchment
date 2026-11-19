@@ -93,6 +93,12 @@ public static class TokenScanner
 
     static Token ParseSubstitution(string source, bool hasOtherContent)
     {
+        // Lockstep with the runtime's TokenScanner.ParseSubstitution.
+        if (TokenScan.IsEmptySubstitution(source))
+        {
+            return new(TokenKind.Substitution, source, [], null, hasOtherContent, ParseError: TokenScan.EmptySubstitution);
+        }
+
         if (!parser.TryParse(source, out var template, out var error))
         {
             return new(TokenKind.Substitution, source, [], null, hasOtherContent, ParseError: error);
@@ -196,7 +202,8 @@ public static class TokenScanner
         var liquid = $"{{% for {expression} %}}{{% endfor %}}";
         if (!parser.TryParse(liquid, out var template, out _))
         {
-            return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent);
+            // Lockstep with the runtime's TokenScanner.BuildForTag.
+            return new(TokenKind.UnknownBlock, source, [], null, hasOtherContent, Problem: BlockTagArguments.Problem("for", expression));
         }
 
         var forStatement = ((FluidTemplate)template).Statements

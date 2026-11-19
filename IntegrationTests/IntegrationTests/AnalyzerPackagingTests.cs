@@ -17,8 +17,9 @@ using System.Reflection.PortableExecutable;
 /// </remarks>
 public class AnalyzerPackagingTests
 {
-    // Parchment targets net10.0 only, and the first .NET 10 SDK ships Roslyn 5.0, so no consumer
-    // has an older compiler than this. Raising it drops SDK feature bands that worked before.
+    // The compiler of the first .NET 10 SDK, which the roslyn5.0 folder names. Parchment now targets
+    // net11.0, so a consumer's compiler is newer than this, and the floor could rise with the folder
+    // names. Until they move, this keeps a folder at least this old.
     static readonly Version oldestCompiler = new(5, 0);
 
     record CompilerReference(string Assembly, Version Folder, string Name, Version Version);

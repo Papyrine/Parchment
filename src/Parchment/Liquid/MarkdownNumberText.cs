@@ -2,7 +2,7 @@
 /// Makes the markdown flow print a number the way the docx flow does.
 /// </summary>
 /// <remarks>
-/// The docx flow evaluates a token and takes <c>ToStringValue</c>, which prints the decimal as it
+/// The docx flow evaluates a token and takes <see cref="FluidText"/>, which prints the decimal as it
 /// is: <c>1234.50</c> keeps its scale. The markdown flow renders the whole template, so the value is
 /// written by Fluid's <c>NumberValue.WriteToAsync</c>, which reformats it — <c>1234.5</c>, and
 /// <c>10.0</c> for <c>10.00</c>. Neither a value converter nor the encoder can reach that: the value
@@ -29,20 +29,20 @@ class MarkdownNumberText :
             var pending = inner.EvaluateAsync(context);
             if (pending.IsCompletedSuccessfully)
             {
-                return new(Convert(pending.Result));
+                return new(Convert(pending.Result, context));
             }
 
-            return Awaited(pending);
+            return Awaited(pending, context);
         }
 
-        static async ValueTask<FluidValue> Awaited(ValueTask<FluidValue> pending) =>
-            Convert(await pending.ConfigureAwait(false));
+        static async ValueTask<FluidValue> Awaited(ValueTask<FluidValue> pending, TemplateContext context) =>
+            Convert(await pending.ConfigureAwait(false), context);
 
-        static FluidValue Convert(FluidValue value)
+        static FluidValue Convert(FluidValue value, TemplateContext context)
         {
             if (value is NumberValue)
             {
-                return new Fluid.Values.StringValue(value.ToStringValue());
+                return Fluid.Values.StringValue.Create(FluidText.Of(value, context));
             }
 
             return value;

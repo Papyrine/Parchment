@@ -151,6 +151,64 @@ class MarkdownEncoder(StringBuilder? written) :
     public override void Encode(TextWriter output, char[] value, int startIndex, int characterCount) =>
         output.Write(EncodeSpan(value.AsSpan(startIndex, characterCount)));
 
+    // Fluid 3 encodes a value into the span its output hands it, and when that is too small comes
+    // back with the same input for another. How a value is escaped depends on the value as a whole
+    // — its first character, and where it ends — so it is encoded once and handed out in as many
+    // pieces as it takes. Left to the base class, or to Fluid's fallback of one character at a time,
+    // every space would open a value and be written as a reference. One encoder serves one render,
+    // and Fluid fills a value's spans without yielding, so the piece in progress is plain state.
+    string? pending;
+    string? pendingSource;
+    int pendingOffset;
+
+    public override OperationStatus Encode(CharSpan source, Span<char> destination, out int charsConsumed, out int charsWritten, bool isFinalBlock = true)
+    {
+        string encoded;
+        int offset;
+        var resuming = pending != null &&
+                       source.SequenceEqual(pendingSource.AsSpan());
+        if (resuming)
+        {
+            encoded = pending!;
+            offset = pendingOffset;
+        }
+        else
+        {
+            encoded = EncodeSpan(source);
+            offset = 0;
+        }
+
+        var count = Math.Min(destination.Length, encoded.Length - offset);
+        encoded.AsSpan(offset, count).CopyTo(destination);
+        charsWritten = count;
+
+        if (offset + count == encoded.Length)
+        {
+            ClearPending();
+            charsConsumed = source.Length;
+            return OperationStatus.Done;
+        }
+
+        // Nothing is reported consumed until the last piece is written, which is what brings Fluid
+        // back with the same input.
+        pending = encoded;
+        if (!resuming)
+        {
+            pendingSource = source.ToString();
+        }
+
+        pendingOffset = offset + count;
+        charsConsumed = 0;
+        return OperationStatus.DestinationTooSmall;
+    }
+
+    void ClearPending()
+    {
+        pending = null;
+        pendingSource = null;
+        pendingOffset = 0;
+    }
+
     string EncodeSpan(CharSpan value)
     {
         if (EndsADestination(value))
@@ -401,11 +459,26 @@ class MarkdownEncoder(StringBuilder? written) :
         return count % 2 == 1;
     }
 
+    // Fluid 3 asks this of a whole value before writing it, and writes the value as it is on -1.
+    // So -1 only when encoding the value would change nothing: a leading indent, or a value that
+    // ends a link destination, is encoded although it holds no character from encodable. Fluid
+    // starts every value here, so a piece left over from a value it gave up on goes with it.
+    public override unsafe int FindFirstCharacterToEncode(char* text, int textLength)
+    {
+        ClearPending();
+        var value = new CharSpan(text, textLength);
+        if (EndsADestination(value) ||
+            !IsUntouched(value))
+        {
+            return 0;
+        }
+
+        return -1;
+    }
+
     // Reached only through base-class entry points this type does not override; every one Fluid
     // uses is overridden above. Kept correct for a single character, which is all the signature can
     // express — a scalar at a time cannot see a CRLF pair, so this writes a break for each half.
-    public override unsafe int FindFirstCharacterToEncode(char* text, int textLength) =>
-        new CharSpan(text, textLength).IndexOfAny(encodable);
 
     public override unsafe bool TryEncodeUnicodeScalar(int unicodeScalar, char* buffer, int bufferLength, out int charsWritten)
     {

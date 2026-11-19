@@ -10,12 +10,12 @@ public class ExcelsiorConfigureAccessibilityTests
         """
         namespace Fluid
         {
-            public interface IMemberAccessor;
+            public abstract class MemberAccessor;
         }
 
         namespace Fluid.Accessors
         {
-            public class DelegateAccessor(System.Func<object, object, object?> getter) : Fluid.IMemberAccessor
+            public class DelegateAccessor(System.Func<object, object, object?> getter) : Fluid.MemberAccessor
             {
                 public System.Func<object, object, object?> Getter { get; } = getter;
             }
@@ -39,7 +39,7 @@ public class ExcelsiorConfigureAccessibilityTests
 
             public static class GeneratedRegistration
             {
-                public static void RegisterFluidAccessors(System.Type type, System.Collections.Generic.KeyValuePair<string, Fluid.IMemberAccessor>[] accessors)
+                public static void RegisterFluidAccessors(System.Type type, System.Collections.Generic.KeyValuePair<string, Fluid.MemberAccessor>[] accessors)
                 {
                 }
 

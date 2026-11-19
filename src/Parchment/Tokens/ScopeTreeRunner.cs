@@ -899,7 +899,7 @@ class ScopeTreeRunner(
         }
     }
 
-    static object InterpretFluidValue(FluidValue fluidValue)
+    object InterpretFluidValue(FluidValue fluidValue)
     {
         // TokenValue is always wrapped in ObjectValue (see Filters.Markdown / BulletList /
         // NumberedList and TokenValueHelpers). Skip ToObjectValue for primitive FluidValues
@@ -908,12 +908,12 @@ class ScopeTreeRunner(
         // text-token path doesn't need. A string assigned to a TokenValue member (a TextToken)
         // is on that path too: SharedFluid converts it, so it arrives here as a StringValue.
         if (fluidValue is ObjectValue &&
-            fluidValue.ToObjectValue() is TokenValue tokenValue)
+            fluidValue.ToObjectValue(context) is TokenValue tokenValue)
         {
             return tokenValue;
         }
 
-        return fluidValue.ToStringValue();
+        return FluidText.Of(fluidValue, context);
     }
 
     async ValueTask<object> AwaitFluidValue(ValueTask<FluidValue> pending, Paragraph host, DocxTokenSite site)
@@ -1116,7 +1116,7 @@ class ScopeTreeRunner(
     async Task ProcessLoopAsync(LoopNode loop, Paragraph open, Paragraph close, OpenXmlElement parent)
     {
         await ProcessCarriedAsync(open, loop.Body).ConfigureAwait(false);
-        var items = await ResolveIterableAsync(loop, open).ConfigureAwait(false);
+        var items = await ResolveIterableAsync(loop).ConfigureAwait(false);
         var bodyElements = CaptureBetween(open, close);
 
         // A loop over an [EditableField] collection renders as an editable Word repeating section
@@ -1196,9 +1196,9 @@ class ScopeTreeRunner(
             // scope and the binding leaks past `{% endfor %}` — shadowing model properties of
             // the same name and (in nested-same-name loops) overwriting the outer's binding.
             // Parchment block tags are limited to for/if/elsif/else/endif (no `{% assign %}`),
-            // so the non-bubbling EnterChildScope is preferred over EnterForLoopScope which
+            // so a Local scope, which keeps its assignments, is preferred over WriteThrough, which
             // exists to let assigns inside a loop persist after it.
-            context.EnterChildScope();
+            var scope = context.EnterScope(ScopeBehavior.Local);
             try
             {
                 context.SetValue(loop.LoopVariable, item);
@@ -1253,7 +1253,7 @@ class ScopeTreeRunner(
             }
             finally
             {
-                context.ReleaseScope();
+                scope.Dispose();
             }
         }
 
@@ -1341,8 +1341,8 @@ class ScopeTreeRunner(
         foreach (var fluidItem in effectiveItems)
         {
             cancel.ThrowIfCancellationRequested();
-            var rawItem = isBlank ? null : fluidItem.ToObjectValue();
-            context.EnterChildScope();
+            var rawItem = isBlank ? null : fluidItem.ToObjectValue(context);
+            var scope = context.EnterScope(ScopeBehavior.Local);
             try
             {
                 context.SetValue(loop.LoopVariable, fluidItem);
@@ -1402,7 +1402,7 @@ class ScopeTreeRunner(
             }
             finally
             {
-                context.ReleaseScope();
+                scope.Dispose();
             }
         }
 
@@ -1490,81 +1490,54 @@ class ScopeTreeRunner(
         }
     }
 
-    async Task<IEnumerable<FluidValue>> ResolveIterableAsync(LoopNode loop, Paragraph open)
+    async Task<IEnumerable<FluidValue>> ResolveIterableAsync(LoopNode loop)
     {
+        if (loop.Limit != null ||
+            loop.Offset != null ||
+            loop.Reversed)
+        {
+            return await WindowAsync(loop).ConfigureAwait(false);
+        }
+
         // Hand the loop source straight to Fluid: ForStatement.Source is an Expression that, when
         // evaluated, yields a FluidValue we can enumerate. This honors filters, complex paths,
         // arithmetic, and any value converters Fluid is configured with — none of which the previous
         // reflection-walk supported.
         var sourceValue = await loop.LoopSource.EvaluateAsync(context).ConfigureAwait(false);
-        var items = sourceValue.Enumerate(context);
-        if (loop.Limit == null &&
-            loop.Offset == null &&
-            !loop.Reversed)
+        var items = new List<FluidValue>();
+        await foreach (var item in sourceValue.EnumerateAsync(context).ConfigureAwait(false))
         {
-            return items;
+            items.Add(item);
         }
 
-        return await ApplyLoopModifiersAsync(loop, items.ToList(), open).ConfigureAwait(false);
+        return items;
     }
 
-    // Same arithmetic as Fluid's ForStatement.WriteToAsync, which the markdown flow runs: offset
-    // first, then limit, and `reversed` flips the window those two selected rather than the source,
-    // whatever order the tag lists them in. A negative limit drops that many items from the end.
-    async Task<IEnumerable<FluidValue>> ApplyLoopModifiersAsync(LoopNode loop, List<FluidValue> items, Paragraph open)
+    // A loop with modifiers is windowed by Fluid's own ForStatement, the one the markdown flow
+    // runs, with a body that only collects what it is handed. The modifiers then mean here exactly
+    // what they mean there, which is what they mean in liquid: offset first, then limit, `reversed`
+    // flipping the window those two selected, a negative offset counting places before the first
+    // item, a negative limit selecting nothing, a value beyond an int taken as the nearest one, and
+    // a value that is not a number refused with liquid's message.
+    async Task<List<FluidValue>> WindowAsync(LoopNode loop)
     {
-        var start = 0;
-        if (loop.Offset != null)
-        {
-            var offset = await loop.Offset.EvaluateAsync(context).ConfigureAwait(false);
-            // Fluid indexes the source with a negative offset and throws. Nothing precedes the
-            // first item, so the docx flow starts there instead.
-            start = Math.Max(0, ModifierValue("offset", offset, open));
-        }
-
-        var count = Math.Max(0, items.Count - start);
-        if (loop.Limit != null)
-        {
-            var limit = ModifierValue("limit", await loop.Limit.EvaluateAsync(context).ConfigureAwait(false), open);
-            if (limit >= 0)
-            {
-                count = Math.Min(count, limit);
-            }
-            else
-            {
-                count = Math.Max(0, count + limit);
-            }
-        }
-
-        if (count == 0)
-        {
-            return [];
-        }
-
-        var window = items.GetRange(start, count);
-        if (loop.Reversed)
-        {
-            window.Reverse();
-        }
-
-        return window;
+        var collector = new ItemCollector(loop.LoopVariable);
+        var statement = new ForStatement([collector], loop.LoopVariable, loop.LoopSource, loop.Limit!, loop.Offset!, loop.Reversed);
+        // Nothing is written: the collector writes nothing, and the statement has no else.
+        await statement.WriteToAsync(new MarkdownOutput(), NullEncoder.Default, context).ConfigureAwait(false);
+        return collector.Items;
     }
 
-    // The window is counted in ints, as the list it is cut from is. A value beyond that is
-    // reported as what it is rather than left to overflow the cast.
-    int ModifierValue(string modifier, FluidValue value, Paragraph open)
+    sealed class ItemCollector(string variable) :
+        Statement
     {
-        var number = value.ToNumberValue();
-        if (number is >= int.MinValue and <= int.MaxValue)
-        {
-            return (int)number;
-        }
+        public List<FluidValue> Items { get; } = [];
 
-        throw new ParchmentRenderException(
-            templateName,
-            $"The loop's '{modifier}' is {number.ToString(CultureInfo.InvariantCulture)}, which is outside the range a loop can be windowed by ({int.MinValue} to {int.MaxValue}).",
-            partUri,
-            tokenSource: TagText(open));
+        public override ValueTask<Completion> WriteToAsync(IFluidOutput output, TextEncoder encoder, TemplateContext context)
+        {
+            Items.Add(context.LocalScope.GetValue(variable));
+            return NormalCompletion;
+        }
     }
 
     async Task ProcessIfAsync(IfNode ifNode)
@@ -1739,7 +1712,7 @@ class ScopeTreeRunner(
     }
 
     async Task<bool> EvaluateConditionAsync(Expression condition) =>
-        (await condition.EvaluateAsync(context).ConfigureAwait(false)).ToBooleanValue();
+        (await condition.EvaluateAsync(context).ConfigureAwait(false)).ToBooleanValue(context);
 
     static string ToDisplayString(object value) =>
         value switch

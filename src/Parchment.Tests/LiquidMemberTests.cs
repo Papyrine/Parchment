@@ -24,7 +24,8 @@ public partial class LiquidMemberTests
         public IReadOnlyList<Line> Children { get; init; } = [];
     }
 
-    // A model's own collection type is still an array to a template, so its members do not bind.
+    // A model's own collection type is still an array to the validators, so its members are
+    // rejected, although Fluid binds them on one that is not a list.
     public class LineBag :
         IEnumerable<Line>
     {
@@ -165,7 +166,7 @@ public partial class LiquidMemberTests
 
     // Every one of these is a CLR member, or a liquid member in the wrong case, or a liquid member
     // the value does not have. The first test pins that Fluid binds none of them, which is the only
-    // reason the second may reject them.
+    // reason the third may reject them.
     [Test]
     [Arguments("Lines.Count")]
     [Arguments("Lines.Capacity")]
@@ -177,16 +178,29 @@ public partial class LiquidMemberTests
     [Arguments("Name.Size")]
     [Arguments("Lookup.Count")]
     [Arguments("Lookup.Keys")]
-    [Arguments("Lookup.first")]
-    [Arguments("Bag.Count")]
-    [Arguments("Bag.Label")]
     [Arguments("Listed.Count")]
     [Arguments("Listed.Label")]
     public async Task ClrMemberRendersBlankInFluid(string path)
     {
         SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
-        var context = new TemplateContext(BuildModel(), SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(BuildModel(), SharedFluid.Options);
         await Assert.That(await template!.RenderAsync(context)).IsEqualTo("[]");
+    }
+
+    // Fluid 3 binds these: a collection that is not a list is an object as well as a sequence, so
+    // its own members resolve, and a dictionary's `first` is its first pair, as in liquid. The third
+    // test rejects them all the same. The validators type every collection as an array, whatever
+    // it implements, so whether a member binds does not turn on which interfaces a model's type
+    // happens to have.
+    [Test]
+    [Arguments("Bag.Count", "1")]
+    [Arguments("Bag.Label", "label")]
+    [Arguments("Lookup.first", "keyvalue")]
+    public async Task BoundByFluidButRejected(string path, string rendered)
+    {
+        SharedFluid.Parser.TryParse($"[{{{{ {path} }}}}]", out var template, out _);
+        var context = new TemplateContext(BuildModel(), SharedFluid.Options);
+        await Assert.That(await template!.RenderAsync(context)).IsEqualTo($"[{rendered}]");
     }
 
     [Test]

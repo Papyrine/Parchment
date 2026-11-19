@@ -150,11 +150,20 @@ public partial class DictionaryLoopTests
         await Assert.That(await RenderMarkdown($"[{token}]")).IsEqualTo($"[{expected}]");
     }
 
+    // A bare dictionary prints liquid's text for a hash, in both flows. The markdown flow curls its
+    // quotes, as smarty pants does to every bound value.
+    [Test]
+    public async Task BareDictionaryPrintsLiquidHashText()
+    {
+        await Assert.That(await RenderDocx("[{{ Lookup }}]")).IsEqualTo("[{\"b\"=>\"two\", \"a\"=>\"one\", \"c\"=>\"three\"}]");
+        await Assert.That(await RenderMarkdown("[{{ Lookup }}]")).IsEqualTo("[{“b”=>“two”, “a”=>“one”, “c”=>“three”}]");
+    }
+
     [Test]
     [Arguments("[{{ Lookup.a }}]", "[one]")]
     [Arguments("[{{ Lookup['c'] }}]", "[three]")]
     [Arguments("[{{ Lines.y.Name }}]", "[second]")]
-    [Arguments("[{{ Lookup }}]", "[]")]
+    [Arguments("[{{ Lookup }}]", "[{\"b\"=>\"two\", \"a\"=>\"one\", \"c\"=>\"three\"}]")]
     [Arguments("{% if Lookup %}yes{% endif %}", "yes")]
     [Arguments("{% for kv in Lookup %}{{ kv.first }}={{ kv.last }}/{{ kv.size }};{% endfor %}", "b=two/2;a=one/2;c=three/2;")]
     [Arguments("{% for kv in Lookup %}{% for part in kv %}{{ part }},{% endfor %}{% endfor %}", "b,two,a,one,c,three,")]
@@ -163,7 +172,7 @@ public partial class DictionaryLoopTests
     public async Task FluidBehaviourIsKept(string source, string expected)
     {
         SharedFluid.Parser.TryParse(source, out var template, out _);
-        var context = new TemplateContext(BuildModel(), SharedFluid.Options, allowModelMembers: true);
+        var context = new TemplateContext(BuildModel(), SharedFluid.Options);
         await Assert.That(await template!.RenderAsync(context)).IsEqualTo(expected);
     }
 

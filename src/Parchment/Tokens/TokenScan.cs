@@ -82,6 +82,40 @@ static class TokenScan
         !HasNonWhitespace(text, 0, offset) &&
         !HasNonWhitespace(text, offset + length, text.Length);
 
+    /// <summary>
+    /// The reason an empty substitution is refused, worded once for every flow.
+    /// </summary>
+    public const string EmptySubstitution = "'{{ }}' names no value.";
+
+    /// <summary>
+    /// Whether the substitution <paramref name="source"/> holds nothing but whitespace control:
+    /// <c>{{ }}</c> or <c>{{- -}}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Fluid 3 reads one as an empty string, as Liquid does; Fluid 2 refused it, and so does
+    /// Parchment, so a token left blank by mistake fails registration rather than printing
+    /// nothing. Read from the source text because the tree cannot tell it apart: Fluid parses
+    /// <c>{{ empty }}</c> to the same statement.
+    /// </remarks>
+    public static bool IsEmptySubstitution(string source)
+    {
+        var start = 2;
+        var end = source.Length - 2;
+        if (start < end &&
+            source[start] == '-')
+        {
+            start++;
+        }
+
+        if (start < end &&
+            source[end - 1] == '-')
+        {
+            end--;
+        }
+
+        return !HasNonWhitespace(source, start, end);
+    }
+
     static bool HasNonWhitespace(string text, int start, int end)
     {
         for (var k = start; k < end; k++)

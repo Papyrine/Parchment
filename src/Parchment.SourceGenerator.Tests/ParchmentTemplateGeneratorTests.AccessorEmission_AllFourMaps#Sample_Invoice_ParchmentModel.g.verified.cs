@@ -8,19 +8,19 @@ partial class Invoice
   [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Invoice
   {
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Invoice =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Invoice =
     {
       new("Customer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Customer)),
       new("Lines", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Lines)),
       new("Footer", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Footer)),
       new("Notes", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Invoice)o).Notes)),
     };
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Customer =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Customer =
     {
       new("Name", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Name)),
       new("Tags", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Customer)o).Tags)),
     };
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Line =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Line =
     {
       new("Description", new global::Fluid.Accessors.DelegateAccessor((o, _) => ((global::Sample.Line)o).Description)),
     };

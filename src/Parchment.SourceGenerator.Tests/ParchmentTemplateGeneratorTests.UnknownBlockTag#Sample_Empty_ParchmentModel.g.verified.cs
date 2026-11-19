@@ -8,7 +8,7 @@ partial class Empty
   [global::Parchment.Generated.EmbeddedBytes("scrubbed")]
   internal static class ParchmentGenerated_Sample_Empty
   {
-    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.IMemberAccessor>[] _Accessors_global__Sample_Empty =
+    static readonly global::System.Collections.Generic.KeyValuePair<string, global::Fluid.MemberAccessor>[] _Accessors_global__Sample_Empty =
     {
     };
 
