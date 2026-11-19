@@ -1,5 +1,3 @@
-using System.IO.Compression;
-
 /// <summary>
 /// Takes the VBA project out of a package that is being turned into a plain document.
 /// </summary>

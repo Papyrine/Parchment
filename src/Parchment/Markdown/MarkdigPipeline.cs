@@ -1,5 +1,3 @@
-using Markdig.Parsers.Inlines;
-
 static class MarkdigPipeline
 {
     public static MarkdownPipeline Pipeline { get; } = Build();

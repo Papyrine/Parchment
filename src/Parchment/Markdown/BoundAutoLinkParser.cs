@@ -1,7 +1,3 @@
-using Markdig.Extensions.AutoLinks;
-using Markdig.Helpers;
-using Markdig.Parsers;
-
 /// <summary>
 /// Markdig's bare-url autolink parser, made aware of the backslash escapes
 /// <see cref="MarkdownEncoder"/> writes into a bound value.

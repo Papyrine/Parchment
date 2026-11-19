@@ -1,5 +1,3 @@
-using Markdig.Extensions.SmartyPants;
-
 class SmartyPantInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, SmartyPant>
 {

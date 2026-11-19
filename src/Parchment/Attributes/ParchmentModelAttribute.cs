@@ -1,5 +1,3 @@
-using JetBrains.Annotations;
-
 namespace Parchment;
 
 /// <summary>

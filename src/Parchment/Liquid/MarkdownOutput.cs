@@ -1,5 +1,3 @@
-using System.Buffers;
-
 /// <summary>
 /// The output the markdown flow renders liquid into: everything written lands in
 /// <see cref="Builder"/> at once.

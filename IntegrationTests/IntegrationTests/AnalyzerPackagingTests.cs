@@ -1,8 +1,3 @@
-using System.IO.Compression;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
-
 /// <summary>
 /// Cover for which compilers can load the source generator builds the package ships.
 /// </summary>

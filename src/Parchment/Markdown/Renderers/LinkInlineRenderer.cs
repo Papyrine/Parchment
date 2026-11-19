@@ -1,5 +1,3 @@
-using Markdig.Extensions.SmartyPants;
-
 class LinkInlineRenderer :
     MarkdownObjectRenderer<OpenXmlMarkdownRenderer, LinkInline>
 {
@@ -16,7 +14,7 @@ class LinkInlineRenderer :
 
     // Shown until Word recalculates a PAGEREF. Any digit would do; "1" is what Word itself caches
     // for a reference it has not resolved yet.
-    const string PageReferencePlaceholder = "1";
+    const string pageReferencePlaceholder = "1";
 
     static void WriteLink(OpenXmlMarkdownRenderer renderer, LinkInline inline)
     {
@@ -36,7 +34,7 @@ class LinkInlineRenderer :
             var bookmark = renderer.BookmarkNames.For(url[1..]);
             if (inline.FirstChild == null)
             {
-                foreach (var run in WordFields.PageReference(bookmark, PageReferencePlaceholder))
+                foreach (var run in WordFields.PageReference(bookmark, pageReferencePlaceholder))
                 {
                     renderer.AddRun(run);
                 }

@@ -1,5 +1,3 @@
-using System.Numerics;
-
 /// <summary>
 /// Turns a paragraph whose whole content is <c>[SECTION]</c> into a Word section break, so a markdown
 /// template can change page orientation — and the page setup with it — partway down a document.
@@ -42,15 +40,15 @@ using System.Numerics;
 /// </remarks>
 static class SectionBreaks
 {
-    const string Marker = "[SECTION]";
+    const string marker = "[SECTION]";
 
     // A4, matching Word's own default, for a style source whose section properties do not say.
-    const uint DefaultWidth = 11906;
-    const uint DefaultHeight = 16838;
+    const uint defaultWidth = 11906;
+    const uint defaultHeight = 16838;
 
     // The longest side Word gives a page, 22 inches, and so the furthest any measurement on one
     // can reach.
-    const int MaxTwips = 31680;
+    const int maxTwips = 31680;
 
     public static bool TryWrite(OpenXmlMarkdownRenderer renderer, ParagraphBlock block, ParagraphProperties? properties)
     {
@@ -118,7 +116,7 @@ static class SectionBreaks
 
             throw new ParchmentRenderException(
                 name,
-                $"'{Marker}' needs a style source to derive its page setup from, and this template has none.");
+                $"'{marker}' needs a style source to derive its page setup from, and this template has none.");
         }
 
         Rewrite(body, markers, baseSection, name, partUri: null);
@@ -141,7 +139,7 @@ static class SectionBreaks
         {
             throw new ParchmentRenderException(
                 name,
-                $"'{Marker}' is a section break, and only the document body can hold one. " +
+                $"'{marker}' is a section break, and only the document body can hold one. " +
                 "A header, a footer, a footnote or an endnote cannot.",
                 partUri);
         }
@@ -176,7 +174,7 @@ static class SectionBreaks
         {
             throw new ParchmentRenderException(
                 name,
-                $"'{Marker}' needs a section to derive its page setup from, and the template's body does not end with a w:sectPr.",
+                $"'{marker}' needs a section to derive its page setup from, and the template's body does not end with a w:sectPr.",
                 partUri);
         }
 
@@ -253,7 +251,7 @@ static class SectionBreaks
             {
                 throw new ParchmentRenderException(
                     name,
-                    $"'{Marker}' has to be a paragraph of its own at the top level of the document. " +
+                    $"'{SectionBreaks.marker}' has to be a paragraph of its own at the top level of the document. " +
                     "One inside a list, a table cell or a block quote is not a section break Word can express.",
                     partUri);
             }
@@ -379,7 +377,7 @@ static class SectionBreaks
             child = child.NextSibling;
         }
 
-        return builder.ToString().Trim() == Marker;
+        return builder.ToString().Trim() == marker;
     }
 
     static PageOrientationValues? ResolveOrientation(IEnumerable<KeyValuePair<string, string?>>? attributes)
@@ -451,9 +449,9 @@ static class SectionBreaks
                     // header or footer is not allowed to push the text away from. Left and right
                     // have no such reading.
                     margin ??= new();
-                    margin.Top = (int) InRange(edges[0], -MaxTwips, "margins", value, "top margin");
+                    margin.Top = (int) InRange(edges[0], -maxTwips, "margins", value, "top margin");
                     margin.Right = (uint) InRange(edges[1], 0, "margins", value, "right margin");
-                    margin.Bottom = (int) InRange(edges[2], -MaxTwips, "margins", value, "bottom margin");
+                    margin.Bottom = (int) InRange(edges[2], -maxTwips, "margins", value, "bottom margin");
                     margin.Left = (uint) InRange(edges[3], 0, "margins", value, "left margin");
                 }
             }
@@ -520,14 +518,14 @@ static class SectionBreaks
     static BigInteger InRange(BigInteger twips, int min, string attribute, string value, string what)
     {
         if (twips >= min &&
-            twips <= MaxTwips)
+            twips <= maxTwips)
         {
             return twips;
         }
 
         throw new SectionMarkerException(
-            $"'{Marker}' has {attribute}={value}, whose {what} of {twips} twips is out of range. " +
-            $"It has to be between {min} and {MaxTwips}.");
+            $"'{marker}' has {attribute}={value}, whose {what} of {twips} twips is out of range. " +
+            $"It has to be between {min} and {maxTwips}.");
     }
 
     static SectionProperties Derive(SectionProperties current, SectionProperties declared)
@@ -566,8 +564,8 @@ static class SectionBreaks
     static void ApplyOrientation(SectionProperties sectPr, PageOrientationValues orientation)
     {
         var size = EnsurePageSize(sectPr);
-        var width = size.Width?.Value ?? DefaultWidth;
-        var height = size.Height?.Value ?? DefaultHeight;
+        var width = size.Width?.Value ?? defaultWidth;
+        var height = size.Height?.Value ?? defaultHeight;
         var shortSide = Math.Min(width, height);
         var longSide = Math.Max(width, height);
 
@@ -594,8 +592,8 @@ static class SectionBreaks
 
         var size = new PageSize
         {
-            Width = DefaultWidth,
-            Height = DefaultHeight
+            Width = defaultWidth,
+            Height = defaultHeight
         };
 
         // By the schema's order, since nearly everything else in a w:sectPr has to follow it.
